@@ -1,18 +1,14 @@
 import 'dart:async';
-import 'dart:io';
-import 'mac_minimax_keychain.dart';
+import 'mac_account_document_store.dart';
 import 'minimax_accounts.dart';
 
-/// Call after the host wires MiniMaxKeychain.handle into its existing channel.
-/// Does not read an external account, persist a credential, or enable automation.
-Future<MiniMaxAccounts> openMacMiniMaxAccounts({FutureOr<void> Function()? onAutomaticFinished}) async {
-  final keychain = MacMiniMaxKeychain();
-  final root = Directory(await keychain.prepareJournal());
+/// Each region has a separate native-owned atomic document.
+Future<MiniMaxAccounts> openMacMiniMaxAccounts({
+  required String region,
+  FutureOr<void> Function()? onAutomaticFinished,
+}) async {
   return MiniMaxAccounts(
-    store: MiniMaxMetadataStore(root, syncDirectory: keychain.syncJournal),
+    store: MiniMaxAccountStore(MacAccountDocumentStore('MiniMax-$region')),
     onAutomaticFinished: onAutomaticFinished,
-    readSecret: keychain.read,
-    writeSecret: keychain.write,
-    deleteSecret: keychain.delete,
   );
 }

@@ -6,18 +6,16 @@ import Security
 import CryptoKit
 import Darwin
 
-final class QoderCnKeychain {
-    private let queue = DispatchQueue(label: "com.sailingloong.loongpass.qoder-cn-keychain")
-    private let service = "com.sailingloong.loongpass.qoder-cn"
-    private let account = "independent-grants-v1"
+final class QoderFileStore {
+    private let queue = DispatchQueue(label: "com.sailingloong.loongpass.qoder-account-files")
     private let maxBytes = 1_048_576
     private var channel: FlutterMethodChannel?
     private let grantLock = NSLock()
-    private var grants: [String: (state: String, expires: Date)] = [:]
+    private var grants: [String: (state: String, expires: Date, region: String)] = [:]
     private enum Failure: Error { case unavailable, malformed, changed }
 
     func register(with messenger: FlutterBinaryMessenger) {
-        let ch = FlutterMethodChannel(name: "com.sailingloong.loongpass/qoder-cn", binaryMessenger: messenger)
+        let ch = FlutterMethodChannel(name: "com.sailingloong.loongpass/qoder-accounts", binaryMessenger: messenger)
         channel = ch
         ch.setMethodCallHandler { [weak self] call, result in
             guard let self = self else {
@@ -33,7 +31,7 @@ final class QoderCnKeychain {
                 let completed = state == "completed"
                 let uncertain = state == "unknown"
                 if let grant = self.grants[nonce], !completed && !uncertain {
-                    self.grants[nonce] = ("cancelled", grant.expires)
+                    self.grants[nonce] = ("cancelled", grant.expires, grant.region)
                 }
                 self.grantLock.unlock()
                 result(["status": completed ? "completed" : uncertain ? "unknown" : "cancelled"])
@@ -47,12 +45,6 @@ final class QoderCnKeychain {
             }
         }
     }
-    private func baseQuery() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service, kSecAttrAccount as String: account,
-         kSecAttrSynchronizable as String: false,
-         kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail]
-    }
     private func integer(_ value: Any?) throws -> Int {
         guard let n = value as? NSNumber,
               CFGetTypeID(n) != CFBooleanGetTypeID(),
@@ -60,40 +52,14 @@ final class QoderCnKeychain {
               n.int64Value >= 0, n.int64Value < Int64.max else { throw Failure.malformed }
         return Int(n.int64Value)
     }
-    private func read() throws -> (revision: Int, payload: String, exists: Bool) {
-        var query = baseQuery(); query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return (0, "{}", false) }
-        guard status == errSecSuccess, let bytes = item as? Data, bytes.count <= maxBytes,
-              let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any],
-              let payload = value["payload"] as? String else { throw Failure.unavailable }
+    private func read(_ region: String) throws -> (revision: Int, payload: String, exists: Bool) {
+        guard let value = try AccountFile.named("Qoder-\(region)").read(name: "accounts.json") else { return (0, "{}", false) }
+        guard let payload = value["payload"] as? String else { throw Failure.unavailable }
         return (try integer(value["revision"]), payload, true)
     }
-    /// This advisory lock serializes this bridge across cooperating app processes.
-    /// It is not a claim of protection against a malicious process under this UID.
-    private func withLock<T>(_ action: () throws -> T) throws -> T {
-        let support = try FileManager.default.url(for: .applicationSupportDirectory,
-            in: .userDomainMask, appropriateFor: nil, create: true)
-        let root = support.appendingPathComponent("com.sailingloong.loongpass.qoder-cn", isDirectory: true)
-        if mkdir(root.path, 0o700) != 0 && errno != EEXIST { throw Failure.unavailable }
-        var dir = stat()
-        guard lstat(root.path, &dir) == 0,
-              (dir.st_mode & S_IFMT) == S_IFDIR, dir.st_uid == getuid(),
-              dir.st_mode & 0o077 == 0 else { throw Failure.unavailable }
-        let fd = open(root.appendingPathComponent("owner.lock").path,
-                      O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { throw Failure.unavailable }
-        defer { close(fd) }
-        var st = stat()
-        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG,
-              st.st_uid == getuid(), st.st_nlink == 1, st.st_mode & 0o077 == 0,
-              flock(fd, LOCK_EX | LOCK_NB) == 0 else { throw Failure.unavailable }
-        defer { flock(fd, LOCK_UN) }
-        return try action()
-    }
     private func execute(_ method: String, _ args: [String: Any]) throws -> [String: Any] {
+        guard let region = args["region"] as? String, ["cn", "global"].contains(region) else { throw Failure.unavailable }
+
         if method == "newGrant" {
             var entropy = [UInt8](repeating: 0, count: 32)
             defer { for i in entropy.indices { entropy[i] = 0 } }
@@ -109,12 +75,19 @@ final class QoderCnKeychain {
             grantLock.lock()
             grants = grants.filter { $0.value.expires > Date() }
             guard grants.count < 64 else { grantLock.unlock(); throw Failure.unavailable }
-            grants[nonce] = ("waiting", Date().addingTimeInterval(300))
+            grants[nonce] = ("waiting", Date().addingTimeInterval(300), region)
             grantLock.unlock()
             let verifier = url64(Data(entropy))
             let challenge = url64(Data(SHA256.hash(data: Data(verifier.utf8))))
+            let files = try AccountFile.named("Qoder-\(region)")
+            var installation = try files.read(name: "installation.json") ?? [:]
+            if installation["machineId"] == nil {
+                installation["machineId"] = UUID().uuidString.lowercased()
+                try files.write(installation, name: "installation.json")
+            }
+            guard let machine = installation["machineId"] as? String, UUID(uuidString: machine) != nil else { throw Failure.unavailable }
             return ["verifier": verifier, "challenge": challenge,
-                    "nonce": nonce, "machineId": UUID().uuidString.lowercased()]
+                    "nonce": nonce, "machineId": machine]
         }
         guard method == "read" || method == "compareAndSet" || method == "commitGrant" else { throw Failure.unavailable }
         // Linearization boundary: cancellation either wins before this lock,
@@ -123,14 +96,13 @@ final class QoderCnKeychain {
         if method == "commitGrant" {
             grantLock.lock()
             guard let nonce = nonce, let grant = grants[nonce],
-                  grant.state == "waiting", grant.expires > Date() else {
+                  grant.state == "waiting", grant.region == region, grant.expires > Date() else {
                 grantLock.unlock(); throw Failure.unavailable
             }
         }
         defer { if method == "commitGrant" { grantLock.unlock() } }
-        return try withoutInteraction {
-          try withLock {
-            let current = try read()
+        do {
+            let current = try read(region)
             if method == "read" { return ["revision": current.revision, "payload": current.payload] }
             let expected = try integer(args["expectedRevision"])
             guard expected == current.revision, expected < Int.max - 1,
@@ -144,47 +116,17 @@ final class QoderCnKeychain {
             if method == "commitGrant", let nonce = nonce, let grant = grants[nonce] {
                 // If update/readback fails, cancellation must not claim that a
                 // possibly saved grant was undone.
-                grants[nonce] = ("unknown", grant.expires)
+                grants[nonce] = ("unknown", grant.expires, grant.region)
             }
-            let status: OSStatus
-            if current.exists {
-                status = SecItemUpdate(baseQuery() as CFDictionary,
-                    [kSecValueData as String: bytes] as CFDictionary)
-            } else {
-                var query = baseQuery()
-                query[kSecValueData as String] = bytes
-                // Classic macOS login Keychain; no unsupported iOS accessibility attribute.
-                status = SecItemAdd(query as CFDictionary, nil)
-            }
-            guard status == errSecSuccess else { throw Failure.unavailable }
+            try AccountFile.named("Qoder-\(region)").write(["revision": expected + 1, "payload": payload], name: "accounts.json")
             // Verify exact committed content. Failure is uncertain, never retry blindly.
-            let saved = try read()
+            let saved = try read(region)
             guard saved.revision == expected + 1 && saved.payload == payload else { throw Failure.unavailable }
             if method == "commitGrant", let nonce = nonce, let grant = grants[nonce] {
-                grants[nonce] = ("completed", grant.expires)
+                grants[nonce] = ("completed", grant.expires, grant.region)
             }
             return ["revision": saved.revision]
           }
         }
-    }
 
-    // Legacy file-based Keychains do not consistently honor per-query UI flags.
-    // Suppress interaction only in this process, under the shared bridge lock,
-    // and restore the previous flag on both success and failure.
-    private func withoutInteraction<T>(_ operation: () throws -> T) throws -> T {
-        return try LoongPassKeychainLock.withLock {
-            var previous = DarwinBoolean(false)
-            guard SecKeychainGetUserInteractionAllowed(&previous) == errSecSuccess,
-                  SecKeychainSetUserInteractionAllowed(false) == errSecSuccess else {
-                throw Failure.unavailable
-            }
-            let outcome: Result<T, Error>
-            do { outcome = .success(try operation()) }
-            catch { outcome = .failure(error) }
-            guard SecKeychainSetUserInteractionAllowed(previous.boolValue) == errSecSuccess else {
-                throw Failure.unavailable
-            }
-            return try outcome.get()
-        }
-    }
 }

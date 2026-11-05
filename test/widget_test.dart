@@ -12,9 +12,18 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
-  testWidgets('production navigation has only four app workspaces', (tester) async {
+  testWidgets('production navigation has regional account workspaces', (
+    tester,
+  ) async {
     await desktop(tester);
-    for (final app in ['zcode', 'qoder', 'minimax', 'workbuddy']) {
+    for (final app in [
+      'qoderCn',
+      'qoder',
+      'minimaxCn',
+      'minimax',
+      'workbuddy',
+      'traeCn',
+    ]) {
       expect(find.byKey(ValueKey('app-$app')), findsOneWidget);
       await tester.tap(find.byKey(ValueKey('app-$app')));
       await tester.pumpAndSettle();
@@ -28,21 +37,23 @@ void main() {
     }
   });
 
-  testWidgets('Qoder entry requires app navigation and remains unverified', (tester) async {
+  testWidgets('Qoder regions present separate official login entries', (
+    tester,
+  ) async {
     await desktop(tester);
-    expect(find.byKey(const Key('qoder-import-file')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('app-qoderCn')));
+    await tester.pumpAndSettle();
+    expect(find.text('授权 Qoder CN 账号'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('app-qoder')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('qoder-import-file')), findsOneWidget);
-    expect(find.text('尚未导入账号'), findsOneWidget);
+    expect(find.text('授权 Qoder 账号'), findsOneWidget);
     expect(find.text('签到成功'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('app-zcode')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('qoder-import-file')), findsNothing);
   });
 
   for (final width in [480.0, 760.0, 1280.0]) {
-    testWidgets('app workspace has no layout exception at width $width', (tester) async {
+    testWidgets('app workspace has no layout exception at width $width', (
+      tester,
+    ) async {
       await desktop(tester, width: width);
       expect(tester.takeException(), isNull);
       if (width < 760) {
@@ -51,7 +62,14 @@ void main() {
         expect(find.text('LoongPass'), findsOneWidget);
       }
       expect(find.text('开发预览'), findsOneWidget);
-      for (final app in ['zcode', 'qoder', 'minimax', 'workbuddy']) {
+      for (final app in [
+        'qoderCn',
+        'qoder',
+        'minimaxCn',
+        'minimax',
+        'workbuddy',
+        'traeCn',
+      ]) {
         await tester.tap(find.byKey(ValueKey('app-$app')));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: '$app at width $width');

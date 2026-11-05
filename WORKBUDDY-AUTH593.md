@@ -10,6 +10,4 @@ The authorization flow has a five-minute wall-clock and monotonic deadline. Busi
 
 Optional expiresAt (milliseconds) and expiresIn (seconds) produce the earlier known deadline; nonpositive, nonnumeric, nonfinite, overflowing or already-expired values fail. Known expiry follows the returned in-memory account and is checked at sending boundaries. Absent expiry remains absent; there is no refresh-token persistence or renewal implementation.
 
-Billing/claim paths and transaction logic are unchanged. Their existing synthetic regressions run only to detect regressions; this work adds no production check-in or desktop account switch. The common connection host now comes from the endpoint rather than account domain.
-
-Unverified server behavior: actual endpoint/account-domain combinations, required optional device/channel headers, live response envelopes, personal/pro payloads, clock skew, rate limits, browser callback and polling cadence. No guarantee of server acceptance or real-account readiness is implied. No release or upload was performed.
+The claim core uses these verified account identities. Balance and check-in request ownership is described in WORKBUDDY-UI.md. Current real-account and build acceptance is maintained in VALIDATION.md.

@@ -4,7 +4,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   private let zcodeSwitchBridge = ZcodeSwitchBridge()
-  private let qoderCnKeychain = QoderCnKeychain()
+  private let qoderFileStore = QoderFileStore()
   private var selectedURL: URL?
   private var pickerOpen = false
   private var backupRoot: URL?
@@ -34,7 +34,7 @@ class MainFlutterWindow: NSWindow {
 
     // Register only: no production owner, discovery, configuration or launch.
     zcodeSwitchBridge.register(with: flutterViewController.engine.binaryMessenger, window: self)
-    qoderCnKeychain.register(with: flutterViewController.engine.binaryMessenger)
+    qoderFileStore.register(with: flutterViewController.engine.binaryMessenger)
     let channel = FlutterMethodChannel(
       name: "com.sailingloong.loongpass/files",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
@@ -43,10 +43,46 @@ class MainFlutterWindow: NSWindow {
         result(FlutterError(code: "WindowUnavailable", message: nil, details: nil))
         return
       }
-      if MiniMaxKeychain.handle(call: call, result: result) { return }
+      if AccountDocumentBridge.handle(call: call, result: result) { return }
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
+      case "chooseTraeAuthorization":
+        guard !self.pickerOpen else { result(FlutterError(code: "ImportBusy", message: nil, details: nil)); return }
+        self.pickerOpen = true
+        let panel = NSOpenPanel()
+        panel.title = "读取 TRAE CN 当前登录"
+        panel.message = "选择 TRAE CN 的 User/globalStorage/storage.json；仅读取当前授权及匹配设备信息，不改写官方文件。"
+        panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
+        if let home = getpwuid(getuid())?.pointee.pw_dir {
+          panel.directoryURL = URL(fileURLWithPath: String(cString: home)).appendingPathComponent("Library/Application Support/Trae CN/User/globalStorage")
+        }
+        panel.nameFieldStringValue = "storage.json"
+        panel.beginSheetModal(for: self) { response in
+          self.pickerOpen = false
+          guard response == .OK, let url = panel.url else { result(nil); return }
+          let accessed = url.startAccessingSecurityScopedResource()
+          defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+          do { result(try TraeLocalAuthorization.read(url)) }
+          catch { result(FlutterError(code: "trae_source_unavailable", message: nil, details: nil)) }
+        }
+      case "signTraeRefresh":
+        do {
+          guard let args = call.arguments as? [String: Any],
+                let privateKey = args["privateKeyPEM"] as? String,
+                let refresh = args["refreshToken"] as? String else { throw TraeLocalAuthorization.Failure.unavailable }
+          result(try TraeLocalAuthorization.refreshProof(privatePEM: privateKey, refreshToken: refresh))
+        } catch { result(FlutterError(code: "trae_device_unavailable", message: nil, details: nil)) }
+      case "openTraeAuthorization":
+        guard let args = call.arguments as? [String: Any], let raw = args["url"] as? String,
+              let parts = URLComponents(string: raw), let url = parts.url,
+              parts.scheme == "https", parts.host == "www.trae.cn", parts.path == "/authorization",
+              parts.port == nil || parts.port == 443, parts.user == nil, parts.password == nil, parts.fragment == nil,
+              !(parts.queryItems ?? []).contains(where: { $0.name.lowercased().contains("token") || $0.name == "code_verifier" }) else {
+          result(FlutterError(code: "InvalidAuthorizationURL", message: nil, details: nil)); return
+        }
+        if NSWorkspace.shared.open(url) { result(nil) }
+        else { result(FlutterError(code: "BrowserUnavailable", message: nil, details: nil)) }
       case "chooseMiniMaxImportSource": self.chooseMiniMaxSource(result)
       case "openWorkBuddyAuthorization", "openWorkBuddyIdentityAuthorization":
         guard let args = call.arguments as? [String: Any],
@@ -67,12 +103,27 @@ class MainFlutterWindow: NSWindow {
         }
         if NSWorkspace.shared.open(url) { result(nil) }
         else { result(FlutterError(code: "BrowserUnavailable", message: nil, details: nil)) }
-      case "openQoderCnAuthorization":
+      case "openMiniMaxAuthorization":
+        guard let args = call.arguments as? [String: Any],
+              let region = args["region"] as? String,
+              let raw = args["url"] as? String, let url = URL(string: raw),
+              let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.scheme == "https", parts.port == nil || parts.port == 443,
+              parts.user == nil, parts.password == nil, parts.fragment == nil,
+              (region == "cn" ? ["account.minimax.cn", "agent.minimaxi.com", "agent.minimax.cn", "code.minimax.cn"] : region == "global" ? ["account.minimax.io", "agent.minimax.io", "code.minimax.io"] : []).contains(parts.host ?? ""),
+              !(parts.queryItems ?? []).contains(where: { $0.name.lowercased().contains("token") || ["device_code", "code_verifier"].contains($0.name.lowercased()) }) else {
+          result(FlutterError(code: "InvalidAuthorizationURL", message: nil, details: nil)); return
+        }
+        if NSWorkspace.shared.open(url) { result(nil) }
+        else { result(FlutterError(code: "BrowserUnavailable", message: nil, details: nil)) }
+      case "openQoderAuthorization":
         guard let args = call.arguments as? [String: Any],
               let raw = args["url"] as? String,
               let url = URL(string: raw),
               let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              parts.scheme == "https", parts.host == "qoder.cn",
+              parts.scheme == "https",
+              let region = args["region"] as? String,
+              parts.host == (region == "cn" ? "qoder.cn" : region == "global" ? "qoder.com" : ""),
               parts.port == nil || parts.port == 443,
               parts.user == nil, parts.password == nil, parts.fragment == nil,
               parts.path == "/device/selectAccounts" else {

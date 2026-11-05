@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'app_sidebar.dart';
-import 'qoder_accounts_panel.dart';
-import 'qoder_cn_panel.dart';
+import 'qoder_device_panel.dart';
+import 'qoder_device_accounts.dart';
 import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
+import 'trae_accounts_panel.dart';
 
-void main() => runApp(AccountToolApp(workBuddyIdentityOnly:true));
+void main() => runApp(const AccountToolApp());
 
 class AccountToolApp extends StatelessWidget {
-  const AccountToolApp({super.key,this.workBuddyIdentityOnly=false});
+  const AccountToolApp({super.key, this.workBuddyIdentityOnly = false});
   final bool workBuddyIdentityOnly;
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -42,19 +43,22 @@ class AccountToolApp extends StatelessWidget {
         ),
       ),
     ),
-    home:_AccountPage(identityValidationOnly:workBuddyIdentityOnly),
+    home: _AccountPage(identityValidationOnly: workBuddyIdentityOnly),
   );
 }
 
 /// Only account-related app workspaces are reachable from production navigation.
 class _AccountPage extends StatelessWidget {
-  const _AccountPage({this.identityValidationOnly=false});
+  const _AccountPage({this.identityValidationOnly = false});
   final bool identityValidationOnly;
 
   Widget _appPage(String name, Widget panel) => ListView(
     padding: const EdgeInsets.all(20),
     children: [
-      Text(name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+      Text(
+        name,
+        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+      ),
       const SizedBox(height: 6),
       const Text('同机账号管理', style: TextStyle(color: Color(0xFF86909C))),
       const SizedBox(height: 20),
@@ -66,16 +70,59 @@ class _AccountPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
       child: AppWorkspace(
-        initialApp:identityValidationOnly?ManagedApp.workbuddy:ManagedApp.zcode,
-        enabledApps:identityValidationOnly?const {ManagedApp.workbuddy}:null,
+        initialApp: ManagedApp.workbuddy,
+        enabledApps: identityValidationOnly
+            ? const {ManagedApp.workbuddy}
+            : const {
+                ManagedApp.qoderCn,
+                ManagedApp.qoder,
+                ManagedApp.minimaxCn,
+                ManagedApp.minimax,
+                ManagedApp.workbuddy,
+                ManagedApp.traeCn,
+              },
         pages: {
-        ManagedApp.zcode:identityValidationOnly?const SizedBox.shrink():_appPage('ZCode', const Text(
-          'ZCode 凭证切换尚未接通。账号安全备份与恢复仅用于未来真实切换流程，不提供通用文件备份入口。',
-        )),
-        ManagedApp.qoder:identityValidationOnly?const SizedBox.shrink():_appPage('Qoder', const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [QoderCnPanel(), SizedBox(height: 24), QoderAccountsPanel()])),
-        ManagedApp.minimax:identityValidationOnly?const SizedBox.shrink():_appPage('MiniMax', const MiniMaxAccountsPanel()),
-        ManagedApp.workbuddy: _appPage('WorkBuddy', WorkBuddyAccountsPanel(savedAccounts:true)),
-      }),
+          ManagedApp.zcode: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage(
+                  'ZCode',
+                  const Text(
+                    'ZCode 凭证切换尚未接通。账号安全备份与恢复仅用于未来真实切换流程，不提供通用文件备份入口。',
+                  ),
+                ),
+          ManagedApp.qoderCn: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage(
+                  'Qoder CN',
+                  const QoderDeviceAccountsPanel(region: QoderRegion.cn),
+                ),
+          ManagedApp.qoder: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage(
+                  'Qoder',
+                  const QoderDeviceAccountsPanel(region: QoderRegion.global),
+                ),
+          ManagedApp.minimaxCn: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage(
+                  'MiniMax CN',
+                  const MiniMaxAccountsPanel(region: 'cn'),
+                ),
+          ManagedApp.minimax: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage(
+                  'MiniMax',
+                  const MiniMaxAccountsPanel(region: 'global'),
+                ),
+          ManagedApp.workbuddy: _appPage(
+            'WorkBuddy',
+            WorkBuddyAccountsPanel(savedAccounts: true),
+          ),
+          ManagedApp.traeCn: identityValidationOnly
+              ? const SizedBox.shrink()
+              : _appPage('TRAE CN', const TraeAccountsPanel()),
+        },
+      ),
     ),
   );
 }

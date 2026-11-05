@@ -1,0 +1,79 @@
+name: macOS beta
+on:
+  push:
+    branches: [main]
+    tags: ['v1.0.0-beta.*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Resolve locked dependencies
+        run: |
+          flutter pub get --enforce-lockfile
+          rustup show active-toolchain
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Verify tag version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          version = next(line.split(': ',1)[1].split('+')[0] for line in pathlib.Path('pubspec.yaml').read_text().splitlines() if line.startswith('version: '))
+          assert os.environ['RELEASE_TAG'] == 'v' + version, 'Tag must match pubspec.yaml'
+          PY
+      - name: Verify source behavior
+        run: python3 tool/check.py
+      - name: Build universal macOS app
+        run: python3 tool/build_macos_release.py
+      - name: Package source-matched app
+        run: |
+          mkdir -p dist
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/LoongPass.app dist/LoongPass-macOS-universal.zip
+          shasum -a 256 dist/LoongPass-macOS-universal.zip > dist/SHA256SUMS
+          git rev-parse HEAD > dist/SOURCE_COMMIT
+          cp LICENSE THIRD_PARTY_NOTICES.md FLUTTER-TEMPLATE-IMAGES-LICENSE dist/
+          ditto -c -k --keepParent THIRD_PARTY_RUST dist/THIRD_PARTY_RUST.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LoongPass-macOS-universal
+          path: dist/
+          retention-days: 14
+      - name: Remove build intermediates
+        if: always()
+        run: rm -rf build .dart_tool macos/ZcodeNative/lib ~/Library/Caches/LoongPass/native-macos
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Download CI artifact and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-macOS-universal --dir dist
+          gh release create "$RELEASE_TAG" --repo "$REPOSITORY" --verify-tag --prerelease --title "LoongPass $RELEASE_TAG" --notes-file RELEASE-NOTES.md dist/*

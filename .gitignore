@@ -7,3 +7,13 @@ build/
 *.dylib
 *.o
 native/**/target/
+artifacts/
+dist/
+*.dmg
+*.zip
+*.log
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc

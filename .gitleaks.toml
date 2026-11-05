@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "SHA256 of the synthetic fixture path plus public MiniMax client ID"
+regexTarget = "secret"
+regexes = ['''^7S9GzXfrtrXVItOn_bFkkswkQJUGv24VeAoXTI6-br8$''']

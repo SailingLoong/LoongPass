@@ -1,30 +1,31 @@
-# Current validation boundary — 2026-11-04
+# beta 21 验收记录
 
-This is the isolated minimal UI wiring candidate, not a compiled application or a real-account acceptance result. Earlier test counts belong to prior source versions and do not establish behavior of these bytes.
+记录日期为 2026-11-06。当前构建使用 Flutter 3.47.1、Rust 1.95.0 和 Xcode 27.2。
 
-## Implemented in source
+| 范围 | 实现与已取得的证据 | 待验证部分 |
+| --- | --- | --- |
+| WorkBuddy | 两个真实账号已授权并保存，关闭重开自动恢复。两个账号跨日自动签到各到账 100 分，日志包含发送意图、官方回执和完整余额核对。beta 21 恢复两号，显示今日已签到、当前余额及到期明细 | 官方客户端实际账号切换 |
+| MiniMax CN / MiniMax | 独立官方设备授权、身份核验、原子保存、令牌续期、自动签到、完整分页积分包到期信息。30 项账号检查、OAuth、HTTP 与积分合成检查通过 | 两地区真实登录、领取和到账，官方客户端切换 |
+| Qoder CN / Qoder | 两地区设备授权、独立存储、刷新、免费活动领取与自动检查。29 项账号合成检查通过，包含轮换后网络失败与重启恢复 | 真实账号领取，完整普通附加积分到期明细，官方客户端切换 |
+| TRAE CN | 当前客户端授权格式、设备密钥匹配与官方身份已真实只读验证。官方接口返回未签到及当前 4,700 积分。账号保存、独立网页登录、刷新、签到与余额核对的 8 项合成检查通过 | 界面导入后的保存、重启和真实领取，独立账号登录及官方客户端切换 |
+| macOS | 本机 Release 构建通过，主程序及两个 Flutter framework 均包含 arm64、x86_64，深度签名校验通过。Apple Silicon 上已打开 beta 21 并核对界面 | Intel 设备运行、Developer ID 签名和公证 |
 
-- Existing four-App sidebar retained, with one Qoder CN coordinator and one MiniMax account service per panel lifetime.
-- Qoder CN: reviewed real HTTPS adapter + own-Keychain bridge copied unchanged; explicit persistent-authorization dialog, fixed official-browser URL, manual authorization-result check/cancel, saved-UID enumeration and explicit benefit request.
-- MiniMax: reviewed real HTTPS adapter + own-Keychain/nonsecret metadata bridge copied unchanged; region-specific selected file verification, server UID preview, separate persistent credential approval, account list, explicit claim, opt-in in-process automatic checks.
-- Runner registers both native adapters and includes their Swift sources plus one shared LoongPassKeychainLock in Compile Sources. All owned Security operations use the shared synchronous lock. Qoder uses classic login Keychain with synchronizable=false and no unsupported ThisDeviceOnly attribute.
-- Debug/Profile and Release entitlement files now add `com.apple.security.network.client`. Static plist comparison confirms this is their only capability delta. Existing user-selected read-only scope remains; no selected-file write capability was added.
-- No account or network access occurs just by mounting/navigating the new panels. MiniMax saved automatic settings resume only after the explicit load action or opt-in, and stop on service disposal. The automatic-finished callback refreshes account records; busy UI defers that refresh, and a UI epoch rejects stale reads.
+## 积分到期实测
 
-## Release acceptance gate
+WorkBuddy 其中一号在 beta 21 显示当前 3,200 积分，最近到期批次为 2026-11-22 17:45 UTC+08:00，当前剩余 1,500 积分。另有 500 积分的接口记录缺少到期时间，界面单独说明。到期明细会随使用改变，并显示查询时间。
 
-`nativeAccountAdaptersValidated` is false. Both new panels disable real-account controls until Mac compilation, isolated native Keychain tests and independent review establish native acceptance. Injected synthetic owners remain usable by test harnesses. A macOS platform check alone is not sufficient.
+TRAE CN 只读接口返回 4,000、500、100、100 四个有限积分包，合计 4,700。当前授权及身份匹配已经核对，签到资格保留给 LoongPass 的真实领取验收。
 
-## Actually verified here
+Qoder 套餐、附加额度与专属积分包可能重叠，界面分别展示。最近到期信息仅覆盖接口返回的专属积分包。套餐续期时间保留其原有语义。
 
-Python static source/hash/plist checks: local Dart imports exist; copied modules match frozen reviewed bytes; two panel instances appear exactly once; native build entries exist; entitlement delta is limited to outbound client networking. Evidence: `../evidence/static-result.json` and `../SHA256-MANIFEST.json`.
+## 自动化与授权边界
 
-Original integration candidate remains untouched. Standalone component evidence (Qoder CN 26 synthetic checks; MiniMax 26 action checks plus HTTP checks) belongs to their independently reviewed modules. It is NOT a current combined Flutter/native test pass.
+应用运行期间启动约 30 秒后检查，之后每 15 分钟检查。签到发送前先持久化意图，未知结果通过只读查询核对。账号视图选择仅改变 LoongPass 内的当前视图。实际官方客户端切换仍需独立完成。
 
-## Not verified
+MiniMax、Qoder 和独立 TRAE 授权的刷新由对应账号模块串行执行，新轮换凭据先原子保存，再进行身份核验。TRAE 当前客户端导入保留访问授权的有效期，由原客户端继续拥有其刷新会话。
 
-No Dart analyzer/formatter, Flutter widget/test suite, native Swift/Xcode build, actual rendered UI, macOS sandbox/picker release, Keychain access/durability, signing, installer, real login, real check-in, live endpoint compatibility or credited balance was executed for this composition. Previously denied tests were not retried. New panel widget tests are unexecuted drafts.
+## 可复现检查
 
-All real desktop credential switching remains unimplemented. Qoder CN automatic scheduling/refresh is unimplemented. WorkBuddy lacks an integrated secure owner and complete-balance path, so no runnable WorkBuddy control is exposed. MiniMax automatic execution only exists while this application runs and its account service has been explicitly loaded; unknown requests remain non-replayable and have no reconciliation UI.
+`python3 tool/check.py` 执行静态分析、Flutter 测试、平台账号合成检查、WorkBuddy 直接检查及原生文件权限和唯一写入者检查。所有测试使用合成凭据和隔离存储。真实账号验收按本文件上表单独记录。
 
-Required next gates: independent source review, permitted Flutter checks, Mac compile and dedicated synthetic native/Keychain validation, then separately authorized real-account acceptance. Until these gates are satisfied this is not a usable beta or evidence that any account signed in or received a reward.
+CI 将对发布 tag 重新执行检查和 Universal 构建。对应工作流成功及附件出现后，才形成可下载的 CI 发布结果。
