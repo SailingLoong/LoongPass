@@ -11,6 +11,7 @@ class RunnerTests: XCTestCase {
     temporary = FileManager.default.temporaryDirectory
       .appendingPathComponent("loongpass-native-test-" + UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
+    temporary = temporary.resolvingSymlinksInPath()
   }
 
   override func tearDownWithError() throws {
@@ -75,6 +76,48 @@ class RunnerTests: XCTestCase {
     var info = stat()
     XCTAssertEqual(app.path.withCString { lstat($0, &info) }, 0)
     XCTAssertEqual(info.st_mode & mode_t(0o7777), mode_t(0o2700))
+  }
+
+  func testQoderJournalUsesSeparatePrivateScopeAndSyncsDirectories() throws {
+    let root = try NativeQoderFolders.prepare(in: temporary)
+    XCTAssertEqual(root.lastPathComponent, "Qoder")
+    try NativeBackupFolders.validate(root)
+    try NativeQoderFolders.sync(root)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.deletingLastPathComponent().appendingPathComponent("Backups").path))
+  }
+
+  func testQoderSyncRejectsBackupScopeAndPublicDirectories() throws {
+    let backup = try NativeBackupFolders.prepare(in: temporary)
+    XCTAssertThrowsError(try NativeQoderFolders.sync(backup))
+    let root = try NativeQoderFolders.prepare(in: temporary)
+    XCTAssertEqual(root.path.withCString { chmod($0, mode_t(0o755)) }, 0)
+    XCTAssertThrowsError(try NativeQoderFolders.sync(root))
+  }
+
+  func testQoderRequiresExistingApplicationSupportWithoutCreatingAncestors() throws {
+    let absent = temporary.appendingPathComponent("not-yet-created", isDirectory: true)
+    XCTAssertThrowsError(try NativeQoderFolders.prepare(in: absent))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: absent.path))
+  }
+
+  func testWorkBuddyReusesPrivateJournalFoldersWithoutCreatingQoderOrBackupState() throws {
+    let root = try NativeQoderFolders.prepare(in: temporary, child: "WorkBuddy")
+    XCTAssertEqual(root.lastPathComponent, "WorkBuddy")
+    try NativeBackupFolders.validate(root)
+    try NativeQoderFolders.sync(root, child: "WorkBuddy")
+    XCTAssertThrowsError(try NativeQoderFolders.sync(root))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("workbuddy-intents.jsonl").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.deletingLastPathComponent().appendingPathComponent("Qoder").path))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.deletingLastPathComponent().appendingPathComponent("Backups").path))
+  }
+
+  func testJournalFolderReuseRejectsArbitraryChildAndMismatchedScope() throws {
+    XCTAssertThrowsError(try NativeQoderFolders.prepare(in: temporary, child: "../outside"))
+    let qoder = try NativeQoderFolders.prepare(in: temporary)
+    XCTAssertThrowsError(try NativeQoderFolders.sync(qoder, child: "WorkBuddy"))
+    let workbuddy = try NativeQoderFolders.prepare(in: temporary, child: "WorkBuddy")
+    XCTAssertEqual(workbuddy.path.withCString { chmod($0, mode_t(0o755)) }, 0)
+    XCTAssertThrowsError(try NativeQoderFolders.sync(workbuddy, child: "WorkBuddy"))
   }
 
 }

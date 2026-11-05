@@ -1,19 +1,30 @@
-# Validation receipt — 2026-11-03
+# Current validation boundary — 2026-11-04
 
-Environment: isolated Linux cloud workspace, official Flutter 3.47.9 / Dart 3.13.7.
+This is the isolated minimal UI wiring candidate, not a compiled application or a real-account acceptance result. Earlier test counts belong to prior source versions and do not establish behavior of these bytes.
 
-- `bash check.sh`: passed on final source.
-- Formatting: 0 changed; analyzer: no issues.
-- Flutter tests: 50/50 passed (27 filesystem, 8 platform-bridge, 14 Widget, 1 wrapper containing 29 pure-core checks).
-- Standalone pure-core checks: 29/29 passed.
-- Independent read-only review reran checks and found no remaining blockers for this limited slice.
-- Filesystem tests used only generated temporary files and directories, deleted after each test. No actual client files, accounts or network endpoints were used.
-- Actual Flutter page rendering at 1280×900 was generated and visually inspected; layout checks also cover widths 480 and 760.
+## Implemented in source
 
-A review found that lexical path normalization could hide a symlink followed by `..` and make the write target differ from the checked private directory. A failing regression reproduced this without concurrent mutation. The final adapter validates the original absolute path against its resolved path and rejects the alias; the regression passes.
+- Existing four-App sidebar retained, with one Qoder CN coordinator and one MiniMax account service per panel lifetime.
+- Qoder CN: reviewed real HTTPS adapter + own-Keychain bridge copied unchanged; explicit persistent-authorization dialog, fixed official-browser URL, manual authorization-result check/cancel, saved-UID enumeration and explicit benefit request.
+- MiniMax: reviewed real HTTPS adapter + own-Keychain/nonsecret metadata bridge copied unchanged; region-specific selected file verification, server UID preview, separate persistent credential approval, account list, explicit claim, opt-in in-process automatic checks.
+- Runner registers both native adapters and includes their Swift sources plus one shared LoongPassKeychainLock in Compile Sources. All owned Security operations use the shared synchronous lock. Qoder uses classic login Keychain with synchronizable=false and no unsupported ThisDeviceOnly attribute.
+- Debug/Profile and Release entitlement files now add `com.apple.security.network.client`. Static plist comparison confirms this is their only capability delta. Existing user-selected read-only scope remains; no selected-file write capability was added.
+- No account or network access occurs just by mounting/navigating the new panels. MiniMax saved automatic settings resume only after the explicit load action or opt-in, and stop on service disposal. The automatic-finished callback refreshes account records; busy UI defers that refresh, and a UI epoch rejects stale reads.
 
-Additional macOS work: the official runner is generated, the system file picker/temporary-scope bridge and Finder handoff are implemented, and the UI invokes the shared Dart backup. Bridge tests use actual synthetic filesystem operations but a mocked native channel. UI tests cover cancellation, busy state and sanitized failure. Six XCTest cases cover private directory creation/reuse, public directory, symlink, regular file, ACL, and special permission bits; these native tests have NOT run.
+## Release acceptance gate
 
-Plist parsing, selected-file read-only entitlement, app product/module/test-host consistency, and Swift API signatures were statically checked. The release entitlement adds no network client or user-selected write permission. A separate independent review reran all 50 Dart/Flutter tests and inspected the native bridge. Generated IDE metadata was removed; source, test fixtures, SDK and active caches were retained.
+`nativeAccountAdaptersValidated` is false. Both new panels disable real-account controls until Mac compilation, isolated native Keychain tests and independent review establish native acceptance. Injected synthetic owners remain usable by test harnesses. A macOS platform check alone is not sufficient.
 
-Important limits: account-list UI is still synthetic; no native credential replacement, live identity validation, check-in, Windows ACL adapter, macOS compilation, sandbox end-to-end test, signing, notarization or installer validation has been completed. The source package's beta version is an intended version, not evidence that a working real-account beta has been released.
+## Actually verified here
+
+Python static source/hash/plist checks: local Dart imports exist; copied modules match frozen reviewed bytes; two panel instances appear exactly once; native build entries exist; entitlement delta is limited to outbound client networking. Evidence: `../evidence/static-result.json` and `../SHA256-MANIFEST.json`.
+
+Original integration candidate remains untouched. Standalone component evidence (Qoder CN 26 synthetic checks; MiniMax 26 action checks plus HTTP checks) belongs to their independently reviewed modules. It is NOT a current combined Flutter/native test pass.
+
+## Not verified
+
+No Dart analyzer/formatter, Flutter widget/test suite, native Swift/Xcode build, actual rendered UI, macOS sandbox/picker release, Keychain access/durability, signing, installer, real login, real check-in, live endpoint compatibility or credited balance was executed for this composition. Previously denied tests were not retried. New panel widget tests are unexecuted drafts.
+
+All real desktop credential switching remains unimplemented. Qoder CN automatic scheduling/refresh is unimplemented. WorkBuddy lacks an integrated secure owner and complete-balance path, so no runnable WorkBuddy control is exposed. MiniMax automatic execution only exists while this application runs and its account service has been explicitly loaded; unknown requests remain non-replayable and have no reconciliation UI.
+
+Required next gates: independent source review, permitted Flutter checks, Mac compile and dedicated synthetic native/Keychain validation, then separately authorized real-account acceptance. Until these gates are satisfied this is not a usable beta or evidence that any account signed in or received a reward.

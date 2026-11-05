@@ -1,0 +1,44 @@
+[
+  {
+    "region": "cn",
+    "endpoint": "profile",
+    "query": "device_platform=mcode&biz_id=3&app_id=3001&version_code=22201&unix=1790000000000&timezone_offset=28800&sys_language=zh&lang=zh&device_id=0&os_name=linux&browser_name=mcode&user_id=0&client=mcode",
+    "yy": "92a1eb363a23f43c5647e0ec56b45142",
+    "signature": "03015677c012162b07bc060014868ead"
+  },
+  {
+    "region": "cn",
+    "endpoint": "status",
+    "query": "device_platform=web&biz_id=3&app_id=3001&version_code=22201&is_desktop=1&desktop_version=test+%2B%21%27%28%29%7E&unix=1790000000000&timezone_offset=28800&sys_language=zh&lang=zh&device_id=0&os_name=linux&browser_name=mcode&user_id=user+%2B%21%27%28%29%7E%E4%B8%AD%E6%96%87&client=mcode",
+    "yy": "7c2969e1d5e3fe87685776596bb6f4c9",
+    "signature": "03015677c012162b07bc060014868ead"
+  },
+  {
+    "region": "cn",
+    "endpoint": "claim",
+    "query": "device_platform=web&biz_id=3&app_id=3001&version_code=22201&is_desktop=1&desktop_version=test+%2B%21%27%28%29%7E&unix=1790000000000&timezone_offset=28800&sys_language=zh&lang=zh&device_id=0&os_name=linux&browser_name=mcode&user_id=user+%2B%21%27%28%29%7E%E4%B8%AD%E6%96%87&client=mcode",
+    "yy": "c2871e9f7d541541277e8d6857876adf",
+    "signature": "baa0719f19a44df3100cf47ac059c8cb"
+  },
+  {
+    "region": "global",
+    "endpoint": "profile",
+    "query": "device_platform=mcode&biz_id=3&app_id=3001&version_code=22201&unix=1790000000000&timezone_offset=28800&sys_language=en&lang=en&device_id=0&os_name=linux&browser_name=mcode&user_id=0&client=mcode",
+    "yy": "76bdc3c68d85229dffff3181f26e6960",
+    "signature": "03015677c012162b07bc060014868ead"
+  },
+  {
+    "region": "global",
+    "endpoint": "status",
+    "query": "device_platform=web&biz_id=3&app_id=3001&version_code=22201&is_desktop=1&desktop_version=test+%2B%21%27%28%29%7E&unix=1790000000000&timezone_offset=28800&sys_language=en&lang=en&device_id=0&os_name=linux&browser_name=mcode&user_id=user+%2B%21%27%28%29%7E%E4%B8%AD%E6%96%87&client=mcode",
+    "yy": "876505125da37da91a3ebcca96ac867d",
+    "signature": "03015677c012162b07bc060014868ead"
+  },
+  {
+    "region": "global",
+    "endpoint": "claim",
+    "query": "device_platform=web&biz_id=3&app_id=3001&version_code=22201&is_desktop=1&desktop_version=test+%2B%21%27%28%29%7E&unix=1790000000000&timezone_offset=28800&sys_language=en&lang=en&device_id=0&os_name=linux&browser_name=mcode&user_id=user+%2B%21%27%28%29%7E%E4%B8%AD%E6%96%87&client=mcode",
+    "yy": "e790361b6a5292c3b211d0ae70635d86",
+    "signature": "baa0719f19a44df3100cf47ac059c8cb"
+  }
+]

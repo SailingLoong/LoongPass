@@ -21,6 +21,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDEF012345678900000000 /* WorkBuddyVault.swift */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
 		33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC10F02044A3C60003C045 /* AppDelegate.swift */; };
@@ -28,6 +29,16 @@
 		33CC10F62044A3C60003C045 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33CC10F42044A3C60003C045 /* MainMenu.xib */; };
 		33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33CC11122044BFA00003C045 /* MainFlutterWindow.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		ABCDEF012345678900000010 /* MiniMaxKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000000 /* MiniMaxKeychain.swift */; };
+		ABCDEF012345678900000011 /* QoderCnKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000001 /* QoderCnKeychain.swift */; };
+		ABCDEF012345678900000012 /* LoongPassKeychainLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000002 /* LoongPassKeychainLock.swift */; };
+		3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */; };
+		3172ABCDEF00000000000101 /* ZcodeContextOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */; };
+		3172ABCDEF00000000000102 /* ZcodeSwitchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000002 /* ZcodeSwitchBridgeTests.swift */; };
+		3172ABCDEF00000000000103 /* ZcodeContextOwnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000003 /* ZcodeContextOwnerTests.swift */; };
+		3172ABCDEF00000000000104 /* ZcodePromotionBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000004 /* ZcodePromotionBridgeTests.swift */; };
+		3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */; };
+		3172ABCDEF00000000000106 /* ZcodeFactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +72,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BBDDEF012345678900000000 /* WorkBuddyVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyVault.swift; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		333000ED22D3DE5D00554162 /* Warnings.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Warnings.xcconfig; sourceTree = "<group>"; };
@@ -80,6 +92,16 @@
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		ABCDEF012345678900000000 /* MiniMaxKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniMaxKeychain.swift; sourceTree = "<group>"; };
+		ABCDEF012345678900000001 /* QoderCnKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QoderCnKeychain.swift; sourceTree = "<group>"; };
+		ABCDEF012345678900000002 /* LoongPassKeychainLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoongPassKeychainLock.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeSwitchBridge.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeContextOwner.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000002 /* ZcodeSwitchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeSwitchBridgeTests.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000003 /* ZcodeContextOwnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeContextOwnerTests.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000004 /* ZcodePromotionBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodePromotionBridgeTests.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeAppIdentity.swift; sourceTree = "<group>"; };
+		3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeFactsProvider.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -105,6 +127,9 @@
 			isa = PBXGroup;
 			children = (
 				331C80D7294CF71000263BE5 /* RunnerTests.swift */,
+				3172ABCDEF00000000000004 /* ZcodePromotionBridgeTests.swift */,
+				3172ABCDEF00000000000003 /* ZcodeContextOwnerTests.swift */,
+				3172ABCDEF00000000000002 /* ZcodeSwitchBridgeTests.swift */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -167,7 +192,15 @@
 			isa = PBXGroup;
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
+				ABCDEF012345678900000000 /* MiniMaxKeychain.swift */,
+				BBDDEF012345678900000000 /* WorkBuddyVault.swift */,
+				ABCDEF012345678900000001 /* QoderCnKeychain.swift */,
+				ABCDEF012345678900000002 /* LoongPassKeychainLock.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */,
+				3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */,
+				3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */,
+				3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
 				33CC11242044D66E0003C045 /* Resources */,
@@ -347,6 +380,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */,
+				3172ABCDEF00000000000104 /* ZcodePromotionBridgeTests.swift in Sources */,
+				3172ABCDEF00000000000103 /* ZcodeContextOwnerTests.swift in Sources */,
+				3172ABCDEF00000000000102 /* ZcodeSwitchBridgeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -354,7 +390,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABCDEF012345678900000010 /* MiniMaxKeychain.swift in Sources */,
+				BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */,
+				ABCDEF012345678900000011 /* QoderCnKeychain.swift in Sources */,
+				ABCDEF012345678900000012 /* LoongPassKeychainLock.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
+				3172ABCDEF00000000000106 /* ZcodeFactsProvider.swift in Sources */,
+				3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */,
+				3172ABCDEF00000000000101 /* ZcodeContextOwner.swift in Sources */,
+				3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);

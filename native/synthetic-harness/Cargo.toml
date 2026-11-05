@@ -1,0 +1,15 @@
+[package]
+name = "loongpass-zcode-synthetic-harness"
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+[dependencies]
+loongpass-zcode-switch-candidate = { path = "../switch" }
+loongpass-zcode-promotions-candidate = { path = "../promotions" }
+serde_json = "=1.0.151"
+tempfile = "=3.27.0"
+[profile.dev]
+debug = 0
+incremental = false
+[workspace]

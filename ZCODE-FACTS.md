@@ -1,0 +1,15 @@
+# ZCode minimum native facts framework
+
+This candidate remains production-disabled. No installed ZCode app, account, environment, secret or process was read during validation. All collector inputs were freshly created synthetic bundles. There is no new Flutter method or startup discovery call.
+
+`ZcodeAppIdentityCollector` observes bounded Info.plist metadata and physical executable identity for the reviewed dev.zcode.app version 3.17.2. It pins directory/file descriptors, rejects symlinks, file hardlinks, nonregular candidates, traversal and oversized metadata. Nonblocking opens prevent FIFO candidates from hanging before validation. This is filesystem identity/version observation, not code-signing trust or protection against every concurrent same-user mutation. Every later effect would still need fresh authoritative observation.
+
+`ZcodeFactsProvider.inspect` accepts native-only nonsecret evidence. Unknown, Unset and Value retain the Rust wire distinction. Source and revision describe the supplied observation batch; even explicitNativeEvidence is not an authorization or attestation. Unavailable provenance discards supplied values. runtimeDataDir stays Unknown unless both bootstrap and ready observations are supplied. No missing value is inferred from LoongPass's own home, architecture or environment. Unknown field lists do not reimplement origin resolution or claim that unused lower-priority fields are required.
+
+Credential secret is always Unknown and has no input field. The existing Rust owner_metadata ABI checks the facts and remains unavailable. A returned diagnostic inspection never opens/configures a Rust session or creates an account store. makeBlockedOwner uses the existing ZcodeContextOwner and Rust decision path with an empty context, writer complete=false, no processes and rejecting terminate/launch closures. It cannot grant stopped, quit or restart permission.
+
+Diagnostics identify absent application identity, unobserved bootstrap/ready phases, credential context, writer coverage, launch contract, unknown runtime facts, synthetic evidence, unproven Rust context and the production-disabled state. Descriptions contain codes rather than evidence values.
+
+Still missing for real use: authenticated/current target runtime facts and their provenance; actual applied bootstrap and ready-time settings; effective endpoint and target architecture; proof about the explicit-secret branch; complete writers and exact process start identities; verified captured or controlled launch arguments/environment/cwd; real recovery and account acceptance. Previous process-read denials are not retried. This framework does not make account switching available.
+
+Validation: 23 synthetic checks execute on arm64; both arm64/x86_64 link; macOS release build 1.0.0(8) compiles with both architectures. No x86_64 execution, Flutter engine/widget test or XCTest execution is claimed. The pre-existing Rust archive is reused unchanged from the verified build 7 source. No source/remote publishing or intermediate package upload.

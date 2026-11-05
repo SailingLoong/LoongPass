@@ -8,7 +8,14 @@
 PRODUCT_NAME = LoongPass
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.sailingloong.loongpass
+PRODUCT_BUNDLE_IDENTIFIER = com.sailingloong.loongpass.workbuddy.identityrelease
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 SailingLoong. All rights reserved.
+
+// ZCode Apple archive; system flags derived from rustc native-static-libs.
+SWIFT_OBJC_BRIDGING_HEADER = Runner/Runner-Bridging-Header.h
+HEADER_SEARCH_PATHS = $(inherited) "$(PROJECT_DIR)/ZcodeNative/include"
+
+LIBRARY_SEARCH_PATHS = $(inherited) "$(PROJECT_DIR)/ZcodeNative/lib"
+OTHER_LDFLAGS = $(inherited) -lloongpass_zcode_switch_candidate -liconv -lSystem -lc -lm

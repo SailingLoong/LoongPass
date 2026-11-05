@@ -11,7 +11,39 @@ const _limit = 4 * 1024 * 1024;
 /// Explicit-file operations only. Never finds or overwrites a client auth file.
 /// Native identity/OS-context verification and encrypted value handling remain
 /// the caller's responsibility. This is not a native account-switch adapter.
+class ZcodeFileCandidate {
+  final File _file;
+  final Set<String> families;
+  ZcodeFileCandidate._(this._file, Set<String> families)
+    : families = Set.unmodifiable(families);
+
+  /// Only a future native adapter with verified identity may use this boundary.
+  /// Inspecting/importing the file does not establish that identity.
+  Future<AccountSnapshot> snapshotFor(AccountIdentity verifiedIdentity) =>
+      ZcodeAuthFile.import(_file, verifiedIdentity);
+  @override
+  String toString() => 'ZcodeFileCandidate(unverified)';
+}
+
 class ZcodeAuthFile {
+  /// Inspect an explicitly saved copy, without inventing an account ID, native
+  /// context or login proof. Opaque values remain opaque and are not displayed.
+  static Future<ZcodeFileCandidate> inspectForImport(File savedFile) async {
+    final document = _parse(await _read(savedFile));
+    final families = <String>{};
+    if (document['oauth:active_provider']?.isNotEmpty == true) {
+      for (final family in ['zai', 'bigmodel']) {
+        if (document['oauth:$family:access_token']?.isNotEmpty == true &&
+            document['oauth:$family:user_info']?.isNotEmpty == true) {
+          families.add(family);
+        }
+      }
+    }
+    if (families.isEmpty)
+      throw const AccountFailure('MissingSessionCredential');
+    return ZcodeFileCandidate._(savedFile, families);
+  }
+
   /// Copies the complete original bytes into a fresh directory inside an owner-only root.
   /// The caller supplies an existing private destination on this same machine.
   /// No new encryption or credentials are introduced. Windows ACLs are not yet
