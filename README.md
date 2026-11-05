@@ -1,5 +1,17 @@
 # LoongPass 最小接口接线候选
 
+## macOS 源码构建
+
+使用 Xcode、Flutter 和 Rust stable。先安装两种 macOS Rust 标准库，再通过 Flutter 的正常构建入口编译。
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+flutter pub get
+flutter build macos --release
+```
+
+Xcode 构建阶段调用 `tool/build_macos_native.sh`，按目标架构从 `native/switch` 及其锁定依赖生成静态库。Cargo 缓存默认位于 `~/Library/Caches/LoongPass/native-macos`，可通过 `CARGO_TARGET_DIR` 指定已有兼容缓存。生成的静态库、构建输出与缓存不纳入 Git。
+
 保留 ZCode、Qoder、MiniMax、WorkBuddy 四 App 侧栏，不添加样例账号、假成功按钮或通用备份界面。
 
 ## 已写入代码的流程
