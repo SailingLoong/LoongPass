@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
 import 'qoder_credits.dart';
 
 enum QoderRegion {
@@ -34,8 +35,9 @@ abstract interface class QoderTransport {
     String method,
     Uri url,
     String? bearer,
-    Map<String, dynamic>? body,
-  );
+    Map<String, dynamic>? body, {
+    bool Function()? isCurrent,
+  });
 }
 
 class QoderResponse {
@@ -70,19 +72,27 @@ class QoderHttp implements QoderTransport {
     String method,
     Uri url,
     String? bearer,
-    Map<String, dynamic>? body,
-  ) async {
+    Map<String, dynamic>? body, {
+    bool Function()? isCurrent,
+  }) async {
     if (url.scheme != 'https' ||
         url.host != region.apiHost ||
         url.port != 443 ||
         url.userInfo.isNotEmpty ||
         url.fragment.isNotEmpty)
       throw const QoderAccountError('invalid_source');
+    var finished = false;
+    bool admitted() => !finished && (isCurrent?.call() ?? true);
+    if (!admitted()) throw const QoderAccountError('operation_expired');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20);
     try {
       return await (() async {
         final req = await client.openUrl(method, url);
+        if (!admitted()) {
+          req.abort();
+          throw const QoderAccountError('operation_expired');
+        }
         req.followRedirects = false;
         req.headers.set('Accept', 'application/json');
         req.headers.contentType = ContentType.json;
@@ -91,6 +101,10 @@ class QoderHttp implements QoderTransport {
         req.headers.set('User-Agent', campaign ? 'Qoder' : 'LoongPass');
         if (!campaign) req.headers.set('Cosy-Version', '1.0.1');
         if (bearer != null) req.headers.set('Authorization', 'Bearer $bearer');
+        if (!admitted()) {
+          req.abort();
+          throw const QoderAccountError('operation_expired');
+        }
         if (body != null) req.write(jsonEncode(body));
         final response = await req.close();
         if (response.isRedirect ||
@@ -135,6 +149,7 @@ class QoderHttp implements QoderTransport {
     } catch (_) {
       throw const QoderAccountError('network_error');
     } finally {
+      finished = true;
       client.close(force: true);
     }
   }
@@ -890,8 +905,7 @@ class QoderDeviceAccounts {
             continue;
           }
           if (same && skip == null && r['claimStatus'] == 'CLAIMED') {
-            if (old['state'] == 'claimed' &&
-                old['generation'] == a['generation']) {
+            if (old['state'] == 'claimed') {
               old['listingClaimed'] = true;
               await _save(s);
             }
@@ -909,8 +923,7 @@ class QoderDeviceAccounts {
           final observedRearm =
               same &&
               old['state'] == 'claimed' &&
-              old['listingClaimed'] == true &&
-              old['generation'] == a['generation'];
+              old['listingClaimed'] == true;
           if (!advanced && !observedRearm) {
             out.add({
               'campaignId': id,
@@ -941,6 +954,7 @@ class QoderDeviceAccounts {
         };
         await _save(s); // Durable CAS BEFORE POST.
         final current = await _read();
+        if (_closed) throw const QoderAccountError('closed');
         if (current.revision != s.revision ||
             current.data['accounts'][uid]?['generation'] != a['generation'])
           throw const QoderAccountError('source_changed');
@@ -957,6 +971,17 @@ class QoderDeviceAccounts {
         }
 
         String outcome = 'unknown';
+        bool admitted() {
+          if (_closed || _now() < 0 || a['expiresAt'] <= _now()) return false;
+          final serverNow = listing.serverMs == null
+              ? null
+              : listing.serverMs! + elapsed.elapsedMilliseconds;
+          return (r['startAt'] == null ||
+                  serverNow != null && serverNow >= r['startAt'] * 1000) &&
+              (r['endAt'] == null ||
+                  serverNow != null && serverNow < r['endAt'] * 1000);
+        }
+
         try {
           final response = await _http.send(
             'POST',
@@ -975,6 +1000,7 @@ class QoderDeviceAccounts {
             ),
             a['token'],
             null,
+            isCurrent: admitted,
           );
           if (response.status != 200)
             throw const QoderAccountError('http_error');

@@ -3,7 +3,32 @@ import Darwin
 
 @main struct WorkBuddyDesktopChecks {
     static func check(_ value: Bool) { precondition(value) }
+    static func session() -> [String: Any] {
+        let profile: [String: Any] = ["uid": "synthetic-next", "type": "personal", "nickname": "Test"]
+        return ["account": profile, "auth": ["accessToken": "synthetic-access", "domain": "www.workbuddy.cn"],
+            "accounts": [profile], "allAccounts": [profile]]
+    }
     static func main() throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--crash" {
+            let base = URL(fileURLWithPath: CommandLine.arguments[2])
+            let journal = try AccountFile(root: base.appendingPathComponent("journal"))
+            var checks = 0
+            let transaction = WorkBuddyDesktopTransaction(root: base.appendingPathComponent("official"), journal: journal) {
+                checks += 1
+                if checks == 3 { kill(getpid(), SIGKILL); _exit(77) }
+            }
+            try transaction.apply(session())
+            preconditionFailure("Crash seam was not reached")
+        }
+        let product: [String: Any] = ["authentication": ["id": "workbuddy-desktop",
+            "type": "account-scoped-external-link", "attributes": ["platform": "workbuddy"]]]
+        try WorkBuddyDesktopTransaction.validateProduct(JSONSerialization.data(withJSONObject: product))
+        let flat: [String: Any] = ["authentication": ["id": "workbuddy-desktop",
+            "type": "account-scoped-external-link", "platform": "workbuddy"]]
+        do {
+            try WorkBuddyDesktopTransaction.validateProduct(JSONSerialization.data(withJSONObject: flat))
+            preconditionFailure("Unsupported product shape accepted")
+        } catch WorkBuddyDesktopTransaction.Failure.unsafeFile {}
         let base = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
             .appendingPathComponent("loongpass-desktop-checks-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: false,
@@ -22,9 +47,7 @@ import Darwin
         let before = try JSONSerialization.data(withJSONObject: old, options: [.sortedKeys])
         try before.write(to: file)
         try Data("synthetic logout".utf8).write(to: marker)
-        let profile: [String: Any] = ["uid": "synthetic-next", "type": "personal", "nickname": "Test"]
-        let session: [String: Any] = ["account": profile, "auth": ["accessToken": "synthetic-access", "domain": "www.workbuddy.cn"],
-            "accounts": [profile], "allAccounts": [profile]]
+        let session = session()
         var running = true, stopChecks = 0
         var rejectAt: Int?
         let transaction = WorkBuddyDesktopTransaction(root: native, journal: journal) {
@@ -75,10 +98,58 @@ import Darwin
         check(FileManager.default.fileExists(atPath: lock.path))
         try FileManager.default.removeItem(at: lock)
 
+        // A separate process dies after the durable intent, bypassing defer.
+        let crashRoot = base.appendingPathComponent("crashed")
+        for name in ["official", "journal"] {
+            try FileManager.default.createDirectory(at: crashRoot.appendingPathComponent(name),
+                withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        }
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+        child.arguments = ["--crash", crashRoot.path]
+        try child.run()
+        child.waitUntilExit()
+        check(child.terminationReason == .uncaughtSignal && child.terminationStatus == SIGKILL)
+        let crashJournal = try AccountFile(root: crashRoot.appendingPathComponent("journal"))
+        check(try crashJournal.read(name: "desktop-switch.json")?["state"] as? String == "prepared")
+        let crashNative = crashRoot.appendingPathComponent("official")
+        let orphan = crashNative.appendingPathComponent(".workbuddy-desktop.info.workbuddy.lock")
+        check(FileManager.default.fileExists(atPath: orphan.path))
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -11)], ofItemAtPath: orphan.path)
+        try WorkBuddyDesktopTransaction(root: crashNative, journal: crashJournal, ensureStopped: {}).apply(session)
+        check(!FileManager.default.fileExists(atPath: orphan.path))
+        check(try crashJournal.read(name: "desktop-switch.json")?["state"] as? String == "applied")
+
+        var leaseChecks = 0
+        try WorkBuddyDesktopTransaction(root: native, journal: journal) {
+            leaseChecks += 1
+            if leaseChecks == 2 {
+                let initial = try FileManager.default.attributesOfItem(atPath: lock.path)[.modificationDate] as! Date
+                Thread.sleep(forTimeInterval: 6)
+                let renewed = try FileManager.default.attributesOfItem(atPath: lock.path)[.modificationDate] as! Date
+                check(renewed > initial) // The calling thread made no progress.
+            }
+        }.apply(session)
+        let lastApplied = try Data(contentsOf: file)
+        var replacementChecks = 0
+        do {
+            try WorkBuddyDesktopTransaction(root: native, journal: journal) {
+                replacementChecks += 1
+                if replacementChecks == 3 {
+                    try FileManager.default.removeItem(at: lock)
+                    try FileManager.default.createDirectory(at: lock, withIntermediateDirectories: false)
+                }
+            }.apply(session)
+            preconditionFailure("Replaced lock accepted")
+        } catch WorkBuddyDesktopTransaction.Failure.sourceChanged {}
+        check(try Data(contentsOf: file) == lastApplied)
+        check(FileManager.default.fileExists(atPath: lock.path))
+        try FileManager.default.removeItem(at: lock)
+
         try FileManager.default.removeItem(at: file)
         try FileManager.default.createSymbolicLink(at: file, withDestinationURL: own.appendingPathComponent("desktop-switch.json"))
         do { try transaction.apply(session); preconditionFailure("Symlink accepted") }
         catch WorkBuddyDesktopTransaction.Failure.unsafeFile {}
-        print("PASS native session, source preservation, logout marker, stopped writers, recovery, 0600, foreign lock and symlink rejection")
+        print("PASS official product shape, native session, logout marker, stopped writers, SIGKILL/stale-lock recovery, background renewal, replaced-lock refusal, 0600 and symlink rejection")
     }
 }

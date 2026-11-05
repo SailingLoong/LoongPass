@@ -32,6 +32,16 @@ final class WorkBuddyDesktopTransaction {
         self.ensureStopped = ensureStopped
     }
 
+    static func validateProduct(_ data: Data) throws {
+        guard data.count <= 1_048_576,
+            let document = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let authentication = document["authentication"] as? [String: Any],
+            authentication["id"] as? String == "workbuddy-desktop",
+            authentication["type"] as? String == "account-scoped-external-link",
+            let attributes = authentication["attributes"] as? [String: Any],
+            attributes["platform"] as? String == "workbuddy" else { throw Failure.unsafeFile }
+    }
+
     static func validateSession(_ value: [String: Any]) throws {
         guard let account = value["account"] as? [String: Any],
             let uid = account["uid"] as? String, !uid.isEmpty, uid.utf8.count <= 256,
@@ -110,6 +120,7 @@ final class WorkBuddyDesktopTransaction {
         defer { try? FileManager.default.removeItem(at: temporary) }
         try file.write(contentsOf: data)
         try file.synchronize()
+        try refreshLock()
         guard rename(temporary.path, destination.path) == 0 else { throw Failure.io }
         try syncDirectory()
         guard try read(name) == data else { throw Failure.io }
@@ -120,17 +131,41 @@ final class WorkBuddyDesktopTransaction {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Called only while the installed client is quiescent. Cooperates with
-    /// proper-lockfile's directory lock; an existing lock is never stolen.
+    private func acquireLock(_ lock: URL) throws {
+        if mkdir(lock.path, 0o700) == 0 { return }
+        guard errno == EEXIST else { throw Failure.io }
+        var before = stat(), current = stat()
+        guard lstat(lock.path, &before) == 0,
+            before.st_mode & S_IFMT == S_IFDIR, before.st_uid == geteuid(),
+            before.st_mode & 0o022 == 0 else { throw Failure.busy }
+        let modified = Double(before.st_mtimespec.tv_sec) + Double(before.st_mtimespec.tv_nsec) / 1_000_000_000
+        guard Date().timeIntervalSince1970 - modified > 10 else { throw Failure.busy }
+        try ensureStopped()
+        guard lstat(lock.path, &current) == 0,
+            before.st_dev == current.st_dev, before.st_ino == current.st_ino,
+            before.st_mtimespec.tv_sec == current.st_mtimespec.tv_sec,
+            before.st_mtimespec.tv_nsec == current.st_mtimespec.tv_nsec,
+            rmdir(lock.path) == 0, mkdir(lock.path, 0o700) == 0 else { throw Failure.busy }
+    }
+
+    /// Uses the official proper-lockfile lease: stale after 10 seconds and
+    /// renewed every 5 seconds, including while synchronous file I/O waits.
     private func locked<T>(_ action: () throws -> T) throws -> T {
         guard lockFD < 0 else { throw Failure.busy }
         try validateRoot()
         try ensureStopped()
         let lock = root.appendingPathComponent(".\(sessionName).workbuddy.lock")
-        guard mkdir(lock.path, 0o700) == 0 else { throw Failure.busy }
+        try acquireLock(lock)
         lockFD = open(lock.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         guard lockFD >= 0 else { throw Failure.io }
+        let heartbeatQueue = DispatchQueue(label: "com.sailingloong.loongpass.workbuddy-lease")
+        let heartbeat = DispatchSource.makeTimerSource(queue: heartbeatQueue)
+        heartbeat.schedule(deadline: .now() + 5, repeating: 5)
+        heartbeat.setEventHandler { [self] in try? refreshLock() }
+        heartbeat.resume()
         defer {
+            heartbeat.cancel()
+            heartbeatQueue.sync {} // Drain callbacks before closing their descriptor.
             if (try? refreshLock()) != nil { rmdir(lock.path) }
             close(lockFD)
             lockFD = -1

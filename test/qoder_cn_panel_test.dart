@@ -88,6 +88,7 @@ class _NoNetwork implements QoderTransport {
     String method,
     Uri url,
     String? bearer,
-    Map<String, dynamic>? body,
-  ) => throw StateError('Unexpected network call');
+    Map<String, dynamic>? body, {
+    bool Function()? isCurrent,
+  }) => throw StateError('Unexpected network call');
 }

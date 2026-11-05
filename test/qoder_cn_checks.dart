@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import '../lib/qoder_device_accounts.dart';
 
 void expect(bool yes, String msg) {
@@ -86,8 +87,9 @@ class Transport implements QoderTransport {
     String method,
     Uri url,
     String? bearer,
-    Map<String, dynamic>? body,
-  ) async {
+    Map<String, dynamic>? body, {
+    bool Function()? isCurrent,
+  }) async {
     calls.add('$method ${url.path}');
     expect(url.host == 'openapi.qoder.com.cn', 'wrong region');
     if (url.path.endsWith('/poll')) {
@@ -526,6 +528,75 @@ Future<void> main() async {
       q.dispose();
     },
   );
+  for (final refreshBeforeObservation in [false, true]) {
+    await test(
+      'confirmed campaign reopens across token rotation ($refreshBeforeObservation)',
+      () async {
+        var now = 100000;
+        final n = Native(), t = RefreshTransport();
+        final q = client(n, t, now: () => now);
+        await login(q);
+        await q.claim('account-a');
+        if (refreshBeforeObservation) now += 3600001;
+        t.rows.single['claimStatus'] = 'CLAIMED';
+        await q.claim('account-a');
+        if (!refreshBeforeObservation) now += 3600001;
+        t.rows.single['claimStatus'] = 'CLAIMABLE';
+        await q.claim('account-a');
+        expect(t.refreshes == 1, 'credentials must rotate');
+        expect(
+          t.calls.where((s) => s.endsWith('/claim')).length == 2,
+          'verified next round blocked',
+        );
+        q.dispose();
+      },
+    );
+  }
+  await test(
+    'closing during durable reservation withholds claim dispatch',
+    () async {
+      final n = Native(), t = Transport();
+      final q = client(n, t);
+      await login(q);
+      n.afterSave = q.dispose;
+      await rejects(() => q.claim('account-a'), 'closed');
+      expect(
+        t.calls.every((s) => !s.endsWith('/claim')),
+        'closed owner dispatched',
+      );
+      final claims = jsonDecode(n.payload)['claims'] as Map;
+      expect(
+        claims.values.single['state'] == 'pending',
+        'durable intent must survive',
+      );
+    },
+  );
+  await test(
+    'production transport rechecks admission after connection wait',
+    () async {
+      final client = WaitingClient();
+      var current = true;
+      await HttpOverrides.runZoned(() async {
+        final request = QoderHttp().send(
+          'POST',
+          Uri.https(
+            QoderRegion.cn.apiHost,
+            '/sash/api/v1/me/campaigns/synthetic/claim',
+          ),
+          'synthetic-token',
+          null,
+          isCurrent: () => current,
+        );
+        current = false;
+        client.connection.complete(client.request);
+        await rejects(() => request, 'operation_expired');
+        expect(
+          client.request.aborted && !client.request.dispatched,
+          'expired connection dispatched',
+        );
+      }, createHttpClient: (_) => client);
+    },
+  );
   print('$passed passed; $failed failed');
   if (failed > 0) exitCode = 1;
 }
@@ -539,15 +610,45 @@ class SlowNative extends Native {
   }
 }
 
+class WaitingClient implements HttpClient {
+  final connection = Completer<HttpClientRequest>();
+  final request = WaitingRequest();
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) =>
+      connection.future;
+  @override
+  void close({bool force = false}) {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class WaitingRequest implements HttpClientRequest {
+  bool aborted = false, dispatched = false;
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {
+    aborted = true;
+  }
+
+  @override
+  Future<HttpClientResponse> close() async {
+    dispatched = true;
+    throw StateError('Unexpected dispatch');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
 class ChallengeTransport extends Transport {
   @override
   Future<QoderResponse> send(
     String m,
     Uri u,
     String? b,
-    Map<String, dynamic>? j,
-  ) async {
-    final r = await super.send(m, u, b, j);
+    Map<String, dynamic>? j, {
+    bool Function()? isCurrent,
+  }) async {
+    final r = await super.send(m, u, b, j, isCurrent: isCurrent);
     if (u.path.endsWith("/campaigns"))
       r.body["data"] = {"code": "CHALLENGE_REQUIRED"};
     return r;
@@ -562,8 +663,9 @@ class RefreshTransport extends Transport {
     String method,
     Uri url,
     String? bearer,
-    Map<String, dynamic>? body,
-  ) async {
+    Map<String, dynamic>? body, {
+    bool Function()? isCurrent,
+  }) async {
     if (url.path.endsWith('/refresh')) {
       expect(
         method == 'POST' &&
@@ -580,6 +682,6 @@ class RefreshTransport extends Transport {
     }
     if (url.path.endsWith('/userinfo') && failProfile)
       throw const QoderAccountError('network_error');
-    return super.send(method, url, bearer, body);
+    return super.send(method, url, bearer, body, isCurrent: isCurrent);
   }
 }
