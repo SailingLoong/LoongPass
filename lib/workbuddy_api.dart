@@ -2,10 +2,12 @@
 // Existing MIT notices retained. No signatures, credential persistence or UI.
 import 'dart:convert';
 import 'dart:io';
+
 import 'native_account_gate.dart';
 import 'workbuddy_claim.dart';
 import 'workbuddy_balance.dart';
 import 'workbuddy_vault.dart';
+import 'workbuddy_desktop_session.dart';
 
 class WorkBuddyApiFailure implements Exception {
   final String code;
@@ -52,7 +54,8 @@ String? _text(Map m, List<String> keys) {
 }
 
 void _personal(Map m, {bool requiredIdentity = false}) {
-  if ([
+  if (m['isCurrentOneIdEnterprise'] == true ||
+      [
         'enterpriseId',
         'enterprise_id',
       ].any((k) => m[k] != null && m[k] != '') ||
@@ -507,6 +510,13 @@ class WorkBuddyApi {
     WorkBuddyAccount account, {
     required bool Function() gate,
   }) async {
+    await _verifiedProfile(account, gate: gate);
+  }
+
+  Future<Map<String, Object?>> _verifiedProfile(
+    WorkBuddyAccount account, {
+    required bool Function() gate,
+  }) async {
     if (account.expiresAt != null && !now().isBefore(account.expiresAt!))
       throw const WorkBuddyApiFailure(
         'ExpiredAuthorization',
@@ -525,6 +535,21 @@ class WorkBuddyApi {
     if (_text(p, ['uid']) != account.uid ||
         (p['domain'] != null && p['domain'] != account.domain))
       _fail('IdentityMismatch');
+    if (!gate() || !isCurrent()) _fail('ExpiredAuthorization');
+    return Map<String, Object?>.from(p);
+  }
+
+  Future<WorkBuddyDesktopSession> desktopSession(
+    WorkBuddyAccount account, {
+    required bool Function() gate,
+  }) async {
+    final profile = await _verifiedProfile(account, gate: gate);
+    return WorkBuddyDesktopSession(
+      verifiedProfile: profile,
+      domain: account.domain,
+      accessToken: account._token,
+      expiresAt: account.expiresAt,
+    );
   }
 
   Future<Map<String, Object?>> status(WorkBuddyAccount account) =>

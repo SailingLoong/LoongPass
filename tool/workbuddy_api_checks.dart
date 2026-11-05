@@ -10,7 +10,7 @@ class Fake implements WorkBuddyExchange {
 }
 Map<String,Object?> ready()=>{'code':0,'data':{'state':'synthetic-state','authUrl':'https://www.codebuddy.cn/login?state=synthetic-state'}};
 Map<String,Object?> token()=>{'code':0,'data':{'accessToken':'synthetic-token','domain':'www.workbuddy.cn'}};
-Map<String,Object?> profile()=>{'code':0,'data':{'uid':'synthetic-user','type':'personal','domain':'www.workbuddy.cn'}};
+Map<String,Object?> profile()=>{'code':0,'data':<String,Object?>{'uid':'synthetic-user','type':'personal','domain':'www.workbuddy.cn'}};
 Future<void> main() async {
  int passed=0,failed=0;
  Future<void> test(String n,Future<void> Function() f)async{try{await f();passed++;print('PASS $n');}catch(_){failed++;print('FAIL $n');}}
@@ -64,5 +64,77 @@ Future<void> main() async {
   try{await api.claimOnce(WorkBuddyAccount('www.workbuddy.cn','u','synthetic-token'));throw StateError('expected failure');}
   on WorkBuddyApiFailure catch(e){check(e.code=='OutcomeUnknown'&&e.mayHaveBeenSent);}check(f.requests.length==1);
  });
+  await test(
+    'desktop session reuses verified grant and full official profile',
+    () async {
+      final original = profile();
+      (original['data'] as Map)['nickname'] = 'Synthetic name';
+      final fake = Fake()..replies.add(original);
+      final now = DateTime.utc(2026, 11, 6),
+          expires = DateTime.utc(2026, 11, 7);
+      final api = WorkBuddyApi(fake, isCurrent: () => true, now: () => now);
+      final session = await api.desktopSession(
+        WorkBuddyAccount(
+          'www.workbuddy.cn',
+          'synthetic-user',
+          'synthetic-token',
+          expiresAt: expires,
+        ),
+        gate: () => true,
+      );
+      (original['data'] as Map)['nickname'] = 'changed later';
+      final message = session.nativeMessage();
+      check((message['account'] as Map)['nickname'] == 'Synthetic name');
+      check(
+        (message['auth'] as Map)['expiresAt'] == expires.millisecondsSinceEpoch,
+      );
+      check(
+        (message['auth'] as Map)['accessToken'] == 'synthetic-token' &&
+            !(message['auth'] as Map).containsKey('refreshToken'),
+      );
+      check(
+        (message['accounts'] as List).length == 1 &&
+            (message['allAccounts'] as List).length == 1,
+      );
+      check(
+        fake.requests.single.uri.path == '/v2/plugin/account' &&
+            !session.toString().contains('synthetic-token'),
+      );
+    },
+  );
+  await test(
+    'desktop session is withheld when identity or owner changed',
+    () async {
+      final fake = Fake()..replies.add(profile());
+      var live = true;
+      final api = WorkBuddyApi(fake, isCurrent: () => live);
+      fake.onSend = (_) {
+        live = false;
+      };
+      await rejected(
+        () => api.desktopSession(
+          WorkBuddyAccount(
+            'www.workbuddy.cn',
+            'synthetic-user',
+            'synthetic-token',
+          ),
+          gate: () => live,
+        ),
+      );
+      final enterprise = profile();
+      (enterprise['data'] as Map)['isCurrentOneIdEnterprise'] = true;
+      final denied = Fake()..replies.add(enterprise);
+      await rejected(
+        () => WorkBuddyApi(denied, isCurrent: () => true).desktopSession(
+          WorkBuddyAccount(
+            'www.workbuddy.cn',
+            'synthetic-user',
+            'synthetic-token',
+          ),
+          gate: () => true,
+        ),
+      );
+    },
+  );
  print('$passed passed; $failed failed');if(failed>0)throw StateError('suite failed');
 }

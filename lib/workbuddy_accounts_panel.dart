@@ -1,7 +1,10 @@
 import 'credit_summary_view.dart';
+
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+
 import 'native_account_gate.dart';
 import 'workbuddy_account_flow.dart';
 import 'workbuddy_accounts.dart';
@@ -10,6 +13,7 @@ import 'workbuddy_claim.dart';
 import 'workbuddy_flutter.dart';
 import 'workbuddy_vault.dart';
 import 'workbuddy_vault_flutter.dart';
+import 'workbuddy_desktop_flutter.dart';
 
 class WorkBuddyAccountsPanel extends StatefulWidget {
   const WorkBuddyAccountsPanel({
@@ -87,6 +91,27 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  Future<void> _activateDesktop(WorkBuddyAccountSession account) =>
+      _run(() async {
+        final outcome = await _accounts.activateDesktop(
+          account.id,
+          WorkBuddyDesktopFlutter.activate,
+        );
+        if (!mounted) return;
+        setState(
+          () => _message = switch (outcome) {
+            'opened' => '已应用此账号授权并打开 WorkBuddy，请在客户端核对当前身份。',
+            'applied' => '此账号授权已应用，请打开 WorkBuddy 核对当前身份。',
+            'cancelled' => '本次客户端切换已取消。',
+            'expired' => '切换准备已超时，请重新点击切换按钮。',
+            'busy' => '未能确认 WorkBuddy 已完全退出，请先保存工作并关闭客户端。',
+            'recoveryRequired' => '上次切换的原生文件状态存在冲突，需要核对恢复记录后再操作。',
+            'unavailable' => '账号正在处理其他操作或授权需要核验，请稍后重试。',
+            _ => '客户端切换结果待核对，请检查客户端当前身份。',
+          },
+        );
+      });
 
   Future<void> _start() => _run(() async {
     final allowed = await showDialog<bool>(
@@ -368,7 +393,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                   Text(selected.domain ?? ''),
                   Text(
                     widget.savedAccounts
-                        ? '已核实授权身份 · 本机保存账号 · 未切换桌面账号'
+                        ? '已核实授权身份 · 本机保存账号'
                         : '已核实授权身份 · 本次内存会话 · 未切换桌面账号',
                   ),
                   if (selected.message case final String message) Text(message),
@@ -412,6 +437,18 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                               : null,
                           child: const Text('核对并签到'),
                         ),
+                        if (widget.savedAccounts &&
+                            widget.create == null &&
+                            widget.openAuthorization == null &&
+                            defaultTargetPlatform == TargetPlatform.macOS)
+                          OutlinedButton(
+                            key: const Key('workbuddy-desktop-switch'),
+                            onPressed:
+                                _busy || _accounts.claimBusy || selected.busy
+                                ? null
+                                : () => _activateDesktop(selected),
+                            child: const Text('切换 WorkBuddy 客户端'),
+                          ),
                         TextButton(
                           key: const Key('workbuddy-remove'),
                           onPressed: _busy ? null : () => _remove(selected),

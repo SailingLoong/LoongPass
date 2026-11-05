@@ -23,4 +23,8 @@ tempfile = "=3.27.0"
 [profile.dev]
 debug = 0
 incremental = false
+[profile.release]
+# Rust 1.95's debug stripping can misalign macOS proc-macro dylibs.
+# https://github.com/rust-lang/rust/issues/157750
+strip = "none"
 [workspace]

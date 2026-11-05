@@ -2,10 +2,12 @@
 // saved authorization, and the independent journal owns check-in attempts.
 import 'dart:async';
 import 'dart:convert';
+
 import 'workbuddy_account_flow.dart';
 import 'workbuddy_balance.dart';
 import 'workbuddy_claim.dart';
 import 'workbuddy_vault.dart';
+import 'workbuddy_desktop_session.dart';
 
 class WorkBuddyAccountSession {
   final String id;
@@ -370,6 +372,26 @@ class WorkBuddyAccounts {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot) || slot.uid == null) return;
     await slot._flow.refreshBalance();
+  }
+
+  Future<String> activateDesktop(
+    String id,
+    Future<String> Function(WorkBuddyDesktopSession) activate,
+  ) async {
+    final slot = _sessions[id];
+    if (slot == null ||
+        !_owns(slot) ||
+        slot.uid == null ||
+        _claiming ||
+        slot.busy) {
+      return 'unavailable';
+    }
+    _claiming = true;
+    try {
+      return await slot._flow.activateDesktop(activate);
+    } finally {
+      _claiming = false;
+    }
   }
 
   Future<void> claim(String id, {bool Function()? admission}) async {

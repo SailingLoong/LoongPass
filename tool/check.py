@@ -26,3 +26,7 @@ if os.uname().sysname == "Darwin":
         executable = str(Path(scratch) / "account-file-checks")
         run(["xcrun", "swiftc", "macos/Runner/AccountFile.swift", "tool/account_file_checks.swift", "-o", executable])
         run([executable])
+        desktop = str(Path(scratch) / "workbuddy-desktop-checks")
+        run(["xcrun", "swiftc", "macos/Runner/AccountFile.swift",
+             "macos/Runner/WorkBuddyDesktopTransaction.swift", "tool/workbuddy_desktop_checks.swift", "-o", desktop])
+        run([desktop])

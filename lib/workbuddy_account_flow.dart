@@ -1,5 +1,7 @@
 import 'dart:math';
+
 import 'workbuddy_api.dart';
+import 'workbuddy_desktop_session.dart';
 import 'workbuddy_balance.dart';
 import 'workbuddy_claim.dart';
 import 'workbuddy_vault.dart';
@@ -153,6 +155,32 @@ class WorkBuddyAccountFlow {
   WorkBuddyState? get status => _status;
   WorkBuddyResult? get result => _result;
   double? get totalRemaining => _totalRemaining;
+  Future<String> activateDesktop(
+    Future<String> Function(WorkBuddyDesktopSession) activate,
+  ) async {
+    final account = _account;
+    if (identityValidationOnly ||
+        !authorized ||
+        _busy ||
+        _restorePending ||
+        account == null) {
+      return 'unavailable';
+    }
+    final epoch = _epoch;
+    _busy = true;
+    try {
+      final session = await _api.desktopSession(
+        account,
+        gate: () => _same(epoch) && _live,
+      );
+      if (!_same(epoch) || !_live) return 'unavailable';
+      final result = await activate(session);
+      return _same(epoch) && _live ? result : 'unknown';
+    } finally {
+      if (_same(epoch)) _busy = false;
+    }
+  }
+
   Future<void> refreshBalance() async {
     if (identityValidationOnly) return;
     final subject = _subject, reader = _balanceReader;

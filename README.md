@@ -13,7 +13,9 @@ macOS beta 提供 WorkBuddy、MiniMax CN、MiniMax、Qoder CN、Qoder 和 TRAE C
 3. 查看签到状态、当前余额、最近到期批次与该批次剩余额度。
 4. 保持 LoongPass 运行以执行自动检查。重启后自动恢复保存的账号。
 
-TRAE CN 可先选择官方客户端的 `User/globalStorage/storage.json`，读取当前登录和匹配设备身份，再通过官网授权独立账号。复用客户端的现有访问授权会显示到期边界。实际客户端切换仍待完成。
+TRAE CN 可先选择官方客户端的 `User/globalStorage/storage.json`，读取当前登录和匹配设备身份，再通过官网授权独立账号。复用客户端的现有访问授权会显示到期边界。
+
+beta 22 开发候选增加 WorkBuddy 客户端切换入口，真实身份切换待验收。权限步骤与验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 当前包使用本地签名。系统可能提示开发者身份未验证，需要按 macOS 的“隐私与安全性”提示确认打开。当前真实验收范围及待验证项见 [VALIDATION.md](VALIDATION.md)。
 

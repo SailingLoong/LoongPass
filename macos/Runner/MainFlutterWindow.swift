@@ -5,6 +5,7 @@ import FlutterMacOS
 class MainFlutterWindow: NSWindow {
   private let zcodeSwitchBridge = ZcodeSwitchBridge()
   private let qoderFileStore = QoderFileStore()
+  private let workBuddyDesktop = WorkBuddyDesktopBridge()
   private var selectedURL: URL?
   private var pickerOpen = false
   private var backupRoot: URL?
@@ -44,6 +45,7 @@ class MainFlutterWindow: NSWindow {
         return
       }
       if AccountDocumentBridge.handle(call: call, result: result) { return }
+      if self.workBuddyDesktop.handle(call, window: self, result: result) { return }
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {

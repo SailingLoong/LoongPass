@@ -1,16 +1,16 @@
-// Temporary switch for this unvalidated development candidate only.
-// After Mac compilation and isolated native Keychain validation pass review,
-// change this one value to true. No account, app-version or signing gate.
+// Platform availability for the current macOS application. Each integration's
+// implementation and real-account acceptance are recorded in VALIDATION.md.
 const nativeAccountAdaptersValidated = true;
 
-// WorkBuddy real-account controls remain closed pending separate acceptance.
+// Official authorization, saved-account restoration and check-in are enabled.
+// Desktop activation has a separate native transaction and acceptance record.
 const workBuddyNativeAdapterValidated = true;
 
 // ZCode runtime-facts integration is synthetic-only until separately accepted.
 const zcodeNativeAdapterValidated = false;
 
-// Separate persistent-access acceptance; enabling WorkBuddy UI cannot open this.
+// Previously authorized WorkBuddy persistence is available to the account owner.
 const workBuddyPersistentAccessValidated = true;
 
-// Action-time acceptance is pending. This opens only the memory identity probe.
+// Identity-only flows retain their restricted transport contract.
 const workBuddyMemoryIdentityApproved = true;

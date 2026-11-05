@@ -11,7 +11,7 @@ final class AccountFile {
     private static let registryLock = NSLock()
     static func named(_ name: String) throws -> AccountFile {
         registryLock.lock(); defer { registryLock.unlock() }
-        guard ["MiniMax-cn", "MiniMax-global", "Qoder-cn", "Qoder-global", "TRAE-cn"].contains(name) else { throw Failure.unavailable }
+        guard ["MiniMax-cn", "MiniMax-global", "Qoder-cn", "Qoder-global", "TRAE-cn", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }
         if let existing = stores[name] { return existing }
         let support = try FileManager.default.url(for: .applicationSupportDirectory,
             in: .userDomainMask, appropriateFor: nil, create: true).resolvingSymlinksInPath()

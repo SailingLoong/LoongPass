@@ -24,7 +24,7 @@ class MemoryStore implements WorkBuddyAttemptStore {
 class SyntheticExchange implements WorkBuddyExchange {
   int requests = 0, posts = 0;
   bool pending = false, loseReceipt = false, failProfile = false;
-  Completer<void>? waitState, waitToken, waitClaim;
+  Completer<void>? waitState, waitToken, waitClaim, waitProfile;
   void Function()? afterClaim;
   @override Future<Map<String, Object?>> send(
       WorkBuddyRequest request, bool Function() admitted) async {
@@ -42,6 +42,7 @@ class SyntheticExchange implements WorkBuddyExchange {
         'accessToken': 'synthetic-secret', 'domain': 'www.workbuddy.cn'}};
     }
     if (path.endsWith('/plugin/account')) {
+      await waitProfile?.future;
       if (failProfile) throw const WorkBuddyApiFailure('OutcomeUnknown');
       return {'code': 0, 'data': {'uid': 'synthetic-user', 'type':'personal',
         'domain': 'www.workbuddy.cn'}};
@@ -216,6 +217,75 @@ Future<void> main() async {
     check(f.uid == null && !f.canClaim && f.result == null && s.row != null,
       'page close retires only memory, not intent');
     check(!f.isCurrent(s.row!.subject), 'closing retires the balance-reader gate');
+  });
+  await test('desktop activation reuses the verified account without a claim', () async {
+    final exchange = SyntheticExchange();
+    final flow = owner(exchange, MemoryStore());
+    await login(flow);
+    final requests = exchange.requests;
+    var activations = 0;
+    final outcome = await flow.activateDesktop((session) async {
+      activations++;
+      final document = session.nativeMessage();
+      check((document['account'] as Map)['uid'] == 'synthetic-user', 'verified profile');
+      check((document['auth'] as Map)['accessToken'] == 'synthetic-secret', 'saved grant');
+      return 'opened';
+    });
+    check(outcome == 'opened' && activations == 1, 'one activation result');
+    check(exchange.requests == requests + 1 && exchange.posts == 0, 'profile read only');
+    check(!flow.busy, 'owner released after activation');
+    flow.close();
+  });
+  await test('desktop activation excludes concurrent claim and activation', () async {
+    final exchange = SyntheticExchange();
+    final flow = owner(exchange, MemoryStore());
+    await login(flow);
+    final entered = Completer<void>(), finish = Completer<String>();
+    final first = flow.activateDesktop((_) {
+      entered.complete();
+      return finish.future;
+    });
+    await entered.future;
+    final requests = exchange.requests;
+    await flow.claim();
+    final second = await flow.activateDesktop((_) async => throw StateError('duplicate activation'));
+    check(second == 'unavailable' && exchange.requests == requests, 'concurrent actions withheld');
+    finish.complete('cancelled');
+    check(await first == 'cancelled' && !flow.busy, 'cancellation releases owner');
+    flow.close();
+  });
+  await test('retiring the account during profile verification withholds activation', () async {
+    final exchange = SyntheticExchange();
+    final flow = owner(exchange, MemoryStore());
+    await login(flow);
+    exchange.waitProfile = Completer<void>();
+    var invoked = false;
+    final operation = flow.activateDesktop((_) async {
+      invoked = true;
+      return 'opened';
+    });
+    flow.close();
+    exchange.waitProfile!.complete();
+    try {
+      await operation;
+    } on WorkBuddyApiFailure {
+      // The API reports owner expiry before a native command is dispatched.
+    }
+    check(!invoked, 'retired owner cannot dispatch a native write');
+  });
+  await test('retiring after native dispatch preserves an unknown outcome', () async {
+    final exchange = SyntheticExchange();
+    final flow = owner(exchange, MemoryStore());
+    await login(flow);
+    final entered = Completer<void>(), finish = Completer<String>();
+    final operation = flow.activateDesktop((_) {
+      entered.complete();
+      return finish.future;
+    });
+    await entered.future;
+    flow.close();
+    finish.complete('opened');
+    check(await operation == 'unknown' && flow.uid == null, 'late result cannot restore retired identity');
   });
   print('$passed passed; $failed failed');
   if (failed > 0) throw StateError('WorkBuddy owner checks failed');

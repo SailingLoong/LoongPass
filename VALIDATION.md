@@ -1,4 +1,4 @@
-# beta 21 验收记录
+# beta 21 发布与 beta 22 候选验收记录
 
 记录日期为 2026-11-06。当前构建使用 Flutter 3.47.1、Rust 1.95.0 和 Xcode 27.2。
 
@@ -31,3 +31,13 @@ MiniMax、Qoder 和独立 TRAE 授权的刷新由对应账号模块串行执行�
 CI 已在 `v1.0.0-beta.21` 上完成全部检查、Universal 构建、架构及签名校验，并自动创建 prerelease。Flutter 测试共 184 项通过，平台与文件存储的直接检查通过。下载 CI 附件后核对 SHA-256 与 `SOURCE_COMMIT`，在 Apple Silicon 上启动并复验了 WorkBuddy 两号恢复及积分到期界面。对应 [CI 运行](https://github.com/SailingLoong/LoongPass/actions/runs/42077758704) 和 [发布附件](https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.0-beta.21) 可追溯。
 
 公开历史已移除生成的静态库和失效交接材料。Gitleaks 8.30.1 对公开源码与历史检查通过，唯一例外为由固定测试路径计算的合成账号哈希，配置精确匹配该值。
+
+## beta 22 客户端切换候选
+
+WorkBuddy 增加“切换 WorkBuddy 客户端”入口。账号模块复用已保存的官网授权，先查询完整官方身份。原生模块核对客户端签名和授权协议，通过用户选择的目录访问范围操作授权文件。切换会请求客户端正常退出，与官方目录锁协调，原子写入授权及退出标记，并在本机私有目录保留恢复记录。完成文件应用和客户端打开后，界面要求核对实际客户端身份。
+
+当前证据包括静态分析、184 项 Flutter 测试、20 项 WorkBuddy API 检查、21 项账号操作检查及其他现有检查通过。原生文件检查覆盖运行中写入者、官方锁占用、文件权限、符号链接、原有字段保留、中断恢复及空退出标记。所有新增行为检查使用合成账号和隔离目录。本地 Universal Release 构建及深度签名校验通过。
+
+本机 Rust 宏动态库曾因 LINKEDIT 未对齐而被系统拒绝加载。Release profile 显式关闭 Rust 1.95 的该 stripping 后，双架构构建通过。对应上游记录为 [rust-lang/rust#157750](https://github.com/rust-lang/rust/issues/157750)。构建入口同时持有机器共享重型任务锁和项目构建锁。
+
+真实客户端切换尚未验证。当前 Mac 锁屏，需要用户解锁并确认新增的 WorkBuddy 授权目录访问及客户端切换操作。TRAE CN 首次持久导入和真实领取同样等待确认。beta 22 暂保留为开发候选，当前可下载的已发布版本为 beta 21。

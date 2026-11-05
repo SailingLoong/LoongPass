@@ -28,5 +28,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>切换账号时请求 WorkBuddy 正常退出，待授权文件安全更新后重新打开。</string>
 </dict>
 </plist>

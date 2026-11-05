@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Serialize universal macOS builds and reuse the native compiler cache."""
 import fcntl
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import shutil
@@ -12,11 +13,13 @@ def main():
     root = Path(__file__).resolve().parents[1]
     cache = Path.home() / "Library/Caches/LoongPass"
     cache.mkdir(parents=True, exist_ok=True)
-    with (cache / "macos-build.lock").open("a") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise SystemExit("Another LoongPass macOS build owns the build lock.")
+    with ExitStack() as locks:
+        for path in [Path("/tmp/dot-heavy-build.lock"), cache / "macos-build.lock"]:
+            lock = locks.enter_context(path.open("a"))
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit("Another build owns the shared or project build lock.")
         if shutil.disk_usage(root).free < 8 * 1024**3:
             raise SystemExit("At least 8 GiB of free space is required for packaging.")
         environment = os.environ.copy()
