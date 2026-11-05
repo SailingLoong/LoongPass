@@ -1,51 +1,11 @@
-Historical build 11 evidence; build 12 changes and current boundaries are in WORKBUDDY-RESTORE.md.
+# WorkBuddy 本地授权保存
 
-# Build 11: synthetic persistence preparation
+当前版本将账号授权以明文 JSON 保存在应用私有目录 `Library/Application Support/LoongPass/WorkBuddy/accounts.json`。应用沙盒会将该相对目录放在自己的容器内。目录权限为 0700，文件权限为 0600。
 
-This candidate adds WorkBuddyVaultStore, an injected Dart lifecycle coordinator,
-Flutter transport wiring and a native dedicated-Keychain backend. No production
-Keychain target is configured, both WorkBuddy gates remain false, and no UI
-creates this store. It does not save or read real credentials.
+存储后端使用 Foundation 的原子文件写入、文件与目录同步和现有进程所有权锁。JSON 中保留已验证的 UID、授权域名、接口域名、访问令牌、已知到期时间及记录版本。官网未返回到期时间时保留未知状态，恢复时向官网重新核验身份。
 
-Per opaque account key the versioned record holds domain, endpoint, UID,
-access/optional refresh token, expiry and revision. Restoration requires an
-injected identity verifier and dispatch admission, rechecks durable revision,
-never restores automatic opt-in and never clears the claim-intent journal.
-Local revocation immediately retires memory leases and replaces credential
-material with a durable secret-free tombstone, including for an absent record.
-A failed durable revoke is reported unresolved; memory stops but future-process
-revocation cannot be promised until the tombstone is confirmed. This is not
-server-side revocation, forensic erasure or a guarantee of memory zeroization.
+`WorkBuddyVaultStore` 是现有读写契约。原生后端提供读取、版本比较写入和保存记录列表。Dart 账号 owner 负责授权、身份验证及保存后的绑定，界面通过状态通知更新。
 
-Rotation is bookkeeping only: pending is persisted before a hypothetical refresh
-send; uncertainty remains disabled after reconstruction. Completion requires the
-same owner ticket, expected revision and unchanged identity bindings. No refresh
-endpoint is implemented or called; no unknown rotation is retried. Closed and
-revoked owners cannot dispatch restoration verification or return a new ticket.
+应用启动时恢复所有保存的账号并重新核验官网身份；失败时可使用现有“恢复已保存账号”按钮重试。自动签到行为见 [WORKBUDDY-AUTOMATIC.md](WORKBUDDY-AUTOMATIC.md)。授权文件与非凭据签到记录分开保存。
 
-Native operations are explicitly scoped to a newly created test Keychain. Legacy
-Keychain query UI flags alone proved insufficient for locked reads; the backend
-now reuses LoongPassKeychainLock, disables interaction only in this process for
-the operation and restores the previous flag. It never unlocks a Keychain or
-changes ACLs, search-list/default setters, shell or system security settings.
-The fixture lifecycle may register/unregister its own dedicated Keychain;
-search-list equality after cleanup is checked by the native probe.
-
-Validation: 35 Dart lifecycle checks; 27 native dedicated-Keychain checks;
-13 Dart -> JSON IPC -> FlutterMethodCall handler -> Keychain integration checks;
-247 existing WorkBuddy synthetic checks (journal suite needs canonical task TMPDIR);
-macOS universal release build 1.0.0 (11), strict deep codesign verification.
-The IPC probe is not a Flutter-engine/UI channel test or a server acceptance test.
-Ad-hoc signature only; no Developer ID, notarization, upload or publication.
-
-Before real two-account use: implement and accept the actual profile-verification
-adapter, account-key derivation, roster/flow restoration and retirement wiring,
-production Keychain destination/ownership and cross-process exclusion. The current
-native CAS is single host-process only. Verify supported refresh/expiry/revocation
-contracts, recovery and journal reconciliation; do not infer them from this test.
-Then separately approve the concrete persistent-access operation at action time,
-with destination, credential types and local removal limits shown. The user must
-authorize each account on the verified official page, never send secrets to chat.
-Actual check-in requires its own action-time confirmation; uncertain outcomes
-remain read-only reconciliation and must never cause repeat POSTs. No safe real
-login page is offered by this candidate while production admission remains closed.
+`tool/workbuddy_file_store_checks.swift` 使用临时目录和合成凭据验证明文文件、权限、比较写入、重新打开与凭据移除。真实账号授权、身份显示、重启恢复及签到以实际应用验收为准。

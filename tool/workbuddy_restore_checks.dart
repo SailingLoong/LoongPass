@@ -71,12 +71,12 @@ Future<void> main()async{
  check(addStore.rows.length==2&&adding.accounts.length==2,'two additions have separate records and roster slots');
  check(WorkBuddyVault.accountKey('www.workbuddy.cn','A')!=WorkBuddyVault.accountKey('www.workbuddy.cn','B'),'UID participates in opaque account key');
  check(WorkBuddyVault.accountKey('www.workbuddy.cn','A')!=WorkBuddyVault.accountKey('www.codebuddy.cn','A'),'domain participates in opaque account key');
- savedVault.close();check(adding.accounts.isEmpty,'newly saved flows retire with their vault lease');
+ savedVault.close();check(adding.accounts.length==2&&adding.accounts.every((s)=>!s.canClaim&&s.message=='授权已不可用，请重新授权此账号。'),'retired credentials keep known identity visible with an unavailable authorization');
  adding.close();final restored=WorkBuddyAccounts(create:flow);final restoreVault=WorkBuddyVault(addStore,now:()=>DateTime.utc(2026,11,5));
  final keyA=WorkBuddyVault.accountKey('www.workbuddy.cn','A'),keyB=WorkBuddyVault.accountKey('www.workbuddy.cn','B');
  check(await restored.restore(restoreVault,keyA)!=null&&await restored.restore(restoreVault,keyB)!=null,'new roster restores both added identities');
  exchange.unknownExpiry=true;final noExpiry=WorkBuddyAccounts(create:flow);final ne=(await noExpiry.beginAuthorization())!;
- check(await noExpiry.pollAndSave(ne.sessionId,addVault)==null,'unknown expiry refuses persistence');exchange.unknownExpiry=false;
+ check(await noExpiry.pollAndSave(ne.sessionId,addVault)!=null,'profile-verified token with unknown expiry remains restorable');exchange.unknownExpiry=false;
  final proof=flow();final original=c('A');check(await proof.restoreCredential(original,admission:()=>true),'synthetic flow verifies original credential');
  final mismatchVault=WorkBuddyVault(Store(),now:()=>DateTime.utc(2026,11,5));
  await mismatchVault.save(a,WorkBuddyVaultCredential(domain:original.domain,endpoint:original.endpoint,uid:original.uid,accessToken:'synthetic-different',expiresAt:original.expiresAt));

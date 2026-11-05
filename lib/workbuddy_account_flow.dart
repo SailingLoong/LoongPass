@@ -58,7 +58,7 @@ class WorkBuddyAccountFlow {
   WorkBuddyClaimCore? _core;
   WorkBuddyBalanceReader? _balanceReader;
   double? _totalRemaining;
-  bool _closed = false, _busy = false, _pending = false, _claimAttempted = false;
+  bool _closed = false, _busy = false, _pending = false;
   int _epoch = 0, _authorization = 0;
   String? _message;
   WorkBuddyState? _status;
@@ -76,13 +76,16 @@ class WorkBuddyAccountFlow {
   bool _same(int epoch) => !_closed && epoch == _epoch;
   bool get busy => _busy;
   bool get loginPending => _live && _pending;
-  bool get canClaim => !identityValidationOnly && _live && !_restorePending && !_busy && !_pending && !_claimAttempted && _core != null;
+  bool get canClaim => !identityValidationOnly && _live && !_restorePending && !_busy && !_pending && _core != null &&
+      _result?.state != WorkBuddyState.unconfirmed && _result?.state != WorkBuddyState.needsVerification && _status != WorkBuddyState.needsVerification;
   bool get claimOwnerAvailable => !identityValidationOnly && store != null && _balanceReader != null;
   bool isCurrent(WorkBuddySubject subject) =>
       _networkAdmitted && _subject?.matches(subject) == true;
-  String? get uid => _live ? _account?.uid : null;
-  String? get domain => _live ? _account?.domain : null;
-  String? get message => _message;
+  bool get authorized => _live && _account != null && _status != WorkBuddyState.needsVerification && _result?.state != WorkBuddyState.needsVerification;
+  String? get uid => !_closed ? _account?.uid : null;
+  String? get domain => !_closed ? _account?.domain : null;
+  String? get message => !_closed && _account != null && !authorized
+      ? '授权已不可用，请重新授权此账号。' : _message;
   WorkBuddyState? get status => _status;
   WorkBuddyResult? get result => _result;
   double? get totalRemaining => _totalRemaining;
@@ -127,7 +130,8 @@ class WorkBuddyAccountFlow {
     if(identityValidationOnly)return false;
     final verified=_restoredCredential,c=lease.credential;
     if(!_live||!lease.current||verified==null||verified.domain!=c.domain||verified.uid!=c.uid||verified.endpoint!=c.endpoint||verified.accessToken!=c.accessToken||verified.refreshToken!=c.refreshToken||verified.expiresAt!=c.expiresAt||!_restorePending)return false;
-    _vaultLease=lease;_api.prepareAdmission=()=>lease.checkCurrent();_restorePending=false;return true;
+    _vaultLease=lease;_api.prepareAdmission=()=>lease.checkCurrent();_restorePending=false;
+    _message='身份已核实，授权已保存在本机。';return true;
   }
   Future<bool> bindSaved(WorkBuddyVault vault,String key,{required bool Function() admission})async{
     if(identityValidationOnly)return false;
@@ -246,9 +250,10 @@ class WorkBuddyAccountFlow {
     try {
       final response = await _api.status(account);
       if (_same(epoch) && _live) _status = WorkBuddyProtocol.status(response);
-    } catch (_) {
+    } catch (error) {
       if (_same(epoch)) {
-        _status = WorkBuddyState.unconfirmed;
+        _status = error is WorkBuddyApiFailure && ['NeedsVerification','ExpiredAuthorization'].contains(error.code)
+            ? WorkBuddyState.needsVerification : WorkBuddyState.unconfirmed;
         _message = '未能核实当前活动状态；没有补发签到请求。';
       }
     } finally {
@@ -266,12 +271,12 @@ class WorkBuddyAccountFlow {
     final epoch = _epoch;
     _operationAdmission = admission;
     _busy = true;
-    _claimAttempted = true;
     _message = null;
     try {
       final result = await core.claim(subject);
       if (_same(epoch)) {
         _result = _live ? result : const WorkBuddyResult(WorkBuddyState.unconfirmed);
+        if(_result!.state!=WorkBuddyState.unconfirmed)_status=_result!.state;
       }
     } catch (_) {
       if (_same(epoch)) _result = const WorkBuddyResult(WorkBuddyState.unconfirmed);

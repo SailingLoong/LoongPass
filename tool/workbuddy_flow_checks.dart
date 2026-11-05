@@ -145,7 +145,7 @@ Future<void> main() async {
     await login(f); await f.claim();
     check(f.result?.state == WorkBuddyState.claimed && f.result?.credited == 20,
       'receipt and observed increase must corroborate');
-    await f.claim(); check(e.posts == 1 && !f.canClaim, 'no duplicate claim');
+    await f.claim(); check(e.posts == 1, 'journal prevents duplicate claim');
   });
   await test('duplicate claim while awaiting sends only once', () async {
     final e = SyntheticExchange()..waitClaim = Completer<void>();

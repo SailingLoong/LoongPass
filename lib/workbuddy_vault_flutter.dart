@@ -2,8 +2,7 @@ import 'package:flutter/services.dart';
 import 'native_account_gate.dart';
 import 'workbuddy_vault.dart';
 
-// No production instance is created by the app. A synthetic transport may be
-// injected by isolated probes; no user-selectable Keychain/path is exposed.
+// Native transport for the application-private plaintext JSON store.
 class WorkBuddyVaultFlutter implements WorkBuddyVaultStore {
  final Future<Object?> Function(String,Map<String,Object?>) _invoke;
  WorkBuddyVaultFlutter():_invoke=_production;

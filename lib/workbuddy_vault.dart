@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'source_digest.dart';
-// Synthetic persistence preparation only. No production factory or default
-// Keychain is configured. Restored credentials require fresh identity proof;
-// they never restore automatic opt-in or clear the existing claim journal.
+// Saved authorization records require fresh server identity proof on restore.
+// The native backend stores plaintext JSON in the private application directory.
 abstract interface class WorkBuddyVaultStore {
  Future<Map<String,Object?>?> read(String key);
  Future<bool> compareExchange(String key,int? expected,Map<String,Object?> value);
@@ -10,16 +9,17 @@ abstract interface class WorkBuddyVaultStore {
 class WorkBuddyVaultCredential {
  final String domain,endpoint,uid,accessToken;
  final String? refreshToken;
- final DateTime expiresAt;
+ final DateTime? expiresAt;
  WorkBuddyVaultCredential({required this.domain,required this.endpoint,required this.uid,required this.accessToken,this.refreshToken,required this.expiresAt});
- Map<String,Object?> _encode()=>{'domain':domain,'endpoint':endpoint,'uid':uid,'accessToken':accessToken,if(refreshToken!=null)'refreshToken':refreshToken,'expiresAt':expiresAt.millisecondsSinceEpoch};
+ Map<String,Object?> _encode()=>{'domain':domain,'endpoint':endpoint,'uid':uid,'accessToken':accessToken,if(refreshToken!=null)'refreshToken':refreshToken,if(expiresAt!=null)'expiresAt':expiresAt!.millisecondsSinceEpoch};
  static WorkBuddyVaultCredential decode(Map<String,Object?> m){
   String field(String name,int max){final v=m[name];if(v is! String||v.isEmpty||v.length>max||RegExp(r'[^\x21-\x7e]').hasMatch(v))throw const FormatException('Invalid vault record');return v;}
   final domain=field('domain',128),endpoint=field('endpoint',128);
   if(!['www.workbuddy.cn','www.codebuddy.cn'].contains(domain)||!['www.workbuddy.cn','www.codebuddy.cn'].contains(endpoint))throw const FormatException('Invalid vault binding');
-  final expiry=m['expiresAt'];if(expiry is! int||expiry<=0||expiry>8640000000000000)throw const FormatException('Invalid expiry');
-  return WorkBuddyVaultCredential(domain:domain,endpoint:endpoint,uid:field('uid',512),accessToken:field('accessToken',16384),refreshToken:m.containsKey('refreshToken')?field('refreshToken',16384):null,expiresAt:DateTime.fromMillisecondsSinceEpoch(expiry,isUtc:true));
+  final expiry=m['expiresAt'];if(m.containsKey('expiresAt')&&(expiry is! int||expiry<=0||expiry>8640000000000000))throw const FormatException('Invalid expiry');
+  return WorkBuddyVaultCredential(domain:domain,endpoint:endpoint,uid:field('uid',512),accessToken:field('accessToken',16384),refreshToken:m.containsKey('refreshToken')?field('refreshToken',16384):null,expiresAt:expiry==null?null:DateTime.fromMillisecondsSinceEpoch(expiry as int,isUtc:true));
  }
+ bool hasExpired(DateTime at)=>expiresAt!=null&&!at.isBefore(expiresAt!);
  @override String toString()=>'WorkBuddyVaultCredential(redacted)';
 }
 class WorkBuddyVaultLease {
@@ -69,7 +69,7 @@ class WorkBuddyVault {
   try{saved=await store.compareExchange(key,expectedRevision,desired);}
   catch(_){
    _retire(key);_blocked.add(key);
-   // Security may commit and then fail readback. Clean only our exact record;
+   // Storage may commit and then fail readback. Clean only our exact record;
    // an unavailable store is explicitly unresolved, never assumed rolled back.
    try{
     final row=await store.read(key),expected=desired;
@@ -86,11 +86,11 @@ class WorkBuddyVault {
    final row=await store.read(key);if(row==null)return null;_validate(row);
    if(row['state']!='active')return null;
    final credential=WorkBuddyVaultCredential.decode(row);
-   bool admitted()=>_current(key,epoch)&&now().isBefore(credential.expiresAt);
+   bool admitted()=>_current(key,epoch)&&!credential.hasExpired(now());
    if(!admitted()||!await verify(credential,admitted)||!admitted())return null;
    // Revocation/rotation may have happened during asynchronous verification.
    final after=await store.read(key);
-   if(after==null||after['revision']!=row['revision']||after['state']!='active'||!_current(key,epoch)||!now().isBefore(credential.expiresAt))return null;
+   if(after==null||after['revision']!=row['revision']||after['state']!='active'||!_current(key,epoch)||credential.hasExpired(now()))return null;
    return WorkBuddyVaultLease._(credential,admitted,()async{
     if(!admitted())return false;
     try{final latest=await store.read(key);final valid=admitted()&&latest!=null&&latest['revision']==row['revision']&&latest['state']=='active';if(!valid)_retire(key);return valid;}catch(_){_retire(key);return false;}
@@ -110,7 +110,7 @@ class WorkBuddyVault {
  Future<bool> completeRotation(WorkBuddyRotationTicket ticket,WorkBuddyVaultCredential replacement)async{
   if(_closed||!identical(ticket._owner,_owner)||_blocked.contains(ticket._key))return false;
   WorkBuddyVaultCredential.decode(replacement._encode());
-  if(!now().isBefore(replacement.expiresAt))return false;
+  if(replacement.hasExpired(now()))return false;
   final row=await store.read(ticket._key);if(row==null)return false;_validate(row);
   if(_closed||_blocked.contains(ticket._key)||row['revision']!=ticket._revision||row['state']!='rotationPending'||row['domain']!=replacement.domain||row['endpoint']!=replacement.endpoint||row['uid']!=replacement.uid)return false;
   return store.compareExchange(ticket._key,ticket._revision,_record(ticket._revision+1,'active',replacement));

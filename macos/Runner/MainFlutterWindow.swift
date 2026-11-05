@@ -227,7 +227,7 @@ class MainFlutterWindow: NSWindow {
     let support=try FileManager.default.url(for:.applicationSupportDirectory,in:.userDomainMask,appropriateFor:nil,create:false)
     let root=try NativeQoderFolders.prepare(in:support.resolvingSymlinksInPath(),child:"WorkBuddy")
     let ownership=try WorkBuddyVaultOwnership(privateRoot:root)
-    let vault=try WorkBuddyVault.approvedDefault(ownership:ownership)
+    let vault=try WorkBuddyVault(ownership:ownership)
     workBuddySavedVault=vault;return vault
   }
 

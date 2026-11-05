@@ -7,12 +7,14 @@ import '../lib/workbuddy_account_flow.dart';
 import '../tool/workbuddy_flow_checks.dart' as synthetic;
 import '../tool/workbuddy_single_checks.dart' as single;
 
-// Written for Mac/Flutter validation. Not executed in this cloud task because
-// prior Flutter test operations were denied; no alternate route was attempted.
 void main() {
-  testWidgets('official authorization completes and saves without another button press', (tester) async {
+  testWidgets('saved accounts check in independently and restore without another authorization', (tester) async {
     final server = single.Server('synthetic-single-account');
+    final second = single.Server('synthetic-second-account');
+    final queue = [server, second];
     final saved = single.VaultStore();
+    final journals = <String, synthetic.MemoryStore>{};
+    var generation = 0;
     final nativeCalls = <String>[];
     const channel = MethodChannel('com.sailingloong.loongpass/files');
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
@@ -31,13 +33,21 @@ void main() {
       }
     });
     addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+    Widget app() => MaterialApp(home: Scaffold(body: SingleChildScrollView(
       child: WorkBuddyAccountsPanel(
-        savedSingleAccount: true,
-        create: () => WorkBuddyAccountFlow.inMemory(exchange: server, store: synthetic.MemoryStore()),
+        savedAccounts: true,
+        create: () {
+          final current = queue.removeAt(0);
+          return WorkBuddyAccountFlow(exchange: current,
+          store: journals.putIfAbsent(current.uid, () => synthetic.MemoryStore()),
+          ownerGeneration: 'widget-${++generation}', isOwnerCurrent: () => true,
+          readCompleteBalance: (subject) async => (subject: subject, totalRemaining: 10.0 + current.posts * 20));
+        },
         openAuthorization: (_) async {},
       ),
-    ))));
+    )));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('workbuddy-login')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
@@ -51,6 +61,33 @@ void main() {
         '${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join('\n')}');
     expect(saved.rows, hasLength(1));
     expect(server.posts, 0);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(server.posts, 1);
+    expect(find.textContaining('已核实本次到账 20'), findsOneWidget);
+    expect(find.text('今日签到已完成'), findsOneWidget);
+    expect(find.textContaining('当前活动可签到'), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('workbuddy-login')));
+    await tester.tap(find.byKey(const Key('workbuddy-login')));
+    await tester.pump();await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('继续官方授权'));
+    await tester.pumpAndSettle();
+    expect(saved.rows, hasLength(2));
+    expect(find.text('synthetic-second-account'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(server.posts, 1);expect(second.posts, 1);
+    final authorizationCount = server.requests.where((r) => r.uri.path.endsWith('/auth/state')).length;
+    await tester.pumpWidget(const SizedBox.shrink());
+    queue.addAll([server, second]);
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    expect(find.textContaining('synthetic-single-account'), findsOneWidget);
+    expect(find.text('synthetic-second-account'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pumpAndSettle();
+    expect(server.posts, 1);expect(second.posts, 1);
+    expect(server.requests.where((r) => r.uri.path.endsWith('/auth/state')).length, authorizationCount);
     await tester.pumpWidget(const SizedBox.shrink());
   });
 

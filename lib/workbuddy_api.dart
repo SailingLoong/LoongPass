@@ -202,13 +202,13 @@ class WorkBuddyApi {
   bool matchesStoredAccount(WorkBuddyAccount account,WorkBuddyVaultCredential c)=>account.domain==c.domain&&account.uid==c.uid&&account._token==c.accessToken&&account.expiresAt==c.expiresAt&&endpointHost==c.endpoint;
   Future<bool> saveVerifiedAccount(WorkBuddyAccount account,WorkBuddyVault vault,String key,{required bool Function() gate})async{
     final expires=account.expiresAt;
-    if(!isCurrent()||!gate()||expires==null||!now().isBefore(expires))return false;
+    if(!isCurrent()||!gate()||(expires!=null&&!now().isBefore(expires)))return false;
     return vault.save(key,WorkBuddyVaultCredential(domain:account.domain,endpoint:endpointHost,uid:account.uid,accessToken:account._token,expiresAt:expires),admission:()=>isCurrent()&&gate(),replaceVerified:true);
   }
   /// Revalidate a saved identity through the same strict personal profile
   /// contract as login. No auth-token poll, refresh or claim is sent here.
   Future<void> verifyStoredAccount(WorkBuddyAccount account,{required bool Function() gate})async{
-    if(account.expiresAt==null||!now().isBefore(account.expiresAt!))throw const WorkBuddyApiFailure('ExpiredAuthorization',mayHaveBeenSent:false);
+    if(account.expiresAt!=null&&!now().isBefore(account.expiresAt!))throw const WorkBuddyApiFailure('ExpiredAuthorization',mayHaveBeenSent:false);
     final response=await _send('/v2/plugin/account',account:account,method:'GET',gate:gate);
     if(!_success(response)||response['data'] is! Map)_fail('NeedsVerification');
     final p=response['data'] as Map;_personal(p,requiredIdentity:true);

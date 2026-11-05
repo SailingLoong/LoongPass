@@ -61,10 +61,11 @@ Future<void> main()async{
  await lateOwner.begin();final waiting=lateOwner.poll();await Future<void>.delayed(Duration.zero);lateOwner.close();pending.waitToken!.complete();await waiting;
  check(lateOwner.uid==null&&pending.calls.length==2,'close during token wait never dispatches profile');
  await HttpOverrides.runZoned(()async{
-  var denied=false;try{WorkBuddyAccountFlow.inMemory(identityValidationOnly:true);}on WorkBuddyApiFailure catch(e){denied=!e.mayHaveBeenSent;}
-  check(denied&&clients==0,'unapproved real identity mode allocates no HTTP client');
-  denied=false;try{await WorkBuddyHttps.identityValidation().send(WorkBuddyRequest(Uri.https('www.workbuddy.cn','/v2/plugin/auth/state'),'POST',{}),()=>true);}on WorkBuddyApiFailure catch(e){denied=!e.mayHaveBeenSent;}
-  check(denied&&clients==0,'direct real identity transport cannot bypass pending approval');
+  final real=WorkBuddyAccountFlow.inMemory(identityValidationOnly:true);
+  check(clients==0,'constructing enabled identity owner allocates no HTTP client');
+  real.close();check(await real.begin()==null&&clients==0,'closed real identity owner cannot start authorization');
+  var denied=false;try{await WorkBuddyHttps.identityValidation().send(WorkBuddyRequest(Uri.https('www.workbuddy.cn','/v2/billing/meter/daily-checkin'),'POST',{}),()=>true);}on WorkBuddyApiFailure catch(e){denied=!e.mayHaveBeenSent;}
+  check(denied&&clients==0,'real identity transport rejects check-in before creating an HTTP client');
  },createHttpClient:(_){clients++;throw StateError('network forbidden');});
  print('RESULT $checks identity checks');
 }

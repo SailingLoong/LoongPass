@@ -1,5 +1,5 @@
-// Session-only roster. Existing flows own authentication and claims; the same
-// noncredential journal remains the only persistence. No credential/account DB.
+// Account roster. Flows own authentication and claims; the injected store owns
+// saved authorization, and the independent journal owns check-in attempts.
 import 'dart:async';
 import 'dart:convert';
 import 'workbuddy_account_flow.dart';
@@ -33,12 +33,14 @@ class WorkBuddyAccounts {
   /// factory; synthetic tests inject existing flows with fake exchanges/stores.
   final FutureOr<WorkBuddyAccountFlow> Function() create;
   final void Function()? onChanged;
+  final void Function(String id)? onAccountReady;
   final _sessions=<String,WorkBuddyAccountSession>{};
   final _identities=<String,String>{};
-  bool _closed=false,_claiming=false;
+  bool _closed=false,_claiming=false,_restoring=false;
   int _sequence=0,_epoch=0;
   String? _selected,_message;
-  WorkBuddyAccounts({required this.create,this.onChanged});
+  WorkBuddyAccounts({required this.create,this.onChanged,this.onAccountReady});
+  void _ready(String id){try{onAccountReady?.call(id);}catch(_){/* Admission remains valid if a consumer fails. */}}
   List<WorkBuddyAccountSession> get sessions=>List.unmodifiable(_sessions.values);
   List<WorkBuddyAccountSession> get accounts=>List.unmodifiable(_sessions.values.where((s)=>s.uid!=null));
   List<WorkBuddyAccountSession> get pending=>List.unmodifiable(_sessions.values.where((s)=>s.loginPending));
@@ -48,15 +50,22 @@ class WorkBuddyAccounts {
   bool _owns(WorkBuddyAccountSession slot)=>!_closed&&identical(_sessions[slot.id],slot);
   String _key(WorkBuddyAccountSession slot)=>jsonEncode([slot._flow.domain,slot._flow.uid]);
 
-  Future<String?> restoreSingle(WorkBuddyVault vault,Future<List<String>> Function() savedKeys)async{
-    if(_closed||_sessions.isNotEmpty)return null;
+  Future<int> restoreSaved(WorkBuddyVault vault,Future<List<String>> Function() savedKeys)async{
+    if(_closed||_restoring)return 0;
+    _restoring=true;
     try{
-      final keys=await savedKeys();if(_closed||_sessions.isNotEmpty)return null;
-      if(keys.length!=1){_message=keys.isEmpty?'尚无可恢复的账号。':'存在多个保存记录，本次单账号验收不自动读取或选择。';return null;}
-      final restored=await restore(vault,keys.single);
-      if(restored==null&&!_closed)_message='保存的授权未能通过身份核验，未签到；可重新授权同一账号。';
+      final keys=await savedKeys();if(_closed)return 0;
+      if(keys.isEmpty){_message='尚无可恢复的账号。';return 0;}
+      var restored=0,failed=0;
+      for(final key in keys){
+        if(_closed)break;
+        if(_sessions.values.any((s)=>identical(s._vault,vault)&&s._vaultKey==key))continue;
+        if(await restore(vault,key)!=null){restored++;}else{failed++;}
+      }
+      if(!_closed)_message=failed==0?null:'$failed 个保存账号未能通过身份核验；其余账号可继续使用。';
       return restored;
-    }catch(_){if(!_closed)_message='保存记录未能安全读取；未恢复账号或签到。';return null;}
+    }catch(_){if(!_closed)_message='保存记录未能读取；已有账号保持不变。';return 0;}
+    finally{_restoring=false;}
   }
   Future<String?> restore(WorkBuddyVault vault,String key)async{
     if(_closed||_sessions.values.any((s)=>identical(s._vault,vault)&&s._vaultKey==key))return null;
@@ -74,7 +83,7 @@ class WorkBuddyAccounts {
       if(lease==null||!flow.attachRestoredLease(lease)){_retire(owner);return null;}
       final identity=_key(owner),existing=_identities[_key(owner)];
       if(existing!=null&&_sessions[existing]?.uid!=null){_retire(owner);_selected=existing;return null;}
-      owner._verified=true;_identities[identity]=owner.id;_selected=owner.id;return owner.id;
+      owner._verified=true;_identities[identity]=owner.id;_selected=owner.id;_message=null;_ready(owner.id);return owner.id;
     }catch(_){if(slot!=null&&_owns(slot))_retire(slot);return null;}
   }
   Future<void> revokeStored(String id)async{
@@ -109,7 +118,7 @@ class WorkBuddyAccounts {
   }
   /// Follow the current grant after its official authorization page opens.
   /// This owner controls polling, persistence and cancellation together.
-  void followAuthorization(String id,{WorkBuddyVault? vault,Future<List<String>> Function()? savedKeys}){
+  void followAuthorization(String id,{WorkBuddyVault? vault}){
     final slot=_sessions[id];
     if(slot==null||!_owns(slot)||!slot.loginPending||slot._followingAuthorization)return;
     slot._followingAuthorization=true;
@@ -118,7 +127,7 @@ class WorkBuddyAccounts {
       if(!_owns(slot)||slot._verified||!slot.loginPending)return;
       try{
         if(vault==null){await poll(id);}
-        else{await pollAndSave(id,vault,savedKeys:savedKeys);}
+        else{await pollAndSave(id,vault);}
       }catch(_){
         if(_owns(slot))_message='授权结果或账号保存未能确认，请检查本次授权记录。';
       }finally{
@@ -132,7 +141,7 @@ class WorkBuddyAccounts {
   }
   /// Same existing authorization flow; persistence is explicit and injected.
   /// Only admit after profile identity and safe save both succeed.
-  Future<String?> pollAndSave(String id,WorkBuddyVault vault,{Future<List<String>> Function()? savedKeys})async{
+  Future<String?> pollAndSave(String id,WorkBuddyVault vault)async{
     final slot=_sessions[id];if(slot==null||!_owns(slot)||slot._verified||slot._saving)return null;
     slot._saving=true;String? savedKey;
     try{
@@ -140,12 +149,14 @@ class WorkBuddyAccounts {
       final uid=slot._flow.uid,domain=slot._flow.domain;
       if(uid==null||domain==null){if(!slot._flow.loginPending&&!slot._flow.busy){_retire(slot);_message='授权未完成或已过期，请重新添加。';}return null;}
       final existing=_identities[_key(slot)];
-      if(existing!=null&&existing!=id){_retire(slot);_selected=existing;return null;}
-      final key=WorkBuddyVault.accountKey(domain,uid);
-      if(savedKeys!=null){
-        final keys=await savedKeys();if(!_owns(slot))return null;
-        if(keys.length>1||keys.any((k)=>k!=key)){_retire(slot);_message='本机已有不同账号的保存记录，本次单账号流程不自动覆盖或新增其他账号。';return null;}
+      if(existing!=null&&existing!=id){
+        final previous=_sessions[existing];
+        if(previous!=null&&previous._flow.authorized){
+          _retire(slot);_selected=existing;_message='该账号已保存，已选中现有账号。';return null;
+        }
+        if(previous!=null)_retire(previous);
       }
+      final key=WorkBuddyVault.accountKey(domain,uid);
       if(!await slot._flow.saveVerified(vault,key,admission:()=>_owns(slot))){if(_owns(slot))_retire(slot);return null;}
       savedKey=key;
       final bound=await slot._flow.bindSaved(vault,key,admission:()=>_owns(slot));
@@ -154,7 +165,8 @@ class WorkBuddyAccounts {
       }
       slot._vault=vault;slot._vaultKey=key;slot._verified=true;
       _identities[_key(slot)]=id;_selected=id;_message=null;return id;
-    }catch(_){if(_owns(slot))_retire(slot);_message='账号保存或清理结果未核实；账号未开放，不能据此确认已撤销保存。';if(savedKey!=null)await vault.revoke(savedKey);return null;}finally{slot._saving=false;}
+    }catch(_){if(_owns(slot))_retire(slot);_message='账号保存或清理结果未核实；账号未开放，不能据此确认已撤销保存。';if(savedKey!=null)await vault.revoke(savedKey);return null;}
+    finally{slot._saving=false;if(_owns(slot)&&slot._verified)_ready(id);}
   }
   Future<void> poll(String id)async{
     final slot=_sessions[id];

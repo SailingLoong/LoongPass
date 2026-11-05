@@ -1,58 +1,7 @@
-# Build 12: minimal WorkBuddy add/save/restore wiring
+# WorkBuddy 保存与恢复流程
 
-Reference read-only: old LoongPort loongport-pr634 WorkBuddyAccounts.tsx,
-lib/api/workbuddy.ts and src-tauri/src/workbuddy/authorization.rs. Reuse the
-existing Add -> AuthState -> official page -> AuthToken -> strict Profile -> save
--> roster sequence. No inference authorization, models, proxy pool, old
-SecretSession/vault/sync framework or native-client account import is added.
-Old 10-minute authorization timeout is not copied; current official-contract
-5-minute timeout, pending behavior and strict personal context remain unchanged.
-Only the already pinned domestic WorkBuddy/CodeBuddy domains are supported.
+正常入口使用同一条 AuthState → 官方网页 → AuthToken → Profile → 保存 → 绑定 → 账号列表流程。`WorkBuddyAccounts.pollAndSave` 只有在身份和保存绑定完成后才发布账号就绪事件；页面不把待授权会话当成账号。
 
-The existing begin/poll implementation remains the only login flow. Explicit,
-injected pollAndSave waits for verified UID/domain, derives an opaque per-account
-key using the existing sourceSha256 helper, saves through the existing vault,
-binds that saved record's lease, then admits into the existing roster. A second
-add creates a separate identity. Duplicates preserve the existing owner. Unknown
-expiry refuses persistence. No token getter, second login protocol or account DB.
+`restoreSaved` 按保存记录逐一恢复账号；某个账号失败不影响其余账号，复用 Profile 接口核验 UID、域名及授权。已知到期时间失效、身份不匹配或记录处于撤销/轮换状态时，不开放签到。已显示账号的授权失效后保留身份和重新授权提示，不让账号静默消失。没有到期字段的授权也必须重新核验身份，不能凭本地 UID 恢复。
 
-Fresh roster restoration reads the same store and reuses the existing profile
-GET contract with Bearer and X-Domain, no placeholder user-id header. Identity,
-endpoint, token, refresh-token and expiry bindings are checked. Expired, revoked,
-pending rotation, mismatched profile and cancelled owners are never admitted.
-Every restored/saved API send performs a durable admission check and then the
-existing synchronous lifecycle checks. Local roster revocation retires the flow
-before awaiting its credential-free tombstone. Unknown claim-intent history is
-preserved across generations and never reset by restoration.
-
-A Security commit followed by readback failure is not assumed rolled back.
-The coordinator blocks that key and attempts to tombstone only its exact initial
-record. Failed readback/cleanup remains explicitly unresolved; no future-process
-cleanup guarantee is made during a storage outage. A late successful save is
-revoked when its action was cancelled. Automatic opt-in is never restored.
-
-The native vault requires a lifetime owner.lock flock for its dedicated private
-Keychain directory; that root must match the Keychain path. It checks canonical
-root identity, ownership, mode, ACL absence/emptiness, lock inode/type/mode/link
-count, and uses O_NOFOLLOW/O_CLOEXEC. Cooperating second processes are rejected;
-normal exit and OS crash release are tested. The file is never unlinked while
-owned. This is not protection against a hostile process under the same UID, nor
-an atomic transaction with the remote server. Another independent Dart coordinator
-revoking during HTTP setup does not guarantee immediate cancellation of that
-already-admitted request. The supported roster revoke path closes its flow first.
-
-Production remains closed: WorkBuddy UI/API and persistent-access gates false,
-no default/login Keychain target, no real credentials or live account calls.
-The public UI keeps its existing memory-login path; injected persistent wiring
-is not activated for users. The initial two-account webpage acceptance can be
-memory-only, without waiting for refresh/long-term access. No verified live URL
-or real authorization opportunity was created or consumed in these checks.
-
-Before the user can operate a real official page: action-time approval for the
-specific real authorization/token receipt and profile requests, a narrow live
-contract/URL validation, then acceptance of the gated login UI for two accounts.
-No passwords/tokens in chat or official-client account operations are needed.
-Persistent login additionally needs an approved production Keychain destination
-and persistent credential scope/recovery review. Actual check-in needs its own
-action-time confirmation. Refresh/revocation APIs remain unimplemented and
-unverified; local tombstones do not claim website grant revocation.
+存储与进程锁的权威契约见 [WORKBUDDY-VAULT.md](WORKBUDDY-VAULT.md)，恢复后的调度见 [WORKBUDDY-AUTOMATIC.md](WORKBUDDY-AUTOMATIC.md)，实际验收见 [SINGLE-ACCOUNT-STATUS.md](SINGLE-ACCOUNT-STATUS.md)。本地结束会话保留授权文件和签到日志，不代表官网撤权。

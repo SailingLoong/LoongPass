@@ -1,57 +1,27 @@
-# Single-account source preparation: final build still pending
+# WorkBuddy 授权、保存与自动签到验收
 
-Main chain only: existing Add -> official authorization/Profile -> save to own
-Keychain service -> restore into existing roster/flow -> existing LoongPass claim
-core and durable intent journal. Normal main and existing page only; no client
-switching, refresh service, new account database or automatic feature. The
-single-account page does not construct an automatic controller.
+当前目标：先修复 beta 18 的单账号授权展示，再按用户要求扩展为多账号保存、启动恢复和应用内自动签到。存储见 [WORKBUDDY-VAULT.md](WORKBUDDY-VAULT.md)，调度见 [WORKBUDDY-AUTOMATIC.md](WORKBUDDY-AUTOMATIC.md)。
 
-Implemented in this independent copy:
-- existing pollAndSave is invoked by the normal page; restoreSingle discovers
-  only own-service metadata and refuses ambiguous saved accounts;
-- own service com.sailingloong.loongpass.workbuddy, Generic Password,
-  non-synchronizing, default Keychain selected lazily only upon native vault call;
-  the default resolver was never invoked in tests;
-- existing lifetime owner flock/private-directory checks reused for cooperating
-  app processes; synthetic physical-root binding preserved separately;
-- saved SingleAccount refuses a second stored identity before saving; ordinary
-  memory removal leaves saved grant/journal, which is disclosed in the dialog;
-- fresh official reauthorization can CAS-replace only the same active identity;
-  revoked/rotationPending entries are not revived, claim history is untouched;
-- expired/failed authorization retires its slot, avoiding a permanently blocked Add;
-- restore failure is explicit; claim has its own action confirmation dialog;
-- existing journal/Core enforce prior intent/no repeat; no real claim attempted.
+## 已定位并修正
 
-New verification only: 12 single-chain checks, 12 dedicated synthetic-Keychain
-checks, final analyzer No issues found, final read-only review found no serious
-new issues. Fake server and fake tokens only; fixture Keychains deleted. No
-repetition of the old 331-check suite, Flutter/XCTest suites or real-account tests.
+- 正常入口原来没有持续读取官方授权结果；账号控制器现在在打开授权页后继续轮询当前授权。
+- `expiresIn` 生成的本地时区、微秒精度时间与保存后 UTC 毫秒时间不相等，导致已验证授权在绑定保存记录时被拒绝。现统一为 UTC 毫秒。
+- 没有到期字段的已验证授权被拒绝保存。现在明确保留未知到期时间，恢复仍必须向官网核验身份。
+- 暂时无法读取 Profile 时原来清除了已取得的令牌；现在保留本次授权并继续读取。
+- 正常单账号入口未创建自动调度，且旧会话终身一次的限制阻止跨日签到。现在保存/恢复完成后启动调度，按既有签到日志判重。
 
-IMPORTANT BUILD LIMIT: the first release18 build and strict signature verification
-succeeded, then code review fixes changed source. That binary is SUPERSEDED and
-is not evidence that the final source has compiled. Latest instruction explicitly
-said do not repeat builds; no final rebuild was performed. Do not distribute or
-launch candidate/build/.../Release/LoongPass.app as the completed single-account
-version. Existing release17 remains preserved separately as identity-only.
+这些缺陷有源码和合成复现证据；尚不能据此断言 beta 18 中那次 session-4 的全部现场原因。
 
-This is a capable but NOT LAUNCHED preparation: Dart broad/persistence flags,
-native broad vault gate and native persistent capability are true, deliberately
-compiled/prepared for a reviewed handoff. They are not evidence of real action-time
-user consent. Actual default Keychain access, fresh token receipt/transmission,
-persistent saving, restore Profile call and check-in must stay behind their
-corresponding action-time confirmations. None occurred here. Final app sandbox,
-signing identity/ACL behavior, real expiry/Profile payload and real credit balance
-remain unaccepted. No promise of website grant revocation or forensic memory wipe.
+## 当前证据
 
-Repository read-only check: SailingLoong/LoongPass is private; connected user
-SailingLoong has admin/push metadata permission. main remains fcdb1a98a29337ca3a85c02a50571b34046838ac,
-pubspec 1.0.0-beta.1+1. Releases [] and git matching refs/tags [] as observed.
-Local newer sources are not on main; no push, tag, Release or attachment upload
-was performed. Active account permission is not a mutation-test of the connector's
-Release asset-upload capability. Current tool list has no Release-write tool.
+- Flutter 7 项界面测试通过，包含两个独立账号授权保存、自动签到、重建页面恢复，以及重启后不重复签到。
+- 自动调度 18 项合成检查通过，包含跨日继续、未知结果停止、取消和并发发送保护。
+- 原生文件存储合成检查通过：明文文件、0600 权限、版本比较写入、关闭重开和凭据移除。
+- beta 19 本地 Release 包编译成功，主程序、App.framework、Flutter 引擎均包含 arm64 与 x86_64，严格深度签名校验通过。
+- beta 19 在本机实际完成官方授权，显示服务端 UID 和域名，保存一个 active 记录；文件权限 0600。自动查询返回“今日已签到”。没有创建签到日志，没有证据表明本次发送过签到。
+- beta 20 本机实测两个独立账号显示并保存；第二个账号自动签到回执为 100 Credits，完整额度由 3000 增至 3100。非凭据日志记录发送意图、成功回执和已核实到账三条记录。
+- 退出并重新打开 beta 20 后，两个账号均自动恢复，重新核验身份并继续自动检查；日志仍为三条，没有重复发送。
+- beta 20 的签到成功后资格提示未同步刷新，源码现已修正并由界面测试覆盖；该显示修正尚未打入新的本机包。
+- Apple Silicon 实机验收完成。Intel 仅验证包内架构和签名，未做 Intel 设备运行验收。跨日继续已通过合成检查，真实跨日仍未验证。
 
-Remaining shortest steps: one necessary final-source build/signature check,
-then per-action confirmed ONE account authorization and persistence, quit/restart
-restore verification, separately confirmed existing LoongPass check-in and receipt
-corroboration. Only after that publish the reviewed exact source/artifact and
-matching version/tag; preserve private visibility unless user explicitly changes it.
+旧 beta 18 已有授权状态的只读恢复检查未取得可用令牌。复用保存的授权验证了升级与重启恢复。真实领取验证使用第二个符合条件的账号，经 LoongPass 完成，未使用官方客户端提前领取。

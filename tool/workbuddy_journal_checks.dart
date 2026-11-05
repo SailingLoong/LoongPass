@@ -100,7 +100,8 @@ Future<void> main(List<String> args) async {
   var pass = 0, fail = 0;
   Future<void> check(String name, Future<void> Function(Fixture) body) async {
     if (args.isNotEmpty && !name.contains(args.first)) return;
-    final root = await Directory.systemTemp.createTemp('workbuddy-journal-checks-');
+    final created = await Directory.systemTemp.createTemp('workbuddy-journal-checks-');
+    final root = Directory(await created.resolveSymbolicLinks());
     try {
       // This runtime creates synthetic temporary directories with 0755.
       // Tighten only our new disposable fixture, never any user directory.

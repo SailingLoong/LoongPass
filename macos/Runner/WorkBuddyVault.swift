@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import FlutterMacOS
 import Darwin
 
@@ -51,69 +50,101 @@ final class WorkBuddyVaultOwnership {
               pathInfo.st_mode & S_IFMT == S_IFREG,pathInfo.st_uid==geteuid(),
               pathInfo.st_mode & 0o7777==0o600,pathInfo.st_nlink==1 else{throw Failure.unavailable}
     }
+    func synchronize() throws { try check(); guard fsync(directory) == 0 else { throw Failure.unavailable } }
     func release(){if descriptor>=0{flock(descriptor,LOCK_UN);close(descriptor);descriptor = -1};if directory>=0{close(directory);directory = -1}}
     deinit{release()}
 }
 
-// No default/login Keychain is ever selected. Only explicit fixture injection
-// exists in this candidate; real persistent access remains separately disabled.
+// Plain JSON storage for the current single-account release.
 final class WorkBuddyVault {
     enum Failure: Error { case invalid, unavailable, corrupt }
     private static let lock = NSLock()
-    private let keychain: SecKeychain
-    private let service = "com.sailingloong.loongpass.workbuddy"
-    private let ownership:WorkBuddyVaultOwnership
-    init(syntheticKeychain:SecKeychain,ownership:WorkBuddyVaultOwnership)throws{
+    private let ownership: WorkBuddyVaultOwnership
+    private let file: URL
+
+    init(ownership: WorkBuddyVaultOwnership) throws {
         try ownership.check()
-        var length:UInt32=4096;var bytes=[CChar](repeating:0,count:4096)
-        guard SecKeychainGetPath(syntheticKeychain,&length,&bytes)==errSecSuccess,
-              URL(fileURLWithPath:String(cString:bytes)).deletingLastPathComponent().path==ownership.root.path else{throw Failure.invalid}
-        keychain=syntheticKeychain;self.ownership=ownership
+        self.ownership = ownership
+        file = ownership.root.appendingPathComponent("accounts.json")
     }
-    private init(approvedDefault:SecKeychain,ownership:WorkBuddyVaultOwnership)throws{
-        try ownership.check();keychain=approvedDefault;self.ownership=ownership
-    }
-    static func approvedDefault(ownership:WorkBuddyVaultOwnership)throws->WorkBuddyVault{
-        guard persistentAccessValidated else{throw Failure.unavailable}
-        try ownership.check()
-        var keychain:SecKeychain?
-        guard SecKeychainCopyDefault(&keychain)==errSecSuccess,let selected=keychain else{throw Failure.unavailable}
-        return try WorkBuddyVault(approvedDefault:selected,ownership:ownership)
-    }
-    func savedKeys()throws->[String]{
-        Self.lock.lock();defer{Self.lock.unlock()};try ownership.check()
-        let q:[String:Any]=[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:service,
-            kSecAttrSynchronizable as String:false,kSecMatchSearchList as String:[keychain],
-            kSecUseAuthenticationUI as String:kSecUseAuthenticationUIFail,
-            kSecMatchLimit as String:kSecMatchLimitAll,kSecReturnAttributes as String:true]
-        var output:CFTypeRef?
-        let status=try withoutInteraction{SecItemCopyMatching(q as CFDictionary,&output)}
-        if status==errSecItemNotFound{return []}
-        guard status==errSecSuccess,let rows=output as? [[String:Any]],rows.count<=16 else{throw Failure.unavailable}
-        let keys=try rows.map{row->String in
-            guard let key=row[kSecAttrAccount as String] as? String,key.utf8.count==64,key.utf8.allSatisfy({(48...57).contains($0)||(97...102).contains($0)}) else{throw Failure.corrupt};return key
+
+    private func validateKey(_ key: String) throws {
+        guard key.utf8.count == 64,
+              key.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
+            throw Failure.invalid
         }
-        guard Set(keys).count==keys.count else{throw Failure.corrupt};return keys.sorted()
     }
-    private func query(_ key: String) throws -> [String: Any] {
+
+    private func readRecords() throws -> [String: [String: Any]] {
         try ownership.check()
-        guard key.utf8.count == 64, key.utf8.allSatisfy({(48...57).contains($0)||(97...102).contains($0)}) else { throw Failure.invalid }
-        return [kSecClass as String:kSecClassGenericPassword,
-                kSecAttrService as String:service,kSecAttrAccount as String:key,
-                kSecAttrSynchronizable as String:false,
-                kSecMatchSearchList as String:[keychain],
-                kSecUseAuthenticationUI as String:kSecUseAuthenticationUIFail]
+        var info = stat()
+        guard lstat(file.path, &info) == 0 else {
+            if errno == ENOENT { return [:] }
+            throw Failure.unavailable
+        }
+        guard info.st_mode & S_IFMT == S_IFREG, info.st_uid == geteuid(),
+              info.st_mode & 0o7777 == 0o600, info.st_nlink == 1,
+              info.st_size <= 1_048_576 else { throw Failure.corrupt }
+        let data = try Data(contentsOf: file)
+        guard let records = try JSONSerialization.jsonObject(with: data) as? [String: [String: Any]],
+              records.count <= 16 else { throw Failure.corrupt }
+        for (key, value) in records {
+            try validateKey(key)
+            try validate(value)
+        }
+        return records
     }
-    private func readUnlocked(_ key: String) throws -> [String: Any]? {
-        var q = try query(key);q[kSecMatchLimit as String]=kSecMatchLimitOne;q[kSecReturnData as String]=true
-        var out: CFTypeRef?
-        let status=try withoutInteraction { SecItemCopyMatching(q as CFDictionary,&out) }
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess else { throw Failure.unavailable }
-        guard let data=out as? Data, data.count<=65536,
-              let row=try JSONSerialization.jsonObject(with:data) as? [String:Any] else { throw Failure.corrupt }
-        try validate(row);return row
+
+    func savedKeys() throws -> [String] {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        return try readRecords().keys.sorted()
     }
+
+    func read(_ key: String) throws -> [String: Any]? {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        try validateKey(key)
+        return try readRecords()[key]
+    }
+
+    func compareExchange(_ key: String, expected: Int?, value: [String: Any]) throws -> Bool {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
+        try validateKey(key)
+        try validate(value)
+        var records = try readRecords()
+        let old = records[key]
+        guard old.flatMap({ integer($0["revision"]) }) == expected else { return false }
+        guard integer(value["revision"]) == (expected ?? 0) + 1 else { throw Failure.invalid }
+        if let old = old {
+            guard old["state"] as? String != "revoked" else { return false }
+            if value["state"] as? String != "revoked" {
+                guard old["state"] as? String == "active" && ["active", "rotationPending"].contains(value["state"] as? String ?? "")
+                    || old["state"] as? String == "rotationPending" && value["state"] as? String == "active" else { throw Failure.invalid }
+                for name in ["uid", "domain", "endpoint"] {
+                    guard old[name] as? String == value[name] as? String else { throw Failure.invalid }
+                }
+            }
+        } else {
+            guard ["active", "revoked"].contains(value["state"] as? String ?? "") else { throw Failure.invalid }
+        }
+        records[key] = value
+        guard records.count <= 16 else { throw Failure.invalid }
+        let data = try JSONSerialization.data(withJSONObject: records, options: [.sortedKeys])
+        guard data.count <= 1_048_576 else { throw Failure.invalid }
+        try data.write(to: file, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        try handle.synchronize()
+        try ownership.synchronize()
+        guard let after = try readRecords()[key], NSDictionary(dictionary: after).isEqual(to: value) else {
+            throw Failure.unavailable
+        }
+        return true
+    }
+
     private func integer(_ value: Any?) -> Int? {
         guard let n=value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite,
               n.doubleValue>0, n.doubleValue<=Double(Int32.max),n.doubleValue.rounded()==n.doubleValue else{return nil}
@@ -129,50 +160,10 @@ final class WorkBuddyVault {
             if name=="refreshToken" && row[name]==nil{continue}
             guard let v=row[name] as? String,!v.isEmpty,v.utf8.count<=(name=="uid" ? 512:16384),v.utf8.allSatisfy({(33...126).contains($0)}) else{throw Failure.invalid}
         }
-        guard let expiry=row["expiresAt"] as? NSNumber,CFGetTypeID(expiry) != CFBooleanGetTypeID(),expiry.doubleValue>0,expiry.doubleValue<=8640000000000000,expiry.doubleValue.rounded()==expiry.doubleValue else{throw Failure.invalid}
-    }
-    func read(_ key:String) throws -> [String:Any]? {
-        Self.lock.lock();defer{Self.lock.unlock()};return try readUnlocked(key)
-    }
-    // CAS is protected by both the process lock and the lifetime owner flock.
-    // Production Keychain provisioning remains disabled.
-    func compareExchange(_ key:String,expected:Int?,value:[String:Any]) throws -> Bool {
-        Self.lock.lock();defer{Self.lock.unlock()}
-        try validate(value)
-        let old=try readUnlocked(key)
-        guard old.flatMap({integer($0["revision"])})==expected else{return false}
-        let revision=integer(value["revision"])!
-        guard revision==(expected ?? 0)+1 else{throw Failure.invalid}
-        if let old=old {
-            guard old["state"] as? String != "revoked" else{return false}
-            if value["state"] as? String != "revoked" {
-                guard old["state"] as? String == "active" && ["active","rotationPending"].contains(value["state"] as? String ?? "") || old["state"] as? String == "rotationPending" && value["state"] as? String == "active" else{throw Failure.invalid}
-                for name in ["uid","domain","endpoint"]{guard old[name] as? String == value[name] as? String else{throw Failure.invalid}}
-            }
-        }else{guard ["active","revoked"].contains(value["state"] as? String ?? "") else{throw Failure.invalid}}
-        let data=try JSONSerialization.data(withJSONObject:value,options:[.sortedKeys])
-        guard data.count<=65536 else{throw Failure.invalid}
-        let q=try query(key)
-        let status:OSStatus
-        if old==nil {
-            var add=q;add.removeValue(forKey:kSecMatchSearchList as String);add[kSecUseKeychain as String]=keychain;add[kSecValueData as String]=data
-            status=try withoutInteraction { SecItemAdd(add as CFDictionary,nil) }
-        }else{status=try withoutInteraction { SecItemUpdate(q as CFDictionary,[kSecValueData as String:data] as CFDictionary) }}
-        guard status==errSecSuccess else{throw Failure.unavailable}
-        guard let after=try readUnlocked(key),NSDictionary(dictionary:after).isEqual(to:value) else{throw Failure.unavailable}
-        return true
-    }
-    // Legacy Keychain ignores per-query UI flags in some locked cases. Reuse
-    // the existing process-wide bridge lock and restore the process UI flag.
-    // This never unlocks a Keychain or changes system security configuration.
-    private func withoutInteraction(_ operation:()->OSStatus) throws -> OSStatus {
-        try LoongPassKeychainLock.withLock {
-            var previous=DarwinBoolean(false)
-            guard SecKeychainGetUserInteractionAllowed(&previous)==errSecSuccess,
-                  SecKeychainSetUserInteractionAllowed(false)==errSecSuccess else{throw Failure.unavailable}
-            let status=operation()
-            guard SecKeychainSetUserInteractionAllowed(previous.boolValue)==errSecSuccess else{throw Failure.unavailable}
-            return status
+        if let rawExpiry = row["expiresAt"] {
+            guard let expiry = rawExpiry as? NSNumber, CFGetTypeID(expiry) != CFBooleanGetTypeID(),
+                  expiry.doubleValue > 0, expiry.doubleValue <= 8640000000000000,
+                  expiry.doubleValue.rounded() == expiry.doubleValue else { throw Failure.invalid }
         }
     }
     static let persistentAccessValidated=true

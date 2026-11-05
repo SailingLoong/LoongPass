@@ -74,7 +74,7 @@ class _AccountPage extends StatelessWidget {
         )),
         ManagedApp.qoder:identityValidationOnly?const SizedBox.shrink():_appPage('Qoder', const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [QoderCnPanel(), SizedBox(height: 24), QoderAccountsPanel()])),
         ManagedApp.minimax:identityValidationOnly?const SizedBox.shrink():_appPage('MiniMax', const MiniMaxAccountsPanel()),
-        ManagedApp.workbuddy: _appPage('WorkBuddy', WorkBuddyAccountsPanel(savedSingleAccount:true)),
+        ManagedApp.workbuddy: _appPage('WorkBuddy', WorkBuddyAccountsPanel(savedAccounts:true)),
       }),
     ),
   );

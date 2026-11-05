@@ -1,5 +1,5 @@
-// Memory-only, explicit per-account opt-in. Reuses the existing one-attempt
-// flow/core/journal. No credential persistence, renewal or OS background job.
+// In-process scheduling. The existing claim journal decides whether a daily
+// attempt may be sent. Credential restoration belongs to the account owner.
 import 'dart:async';
 import 'workbuddy_accounts.dart';
 import 'workbuddy_claim.dart';
@@ -38,12 +38,14 @@ class WorkBuddyAutomatic {
     _notify();return true;
   }
   void _start(){
-    if(_started||_closed)return;_started=true;
-    final epoch=++_timerEpoch;
+    if(_closed)return;
+    if(!_started){_started=true;_timerEpoch++;}
+    final epoch=_timerEpoch;
     void fire(){if(!_closed&&_timerEpoch==epoch)unawaited(tick());}
     // Same existing in-process cadence as MiniMax, never a daemon/login item.
+    _cancelStartup?.call();
     _cancelStartup=once(const Duration(seconds:30),fire);
-    _cancelPeriodic=periodic(const Duration(minutes:15),fire);
+    _cancelPeriodic??=periodic(const Duration(minutes:15),fire);
   }
   void _stopTimers(){
     _timerEpoch++;_cancelStartup?.call();_cancelPeriodic?.call();
@@ -64,11 +66,11 @@ class WorkBuddyAutomatic {
         try{
           final checking=accounts.refreshStatus(id,admission:()=>_current(id,revision));_notify();await checking;
           if(!_current(id,revision))continue;
-          if(account.status==WorkBuddyState.needsVerification||account.status==WorkBuddyState.alreadyClaimed){setEnabled(id,false);continue;}
+          if(account.status==WorkBuddyState.needsVerification){setEnabled(id,false);continue;}
           if(account.status!=WorkBuddyState.available||!account.canClaim||accounts.claimBusy)continue;
           final claiming=accounts.claim(id,admission:()=>_current(id,revision));_notify();await claiming;
-          // Existing flow deliberately permits only one attempt per authorization
-          // lifetime. Success and unknown alike end this opt-in, never reset it.
+          // Settled days remain scheduled for tomorrow. An unknown outcome or
+          // invalid authorization stops; the durable journal is never reset.
           if(_current(id,revision)&&!account.canClaim)setEnabled(id,false);
         }catch(_){
           // No error permits a POST retry. Existing core/journal retain intent.
