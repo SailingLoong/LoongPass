@@ -42,6 +42,8 @@ WorkBuddy 增加“切换 WorkBuddy 客户端”入口。账号模块复用已�
 
 新增原生回归真实启动隔离测试子进程，在意图落盘后以 SIGKILL 终止，再验证过期锁及日志恢复。还验证了主线程停顿期间后台续租、锁被替换后拒绝提交及保留新锁。原生桥接 Swift 类型检查通过，12 项相关 Qoder 界面测试通过。实际 WorkBuddy 退出与身份切换仍等待签名包的真机验收。
 
+修复提交 `26b2d9851a0aad983188013b4590dac8f37ce1a1` 已重新通过完整 CI 检查、Universal 构建、架构及签名校验。最新候选对应 [修复后的 CI 运行](https://github.com/SailingLoong/LoongPass/actions/runs/42102130353)。
+
 本机 Rust 宏动态库曾因 LINKEDIT 未对齐而被系统拒绝加载。Release profile 显式关闭 Rust 1.95 的该 stripping 后，双架构构建通过。对应上游记录为 [rust-lang/rust#157750](https://github.com/rust-lang/rust/issues/157750)。构建入口同时持有机器共享重型任务锁和项目构建锁。
 
 真实客户端切换尚未验证。当前 Mac 锁屏，需要用户解锁并确认新增的 WorkBuddy 授权目录访问及客户端切换操作。TRAE CN 首次持久导入和真实领取同样等待确认。beta 22 暂保留为开发候选，当前可下载的已发布版本为 beta 21。
