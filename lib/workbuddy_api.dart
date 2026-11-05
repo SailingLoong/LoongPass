@@ -179,7 +179,8 @@ class WorkBuddyApi {
         final value=d[field];
         if(value is! num||!value.isFinite||value<=0||value>(field=='expiresAt'?8640000000000000:8640000000000))_fail('InvalidAuthorization');
         if(field=='expiresIn'&&value*1000>8640000000000000-now().millisecondsSinceEpoch)_fail('InvalidAuthorization');
-        final deadline=field=='expiresAt'?DateTime.fromMillisecondsSinceEpoch(value.toInt(),isUtc:true):now().add(Duration(milliseconds:(value*1000).toInt()));
+        final deadline=DateTime.fromMillisecondsSinceEpoch(
+          field=='expiresAt'?value.toInt():now().millisecondsSinceEpoch+(value*1000).toInt(),isUtc:true);
         if(!now().isBefore(deadline))_fail('ExpiredAuthorization');
         if(tokenDeadline==null||deadline.isBefore(tokenDeadline))tokenDeadline=deadline;
       }

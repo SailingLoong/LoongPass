@@ -1,13 +1,59 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:loongpass/workbuddy_accounts_panel.dart';
-import 'package:loongpass/workbuddy_account_flow.dart';
+import '../lib/workbuddy_accounts_panel.dart';
+import '../lib/workbuddy_account_flow.dart';
 import '../tool/workbuddy_flow_checks.dart' as synthetic;
+import '../tool/workbuddy_single_checks.dart' as single;
 
 // Written for Mac/Flutter validation. Not executed in this cloud task because
 // prior Flutter test operations were denied; no alternate route was attempted.
 void main() {
+  testWidgets('official authorization completes and saves without another button press', (tester) async {
+    final server = single.Server('synthetic-single-account');
+    final saved = single.VaultStore();
+    final nativeCalls = <String>[];
+    const channel = MethodChannel('com.sailingloong.loongpass/files');
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      nativeCalls.add(call.method);
+      final args = Map<String, Object?>.from(call.arguments as Map);
+      switch (call.method) {
+        case 'listWorkBuddyVaultKeys':
+          return saved.rows.keys.toList();
+        case 'readWorkBuddyVault':
+          return saved.read(args['key'] as String);
+        case 'compareExchangeWorkBuddyVault':
+          return saved.compareExchange(args['key'] as String, args['expected'] as int?,
+            Map<String, Object?>.from(args['value'] as Map));
+        default:
+          throw StateError('Unexpected native operation');
+      }
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: WorkBuddyAccountsPanel(
+        savedSingleAccount: true,
+        create: () => WorkBuddyAccountFlow.inMemory(exchange: server, store: synthetic.MemoryStore()),
+        openAuthorization: (_) async {},
+      ),
+    ))));
+    await tester.tap(find.byKey(const Key('workbuddy-login')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('继续官方授权'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workbuddy-poll')), findsNothing);
+    expect(find.text('synthetic-single-account'), findsOneWidget,
+      reason: '${nativeCalls.join(', ')}\nrows ${saved.rows.length}\nrequests ${server.requests.map((r) => r.uri.path).join(', ')}\n'
+        '${tester.widgetList<Text>(find.byType(Text)).map((text) => text.data).join('\n')}');
+    expect(saved.rows, hasLength(1));
+    expect(server.posts, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('late async owner is retired after page disposal without authorization traffic', (tester) async {
     final pending=Completer<WorkBuddyAccountFlow>();
     final exchange=synthetic.SyntheticExchange();
@@ -42,8 +88,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: WorkBuddyAccountsPanel())));
     final login = tester.widget<FilledButton>(find.byKey(const Key('workbuddy-login')));
     expect(login.onPressed, isNull);
-    expect(find.textContaining('Mac 原生验收未完成'), findsOneWidget);
-    expect(find.textContaining('不切换 WorkBuddy 桌面账号'), findsOneWidget);
+    expect(find.textContaining('真实授权、保存恢复及签到仍等待'), findsOneWidget);
   });
 
   testWidgets('render and cancelled authorization create no owner or browser', (tester) async {
@@ -75,10 +120,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('继续官方授权'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('workbuddy-poll')));
-    await tester.pumpAndSettle();
     expect(find.text('synthetic-user'), findsOneWidget);
     await tester.tap(find.byKey(const Key('workbuddy-claim')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('核对并签到一次'));
     await tester.pumpAndSettle();
     expect(find.textContaining('本次结果未知'), findsOneWidget);
     expect(tester.widget<OutlinedButton>(find.byKey(const Key('workbuddy-claim'))).onPressed, isNull);

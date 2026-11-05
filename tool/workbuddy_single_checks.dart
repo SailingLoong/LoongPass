@@ -2,6 +2,8 @@
 // storage. No real credentials, native default Keychain or network.
 import '../lib/workbuddy_api.dart';
 import '../lib/workbuddy_vault.dart';
+import '../lib/workbuddy_accounts.dart';
+import '../lib/workbuddy_account_flow.dart';
 import 'workbuddy_multi_checks.dart' as old;
 class VaultStore implements WorkBuddyVaultStore {
  final rows=<String,Map<String,Object?>>{};
@@ -20,6 +22,16 @@ class Server extends old.Server {
 }
 Future<void> main()async{
  int checks=0;void check(bool ok,String name){if(!ok)throw StateError(name);checks++;print('PASS $name');}
+ final preciseNow=DateTime(2026,11,5,12,0,0,0,123);
+ final preciseStore=VaultStore();
+ final preciseVault=WorkBuddyVault(preciseStore,now:()=>preciseNow);
+ final preciseServer=Server('precise-expiry');
+ final preciseAccounts=WorkBuddyAccounts(create:()=>WorkBuddyAccountFlow.inMemory(
+  exchange:preciseServer,store:old.Memory(),now:()=>preciseNow));
+ final preciseGrant=(await preciseAccounts.beginAuthorization())!;
+ check(await preciseAccounts.pollAndSave(preciseGrant.sessionId,preciseVault)!=null,
+  'real-clock local timezone and microseconds survive save and lease binding');
+ preciseAccounts.close();preciseVault.close();
  final server=Server('single'),rig=old.Rig()..queue.add(server);final store=VaultStore();final vault=WorkBuddyVault(store,now:()=>DateTime.utc(2026,11,5,4));
  final first=rig.roster();final grant=(await first.beginAuthorization())!;
  check(await first.pollAndSave(grant.sessionId,vault)!=null&&store.rows.length==1,'existing official flow saves one verified identity before admission');

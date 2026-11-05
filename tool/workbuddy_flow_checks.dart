@@ -23,7 +23,7 @@ class MemoryStore implements WorkBuddyAttemptStore {
 
 class SyntheticExchange implements WorkBuddyExchange {
   int requests = 0, posts = 0;
-  bool pending = false, loseReceipt = false;
+  bool pending = false, loseReceipt = false, failProfile = false;
   Completer<void>? waitState, waitToken, waitClaim;
   void Function()? afterClaim;
   @override Future<Map<String, Object?>> send(
@@ -42,6 +42,7 @@ class SyntheticExchange implements WorkBuddyExchange {
         'accessToken': 'synthetic-secret', 'domain': 'www.workbuddy.cn'}};
     }
     if (path.endsWith('/plugin/account')) {
+      if (failProfile) throw const WorkBuddyApiFailure('OutcomeUnknown');
       return {'code': 0, 'data': {'uid': 'synthetic-user', 'type':'personal',
         'domain': 'www.workbuddy.cn'}};
     }
@@ -106,6 +107,19 @@ Future<void> main() async {
     check(f.busy, 'begin marks busy synchronously');
     check(await f.begin() == null && e.requests == 1, 'duplicate begin ignored');
     e.waitState!.complete(); await first;
+  });
+  await test('temporary profile failure retains the received grant for retry', () async {
+    final e = SyntheticExchange()..failProfile = true;
+    final f = owner(e, MemoryStore());
+    await f.begin();
+    await f.poll();
+    check(f.loginPending && f.uid == null, 'received grant must remain pending');
+    e.failProfile = false;
+    await f.poll();
+    check(f.uid == 'synthetic-user' && e.requests == 4,
+      'retry verifies the retained token without another token request');
+    check(e.posts == 0, 'authorization retry cannot send check-in');
+    f.close();
   });
   await test('cancel during state request discards late authorization', () async {
     final e = SyntheticExchange()..waitState = Completer<void>();

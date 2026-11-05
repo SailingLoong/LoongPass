@@ -207,8 +207,12 @@ class WorkBuddyAccountFlow {
           isCurrent: isCurrent);
       }
       _message = '已核实授权账号，仅保留在本次内存中；未签到，未切换桌面账号。';
-    } catch (_) {
+    } catch (error) {
       if (_same(epoch)) {
+        if (error is WorkBuddyApiFailure && error.code == 'OutcomeUnknown') {
+          _message = '暂未能读取官网授权结果或账号资料，将继续核验本次授权。';
+          return;
+        }
         _pending = false;
         _api.cancel();
         _message = '授权未完成或已过期，未保存账号；请重新发起授权。';

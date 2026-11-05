@@ -10,6 +10,8 @@ class WorkBuddyAccountSession {
   final String id;
   final WorkBuddyAccountFlow _flow;
   bool _verified=false,_saving=false;
+  bool _followingAuthorization=false;
+  Timer? _authorizationTimer;
   WorkBuddyVault? _vault;
   String? _vaultKey;
   WorkBuddyAccountSession._(this.id,this._flow);
@@ -30,12 +32,13 @@ class WorkBuddyAccounts {
   /// Explicit factory only: production callers use the existing guarded native
   /// factory; synthetic tests inject existing flows with fake exchanges/stores.
   final FutureOr<WorkBuddyAccountFlow> Function() create;
+  final void Function()? onChanged;
   final _sessions=<String,WorkBuddyAccountSession>{};
   final _identities=<String,String>{};
   bool _closed=false,_claiming=false;
   int _sequence=0,_epoch=0;
   String? _selected,_message;
-  WorkBuddyAccounts({required this.create});
+  WorkBuddyAccounts({required this.create,this.onChanged});
   List<WorkBuddyAccountSession> get sessions=>List.unmodifiable(_sessions.values);
   List<WorkBuddyAccountSession> get accounts=>List.unmodifiable(_sessions.values.where((s)=>s.uid!=null));
   List<WorkBuddyAccountSession> get pending=>List.unmodifiable(_sessions.values.where((s)=>s.loginPending));
@@ -103,6 +106,29 @@ class WorkBuddyAccounts {
       if(!_closed)_message='授权会话未能创建；已有账号与领取记录未改变。';
       return null;
     }
+  }
+  /// Follow the current grant after its official authorization page opens.
+  /// This owner controls polling, persistence and cancellation together.
+  void followAuthorization(String id,{WorkBuddyVault? vault,Future<List<String>> Function()? savedKeys}){
+    final slot=_sessions[id];
+    if(slot==null||!_owns(slot)||!slot.loginPending||slot._followingAuthorization)return;
+    slot._followingAuthorization=true;
+    Future<void> check()async{
+      slot._authorizationTimer=null;
+      if(!_owns(slot)||slot._verified||!slot.loginPending)return;
+      try{
+        if(vault==null){await poll(id);}
+        else{await pollAndSave(id,vault,savedKeys:savedKeys);}
+      }catch(_){
+        if(_owns(slot))_message='授权结果或账号保存未能确认，请检查本次授权记录。';
+      }finally{
+        if(!_closed){try{onChanged?.call();}catch(_){/* Rendering does not own authorization. */}}
+        if(_owns(slot)&&!slot._verified&&slot.loginPending){
+          slot._authorizationTimer=Timer(const Duration(seconds:2),()=>unawaited(check()));
+        }else{slot._followingAuthorization=false;}
+      }
+    }
+    unawaited(check());
   }
   /// Same existing authorization flow; persistence is explicit and injected.
   /// Only admit after profile identity and safe save both succeed.
@@ -177,6 +203,8 @@ class WorkBuddyAccounts {
     _retire(slot);_message='已移除本次内存账号；领取记录保留，未知结果不会自动补发。';
   }
   void _retire(WorkBuddyAccountSession slot){
+    slot._authorizationTimer?.cancel();
+    slot._authorizationTimer=null;
     _sessions.remove(slot.id);
     _identities.removeWhere((_,id)=>id==slot.id);
     slot._flow.close();
@@ -187,7 +215,7 @@ class WorkBuddyAccounts {
   void close(){
     if(_closed)return;
     _closed=true;_epoch++;
-    for(final slot in _sessions.values){slot._flow.close();}
+    for(final slot in _sessions.values){slot._authorizationTimer?.cancel();slot._flow.close();}
     _sessions.clear();_identities.clear();_selected=null;_message=null;
   }
 }

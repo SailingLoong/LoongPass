@@ -33,7 +33,8 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
     :(widget.identityValidationOnly?workBuddyMemoryIdentityApproved:workBuddyNativeAdapterValidated)&&defaultTargetPlatform==TargetPlatform.macOS);
   @override void initState(){
     super.initState();
-    _accounts=WorkBuddyAccounts(create:widget.create??(widget.identityValidationOnly?createWorkBuddyIdentityOwner:createWorkBuddyMemoryOwner));
+    _accounts=WorkBuddyAccounts(create:widget.create??(widget.identityValidationOnly?createWorkBuddyIdentityOwner:createWorkBuddyMemoryOwner),
+      onChanged:(){if(mounted)setState((){});});
     if(!widget.identityValidationOnly&&!widget.savedSingleAccount)_automatic=WorkBuddyAutomatic(_accounts,onChanged:(){if(mounted)setState((){});});
   }
   Future<void> _run(Future<void> Function() action)async{
@@ -54,7 +55,12 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
     if(allowed!=true||!mounted||!_available)return;
     final grant=await _accounts.beginAuthorization();
     if(!mounted||grant==null)return;
-    try{await (widget.openAuthorization??(widget.identityValidationOnly?openWorkBuddyIdentityAuthorization:openWorkBuddyAuthorization))(grant.url);}
+    try{
+      await (widget.openAuthorization??(widget.identityValidationOnly?openWorkBuddyIdentityAuthorization:openWorkBuddyAuthorization))(grant.url);
+      if(mounted)_accounts.followAuthorization(grant.sessionId,
+        vault:widget.savedSingleAccount?_vault:null,
+        savedKeys:widget.savedSingleAccount?_savedStore.savedKeys:null);
+    }
     catch(_){_accounts.cancelAuthorization(grant.sessionId);if(mounted)_message='未能确认授权页已打开；仅取消本次授权会话。';}
   });
   Future<void> _restore()=>_run(()async{
