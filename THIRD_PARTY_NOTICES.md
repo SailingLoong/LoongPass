@@ -1,5 +1,13 @@
 # Third-party notices
 
+## ZCode official authorization and activities
+
+The Dart authorization and activity adapters are adapted from SailingLoong/LoongPort
+`e32d3d1d25632450f82432b397bd95935513469d` (MIT), including activity parsing derived
+from pjpv/zcode-switch `f34225686dfef05d84c256a56f868719248f15ff`.
+Copyright (c) 2026 SailingLoong and zcode-switch contributors.
+See LICENSE, native/promotions/licenses/zcode-switch-MIT.txt and ZCODE-ACTIVITIES.md.
+
 ## WorkBuddy adapter and claim core
 
 The WorkBuddy modules retain their LoongPort and workbuddy-switch MIT notices.

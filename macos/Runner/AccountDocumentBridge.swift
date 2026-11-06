@@ -9,7 +9,7 @@ enum AccountDocumentBridge {
         do {
             guard let args = call.arguments as? [String: Any],
                 let scope = args["scope"] as? String,
-                ["MiniMax-cn", "MiniMax-global", "TRAE-cn"].contains(scope) else { throw AccountFile.Failure.unavailable }
+                AccountFile.documentScopes.contains(scope) else { throw AccountFile.Failure.unavailable }
             let file = try AccountFile.named(scope)
             let current = try file.read(name: "accounts.json") ?? ["revision": 0, "payload": "{}"]
             guard let revision = current["revision"] as? Int, revision >= 0,

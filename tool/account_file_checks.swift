@@ -3,6 +3,8 @@ import Darwin
 
 @main struct AccountFileChecks {
   static func main() throws {
+    precondition(AccountFile.documentScopes.contains("ZCode"))
+    precondition(!AccountFile.documentScopes.contains("../ZCode"))
     let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
       .appendingPathComponent("loongpass-file-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false,

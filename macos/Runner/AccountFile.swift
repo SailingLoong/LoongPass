@@ -9,9 +9,10 @@ final class AccountFile {
     private let lockFD: Int32
     private static var stores: [String: AccountFile] = [:]
     private static let registryLock = NSLock()
+    static let documentScopes: Set<String> = ["MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode"]
     static func named(_ name: String) throws -> AccountFile {
         registryLock.lock(); defer { registryLock.unlock() }
-        guard ["MiniMax-cn", "MiniMax-global", "Qoder-cn", "Qoder-global", "TRAE-cn", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }
+        guard documentScopes.contains(name) || ["Qoder-cn", "Qoder-global", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }
         if let existing = stores[name] { return existing }
         let support = try AppDataDirectory.applicationSupport()
         let app = support.appendingPathComponent("LoongPass", isDirectory: true)

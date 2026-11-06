@@ -58,6 +58,18 @@ class MainFlutterWindow: NSWindow {
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
+      case "zcodeRequestContext":
+        do { result(try ZcodeRequestContext.observe()) }
+        catch { result(FlutterError(code: "device_required", message: nil, details: nil)) }
+      case "openZcodeAuthorization":
+        do {
+          guard let args = call.arguments as? [String: Any], let raw = args["url"] as? String else {
+            throw ZcodeRequestContext.Failure.unavailable
+          }
+          let url = try ZcodeRequestContext.authorizationURL(raw)
+          guard NSWorkspace.shared.open(url) else { throw ZcodeRequestContext.Failure.unavailable }
+          result(nil)
+        } catch { result(FlutterError(code: "authorization_unavailable", message: nil, details: nil)) }
       case "chooseTraeAuthorization":
         guard !self.pickerOpen else { result(FlutterError(code: "ImportBusy", message: nil, details: nil)); return }
         self.pickerOpen = true

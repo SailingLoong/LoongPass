@@ -17,6 +17,7 @@ void main() {
   ) async {
     await desktop(tester);
     for (final app in [
+      'zcode',
       'qoderCn',
       'qoder',
       'minimaxCn',
@@ -63,6 +64,7 @@ void main() {
       }
       expect(find.text('开发预览'), findsOneWidget);
       for (final app in [
+        'zcode',
         'qoderCn',
         'qoder',
         'minimaxCn',

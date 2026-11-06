@@ -5,6 +5,7 @@ import 'qoder_device_accounts.dart';
 import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
 import 'trae_accounts_panel.dart';
+import 'zcode_accounts_panel.dart';
 
 void main() => runApp(const AccountToolApp());
 
@@ -74,6 +75,7 @@ class _AccountPage extends StatelessWidget {
         enabledApps: identityValidationOnly
             ? const {ManagedApp.workbuddy}
             : const {
+                ManagedApp.zcode,
                 ManagedApp.qoderCn,
                 ManagedApp.qoder,
                 ManagedApp.minimaxCn,
@@ -86,9 +88,7 @@ class _AccountPage extends StatelessWidget {
               ? const SizedBox.shrink()
               : _appPage(
                   'ZCode',
-                  const Text(
-                    'ZCode 凭证切换尚未接通。账号安全备份与恢复仅用于未来真实切换流程，不提供通用文件备份入口。',
-                  ),
+                  const ZcodeAccountsPanel(),
                 ),
           ManagedApp.qoderCn: identityValidationOnly
               ? const SizedBox.shrink()

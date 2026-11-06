@@ -27,6 +27,9 @@ for check in sorted((root / "tool").glob("workbuddy_*checks.dart")):
 
 if os.uname().sysname == "Darwin":
     with tempfile.TemporaryDirectory(prefix="loongpass-native-checks-") as scratch:
+        zcode_context = str(Path(scratch) / "zcode-context-checks")
+        run(["xcrun", "swiftc", "macos/Runner/ZcodeRequestContext.swift", "tool/zcode_request_context_checks.swift", "-o", zcode_context])
+        run([zcode_context])
         executable = str(Path(scratch) / "account-file-checks")
         run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift", "tool/account_file_checks.swift", "-o", executable])
         run([executable])
