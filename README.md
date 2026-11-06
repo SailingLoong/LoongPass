@@ -4,6 +4,8 @@
 
 macOS beta 提供 WorkBuddy、MiniMax CN、MiniMax、Qoder CN、Qoder、TRAE CN 和 ZCode 智谱 BigModel 的独立入口。国内外授权、账号与领取记录分别保存。自动检查仅在应用运行期间执行：启动约 30 秒后首次检查，ZCode 之后每 10 分钟检查活动，其他平台每 15 分钟检查。
 
+当前源码新增 LobsterAI（有道）和 Loomy（讯飞）的独立账号入口：LobsterAI 使用官网浏览器授权，Loomy 使用本人手机号及短信验证码。两者支持多账号保存、自动检查、余额及领取记录；Loomy 领取的是当天赠送池，不会在使用后反复补充。此新增源码尚未随已发布 beta 30 安装包交付，真实账号登录及到账验收范围见 [VALIDATION.md](VALIDATION.md)。
+
 ## 下载和使用
 
 从 [Releases](https://github.com/SailingLoong/LoongPass/releases) 下载 macOS Universal ZIP，解压后打开 LoongPass.app。支持 macOS 12 及以上，安装包同时包含 Apple Silicon 和 Intel 架构。

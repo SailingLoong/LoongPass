@@ -53,7 +53,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/LoongPass.app dist/LoongPass-macOS-universal.zip
           shasum -a 256 dist/LoongPass-macOS-universal.zip > dist/SHA256SUMS
           git rev-parse HEAD > dist/SOURCE_COMMIT
-          cp LICENSE THIRD_PARTY_NOTICES.md FLUTTER-TEMPLATE-IMAGES-LICENSE SPARKLE-LICENSE.txt dist/
+          cp LICENSE *-LICENSE *-LICENSE.txt THIRD_PARTY_NOTICES.md SOURCE-ORIGIN.md dist/
           ditto -c -k --keepParent THIRD_PARTY_RUST dist/THIRD_PARTY_RUST.zip
       - name: Sign and verify update feed
         if: startsWith(github.ref, 'refs/tags/')

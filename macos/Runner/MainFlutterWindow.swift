@@ -69,6 +69,21 @@ class MainFlutterWindow: NSWindow {
       case "zcodeRequestContext":
         do { result(try ZcodeRequestContext.observe()) }
         catch { result(FlutterError(code: "device_required", message: nil, details: nil)) }
+      case "openExternalHTTPS":
+        guard let args = call.arguments as? [String: Any], let raw = args["url"] as? String,
+              raw.utf8.count <= 16_384,
+              let parts = URLComponents(string: raw), let url = parts.url,
+              parts.scheme == "https", parts.host?.isEmpty == false,
+              parts.port == nil || parts.port == 443,
+              parts.user == nil, parts.password == nil,
+              !(parts.queryItems ?? []).contains(where: {
+                let key = $0.name.lowercased()
+                return key.contains("token") || key.contains("password") || key == "code_verifier"
+              }) else {
+          result(FlutterError(code: "InvalidAuthorizationURL", message: nil, details: nil)); return
+        }
+        if NSWorkspace.shared.open(url) { result(nil) }
+        else { result(FlutterError(code: "BrowserUnavailable", message: nil, details: nil)) }
       case "openZcodeAuthorization":
         do {
           guard let args = call.arguments as? [String: Any], let raw = args["url"] as? String else {

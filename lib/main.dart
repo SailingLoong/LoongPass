@@ -12,6 +12,12 @@ import 'workspace_accounts.dart';
 import 'workspace_tools.dart';
 import 'app_updates.dart';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'mac_account_document_store.dart';
+import 'rewards/reward_accounts.dart';
+import 'rewards/reward_accounts_panel.dart';
+import 'rewards/reward_providers.dart';
+import 'rewards/reward_transport.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -74,6 +80,16 @@ class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
   final _registry = AccountWorkspaceRegistry();
   final _workspace = GlobalKey<AppWorkspaceState>();
+  late final _rewardHttp = {
+    for (final provider in rewardProviders)
+      provider.id: RewardHttp(provider.hosts),
+  };
+  late final _rewards = RewardAccounts(
+    store: MacAccountDocumentStore('RewardChannels'),
+    providers: rewardProviders,
+    transportFor: (provider) => _rewardHttp[provider.id]!,
+  );
+  bool get _rewardsEnabled => defaultTargetPlatform == TargetPlatform.macOS;
   late final Map<ManagedApp, Widget> _pages = {
     for (final entry in <ManagedApp, Widget>{
       ManagedApp.zcode: const ZcodeAccountsPanel(),
@@ -87,6 +103,14 @@ class _AccountPageState extends State<_AccountPage> {
       ManagedApp.minimax: const MiniMaxAccountsPanel(region: 'global'),
       ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
       ManagedApp.traeCn: const TraeAccountsPanel(),
+      for (final provider in rewardProviders)
+        ManagedApp.values.firstWhere(
+          (app) => app.name == provider.id,
+        ): RewardAccountsPanel(
+          provider: provider,
+          owner: _rewards,
+          enabled: _rewardsEnabled,
+        ),
     }.entries)
       entry.key:
           widget.identityValidationOnly && entry.key != ManagedApp.workbuddy
@@ -106,11 +130,18 @@ class _AccountPageState extends State<_AccountPage> {
   void initState() {
     super.initState();
     if (!widget.identityValidationOnly) unawaited(_updates.load());
+    if (!widget.identityValidationOnly && _rewardsEnabled) {
+      unawaited(_rewards.start().catchError((_) {}));
+    }
   }
 
   @override
   void dispose() {
     _updates.dispose();
+    _rewards.dispose();
+    for (final http in _rewardHttp.values) {
+      http.close();
+    }
     _registry.dispose();
     super.dispose();
   }
