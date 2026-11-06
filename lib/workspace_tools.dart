@@ -1,77 +1,231 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'model_service.dart';
 import 'ui_preferences.dart';
 import 'app_updates.dart';
 
-class ModelServicesPage extends StatelessWidget {
-  const ModelServicesPage({super.key});
+class ModelServicesPage extends StatefulWidget {
+  const ModelServicesPage({super.key, this.service});
+  final ModelService? service;
   @override
-  Widget build(BuildContext context) => WorkspacePage(
-    title: '模型服务',
-    subtitle: '让其他软件使用已保存账号的模型能力。',
-    children: [
-      WorkspaceCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.route_outlined, size: 22),
-                SizedBox(width: 10),
-                Text(
-                  'Magpie',
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                ),
-                Spacer(),
-                Chip(label: Text('尚未接入')),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text('当前版本可以管理账号与积分，尚未提供供 Magpie 调用的模型接口。'),
-            const SizedBox(height: 8),
-            Text(
-              '保存账号不会自动开放模型调用，也不会自动消耗积分。',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.info_outline, size: 17),
-              label: const Text('查看 Magpie 接入说明'),
-              onPressed: () => showDialog<void>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Magpie 接入说明'),
-                  content: const SizedBox(
-                    width: 440,
-                    child: Text(
-                      '接入能力完成后，这里会提供实际的连接地址、访问密钥和已验证的模型列表，并允许设置平台与账号的使用顺序。\n\n当前没有可用的连接配置。账号列表中的余额和领取功能不代表这些账号已能供其他软件调用。',
-                    ),
+  State<ModelServicesPage> createState() => _ModelServicesPageState();
+}
+
+class _ModelServicesPageState extends State<ModelServicesPage> {
+  final _model = TextEditingController();
+  String? _providerId, _accountId, _message;
+  Future<List<ModelAccount>>? _accounts;
+  @override
+  void initState() {
+    super.initState();
+    widget.service?.onChanged = _changed;
+    _synchronise();
+  }
+
+  void _synchronise() {
+    final service = widget.service;
+    if (service == null) return;
+    if (_model.text.isEmpty && service.model != null)
+      _model.text = service.model!;
+    if (_providerId == null && service.providers.isNotEmpty) {
+      _providerId = service.providerId ?? service.providers.first.id;
+      _accountId = service.accountId;
+      _reloadAccounts();
+    }
+  }
+
+  void _changed() {
+    if (!mounted) return;
+    setState(_synchronise);
+  }
+
+  void _reloadAccounts() {
+    final providers = widget.service?.providers.where(
+      (p) => p.id == _providerId,
+    );
+    _accounts = providers == null || providers.isEmpty
+        ? Future.value([])
+        : providers.first.accounts();
+  }
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _message = null);
+    try {
+      await action();
+    } catch (_) {
+      if (mounted) setState(() => _message = '连接操作未完成，请核对账号、模型及本机端口。');
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.service?.onChanged = null;
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = widget.service;
+    final locked = service == null || service.busy || service.running;
+    return WorkspacePage(
+      title: '模型服务',
+      subtitle: '通过本机 Magpie，让其他软件使用选定账号的模型能力。',
+      children: [
+        WorkspaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.route_outlined, size: 22),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Magpie',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('关闭'),
+                  const Spacer(),
+                  Chip(
+                    label: Text(service?.running == true ? '本地服务运行中' : '尚未启动'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '选择一个来源、账号和官方模型 ID。Magpie 负责模型选择与客户端协议转换，LoongPass 使用该账号的授权发送请求。',
+              ),
+              const SizedBox(height: 12),
+              if (service == null)
+                const Text('本地模型服务当前在 macOS 提供。')
+              else ...[
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      service.providers.any((p) => p.id == _providerId)
+                      ? _providerId
+                      : null,
+                  decoration: const InputDecoration(labelText: '模型来源'),
+                  items: [
+                    for (final p in service.providers)
+                      DropdownMenuItem(value: p.id, child: Text(p.name)),
+                  ],
+                  onChanged: locked
+                      ? null
+                      : (value) => setState(() {
+                          _providerId = value;
+                          _accountId = null;
+                          _reloadAccounts();
+                        }),
+                ),
+                const SizedBox(height: 12),
+                FutureBuilder<List<ModelAccount>>(
+                  future: _accounts,
+                  builder: (context, snapshot) {
+                    final accounts = snapshot.data ?? const <ModelAccount>[];
+                    return DropdownButtonFormField<String>(
+                      key: ValueKey((
+                        _providerId,
+                        accounts.map((a) => a.id).join(','),
+                      )),
+                      initialValue: accounts.any((a) => a.id == _accountId)
+                          ? _accountId
+                          : null,
+                      decoration: const InputDecoration(labelText: '已保存账号'),
+                      items: [
+                        for (final a in accounts)
+                          DropdownMenuItem(value: a.id, child: Text(a.label)),
+                      ],
+                      onChanged: locked
+                          ? null
+                          : (value) => setState(() => _accountId = value),
+                    );
+                  },
+                ),
+                TextButton(
+                  onPressed: locked ? null : () => setState(_reloadAccounts),
+                  child: const Text('重新读取已保存账号'),
+                ),
+                TextField(
+                  controller: _model,
+                  enabled: !locked,
+                  decoration: const InputDecoration(
+                    labelText: '官方模型 ID',
+                    hintText: '使用官方客户端配置中的模型 ID',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton(
+                      onPressed:
+                          locked || _providerId == null || _accountId == null
+                          ? null
+                          : () => _run(() async {
+                              await service.configure(
+                                providerId: _providerId!,
+                                accountId: _accountId!,
+                                model: _model.text.trim(),
+                              );
+                              await service.start();
+                            }),
+                      child: const Text('保存并启动'),
+                    ),
+                    OutlinedButton(
+                      onPressed: !service.running || service.busy
+                          ? null
+                          : () => _run(service.stop),
+                      child: const Text('停止本地服务'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: !service.running
+                          ? null
+                          : () => _run(() async {
+                              await Clipboard.setData(
+                                ClipboardData(
+                                  text: service.importUri.toString(),
+                                ),
+                              );
+                              if (mounted)
+                                setState(
+                                  () => _message =
+                                      'Magpie 接入链接已复制，请在 Magpie 中导入。',
+                                );
+                            }),
+                      icon: const Icon(Icons.copy_outlined, size: 17),
+                      label: const Text('复制 Magpie 接入链接'),
                     ),
                   ],
                 ),
-              ),
-            ),
-          ],
+                if (service.endpoint != null) ...[
+                  const SizedBox(height: 12),
+                  SelectableText(service.endpoint.toString()),
+                ],
+                if (service.lastStatus != null)
+                  Text('最近一次上游响应 HTTP ${service.lastStatus}'),
+                if (service.error != null)
+                  Text(switch (service.error) {
+                    'port_unavailable' => '本地端口 3426 不可用，请检查占用后重新启动。',
+                    'save_failed' => '连接设置保存失败，请重新操作。停止服务后仍需确认设置已保存。',
+                    'invalid_settings' => '连接设置无法读取，服务未自动启动。',
+                    _ => '本地连接不可用，请核对配置后重试。',
+                  }),
+              ],
+              if (_message != null) ...[
+                const SizedBox(height: 10),
+                Text(_message!),
+              ],
+            ],
+          ),
         ),
-      ),
-      const WorkspaceCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('积分使用顺序', style: TextStyle(fontWeight: FontWeight.w600)),
-            SizedBox(height: 8),
-            Text('在实际模型来源接入并验证后开放。应用栏的拖拽只调整导航顺序，不改变积分消耗顺序。'),
-          ],
+        const WorkspaceCard(
+          child: Text(
+            '已实测 MiniMax CN 的文本与流式调用。国际版需单独核对账号和模型。当前每个连接固定使用一个账号，失败时返回结果。上游调用可能消耗该账号额度，余额以平台查询为准。服务仅监听本机，启动设置会在下次打开 LoongPass 时恢复。',
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class WorkspaceSettingsPage extends StatelessWidget {

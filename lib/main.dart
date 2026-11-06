@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'app_theme.dart';
 export 'app_theme.dart';
 import 'app_sidebar.dart';
@@ -13,6 +14,9 @@ import 'account_workspace_registry.dart';
 import 'workspace_accounts.dart';
 import 'workspace_tools.dart';
 import 'app_updates.dart';
+import 'mac_account_document_store.dart';
+import 'model_service.dart';
+import 'minimax_model_provider.dart';
 import 'dart:async';
 
 Future<void> main() async {
@@ -74,6 +78,7 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  final _models = ModelService(store: MacAccountDocumentStore('ModelService'));
   final _registry = AccountWorkspaceRegistry();
   final _workspace = GlobalKey<AppWorkspaceState>();
   late final Map<ManagedApp, Widget> _pages = {
@@ -85,8 +90,16 @@ class _AccountPageState extends State<_AccountPage> {
       ManagedApp.qoder: const QoderDeviceAccountsPanel(
         region: QoderRegion.global,
       ),
-      ManagedApp.minimaxCn: const MiniMaxAccountsPanel(region: 'cn'),
-      ManagedApp.minimax: const MiniMaxAccountsPanel(region: 'global'),
+      ManagedApp.minimaxCn: MiniMaxAccountsPanel(
+        region: 'cn',
+        onOwnerReady: (owner) =>
+            _models.register(MiniMaxModelProvider(owner, 'cn')),
+      ),
+      ManagedApp.minimax: MiniMaxAccountsPanel(
+        region: 'global',
+        onOwnerReady: (owner) =>
+            _models.register(MiniMaxModelProvider(owner, 'global')),
+      ),
       ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
       ManagedApp.traeCn: const TraeAccountsPanel(),
     }.entries)
@@ -108,11 +121,16 @@ class _AccountPageState extends State<_AccountPage> {
   void initState() {
     super.initState();
     if (!widget.identityValidationOnly) unawaited(_updates.load());
+    if (!widget.identityValidationOnly &&
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      unawaited(_models.load().catchError((Object _) {}));
+    }
   }
 
   @override
   void dispose() {
     _updates.dispose();
+    unawaited(_models.dispose());
     _registry.dispose();
     super.dispose();
   }
@@ -131,6 +149,8 @@ class _AccountPageState extends State<_AccountPage> {
         sections: widget.identityValidationOnly
             ? const {}
             : {
+                if (defaultTargetPlatform == TargetPlatform.macOS)
+                  WorkspaceSection.models: ModelServicesPage(service: _models),
                 WorkspaceSection.settings: WorkspaceSettingsPage(
                   preferences: widget.preferences,
                   updates: _updates,

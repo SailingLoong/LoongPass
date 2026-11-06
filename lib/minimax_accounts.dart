@@ -556,6 +556,28 @@ class MiniMaxAccounts {
 
   final _credits = <String, CreditSummary>{};
   CreditSummary? credits(String id) => _credits[id];
+
+  /// The same account lock and refresh/identity owner used by other operations.
+  /// Keep the lease until the caller has consumed or cancelled the response.
+  Future<T> withInferenceAuthorization<T>(
+    String id,
+    Future<T> Function(String region, String token, bool Function() isCurrent)
+    use,
+  ) async {
+    _alive();
+    if (!_busy.add(_ownerKey(id))) throw const MiniMaxAccountError('Busy');
+    try {
+      final account = await _authorized(id);
+      return await use(
+        account['region'],
+        account['accessToken'],
+        () => !_closed && account['expiresAtMs'] > nowMs(),
+      );
+    } finally {
+      _busy.remove(_ownerKey(id));
+    }
+  }
+
   Future<void> refreshCredits(String id) async {
     _alive();
     if (!_busy.add(_ownerKey(id))) throw const MiniMaxAccountError('Busy');
