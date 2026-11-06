@@ -93,7 +93,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('需要验证码'), findsOneWidget);
+      expect(find.textContaining('官方验证尚未完成'), findsOneWidget);
       expect(prompts, 1);
       expect(http.claims, 1);
       completeVerification = true;

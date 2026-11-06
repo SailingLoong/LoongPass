@@ -28,3 +28,11 @@
 2026-11-06: `tool/check.py` passed, including static analysis, 187 Flutter tests, the standalone device-binding checks and the existing platform/native checks. Independent read-only review found no outstanding issue. The 20 existing IDs were imported while LoongPass was stopped, under its lifetime file lock, with a private backup and atomic readback. Both account records remained unchanged by import.
 
 Actual replacement authorization, claim receipt and restart verification remain pending. This code/test checkpoint does not establish that the server has accepted a different binding or granted another reward.
+
+## Follow-up: automatic official verification
+
+The user subsequently chose to authorize any of their accounts rather than target the original account, and explicitly requested automatic noninteractive verification with a human window only when needed. A new account was saved on one imported device, received an exact 500,000,000-token official balance after verification, and survived restart without another intent; the two original account cores remained unchanged. The original account's device replacement remains unverified.
+
+Live SDK initialization returned HTTP 200, `Code: Success`, `CaptchaType: TRACELESS`. Calling the documented `startTracelessVerification` returned a nonempty proof with no button click or puzzle interaction; the diagnostic discarded it and sent no claim. Use that official API, as already supported by LoongPort, instead of simulated clicks. Keep verification invocation in the account task owner through an injected bridge; the native window manages only the SDK and human interaction. Try once after a fresh explicit 3007 rejection, preserve paused/unknown records, and do not repeat prompts on later timer ticks. This removes the two-button race without adding another entry point or a parallel claim owner.
+
+Implementation checks: the complete repository check passed (187 Flutter tests plus standalone and native checks). The actual modified native module obtained an official proof without showing a sheet. The official behavior result was T001, not test-mode or QPS failover. Review identified that a slow/no-response SDK must not open the human window; timeout now ends quietly, and the final native/JavaScriptCore cases passed again. Full beta 27 app/new-account automatic reward acceptance remains pending.
