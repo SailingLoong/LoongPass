@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../lib/zcode_accounts_panel.dart';
 import '../lib/zcode_activity_accounts.dart';
@@ -7,6 +8,58 @@ import 'memory_account_store.dart';
 import 'zcode_activities_checks.dart' as fixture;
 
 void main() {
+  testWidgets(
+    'manual verification receives public config and cancellation preserves rejection',
+    (tester) async {
+      const channel = MethodChannel('com.sailingloong.loongpass/files');
+      var completeVerification = false, prompts = 0;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            expect(call.method, 'verifyZcodeClaim');
+            expect(call.arguments, {
+              'region': 'cn',
+              'prefix': 'synthetic',
+              'sceneId': 'scene',
+            });
+            prompts++;
+            return completeVerification ? 'synthetic-proof' : null;
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      final http = fixture.FakeZcode()
+        ..claimCode = 3007
+        ..claimHttp = 400
+        ..acceptVerification = true;
+      final owner = await fixture.account(
+        MemoryAccountStore('captcha-panel'),
+        http,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ZcodeAccountsPanel(create: () => owner),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('核对并领取活动'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('需要验证码'), findsOneWidget);
+      expect(prompts, 1);
+      expect(http.claims, 1);
+      completeVerification = true;
+      await tester.tap(find.text('核对并领取活动'));
+      await tester.pumpAndSettle();
+      expect(find.text('已核对官方活动权益到账。'), findsOneWidget);
+      expect(prompts, 2);
+      expect(http.claims, 2);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets(
     'restores activity accounts without consuming a reward during render',
     (tester) async {

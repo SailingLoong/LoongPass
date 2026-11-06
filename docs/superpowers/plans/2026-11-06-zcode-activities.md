@@ -28,6 +28,16 @@
 
 ## Review focus
 
+## Follow-up: observed HTTP 400 / service code 3007
+
+The real native account returned a definite captcha rejection on 2026-11-06. Keep the same account/device and distinguish this rejection from an uncertain POST. Reconcile existing numeric 400/3007 records without resubmitting; records without evidence remain pending.
+
+Reuse LoongPort's official captcha config and Aliyun SDK protocol in a dedicated ephemeral native window. The activity owner requests human verification only for an explicit manual claim after 3007, retains the single-writer lease, and permits at most one submission with a fresh proof. The web view receives only public captcha configuration, never account tokens or device IDs. Automatic jobs pause for verification. Cancellation preserves the rejection and makes no POST. No new login entry, Keychain integration or device rotation.
+
+- [x] Regression tests for definite rejection, restart recovery, cancellation, proof ownership and uncertain verified submissions.
+- [x] Native verification window, existing claim button integration, full checks and one Universal build.
+- [ ] Real human verification, official receipt/amount/expiry reconciliation and restart verification.
+
 - Lost HTTP/save acknowledgements must not cause another claim POST.
 - A different provider with the same user ID must not share credentials or receipts.
 - A reused plan ID after entitlement expiry must be eligible again, while a captcha or unresolved result must not be retried by timers.

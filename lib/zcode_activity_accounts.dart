@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+
 import 'account_document_store.dart';
 import 'source_digest.dart';
 import 'zcode_api.dart';
@@ -145,9 +146,10 @@ class ZcodeActivityAccounts {
     'authorization_required',
     'discoveryIncomplete',
   };
-  static String _id(String family, String uid) => sourceSha256(
-    utf8.encode('$family\u0000$uid'),
-  ).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+  static String _id(String family, String uid) =>
+      sourceSha256(utf8.encode('$family\u0000$uid'))
+          .map((v) => v.toRadixString(16).padLeft(2, '0'))
+          .join();
   Future<List<ZcodeActivityAccount>> accounts() async => [
     for (final a in ((await _read()).data['accounts'] as Map).values)
       ZcodeActivityAccount(a),
@@ -297,11 +299,13 @@ class ZcodeActivityAccounts {
     String path,
     Map<String, dynamic> a, {
     Map<String, dynamic>? body,
+    ZcodeVerification? verification,
   }) => api.request(
     path,
     a['token'],
     zcodeContext(Map<String, dynamic>.from(a['context'])),
     body: body,
+    verification: verification,
     isCurrent: () => !_closed,
   );
   Future<ZcodeBalance> _balance(Map<String, dynamic> a) async =>
@@ -317,12 +321,28 @@ class ZcodeActivityAccounts {
     c['endsAt'] = plan['ends_at'];
   }
 
+  static String? _rejection(Map c) {
+    final http = c['httpStatus'], code = c['serviceCode'];
+    if ((http == 200 || http == 400) && code == 3007)
+      return 'verificationRequired';
+    if (http != 200) return null;
+    return switch (code) {
+      1004 => 'activationRequired',
+      1001 || 1002 || 1003 || 1005 || 3001 => 'ineligible',
+      _ => null,
+    };
+  }
+
   Future<void> inspect(String id) => _exclusive(() => _run(id, submit: false));
-  Future<void> claim(String id) => _exclusive(() => _run(id, submit: true));
+  Future<void> claim(
+    String id, {
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) => _exclusive(() => _run(id, submit: true, verify: verify));
   Future<void> _run(
     String id, {
     required bool submit,
     bool automatic = false,
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
   }) async {
     var doc = await _read();
     var a = (doc.data['accounts'] as Map)[id] as Map<String, dynamic>?;
@@ -330,8 +350,14 @@ class ZcodeActivityAccounts {
     if (automatic &&
         (!a['automatic'] || a['status'] == 'authorization_required'))
       return;
-    final claims = a['claims'] as Map<String, dynamic>;
+    var claims = a['claims'] as Map<String, dynamic>;
     try {
+      // Earlier candidates persisted numeric rejection evidence as uncertain.
+      // Only a definite rejection may leave pending without a balance receipt.
+      for (final c in claims.values) {
+        if (c['state'] == 'pending' && _rejection(c) != null)
+          c['state'] = _rejection(c);
+      }
       var balance = await _balance(a);
       _observe(a, balance);
       var unresolved = false, reconciled = false;
@@ -413,65 +439,92 @@ class ZcodeActivityAccounts {
         await _write(doc);
         return;
       }
-      final c = <String, dynamic>{
-        'state': 'pending',
-        'previous': [for (final p in balance.plans) p['user_plan_id']],
-        'submittedAt': now(),
-      };
-      claims[selected.id] = c;
-      a['status'] = 'pending';
-      await _write(doc); // Durable intent must precede every possible POST.
-      // Continue from a fresh CAS revision, retaining the same credential owner.
-      doc = await _read();
-      a = (doc.data['accounts'] as Map)[id];
-      final current =
-          (a!['claims'] as Map)[selected.id] as Map<String, dynamic>;
-      try {
-        final reply = await _request(
-          ZcodeApi.claimPath,
-          a,
-          body: {'plan_id': selected.id},
-        );
-        current['httpStatus'] = 200;
-        current['serviceCode'] = zcodeCode(reply);
-        switch (zcodeCode(reply)) {
-          case 3007:
-            current['state'] = 'verificationRequired';
-          case 1004:
-            current['state'] = 'activationRequired';
-          case 1001 || 1002 || 1003 || 1005 || 3001:
+      // An unverified attempt and at most one fresh human-verified attempt.
+      for (var attempt = 0; attempt < 2; attempt++) {
+        ZcodeVerification? verification;
+        if (claims[selected.id]?['state'] == 'verificationRequired') {
+          a!['status'] = 'verificationRequired';
+          await _write(doc);
+          doc = await _read();
+          a = (doc.data['accounts'] as Map)[id];
+          claims = a!['claims'];
+          if (automatic || verify == null) return;
+          final config = ZcodeCaptchaConfig.parse(
+            await _request(ZcodeApi.configPath, a),
+          );
+          final proof = await verify(config);
+          _alive();
+          if (proof == null) return;
+          verification = ZcodeVerification(proof, config.values['region']!);
+          // The official client may have granted the plan during human interaction.
+          balance = await _balance(a);
+          _observe(a, balance);
+          if (balance.active(selected.id) != null) {
+            _confirmed(claims[selected.id], balance.active(selected.id)!);
+            a['status'] = 'observedClaimed';
+            await _write(doc);
+            return;
+          }
+        }
+        final c = <String, dynamic>{
+          'state': 'pending',
+          'previous': [for (final p in balance.plans) p['user_plan_id']],
+          'submittedAt': now(),
+        };
+        claims[selected.id] = c;
+        a!['status'] = 'pending';
+        await _write(doc); // Durable intent must precede every possible POST.
+        // Continue from a fresh CAS revision, retaining the same credential owner.
+        doc = await _read();
+        a = (doc.data['accounts'] as Map)[id];
+        claims = a!['claims'];
+        final current = claims[selected.id] as Map<String, dynamic>;
+        try {
+          final reply = await _request(
+            ZcodeApi.claimPath,
+            a,
+            body: {'plan_id': selected.id},
+            verification: verification,
+          );
+          current['httpStatus'] = 200;
+          current['serviceCode'] = zcodeCode(reply);
+        } on ZcodeFailure catch (e) {
+          current['errorCode'] = e.code;
+          current['httpStatus'] = e.httpStatus;
+          current['serviceCode'] = e.serviceCode;
+          if (e.code == 'authorization_required') {
+            // A definite authorization rejection did not grant an entitlement.
+            // It must not turn into a permanent uncertain POST after re-login.
             current['state'] = 'ineligible';
-          // Success needs a matching official balance receipt, not just HTTP 200.
-          default:
-            break;
+            a['status'] = 'authorization_required';
+          }
         }
-      } on ZcodeFailure catch (e) {
-        current['errorCode'] = e.code;
-        current['httpStatus'] = e.httpStatus;
-        current['serviceCode'] = e.serviceCode;
-        if (e.code == 'authorization_required') {
-          // A definite authorization rejection did not grant an entitlement.
-          // It must not turn into a permanent uncertain POST after re-login.
-          current['state'] = 'ineligible';
-          a['status'] = 'authorization_required';
+        current['state'] = _rejection(current) ?? current['state'];
+        try {
+          balance = await _balance(a);
+          _observe(a, balance);
+          final receipt = balance.receipt(selected.id, current['previous']);
+          if (receipt != null)
+            _confirmed(current, receipt);
+          else if (current['state'] == 'ineligible' &&
+              balance.active(selected.id) != null) {
+            _confirmed(current, balance.active(selected.id)!);
+          }
+        } on ZcodeFailure {
+          /* Keep the durable outcome and original observation. */
         }
+        if (a['status'] != 'authorization_required')
+          a['status'] = current['state'];
+        await _write(doc);
+        if (current['state'] != 'verificationRequired' ||
+            automatic ||
+            verify == null ||
+            verification != null)
+          return;
+        doc = await _read();
+        a = (doc.data['accounts'] as Map)[id];
+        claims = a!['claims'];
       }
-      try {
-        balance = await _balance(a);
-        _observe(a, balance);
-        final receipt = balance.receipt(selected.id, current['previous']);
-        if (receipt != null)
-          _confirmed(current, receipt);
-        else if (current['state'] == 'ineligible' &&
-            balance.active(selected.id) != null) {
-          _confirmed(current, balance.active(selected.id)!);
-        }
-      } on ZcodeFailure {
-        /* Keep the durable outcome and original observation. */
-      }
-      if (a['status'] != 'authorization_required')
-        a['status'] = current['state'];
-      await _write(doc);
     } on ZcodeFailure catch (e) {
       // If publication may have succeeded, never overwrite it from this stale
       // snapshot. The next invocation reads and reconciles the durable journal.
@@ -483,6 +536,8 @@ class ZcodeActivityAccounts {
           ? 'pending'
           : e.code == 'authorization_required'
           ? 'authorization_required'
+          : claims.values.any((v) => v['state'] == 'verificationRequired')
+          ? 'verificationRequired'
           : 'unavailable';
       await _write(doc);
       rethrow;

@@ -4,6 +4,7 @@ import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
   private let zcodeSwitchBridge = ZcodeSwitchBridge()
+  private let zcodeCaptcha = ZcodeCaptchaWindow()
   private let qoderFileStore = QoderFileStore()
   private let workBuddyDesktop = WorkBuddyDesktopBridge()
   private var selectedURL: URL?
@@ -58,6 +59,11 @@ class MainFlutterWindow: NSWindow {
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
+      case "verifyZcodeClaim":
+        do {
+          guard let args = call.arguments as? [String: Any] else { throw ZcodeCaptchaWindow.Failure.unavailable }
+          try self.zcodeCaptcha.present(args, parent: self) { result($0) }
+        } catch { result(FlutterError(code: "verification_unavailable", message: nil, details: nil)) }
       case "zcodeRequestContext":
         do { result(try ZcodeRequestContext.observe()) }
         catch { result(FlutterError(code: "device_required", message: nil, details: nil)) }

@@ -1,7 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'mac_account_document_store.dart';
 import 'zcode_activity_accounts.dart';
 import 'zcode_api.dart';
@@ -86,6 +88,17 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     }
     await _reload();
   });
+  Future<String?> _verify(ZcodeCaptchaConfig config) async {
+    try {
+      return await _channel.invokeMethod<String>(
+        'verifyZcodeClaim',
+        config.values,
+      );
+    } catch (_) {
+      throw const ZcodeFailure('verification_unavailable');
+    }
+  }
+
   String _status(String status) => switch (status) {
     'claimable' => '当前有可领取活动，尚未领取。',
     'claimed' => '已核对官方活动权益到账。',
@@ -93,15 +106,18 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     'noOffer' => '服务端当前没有可领取活动。',
     'discoveryIncomplete' => '部分活动信息暂不可用，尚不能确认是否有其他可领取奖励。',
     'pending' => '领取结果待核对；只查询回执，不会重复发送。',
-    'verificationRequired' => '需要人工验证码，自动领取已暂停。请在官方客户端完成验证后重新检查。',
+    'verificationRequired' => '需要验证码，自动领取已暂停。点击“核对并领取活动”完成验证。',
     'activationRequired' => '活动要求先使用官方 ZCode 客户端，自动领取已暂停。',
     'ineligible' => '服务端确认本次不符合活动领取条件。',
     'authorization_required' => '授权已失效，请通过官网重新授权此账号。',
     _ => '等待检查活动与额度。',
   };
-  String _time(int seconds) => DateTime.fromMillisecondsSinceEpoch(
-    seconds * 1000,
-  ).toLocal().toString().split('.').first;
+  String _time(int seconds) =>
+      DateTime.fromMillisecondsSinceEpoch(seconds * 1000)
+          .toLocal()
+          .toString()
+          .split('.')
+          .first;
   @override
   void dispose() {
     _owner?.dispose();
@@ -183,7 +199,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
                       onPressed: _busy
                           ? null
                           : () => _run(() async {
-                              await _owner!.claim(a.id);
+                              await _owner!.claim(a.id, verify: _verify);
                               await _reload();
                             }),
                       child: const Text('核对并领取活动'),

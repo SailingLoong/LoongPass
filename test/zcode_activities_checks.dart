@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import '../lib/zcode_api.dart';
 import '../lib/zcode_activity_accounts.dart';
 import '../lib/zcode_rewards.dart';
@@ -36,6 +37,7 @@ class FakeZcode implements ZcodeTransport {
   bool loseReply = false, revealReceipt = true, failBalance = false;
   int claimCode = 0;
   int claimHttp = 200;
+  bool acceptVerification = false;
   final received = <ZcodeRequest>[];
   final balances = <String, List<Map<String, dynamic>>>{};
   @override
@@ -74,6 +76,20 @@ class FakeZcode implements ZcodeTransport {
       );
     }
     final token = r.token;
+    if (r.path == ZcodeApi.configPath)
+      return ZcodeReply(
+        200,
+        envelope({
+          'configs': {
+            'captcha': {
+              'enabled': true,
+              'region': 'cn',
+              'prefix': 'synthetic',
+              'sceneId': 'scene',
+            },
+          },
+        }),
+      );
     if (r.path == ZcodeApi.balancePath) {
       balanceCalls++;
       if (failBalance) throw const ZcodeFailure('network_unavailable');
@@ -115,7 +131,8 @@ class FakeZcode implements ZcodeTransport {
       );
     if (r.path == ZcodeApi.claimPath) {
       claims++;
-      if (claimCode != 0) return ZcodeReply(claimHttp, {'code': claimCode});
+      if (claimCode != 0 && !(acceptVerification && r.verification != null))
+        return ZcodeReply(claimHttp, {'code': claimCode});
       balances[token] = [plan('receipt-$claims', end: serverTime + 3600)];
       if (stringTimes)
         balances[token]!.single['ends_at'] = '${serverTime + 3600}';
@@ -269,17 +286,171 @@ Future<void> main() async {
   check(savedHttp.claims == 0, 'no POST if durable pending cannot be saved');
   saving.dispose();
 
-  final captchaHttp = FakeZcode()..claimCode = 3007;
-  final captcha = await account(MemoryAccountStore('captcha'), captchaHttp);
+  final captchaHttp = FakeZcode()
+    ..claimCode = 3007
+    ..claimHttp = 400;
+  final captchaStore = MemoryAccountStore('captcha');
+  final captcha = await account(captchaStore, captchaHttp);
   final cid = (await captcha.accounts()).single.id;
   await captcha.claim(cid);
   await captcha.tick();
   check(
     captchaHttp.claims == 1 &&
         (await captcha.accounts()).single.status == 'verificationRequired',
-    'captcha pauses automatic submission',
+    'HTTP 400 / code 3007 is a definite captcha rejection, not an uncertain POST',
   );
   captcha.dispose();
+  captchaStore.data['accounts'][cid]['claims']['night']['state'] = 'pending';
+  captchaStore.data['accounts'][cid]['status'] = 'pending';
+  final restoredCaptcha = ZcodeActivityAccounts(
+    store: captchaStore,
+    api: ZcodeApi(captchaHttp),
+    now: () => now,
+  );
+  await restoredCaptcha.tick();
+  check(
+    captchaHttp.claims == 1 &&
+        (await restoredCaptcha.accounts()).single.status ==
+            'verificationRequired',
+    'recover recorded captcha rejection after restart without another POST',
+  );
+  restoredCaptcha.dispose();
+
+  final verifiedHttp = FakeZcode()
+    ..claimCode = 3007
+    ..claimHttp = 400
+    ..acceptVerification = true;
+  final verifiedStore = MemoryAccountStore('verified');
+  final verified = await account(verifiedStore, verifiedHttp);
+  final vid = (await verified.accounts()).single.id;
+  var prompts = 0;
+  await verified.claim(
+    vid,
+    verify: (config) async {
+      prompts++;
+      check(
+        verifiedStore.data['accounts'][vid]['claims']['night']['state'] ==
+            'verificationRequired',
+        'persist definite rejection before human verification',
+      );
+      return 'synthetic-human-proof';
+    },
+  );
+  check(
+    prompts == 1 &&
+        verifiedHttp.claims == 2 &&
+        (await verified.accounts()).single.status == 'claimed',
+    'one manual verification can resolve a definite rejection with official receipt',
+  );
+  final proofRequest = verifiedHttp.received.lastWhere(
+    (r) => r.verification != null,
+  );
+  check(
+    proofRequest.path == ZcodeApi.claimPath &&
+        proofRequest.context['deviceMid'] == context['deviceMid'] &&
+        proofRequest.verification!.headers['X-Aliyun-Captcha-Verify-Region'] ==
+            'cn',
+    'proof is scoped to the same claim account and device',
+  );
+  check(
+    !verifiedStore.data.toString().contains('synthetic-human-proof'),
+    'verification proof never persists in account storage',
+  );
+  verified.dispose();
+
+  final cancelledHttp = FakeZcode()
+    ..claimCode = 3007
+    ..claimHttp = 400;
+  final cancelled = await account(
+    MemoryAccountStore('cancelled-verification'),
+    cancelledHttp,
+  );
+  final cancelledId = (await cancelled.accounts()).single.id;
+  await cancelled.claim(cancelledId, verify: (_) async => null);
+  await cancelled.tick();
+  check(
+    cancelledHttp.claims == 1 &&
+        (await cancelled.accounts()).single.status == 'verificationRequired',
+    'cancelled challenge and automatic timer cannot resubmit the claim',
+  );
+  cancelled.dispose();
+
+  final uncertainHttp = FakeZcode()
+    ..claimCode = 3007
+    ..claimHttp = 400
+    ..acceptVerification = true;
+  final uncertainOwner = await account(
+    MemoryAccountStore('verified-uncertain'),
+    uncertainHttp,
+  );
+  final uncertainId = (await uncertainOwner.accounts()).single.id;
+  var uncertainPrompts = 0;
+  await uncertainOwner.claim(
+    uncertainId,
+    verify: (_) async {
+      uncertainPrompts++;
+      uncertainHttp.loseReply = true;
+      uncertainHttp.revealReceipt = false;
+      return 'single-use-proof';
+    },
+  );
+  await uncertainOwner.claim(
+    uncertainId,
+    verify: (_) async {
+      uncertainPrompts++;
+      return 'must-not-request-another-proof';
+    },
+  );
+  await uncertainOwner.tick();
+  check(
+    uncertainHttp.claims == 2 &&
+        uncertainPrompts == 1 &&
+        (await uncertainOwner.accounts()).single.status == 'pending',
+    'lost verified POST remains read-only across manual and automatic checks',
+  );
+  uncertainOwner.dispose();
+
+  final repeatedHttp = FakeZcode()
+    ..claimCode = 3007
+    ..claimHttp = 400;
+  final repeated = await account(
+    MemoryAccountStore('repeated-captcha'),
+    repeatedHttp,
+  );
+  var repeatedPrompts = 0;
+  await repeated.claim(
+    (await repeated.accounts()).single.id,
+    verify: (_) async {
+      repeatedPrompts++;
+      return 'rejected-human-proof';
+    },
+  );
+  check(
+    repeatedHttp.claims == 2 &&
+        repeatedPrompts == 1 &&
+        (await repeated.accounts()).single.status == 'verificationRequired',
+    'a second captcha rejection does not loop or reuse a proof',
+  );
+  repeated.dispose();
+
+  for (final configs in [
+    null,
+    1,
+    {
+      'captcha': {'enabled': false},
+    },
+  ]) {
+    var rejectedConfig = false;
+    try {
+      ZcodeCaptchaConfig.parse(envelope({'configs': configs}));
+    } on ZcodeFailure {
+      rejectedConfig = true;
+    }
+    check(
+      rejectedConfig,
+      'invalid captcha configuration fails without opening a verifier',
+    );
+  }
 
   final expiredHttp = FakeZcode()..claimCode = 401;
   final expiredStore = MemoryAccountStore('expired');

@@ -38,7 +38,14 @@ class ZcodeRequest {
   final String path, token;
   final Map<String, String> context;
   final Map<String, dynamic>? body;
-  ZcodeRequest(this.path, this.token, this.context, [this.body]);
+  final ZcodeVerification? verification;
+  ZcodeRequest(
+    this.path,
+    this.token,
+    this.context, [
+    this.body,
+    this.verification,
+  ]);
   @override
   String toString() => 'ZcodeRequest([redacted])';
 }
@@ -64,6 +71,7 @@ class ZcodeHttp implements ZcodeTransport {
       ZcodeApi.previewPath,
       ZcodeApi.marketingPath,
       ZcodeApi.claimPath,
+      ZcodeApi.configPath,
     };
     if (!allowed.contains(r.path) &&
         !(r.path.startsWith(ZcodeApi.pollPrefix) &&
@@ -75,6 +83,8 @@ class ZcodeHttp implements ZcodeTransport {
     if (!zcodeText(r.token, 16384))
       throw const ZcodeFailure('authorization_required');
     final context = zcodeContext(r.context);
+    if (r.verification != null && r.path != ZcodeApi.claimPath)
+      throw const ZcodeFailure('invalid_request');
     final query = <String, String>{
       if (r.path == ZcodeApi.balancePath || r.path == ZcodeApi.previewPath)
         'app_version': context['version']!,
@@ -111,6 +121,7 @@ class ZcodeHttp implements ZcodeTransport {
           'X-Device-Mid': context['deviceMid']!,
           'X-Client-Language': context['language']!,
           'X-Client-Timezone': context['timezone']!,
+          if (r.verification != null) ...r.verification!.headers,
         };
         headers.forEach(req.headers.set);
         check();
@@ -157,6 +168,7 @@ class ZcodeApi {
   static const previewPath = '/api/v1/zcode-plan/billing/preview';
   static const claimPath = '/api/v1/zcode-plan/billing/claim';
   static const marketingPath = '/api/v1/marketing/touch';
+  static const configPath = '/api/v1/client/configs';
   final ZcodeTransport transport;
   ZcodeApi(this.transport);
   Future<Map<String, dynamic>> request(
@@ -164,11 +176,12 @@ class ZcodeApi {
     String token,
     Map<String, String> context, {
     Map<String, dynamic>? body,
+    ZcodeVerification? verification,
     bool Function()? isCurrent,
   }) async {
     if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
     final result = await transport.send(
-      ZcodeRequest(path, token, context, body),
+      ZcodeRequest(path, token, context, body, verification),
       isCurrent: isCurrent,
     );
     if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
@@ -189,6 +202,40 @@ class ZcodeApi {
       );
     return result.body;
   }
+}
+
+class ZcodeCaptchaConfig {
+  final Map<String, String> values;
+  ZcodeCaptchaConfig._(this.values);
+  factory ZcodeCaptchaConfig.parse(Map<String, dynamic> reply) {
+    final configs = zcodeData(reply)['configs'];
+    final c = configs is Map ? configs['captcha'] : null;
+    if (c is! Map || c['enabled'] != true)
+      throw const ZcodeFailure('verification_unavailable');
+    final values = <String, String>{};
+    for (final key in ['region', 'prefix', 'sceneId']) {
+      if (c[key] is! String ||
+          !RegExp(r'^[a-zA-Z0-9._-]{1,128}$').hasMatch(c[key]))
+        throw const ZcodeFailure('verification_unavailable');
+      values[key] = c[key];
+    }
+    return ZcodeCaptchaConfig._(Map.unmodifiable(values));
+  }
+}
+
+class ZcodeVerification {
+  final String param, region;
+  ZcodeVerification(this.param, this.region) {
+    if (!zcodeText(param, 16384) ||
+        !RegExp(r'^[a-zA-Z0-9._-]{1,128}$').hasMatch(region))
+      throw const ZcodeFailure('verification_unavailable');
+  }
+  Map<String, String> get headers => {
+    'X-Aliyun-Captcha-Verify-Param': param,
+    'X-Aliyun-Captcha-Verify-Region': region,
+  };
+  @override
+  String toString() => 'ZcodeVerification([redacted])';
 }
 
 int? zcodeCode(Map<String, dynamic> body) {

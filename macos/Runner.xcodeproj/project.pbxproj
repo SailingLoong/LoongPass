@@ -21,6 +21,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		D56A2392A0E5481D80A20DD1 /* ZcodeCaptchaWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */; };
 		BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDEF012345678900000000 /* WorkBuddyVault.swift */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
@@ -78,6 +79,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeCaptchaWindow.swift; sourceTree = "<group>"; };
 		BBDDEF012345678900000000 /* WorkBuddyVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyVault.swift; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C80D7294CF71000263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -218,6 +220,7 @@
 				3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */,
 				3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */,
 				CA4B8C2774CC4EF79F2DFCF8 /* ZcodeRequestContext.swift */,
+				73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */,
 				3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */,
 				33E51913231747F40026EE4D /* DebugProfile.entitlements */,
 				33E51914231749380026EE4D /* Release.entitlements */,
@@ -423,6 +426,7 @@
 				3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */,
 				3172ABCDEF00000000000101 /* ZcodeContextOwner.swift in Sources */,
 				ACC7D5F90E604CCFA0E4AEDE /* ZcodeRequestContext.swift in Sources */,
+				D56A2392A0E5481D80A20DD1 /* ZcodeCaptchaWindow.swift in Sources */,
 				3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
