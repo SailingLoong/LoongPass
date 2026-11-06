@@ -40,8 +40,8 @@ five platform panels, their existing tests, tool/render_compact_accounts_test.da
 ### Task 3: Acceptance and delivery
 - [x] Run tool/check.py; render real widgets at wide/narrow light/dark sizes.
 - [x] Request one fresh read-only review of this task's changes; fix material findings.
-- [ ] Build one beta28 Universal candidate under shared locks, verify and archive.
-- [ ] Update draft PR/evidence, preserve source branch; clean task intermediates.
+- [x] Build one beta28 Universal candidate under shared locks, verify and archive.
+- [x] Update draft PR/evidence, preserve source branch; clean task intermediates.
 
 Execution authorization: Allen explicitly requested development in this chat;
 routine implementation choices are settled inline without another design gate.
