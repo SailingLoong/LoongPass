@@ -245,6 +245,9 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                   style: TextButton.styleFrom(
                     minimumSize: const Size(32, 32),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
+                    foregroundColor: _filter == f
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
                     backgroundColor: _filter == f
                         ? colors.primaryContainer
                         : null,
@@ -285,95 +288,104 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
           ),
         ),
         if (visible.isNotEmpty)
-          LayoutBuilder(
-            builder: (context, box) => Scrollbar(
-              controller: _scroll,
-              thumbVisibility: box.maxWidth < 780,
-              child: SingleChildScrollView(
+          Material(
+            color: colors.surfaceContainerLowest,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: colors.outlineVariant),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: LayoutBuilder(
+              builder: (context, box) => Scrollbar(
                 controller: _scroll,
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: math.max(780, box.maxWidth),
-                  child: Table(
-                    columnWidths: const {
-                      0: FlexColumnWidth(3.4),
-                      1: FlexColumnWidth(1.65),
-                      2: FlexColumnWidth(2.4),
-                      3: FlexColumnWidth(2.55),
-                    },
-                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                    children: [
-                      TableRow(
-                        decoration: BoxDecoration(
-                          color: colors.surfaceContainerLow,
-                        ),
-                        children: [
-                          for (final label in ['账号', '余额', '即将到期', '最近领取'])
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 10,
-                              ),
-                              child: Text(
-                                label,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: colors.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      for (final e in visible)
+                thumbVisibility: box.maxWidth < 780,
+                child: SingleChildScrollView(
+                  controller: _scroll,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: math.max(780, box.maxWidth),
+                    child: Table(
+                      columnWidths: const {
+                        0: FlexColumnWidth(3.4),
+                        1: FlexColumnWidth(1.65),
+                        2: FlexColumnWidth(2.4),
+                        3: FlexColumnWidth(2.55),
+                      },
+                      defaultVerticalAlignment:
+                          TableCellVerticalAlignment.middle,
+                      children: [
                         TableRow(
-                          key: ValueKey('row-${e.id}'),
                           decoration: BoxDecoration(
-                            border: Border(
-                              bottom: BorderSide(
-                                color: colors.outlineVariant.withValues(
-                                  alpha: .45,
-                                ),
-                              ),
-                            ),
+                            color: colors.surfaceContainerLow,
                           ),
                           children: [
-                            _AccountName(
-                              entry: e,
-                              height: _rowHeight,
-                              favorite: _favorite(e),
-                              onFavorite: () => setState(() {
-                                if (_preferences != null) {
-                                  _preferences!.toggleFavorite(
-                                    _preferenceKey(e),
-                                  );
-                                } else {
-                                  _favorites.contains(e.id)
-                                      ? _favorites.remove(e.id)
-                                      : _favorites.add(e.id);
-                                }
-                              }),
-                              onDetails: () => _details(e.id),
-                            ),
-                            InkWell(
-                              onTap: () => _details(e.id),
-                              child: SizedBox(
-                                height: _rowHeight,
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: _cell(
-                                    e.balance,
-                                    tooltip:
-                                        '${e.balance}\n${e.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(e.queriedAt!)}'}',
+                            for (final label in ['账号', '余额', '即将到期', '最近领取'])
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                                child: Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        for (final e in visible)
+                          TableRow(
+                            key: ValueKey('row-${e.id}'),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: colors.outlineVariant.withValues(
+                                    alpha: .45,
                                   ),
                                 ),
                               ),
                             ),
-                            _expiry(e),
-                            _cell(e.latestClaim),
-                          ],
-                        ),
-                    ],
+                            children: [
+                              _AccountName(
+                                entry: e,
+                                height: _rowHeight,
+                                favorite: _favorite(e),
+                                onFavorite: () => setState(() {
+                                  if (_preferences != null) {
+                                    _preferences!.toggleFavorite(
+                                      _preferenceKey(e),
+                                    );
+                                  } else {
+                                    _favorites.contains(e.id)
+                                        ? _favorites.remove(e.id)
+                                        : _favorites.add(e.id);
+                                  }
+                                }),
+                                onDetails: () => _details(e.id),
+                              ),
+                              InkWell(
+                                onTap: () => _details(e.id),
+                                child: SizedBox(
+                                  height: _rowHeight,
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _cell(
+                                      e.balance,
+                                      tooltip:
+                                          '${e.balance}\n${e.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(e.queriedAt!)}'}',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _expiry(e),
+                              _cell(e.latestClaim),
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -447,14 +459,18 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                     : null,
                 icon: const Icon(Icons.chevron_right, size: 18),
               ),
+              if (widget.entries.isNotEmpty)
+                Tooltip(
+                  message: '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
+                  child: Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
             ],
           ),
         ),
-        if (widget.entries.isNotEmpty)
-          Text(
-            '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
-            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
-          ),
       ],
     );
   }
@@ -555,6 +571,7 @@ class _AccountNameState extends State<_AccountName> {
                     key: ValueKey('account-${e.id}'),
                     onPressed: widget.onDetails,
                     style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
                       alignment: Alignment.centerLeft,
                       padding: EdgeInsets.zero,
                       minimumSize: const Size(0, 32),
@@ -567,7 +584,7 @@ class _AccountNameState extends State<_AccountName> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),

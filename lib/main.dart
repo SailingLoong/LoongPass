@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'app_theme.dart';
+export 'app_theme.dart';
 import 'app_sidebar.dart';
 import 'qoder_device_panel.dart';
 import 'qoder_device_accounts.dart';
@@ -153,51 +155,6 @@ class _AccountPageState extends State<_AccountPage> {
   );
 }
 
-ThemeData loongPassTheme(Brightness brightness) {
-  final colors = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF2863CE),
-    brightness: brightness,
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: colors,
-    scaffoldBackgroundColor: colors.surface,
-    visualDensity: VisualDensity.compact,
-    textTheme: const TextTheme(
-      bodyMedium: TextStyle(fontSize: 13),
-      bodySmall: TextStyle(fontSize: 11),
-      labelLarge: TextStyle(fontSize: 12),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: colors.surfaceContainerLowest,
-      isDense: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(color: colors.outlineVariant),
-      ),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 34),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(minimumSize: const Size(0, 32)),
-    ),
-  );
-}
-
 class AccountWorkspacePage extends StatelessWidget {
   const AccountWorkspacePage(
     this.name,
@@ -210,13 +167,10 @@ class AccountWorkspacePage extends StatelessWidget {
   final bool showTitle;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(24),
     children: [
       if (showTitle)
-        Text(
-          name,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
+        Text(name, style: Theme.of(context).textTheme.headlineSmall),
       if (showTitle) const SizedBox(height: 8),
       panel,
     ],
