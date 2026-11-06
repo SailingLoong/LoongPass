@@ -3,32 +3,27 @@ import FlutterMacOS
 import Security
 import Darwin
 
-/// The only native desktop-session writer. Directory access is granted by the
-/// user's picker, and every activation waits for the official client to quit.
+/// The only native desktop-session writer. Every explicit activation waits for
+/// the official client to quit before accessing its fixed authentication directory.
 @MainActor final class WorkBuddyDesktopBridge {
     private let bundleID = "com.tencent.workbuddy.mac"
     private var busy = false
 
-    func handle(_ call: FlutterMethodCall, window: NSWindow, result: @escaping FlutterResult) -> Bool {
+    func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) -> Bool {
         guard call.method == "activateWorkBuddyDesktop" else { return false }
         guard !busy, let session = call.arguments as? [String: Any] else {
             result("unavailable"); return true
         }
         busy = true
         let deadline = ProcessInfo.processInfo.systemUptime + 120
-        Task { @MainActor [weak self, weak window] in
+        Task { @MainActor [weak self] in
             guard let self else { result("unavailable"); return }
             defer { self.busy = false }
             do {
                 try WorkBuddyDesktopTransaction.validateSession(session)
                 let bundle = try self.installedClient()
                 let journal = try AccountFile.named("WorkBuddy-switch")
-                guard let window,
-                    let root = try await self.directory(window: window, journal: journal) else {
-                    result("cancelled"); return
-                }
-                let scoped = root.startAccessingSecurityScopedResource()
-                defer { if scoped { root.stopAccessingSecurityScopedResource() } }
+                let root = try self.directory()
                 guard ProcessInfo.processInfo.systemUptime < deadline else { result("expired"); return }
                 try await self.stopClient(bundle)
                 guard ProcessInfo.processInfo.systemUptime < deadline else { result("expired"); return }
@@ -74,37 +69,10 @@ import Darwin
         return url.resolvingSymlinksInPath()
     }
 
-    private func directory(window: NSWindow, journal: AccountFile) async throws -> URL? {
+    private func directory() throws -> URL {
         guard let home = getpwuid(getuid())?.pointee.pw_dir else { throw WorkBuddyDesktopTransaction.Failure.unsafeFile }
-        let expected = URL(fileURLWithPath: String(cString: home))
+        return URL(fileURLWithPath: String(cString: home))
             .appendingPathComponent("Library/Application Support/CodeBuddyExtension/Data/Public/auth")
-        if let saved = try journal.read(name: "directory.json"),
-            let encoded = saved["bookmark"] as? String, let data = Data(base64Encoded: encoded) {
-            var stale = false
-            if let root = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope, .withoutUI],
-                relativeTo: nil, bookmarkDataIsStale: &stale), !stale, root.path == expected.path {
-                return root
-            }
-        }
-        let panel = NSOpenPanel()
-        panel.title = "允许切换 WorkBuddy 账号"
-        panel.message = "选择 WorkBuddy 的 auth 文件夹。LoongPass 会请求客户端正常退出，保存可恢复的原授权，应用所选账号后重新打开客户端。"
-        panel.directoryURL = expected
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        let response: NSApplication.ModalResponse = await withCheckedContinuation { continuation in
-            panel.beginSheetModal(for: window) { continuation.resume(returning: $0) }
-        }
-        guard response == .OK, let root = panel.url else { return nil }
-        guard root.path == expected.path, root.resolvingSymlinksInPath().path == expected.path else {
-            throw WorkBuddyDesktopTransaction.Failure.unsafeFile
-        }
-        let scoped = root.startAccessingSecurityScopedResource()
-        defer { if scoped { root.stopAccessingSecurityScopedResource() } }
-        let bookmark = try root.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-        try journal.write(["bookmark": bookmark.base64EncodedString()], name: "directory.json")
-        return root
     }
 
     private func stopClient(_ bundle: URL) async throws {

@@ -36,6 +36,7 @@
 		E7A310000000000000000201 /* WorkBuddyProcesses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000200 /* WorkBuddyProcesses.swift */; };
 		ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000001 /* QoderFileStore.swift */; };
 		ABCDEF012345678900000012 /* AccountFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000002 /* AccountFile.swift */; };
+		ABCDEF012345678900000032 /* AppDataDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000022 /* AppDataDirectory.swift */; };
 		3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */; };
 		3172ABCDEF00000000000101 /* ZcodeContextOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */; };
 		3172ABCDEF00000000000102 /* ZcodeSwitchBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000002 /* ZcodeSwitchBridgeTests.swift */; };
@@ -103,6 +104,7 @@
 		E7A310000000000000000200 /* WorkBuddyProcesses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyProcesses.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000001 /* QoderFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QoderFileStore.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000002 /* AccountFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFile.swift; sourceTree = "<group>"; };
+		ABCDEF012345678900000022 /* AppDataDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataDirectory.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeSwitchBridge.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeContextOwner.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000002 /* ZcodeSwitchBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeSwitchBridgeTests.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 				BBDDEF012345678900000000 /* WorkBuddyVault.swift */,
 				ABCDEF012345678900000001 /* QoderFileStore.swift */,
 				ABCDEF012345678900000002 /* AccountFile.swift */,
+				ABCDEF012345678900000022 /* AppDataDirectory.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
 				3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */,
 				3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */,
@@ -411,6 +414,7 @@
 				BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */,
 				ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */,
 				ABCDEF012345678900000012 /* AccountFile.swift in Sources */,
+				ABCDEF012345678900000032 /* AppDataDirectory.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
 				3172ABCDEF00000000000106 /* ZcodeFactsProvider.swift in Sources */,
 				3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */,

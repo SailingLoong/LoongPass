@@ -13,8 +13,7 @@ final class AccountFile {
         registryLock.lock(); defer { registryLock.unlock() }
         guard ["MiniMax-cn", "MiniMax-global", "Qoder-cn", "Qoder-global", "TRAE-cn", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }
         if let existing = stores[name] { return existing }
-        let support = try FileManager.default.url(for: .applicationSupportDirectory,
-            in: .userDomainMask, appropriateFor: nil, create: true).resolvingSymlinksInPath()
+        let support = try AppDataDirectory.applicationSupport()
         let app = support.appendingPathComponent("LoongPass", isDirectory: true)
         let root = app.appendingPathComponent(name, isDirectory: true)
         for directory in [app, root] {

@@ -14,6 +14,15 @@ class MainFlutterWindow: NSWindow {
   private var workBuddySavedVault:WorkBuddyVault?
 
   override func awakeFromNib() {
+    // Resolve/migrate before Flutter can start any account owner or journal.
+    do { _ = try AppDataDirectory.applicationSupport() }
+    catch {
+      let alert = NSAlert()
+      alert.messageText = "无法打开 LoongPass 账号数据"
+      alert.informativeText = "请退出其他 LoongPass 版本，并允许系统请求的原账号目录访问。若新旧目录都有数据，请保留两处数据并联系维护者；应用不会自动合并或覆盖账号。"
+      alert.runModal()
+      NSApp.terminate(nil); return
+    }
     // Dedicated temporary identity probe. These process-local switches are read
     // by Flutter 3.47.9's macOS engine before initialization; never modify SDK or
     // shell configuration. Override inherited debug switches, fail before engine
@@ -45,7 +54,7 @@ class MainFlutterWindow: NSWindow {
         return
       }
       if AccountDocumentBridge.handle(call: call, result: result) { return }
-      if self.workBuddyDesktop.handle(call, window: self, result: result) { return }
+      if self.workBuddyDesktop.handle(call, result: result) { return }
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
@@ -141,9 +150,7 @@ class MainFlutterWindow: NSWindow {
       case "revealBackup": self.revealBackup(call.arguments, result)
       case "prepareWorkBuddyJournal":
         do {
-          let support = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: false)
+          let support = try AppDataDirectory.applicationSupport()
           let root = try NativeQoderFolders.prepare(in: support.resolvingSymlinksInPath(), child: "WorkBuddy")
           self.workBuddyRoot = root
           result(root.path)
@@ -160,9 +167,7 @@ class MainFlutterWindow: NSWindow {
         }
       case "prepareQoderJournal":
         do {
-          let support = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: false)
+          let support = try AppDataDirectory.applicationSupport()
           let root = try NativeQoderFolders.prepare(in: support.resolvingSymlinksInPath())
           self.qoderRoot = root
           result(root.path)
@@ -237,9 +242,7 @@ class MainFlutterWindow: NSWindow {
       self.selectedURL = url
       if !backup { result(url.path); return }
       do {
-        let support = try FileManager.default.url(
-          for: .applicationSupportDirectory, in: .userDomainMask,
-          appropriateFor: nil, create: true)
+        let support = try AppDataDirectory.applicationSupport()
         let root = try NativeBackupFolders.prepare(in: support)
         self.backupRoot = root
         result(["sourcePath": url.path, "privateRoot": root.path])
@@ -277,7 +280,7 @@ class MainFlutterWindow: NSWindow {
   private func approvedWorkBuddyVault()throws->WorkBuddyVault{
     guard WorkBuddyNativeAccess.enabled,WorkBuddyVault.persistentAccessValidated else{throw WorkBuddyVault.Failure.unavailable}
     if let current=workBuddySavedVault{return current}
-    let support=try FileManager.default.url(for:.applicationSupportDirectory,in:.userDomainMask,appropriateFor:nil,create:false)
+    let support=try AppDataDirectory.applicationSupport()
     let root=try NativeQoderFolders.prepare(in:support.resolvingSymlinksInPath(),child:"WorkBuddy")
     let ownership=try WorkBuddyVaultOwnership(privateRoot:root)
     let vault=try WorkBuddyVault(ownership:ownership)
