@@ -8,6 +8,46 @@ import '../tool/workbuddy_flow_checks.dart' as synthetic;
 import '../tool/workbuddy_single_checks.dart' as single;
 
 void main() {
+  testWidgets('selecting another account dismisses the previous operation message', (tester) async {
+    final first = single.Server('message-account-A');
+    final second = single.Server('message-account-B');
+    final queue = [first, second, single.Server('cancelled-account')];
+    var failOpen = false;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+      child: WorkBuddyAccountsPanel(
+        create: () => WorkBuddyAccountFlow.inMemory(
+          exchange: queue.removeAt(0), store: synthetic.MemoryStore()),
+        openAuthorization: (_) async {
+          if (failOpen) throw StateError('synthetic browser failure');
+        },
+      ),
+    ))));
+    Future<void> addAccount() async {
+      await tester.ensureVisible(find.byKey(const Key('workbuddy-login')));
+      await tester.tap(find.byKey(const Key('workbuddy-login')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('继续官方授权'));
+      await tester.pumpAndSettle();
+    }
+    await addAccount();
+    await addAccount();
+    expect(find.text('message-account-B'), findsOneWidget);
+    failOpen = true;
+    await addAccount();
+    expect(find.textContaining('未能确认授权页已打开'), findsOneWidget);
+    final firstChoice = find.widgetWithText(ChoiceChip,
+      'message-account-A · www.workbuddy.cn');
+    await tester.ensureVisible(firstChoice);
+    await tester.tap(firstChoice);
+    await tester.pumpAndSettle();
+    expect(find.text('message-account-A'), findsOneWidget);
+    expect(find.textContaining('未能确认授权页已打开'), findsNothing);
+    expect(first.posts, 0);
+    expect(second.posts, 0);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('saved accounts check in independently and restore without another authorization', (tester) async {
     final server = single.Server('synthetic-single-account');
     final second = single.Server('synthetic-second-account');

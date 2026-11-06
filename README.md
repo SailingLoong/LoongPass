@@ -15,13 +15,13 @@ macOS beta 提供 WorkBuddy、MiniMax CN、MiniMax、Qoder CN、Qoder 和 TRAE C
 
 TRAE CN 可先选择官方客户端的 `User/globalStorage/storage.json`，读取当前登录和匹配设备身份，再通过官网授权独立账号。复用客户端的现有访问授权会显示到期边界。
 
-beta 22 开发候选增加 WorkBuddy 客户端切换入口，真实身份切换待验收。权限步骤与验证范围见 [VALIDATION.md](VALIDATION.md)。
+beta 22 增加 WorkBuddy 客户端切换入口。两个真实账号已在 Apple Silicon 上完成正常退出、应用授权和重新打开后的身份核对；其他平台的官方客户端切换尚未提供。验证范围见 [VALIDATION.md](VALIDATION.md)。
 
 当前包使用本地签名。系统可能提示开发者身份未验证，需要按 macOS 的“隐私与安全性”提示确认打开。当前真实验收范围及待验证项见 [VALIDATION.md](VALIDATION.md)。
 
 ## 本机数据
 
-授权以明文保存在应用私有目录，目录权限 0700，文件权限 0600。beta 21 使用沙箱容器；beta 22 普通桌面候选使用 `~/Library/Application Support/LoongPass`，首次升级整体迁移旧账号库，升级后请使用新版本。保存采用唯一写入者、原子替换及版本比较。授权令牌只发送给对应平台的官方接口。请勿将账号文件提交到 Git 或作为问题附件上传。
+授权以明文保存在应用私有目录，目录权限 0700，文件权限 0600。beta 21 使用沙箱容器；beta 22 普通桌面版使用 `~/Library/Application Support/LoongPass`，首次升级整体迁移旧账号库，升级后请使用新版本。普通桌面版可按当前用户权限访问文件和进程，用于核对并切换官方客户端。保存采用唯一写入者、原子替换及版本比较。授权令牌只发送给对应平台的官方接口。请勿将账号文件提交到 Git 或作为问题附件上传。
 
 积分页优先展示官方返回的当前剩余额度。套餐续期时间、奖励发放额度和积分包当前余额分别处理。接口缺少明细时会显示范围与缺口。
 

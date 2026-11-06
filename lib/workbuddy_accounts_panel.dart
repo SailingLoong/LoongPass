@@ -376,7 +376,10 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                         ? null
                         : (value) {
                             if (value)
-                              setState(() => _accounts.select(account.id));
+                              setState(() {
+                                _message = null;
+                                _accounts.select(account.id);
+                              });
                           },
                   ),
               ],
