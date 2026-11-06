@@ -4,9 +4,26 @@ import fcntl
 from contextlib import ExitStack
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import sys
+
+
+def verify_app(app):
+    for binary in ["Contents/MacOS/LoongPass", "Contents/Frameworks/App.framework/App",
+                   "Contents/Frameworks/FlutterMacOS.framework/FlutterMacOS"]:
+        path = app / binary
+        architectures = subprocess.check_output(["xcrun", "lipo", "-archs", str(path)], text=True).split()
+        if set(architectures) != {"arm64", "x86_64"}:
+            raise SystemExit("Expected universal binary: " + binary)
+        for architecture in architectures:
+            signed = subprocess.run(["codesign", "-d", "--arch", architecture,
+                                     "--entitlements", ":-", str(path)], capture_output=True, check=True)
+            entitlements = plistlib.loads(signed.stdout) if signed.stdout.strip() else {}
+            if entitlements.get("com.apple.security.get-task-allow"):
+                raise SystemExit("Release binary permits debugger attachment: " + binary)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
 def main():
@@ -37,12 +54,7 @@ def main():
         if result.returncode:
             return result.returncode
         app = root / "build/macos/Build/Products/Release/LoongPass.app"
-        for binary in ["Contents/MacOS/LoongPass", "Contents/Frameworks/App.framework/App",
-                       "Contents/Frameworks/FlutterMacOS.framework/FlutterMacOS"]:
-            architectures = subprocess.check_output(["xcrun", "lipo", "-archs", str(app / binary)], text=True).split()
-            if set(architectures) != {"arm64", "x86_64"}:
-                raise SystemExit("Expected universal binary: " + binary)
-        subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
+        verify_app(app)
         print("Verified universal macOS app:", app)
         return 0
 
