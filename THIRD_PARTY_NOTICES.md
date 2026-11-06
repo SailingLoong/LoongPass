@@ -56,3 +56,13 @@ The macOS updater uses Sparkle 2.10.1 through Swift Package Manager. Its license
 and bundled third-party notices are retained in SPARKLE-LICENSE.txt and in the
 embedded Sparkle framework. Update ownership and verification were informed by
 LoongPort e32d3d1d; Tauri updater code and its multi-route downloader were not copied.
+
+## Windows native runtime
+
+Windows uses WinSparkle 0.9.4 (MIT), nlohmann/json 3.12.0 (MIT), and the
+Microsoft Edge WebView2 SDK 1.0.4314.35. Their license terms are preserved in
+WINSPARKLE-LICENSE.txt, NLOHMANN-LICENSE.txt, and WEBVIEW2-LICENSE.txt. The Windows
+package includes the Microsoft Visual C++ runtime required by Flutter.
+
+WinSparkle source and SDK are available from https://github.com/vslavik/winsparkle.
+WebView2 documentation is available from https://learn.microsoft.com/microsoft-edge/webview2/.

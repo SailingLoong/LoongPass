@@ -7,6 +7,7 @@ import json
 import os
 import plistlib
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,7 @@ def module(name):
 make = module("make_appcast")
 publish = module("publish_appcast")
 release = module("publish_release")
+windows = module("make_windows_appcast")
 
 
 def feed(build=29, length=123, url=None, short_version="1.0.0-beta.29"):
@@ -72,7 +74,7 @@ class PublishingChecks(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "", "")
 
             with patch.object(release, "ROOT", root), patch.object(make, "ROOT", root), \
-                    patch.object(sys, "argv", ["publish_release", str(output), "--tools", str(root)]), \
+                    patch.object(sys, "argv", ["publish_release", str(output), "--tools", str(root), "--windows-directory", str(output)]), \
                     patch.dict(make.os.environ, {"SPARKLE_PRIVATE_KEY": "synthetic-key"}), \
                     patch.object(release.subprocess, "check_output", return_value="source-head"), \
                     patch.object(release.subprocess, "run", side_effect=external):
@@ -127,12 +129,14 @@ class PublishingChecks(unittest.TestCase):
                 manifest = Path(directory) / "appcast.xml"; manifest.write_text(feed())
                 with patch.object(sys, "argv", ["publish", str(manifest), "--tools", directory]), patch.object(publish, "api", side_effect=[
                     [{"ref": "refs/heads/updates", "object": {"sha": "old-head"}}],
+                    {"tree": {"sha": "old-tree"}},
+                    {"tree": [{"path": "appcast.xml"}, {"path": "appcast-stable.xml"}]},
                     {"content": base64.b64encode(feed(build=build, length=999).encode()).decode()},
                 ]) as api:
                     with self.assertRaises(RuntimeError): publish.main()
-                    self.assertEqual(api.call_count, 2)
+                    self.assertEqual(api.call_count, 4)
 
-    def publish_fixture(self, content, *, stable=True, same=False):
+    def publish_fixture(self, content, *, stable=True, same=False, windows_feed=False):
         calls = []
         previous = content if same else feed(build=28)
         def api(path, data=None, method=None):
@@ -151,7 +155,11 @@ class PublishingChecks(unittest.TestCase):
             raise AssertionError(path)
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "appcast.xml"; manifest.write_bytes(content.encode())
-            with patch.object(sys, "argv", ["publish", str(manifest), "--tools", directory]), \
+            arguments = ["publish", str(manifest), "--tools", directory]
+            if windows_feed:
+                target = Path(directory) / "appcast-windows.xml"; target.write_bytes(content.encode())
+                arguments.extend(["--windows-feed", str(target)])
+            with patch.object(sys, "argv", arguments), \
                     patch.dict(os.environ, {"SPARKLE_PRIVATE_KEY": "synthetic-key"}), \
                     patch.object(publish, "api", side_effect=api), \
                     patch.object(publish, "empty_stable_feed", return_value="signed-empty-feed", create=True):
@@ -183,6 +191,48 @@ class PublishingChecks(unittest.TestCase):
     def test_same_signed_bytes_are_idempotent_even_with_crlf(self):
         calls = self.publish_fixture(feed().replace("\n", "\r\n"), same=True)
         self.assertFalse(any(data for _, data, _ in calls))
+
+    def test_desktop_stable_feeds_are_published_in_one_atomic_commit(self):
+        content = feed(short_version="1.0.0")
+        calls = self.publish_fixture(content, windows_feed=True)
+        tree = next(data for path, data, _ in calls if path == "/git/trees")
+        self.assertEqual({entry["path"] for entry in tree["tree"]},
+                         {"appcast.xml", "appcast-stable.xml", "appcast-windows.xml", "appcast-windows-stable.xml"})
+        self.assertEqual(sum(path == "/git/commits" for path, _, _ in calls), 1)
+        self.assertTrue(all(entry["content"] == content for entry in tree["tree"]))
+
+    def test_windows_binary_checks_absolute_architecture_and_native_version(self):
+        binary = bytearray(320)
+        binary[:2] = b"MZ"
+        struct.pack_into("<I", binary, 0x3c, 64)
+        binary[64:68] = b"PE\0\0"
+        struct.pack_into("<HH", binary, 68, 0x8664, 1)
+        binary[88:96] = b".rsrc\0\0\0"
+        struct.pack_into("<II", binary, 104, 64, 256)
+        struct.pack_into("<IIII", binary, 256, 0xFEEF04BD, 0x10000, 0x10000, 31)
+        self.assertEqual(windows.executable_version(binary), (1, 0, 0, 31))
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / windows.PORTABLE
+            with zipfile.ZipFile(archive, "w") as zipped:
+                zipped.writestr("LoongPass.exe", binary)
+                zipped.writestr("WinSparkle.dll", b"synthetic SDK")
+            windows.verify_portable(archive, "1.0.0", "31")
+            with self.assertRaises(AssertionError): windows.verify_portable(archive, "1.0.0", "30")
+        struct.pack_into("<H", binary, 68, 0x14c)
+        with self.assertRaises(AssertionError): windows.executable_version(binary)
+
+    def test_windows_feed_binds_exact_installer_bytes_and_platform(self):
+        with tempfile.TemporaryDirectory() as directory:
+            installer = Path(directory) / windows.INSTALLER; installer.write_bytes(b"synthetic installer")
+            signature = base64.b64encode(bytes(64)).decode()
+            content = f'<rss xmlns:sparkle="{make.SPARKLE}"><channel><item>' \
+                      '<sparkle:version>31</sparkle:version><sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>' \
+                      f'<enclosure url="https://loongpass.com/api/download/v1.0.0/{windows.INSTALLER}" length="19" sparkle:os="windows-x64" sparkle:edSignature="{signature}"/>' \
+                      '</item></channel></rss>'
+            manifest = Path(directory) / "appcast-windows.xml"; manifest.write_text(content)
+            self.assertEqual(windows.verify_windows_feed(manifest, installer, "1.0.0", "31"), signature)
+            manifest.write_text(content.replace('windows-x64', 'windows-x86'))
+            with self.assertRaises(AssertionError): windows.verify_windows_feed(manifest, installer, "1.0.0", "31")
 
     def test_empty_feed_must_pass_signature_verification(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -7,7 +7,7 @@ class AppUpdates extends ChangeNotifier {
   static const _channel = MethodChannel('com.sailingloong.loongpass/updates');
   String? version, error;
   bool automaticUpdates = false, receiveBetaUpdates = false;
-  bool canCheck = false, canChangeChannel = false;
+  bool canCheck = false, canChangeChannel = false, installOnQuit = true;
   bool _disposed = false, _busy = false;
   bool get available => version != null && !_busy;
 
@@ -24,6 +24,7 @@ class AppUpdates extends ChangeNotifier {
     automaticUpdates = value['automaticUpdates'] == true;
     receiveBetaUpdates = value['receiveBetaUpdates'] == true;
     canCheck = value['canCheck'] == true;
+    installOnQuit = value['installOnQuit'] != false;
     canChangeChannel = value['canChangeChannel'] == true;
     error = null;
     notifyListeners();
@@ -72,7 +73,11 @@ class AppUpdateCard extends StatelessWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('自动检查并下载更新'),
-          subtitle: const Text('校验通过后在退出时安装，也可以主动安装并重启。'),
+          subtitle: Text(
+            updates.installOnQuit
+                ? '校验通过后在退出时安装，也可以主动安装并重启。'
+                : '自动下载并校验更新后打开安装程序。',
+          ),
           value: updates.automaticUpdates,
           onChanged: updates.available ? updates.setAutomaticUpdates : null,
         ),

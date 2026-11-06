@@ -28,13 +28,21 @@ String zcodeDeviceId(dynamic value) {
   return value.toLowerCase();
 }
 
+const _zcodeOperatingSystems = {
+  'darwin-arm64': 'macos',
+  'darwin-x64': 'macos',
+  'win32-x64': 'windows',
+  'win32-arm64': 'windows',
+  'win32-ia32': 'windows',
+};
+
 Map<String, String> zcodeContext(Map<String, dynamic> value) {
   const keys = ['version', 'platform', 'deviceMid', 'language', 'timezone'];
   if (keys.any((k) => !zcodeText(value[k], 128)) ||
       !RegExp(
         r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$',
       ).hasMatch(value['version']) ||
-      !{'darwin-arm64', 'darwin-x64'}.contains(value['platform'])) {
+      !_zcodeOperatingSystems.containsKey(value['platform'])) {
     throw const ZcodeFailure('device_required');
   }
   return {
@@ -124,7 +132,7 @@ class ZcodeHttp implements ZcodeTransport {
           'X-Title': 'LoongPass',
           'User-Agent': 'LoongPass',
           'X-Release-Channel': 'production',
-          'X-OS-Category': 'macos',
+          'X-OS-Category': _zcodeOperatingSystems[context['platform']]!,
           'X-ZCode-App-Version': context['version']!,
           'X-Platform': context['platform']!,
           'X-Device-Mid': context['deviceMid']!,

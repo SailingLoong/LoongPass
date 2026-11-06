@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'account_document_store.dart';
 
-class MacAccountDocumentStore implements AccountDocumentStore {
+class NativeAccountDocumentStore implements AccountDocumentStore {
   @override
   final String identity;
-  MacAccountDocumentStore(this.identity);
+  NativeAccountDocumentStore(this.identity);
   static const _channel = MethodChannel('com.sailingloong.loongpass/files');
 
   Future<Map<String, dynamic>> _call(

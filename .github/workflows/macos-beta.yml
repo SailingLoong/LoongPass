@@ -1,20 +1,28 @@
-name: macOS beta
+name: Desktop release
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Candidate build platform
+        type: choice
+        options: [all, windows]
+        default: all
 
 permissions:
   contents: read
 
 concurrency:
-  group: macos-${{ github.ref }}
+  group: desktop-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'windows'
+    name: macOS Universal
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -81,9 +89,46 @@ jobs:
         if: always()
         run: rm -rf build .dart_tool macos/ZcodeNative/lib ~/Library/Caches/LoongPass/native-macos ~/Library/Caches/Sparkle_generate_appcast
 
+
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.1'
+          channel: stable
+          cache: true
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Check shared Dart behavior
+        run: |
+          dart analyze lib test
+          flutter test --no-pub --reporter expanded
+      - name: Build Windows application and native checks
+        run: |
+          flutter build windows --release
+          cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks
+          & build/windows/x64/runner/Release/loongpass_storage_checks.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native storage checks failed' }
+          & build/windows/x64/runner/Release/loongpass_authorization_checks.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native authorization checks failed' }
+      - name: Package source-matched Windows app
+        run: tool/package_windows.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LoongPass-Windows-x64
+          path: dist-windows/
+          retention-days: 14
+      - name: Remove Windows build intermediates
+        if: always()
+        run: Remove-Item -Recurse -Force build,.dart_tool -ErrorAction SilentlyContinue
+
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [build, windows]
     runs-on: macos-15
     permissions:
       contents: write
@@ -101,4 +146,6 @@ jobs:
           gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-macOS-universal --dir dist
           gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-update-verifier --dir verify-tools
           chmod +x verify-tools/sign_update
-          python3 tool/publish_release.py dist --tools verify-tools
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-Windows-x64 --dir dist-windows
+          python3 tool/make_windows_appcast.py dist-windows --tools verify-tools
+          python3 tool/publish_release.py dist --tools verify-tools --windows-directory dist-windows

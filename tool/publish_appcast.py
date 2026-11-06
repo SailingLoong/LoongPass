@@ -43,43 +43,56 @@ def empty_stable_feed(tools, key):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("feed", type=Path)
+    parser.add_argument("--windows-feed", type=Path)
     parser.add_argument("--tools", type=Path, required=True)
     args = parser.parse_args()
     key = os.environ.pop("SPARKLE_PRIVATE_KEY", "").strip()
-    # Preserve line endings: the signature covers the feed's exact bytes.
-    content = args.feed.read_bytes().decode("utf-8")
-    root = ET.fromstring(content)
-    version = int(root.findtext(VERSION))
-    release_name = root.findtext(VERSION.replace("version", "shortVersionString"))
-    assert release_name, "Missing release version"
-    beta = "-" in release_name
+    incoming = {"appcast.xml": args.feed}
+    if args.windows_feed:
+        incoming["appcast-windows.xml"] = args.windows_feed
     refs = api("/git/matching-refs/heads/updates")
     old = next((ref["object"]["sha"] for ref in refs if ref["ref"] == "refs/heads/updates"), None)
     base_tree = None
-    has_stable = False
+    existing = set()
     if old:
-        previous = api("/contents/appcast.xml?ref=" + old)
-        old_content = base64.b64decode(previous["content"]).decode()
-        old_version = int(ET.fromstring(old_content).findtext(VERSION))
-        if old_content != content and old_version >= version:
-            raise RuntimeError("Refusing to replace an equal or newer update feed")
         base_tree = api("/git/commits/" + old)["tree"]["sha"]
-        has_stable = any(entry["path"] == "appcast-stable.xml"
-                         for entry in api("/git/trees/" + base_tree)["tree"])
-        if old_content == content and has_stable:
-            print("Signed update feeds are already published:", old)
-            return
-    entries = [{"path": "appcast.xml", "mode": "100644", "type": "blob", "content": content}]
-    if not beta or not has_stable:
-        stable = empty_stable_feed(args.tools, key) if beta else content
-        entries.append({"path": "appcast-stable.xml", "mode": "100644", "type": "blob", "content": stable})
+        existing = {entry["path"] for entry in api("/git/trees/" + base_tree)["tree"]}
+    entries = []
+    builds = []
+    for filename, path in incoming.items():
+        # The signature covers exact UTF-8 bytes, including original line endings.
+        content = path.read_bytes().decode("utf-8")
+        root = ET.fromstring(content)
+        version = int(root.findtext(VERSION))
+        release_name = root.findtext(VERSION.replace("version", "shortVersionString"))
+        assert release_name, "Missing release version"
+        beta = "-" in release_name
+        stable_name = filename.replace(".xml", "-stable.xml")
+        has_stable = stable_name in existing
+        if filename in existing:
+            previous = api("/contents/" + filename + "?ref=" + old)
+            old_content = base64.b64decode(previous["content"]).decode("utf-8")
+            old_version = int(ET.fromstring(old_content).findtext(VERSION))
+            if old_content != content and old_version >= version:
+                raise RuntimeError("Refusing to replace an equal or newer update feed")
+            if old_content == content and has_stable:
+                continue
+        entries.append({"path": filename, "mode": "100644", "type": "blob", "content": content})
+        if not beta or not has_stable:
+            stable = empty_stable_feed(args.tools, key) if beta else content
+            entries.append({"path": stable_name, "mode": "100644", "type": "blob", "content": stable})
+        builds.append(str(version))
+    if not entries:
+        print("Signed update feeds are already published:", old)
+        return
     tree_data = {"tree": entries}
     if base_tree:
-        tree_data["base_tree"] = base_tree  # Keep the last stable release intact for beta publications.
+        tree_data["base_tree"] = base_tree
     tree = api("/git/trees", tree_data)
-    commit = api("/git/commits", {"message": f"Publish signed macOS update {version}", "tree": tree["sha"], "parents": [old] if old else []})
+    commit = api("/git/commits", {"message": "Publish signed desktop update " + ", ".join(builds),
+                                "tree": tree["sha"], "parents": [old] if old else []})
     if old:
-        # A non-force update rejects a concurrent feed publication.
+        # A non-force update rejects a concurrent publication of either platform.
         api("/git/refs/heads/updates", {"sha": commit["sha"], "force": False}, method="PATCH")
     else:
         api("/git/refs", {"ref": "refs/heads/updates", "sha": commit["sha"]})

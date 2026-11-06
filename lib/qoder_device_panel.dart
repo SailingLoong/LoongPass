@@ -1,6 +1,6 @@
+import 'desktop_platform.dart';
 import 'compact_accounts_table.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'qoder_device_accounts.dart';
@@ -26,8 +26,7 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   List<QoderSavedAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available =>
-      widget.create != null || defaultTargetPlatform == TargetPlatform.macOS;
+  bool get _available => widget.create != null || nativeAccountsSupported;
   @override
   void initState() {
     super.initState();

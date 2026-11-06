@@ -1,10 +1,10 @@
+import 'desktop_platform.dart';
 import 'compact_accounts_table.dart';
 import 'credit_summary_view.dart';
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 
 import 'native_account_gate.dart';
 import 'workbuddy_account_flow.dart';
@@ -49,7 +49,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
           : (widget.identityValidationOnly
                     ? workBuddyMemoryIdentityApproved
                     : workBuddyNativeAdapterValidated) &&
-                defaultTargetPlatform == TargetPlatform.macOS);
+                nativeAccountsSupported);
   @override
   void initState() {
     super.initState();
@@ -333,7 +333,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                   if (widget.savedAccounts &&
                       widget.create == null &&
                       widget.openAuthorization == null &&
-                      defaultTargetPlatform == TargetPlatform.macOS)
+                      workBuddyDesktopSupported)
                     OutlinedButton(
                       key: const Key('workbuddy-desktop-switch'),
                       onPressed: _busy || _accounts.claimBusy || selected.busy
@@ -509,7 +509,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                     widget.savedAccounts &&
                         widget.create == null &&
                         widget.openAuthorization == null &&
-                        defaultTargetPlatform == TargetPlatform.macOS
+                        workBuddyDesktopSupported
                     ? () => _activateDesktop(account)
                     : null,
                 activationEnabled:

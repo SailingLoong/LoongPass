@@ -12,9 +12,9 @@ const _fields = {
   'receipt', 'expected', 'settled', 'credited',
 };
 
-/// Single owning isolate only. The guard serializes this isolate; POSIX locks
-/// serialize cooperating processes, not other isolates in the same process.
-/// The existing native owner prepares a private root and fsyncs its hierarchy.
+/// Single owning isolate only. The guard serializes this isolate and OS file
+/// locks serialize cooperating processes. Native preparation validates private
+/// permissions. Native acknowledgment supplies the platform's durability flush.
 /// Missing/empty files are first setup, as for Qoder. Any malformed/partial
 /// existing log fails closed and is never trimmed, replaced, or reset.
 ///
@@ -66,12 +66,16 @@ class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore, WorkBuddyAttempt
     RandomAccessFile? handle;
     var locked = false;
     try {
-      if (!Platform.isMacOS && !Platform.isLinux)
+      if (!Platform.isMacOS && !Platform.isLinux && !Platform.isWindows)
         throw const WorkBuddyFailure('PlatformNotValidated');
+      final resolved = await root.resolveSymbolicLinks();
+      final sameDirectory = Platform.isWindows
+          ? resolved.toLowerCase() == path.toLowerCase()
+          : resolved == path;
       if (await FileSystemEntity.type(path, followLinks: false) !=
               FileSystemEntityType.directory ||
-          await root.resolveSymbolicLinks() != path ||
-          (await root.stat()).mode & 0x3f != 0) {
+          !sameDirectory ||
+          (!Platform.isWindows && (await root.stat()).mode & 0x3f != 0)) {
         throw const WorkBuddyFailure('PrivateDirectoryRequired');
       }
       final file = File('$path${Platform.pathSeparator}workbuddy-intents.jsonl');

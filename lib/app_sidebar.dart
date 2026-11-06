@@ -225,7 +225,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           child: compact
                               ? const Icon(Icons.computer_outlined, size: 15)
                               : Text(
-                                  '本机保存 · 开发预览',
+                                  '本机保存',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: colors.onSurfaceVariant,

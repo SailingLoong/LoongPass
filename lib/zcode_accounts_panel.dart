@@ -1,11 +1,11 @@
+import 'desktop_platform.dart';
 import 'compact_accounts_table.dart';
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'mac_account_document_store.dart';
+import 'native_account_document_store.dart';
 import 'zcode_activity_accounts.dart';
 import 'zcode_api.dart';
 
@@ -26,15 +26,14 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   @override
   void initState() {
     super.initState();
-    if (widget.create != null || defaultTargetPlatform == TargetPlatform.macOS)
-      unawaited(_restore());
+    if (widget.create != null || nativeAccountsSupported) unawaited(_restore());
   }
 
   Future<void> _restore() => _run(() async {
     _owner ??=
         widget.create?.call() ??
         ZcodeActivityAccounts(
-          store: MacAccountDocumentStore('ZCode'),
+          store: NativeAccountDocumentStore('ZCode'),
           api: ZcodeApi(ZcodeHttp()),
           requestVerification: _verify,
         );

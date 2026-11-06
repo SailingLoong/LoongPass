@@ -11,7 +11,9 @@ void main() {
         'loongpass-receipt-test-',
       );
       final root = Directory(await temp.resolveSymbolicLinks());
-      await Process.run('chmod', ['700', root.path]);
+      if (!Platform.isWindows) {
+        await Process.run('chmod', ['700', root.path]);
+      }
       addTearDown(() => temp.delete(recursive: true));
       final f = fixture.Fixture(root);
       final journal = f.open();

@@ -1,10 +1,10 @@
+import 'desktop_platform.dart';
 import 'compact_accounts_table.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'credit_summary_view.dart';
-import 'mac_account_document_store.dart';
+import 'native_account_document_store.dart';
 import 'trae_accounts.dart';
 import 'trae_http.dart';
 
@@ -24,15 +24,14 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
   @override
   void initState() {
     super.initState();
-    if (widget.create != null || defaultTargetPlatform == TargetPlatform.macOS)
-      unawaited(_restore());
+    if (widget.create != null || nativeAccountsSupported) unawaited(_restore());
   }
 
   Future<void> _restore() => _run(() async {
     _owner ??=
         widget.create?.call() ??
         TraeAccounts(
-          store: MacAccountDocumentStore('TRAE-cn'),
+          store: NativeAccountDocumentStore('TRAE-cn'),
           http: TraeHttp(),
           proof: (privateKey, refresh) async {
             final result = await _channel.invokeMapMethod<String, dynamic>(

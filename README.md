@@ -1,64 +1,107 @@
+<div align="center">
+
 # LoongPass
 
-统一管理多个 AI 平台的账号、免费签到奖励和积分到期信息。
+### 把 AI 账号、免费奖励与积分到期放在一起
 
-macOS beta 提供 WorkBuddy、MiniMax CN、MiniMax、Qoder CN、Qoder、TRAE CN 和 ZCode 智谱 BigModel 的独立入口。国内外授权、账号与领取记录分别保存。自动检查仅在应用运行期间执行：启动约 30 秒后首次检查，ZCode 之后每 10 分钟检查活动，其他平台每 15 分钟检查。
+[![下载最新版](https://img.shields.io/github/v/release/SailingLoong/LoongPass?label=下载最新版&color=2ea44f&style=for-the-badge)](https://github.com/SailingLoong/LoongPass/releases/latest)
 
-## 下载和使用
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/SailingLoong/LoongPass/releases)
+[![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569b.svg)](https://flutter.dev)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-从 [Releases](https://github.com/SailingLoong/LoongPass/releases) 下载 macOS Universal ZIP，解压后打开 LoongPass.app。支持 macOS 12 及以上，安装包同时包含 Apple Silicon 和 Intel 架构。
+[官方网站与下载](https://loongpass.com) · [更新记录](https://github.com/SailingLoong/LoongPass/releases) · [问题反馈](https://github.com/SailingLoong/LoongPass/issues)
 
-1. 在侧栏选择平台及地区，通过官方网页授权账号。
-2. 授权完成后自动读取身份并保存。添加其他账号时重复授权操作。
-3. 查看签到状态、当前余额、最近到期批次与该批次剩余额度。
-4. 保持 LoongPass 运行以执行自动检查。重启后自动恢复保存的账号。
+</div>
 
-TRAE CN 可先选择官方客户端的 `User/globalStorage/storage.json`，读取当前登录和匹配设备身份，再通过官网授权独立账号。复用客户端的现有访问授权会显示到期边界。
+## 它替你做什么
 
-WorkBuddy 提供客户端切换入口，两个真实账号已在 Apple Silicon 上完成往返切换和官方身份核对；其他平台的官方客户端切换尚未提供。验证范围见 [VALIDATION.md](VALIDATION.md)。
+多个 AI 平台、国内与海外版本、不同账号的余额和到期时间，集中放进同一个桌面工作区。
 
-ZCode 按官方开放活动领取，使用账号固定的设备标识。新增账号优先分配未占用的已有设备号，不足时自动生成 UUIDv4；授权成功后随账号保存，后续重新授权继续复用。领取结果未知时保留原设备和领取记录，仅查询回执。需要先安装并打开一次官方 ZCode，以读取客户端版本和请求上下文；无需虚拟机。活动资格和最终发放以官方响应为准，详见 [ZCODE-ACTIVITIES.md](ZCODE-ACTIVITIES.md)。
+- **多账号授权与恢复**。通过平台官方页面登录，核对账号身份后保存，重启继续使用。
+- **免费奖励自动领取**。检查平台实际开放的签到或活动，记录发送状态和官方回执，保留未知结果以防重复提交。
+- **余额与到期查看**。按平台官方单位展示余额、最近到期批次及剩余额度，同时保留查询时间。
+- **紧凑账号工作区**。支持搜索、筛选、分页、常用账号和平台排序，并提供跨平台总览及活动记录。
+- **签名应用更新**。独立设置自动检查下载与 Beta 更新渠道，按所选渠道获取后续版本。
 
-当前包使用本地签名。系统可能提示开发者身份未验证，需要按 macOS 的“隐私与安全性”提示确认打开。当前真实验收范围及待验证项见 [VALIDATION.md](VALIDATION.md)。
+<img src="docs/images/workspace.png" alt="LoongPass 账号工作区，使用虚构账号与演示数据" width="1024">
+
+界面示意由实际 Flutter 组件渲染，账号与数值均为虚构数据。
+
+## 三分钟上手
+
+1. 从官网或 GitHub Release 下载对应系统的安装包。
+2. 在侧栏选择平台及地区，点击授权并在官方页面完成登录。
+3. 核对身份并保存账号，再查看余额、到期信息与已确认领取记录。
+4. 按账号开启自动任务，保持 LoongPass 运行。重启后会恢复已保存账号。
+
+国内版与海外版使用各自的官方授权入口，账号、凭据和领取记录分别保存。奖励开放时间、账号及设备资格、最终发放均以平台官方响应为准。
+
+## 安装
+
+| 系统 | 安装包 | 使用方式 |
+| --- | --- | --- |
+| macOS 12 及以上 | [Universal ZIP](https://github.com/SailingLoong/LoongPass/releases/latest/download/LoongPass-macOS-universal.zip) | 包含 Apple Silicon 和 Intel 架构，解压后将 LoongPass.app 放入应用程序目录 |
+| Windows 10 / 11 x64 | [安装版](https://github.com/SailingLoong/LoongPass/releases/latest/download/LoongPass-Windows-x64-Setup.exe) | 按当前用户安装 |
+| Windows x64 | [便携 ZIP](https://github.com/SailingLoong/LoongPass/releases/latest/download/LoongPass-Windows-x64.zip) | 完整解压后运行 LoongPass.exe，保留同目录 DLL 和 data 文件夹 |
+
+每个 Release 附带 `SHA256SUMS` 与 `SOURCE_COMMIT`，用于核对安装包和源码版本。Windows 安装版与便携包共用用户数据目录，应用内更新使用安装程序。
+
+当前 macOS 包使用本地签名，尚未进行 Developer ID 公证。Windows 包尚未配置 Authenticode 发布者签名。应用更新包另有发布密钥签名，由原生更新器验证。实际设备与功能验收范围记录在 [VALIDATION.md](VALIDATION.md)。
+
+## 支持的平台
+
+| 平台 | 授权与账号 | 奖励及积分 |
+| --- | --- | --- |
+| WorkBuddy | 官方授权、多账号保存，macOS 支持官方客户端账号切换 | 签到、余额及领取记录 |
+| MiniMax CN / MiniMax | 国内与海外入口独立 | 签到、余额、奖励批次与到期信息 |
+| Qoder CN / Qoder | 国内与海外入口独立，保存设备绑定 | 活动核对、套餐和附加积分、领取记录 |
+| TRAE CN | 官方设备身份导入与官网授权 | 余额、领取及到期信息 |
+| ZCode 智谱 BigModel | 官方授权、多账号和固定设备绑定 | 官方活动发现、领取、余额与到期批次 |
+
+ZCode 需要先安装并打开一次官方客户端，以读取版本、已有设备信息和请求上下文。添加账号时优先分配未占用的已有设备号，不足时生成 UUIDv4，授权成功后固定保存。领取结果未知时继续核对原设备与回执。详情见 [ZCODE-ACTIVITIES.md](ZCODE-ACTIVITIES.md)。
+
+TRAE CN 需要官方客户端设备信息，可选择其 `User/globalStorage/storage.json` 导入。复用官方客户端访问授权时，界面会显示授权归属与到期边界。
+
+自动任务在 LoongPass 运行期间执行。启动约 30 秒后首次检查，ZCode 随后每 10 分钟检查活动，其他平台每 15 分钟检查。各平台的实际能力及待验证项以验收记录为准。
 
 ## 应用更新
 
-设置提供「自动检查并下载更新」和「接收 Beta 版更新」两个独立开关，均默认关闭。Beta 关闭时只接收正式版，开启时也接收测试版；手动检查使用同一渠道规则，不会降级当前版本。macOS 原生 Sparkle 负责偏好、调度、签名校验和安装，打开设置页只读取状态。开启自动更新后，验证完成的更新可在退出时安装，也可主动安装并重启，保留账号数据和设置。beta 29 可应用内升级；更早版本首次需手动安装。已有安装若未同时允许自动检查和下载，合并后的自动选项保持关闭。
+设置提供两个独立开关。
 
-## 本机数据
+- **自动检查并下载更新**。默认关闭。macOS 验证后可在退出时安装，也可主动安装并重启。Windows 验证后打开安装程序。
+- **接收 Beta 版更新**。默认关闭。关闭时只接收正式版，开启时也接收测试版。手动检查遵循同一渠道选择。
 
-授权以明文保存在应用私有目录，目录权限 0700，文件权限 0600。beta 21 使用沙箱容器；beta 22 普通桌面版使用 `~/Library/Application Support/LoongPass`，首次升级整体迁移旧账号库，升级后请使用新版本。普通桌面版可按当前用户权限访问文件和进程，用于核对并切换官方客户端。保存采用唯一写入者、原子替换及版本比较。授权令牌只发送给对应平台的官方接口。请勿将账号文件提交到 Git 或作为问题附件上传。
+更新按构建号比较版本，并保留本机账号与设置。beta 29 及后续 macOS 版本可通过应用内更新升级。
 
-积分页优先展示官方返回的当前剩余额度。套餐续期时间、奖励发放额度和积分包当前余额分别处理。接口缺少明细时会显示范围与缺口。
+## 数据与隐私
 
-## 账号表格
+授权以明文保存在本机应用私有目录。macOS 使用 `~/Library/Application Support/LoongPass`，目录权限 0700、文件权限 0600。Windows 使用 `%APPDATA%\LoongPass`，通过当前用户与 SYSTEM 的私有访问控制保护文件。
 
-账号页按「账号、余额、即将到期、最近领取」展示，默认每页 10 个，可切换为 5 或 20 个。
-搜索、常用筛选和到期排序作用于整个平台的账号；切换页面不会切换客户端。
-点击账号查看签到、自动领取设置和完整明细。支持客户端切换的平台在账号旁提供切换按钮，
-鼠标悬停或键盘聚焦时显示；窄窗口可横向滚动表格，浅深色跟随系统。
+保存采用唯一写入者、版本比较、原子替换和读回核对。账号授权发送至对应平台的官方接口。请保管账号目录，提交问题时移除令牌、设备标识及原始认证响应。
 
-最近领取只展示已确认记录，后续领取未确认时保留上次成功。旧记录没有具体时刻时显示时间未知；
-TRAE 的余额净增与发放金额分开标明，Qoder 套餐与附加额度分别显示。到期列展示最近一批的
-当前剩余量，点击可看最近三批及查询时间。表格不会因搜索或查看明细而触发签到。
-
-工作区包含总览、全部账号、活动记录和设置。侧栏可折叠、调整平台顺序并在重启后恢复；地区标签帮助区分国内外入口。Magpie 页面目前仅说明后续接入方向，尚不能向其他软件提供模型调用或积分路由。
+积分按官方单位展示。到期明细缺失时显示未知，已发放额度与当前剩余额度分别处理。
 
 ## 从源码构建
 
-使用 Flutter 3.47.1、Xcode 和 `rust-toolchain.toml` 锁定的 Rust 工具链。
+使用 Flutter 3.47.1 和锁定依赖。macOS 还需 Xcode 与仓库指定的 Rust 工具链，Windows 还需 Visual Studio 的 C++ 桌面开发工具、CMake 与 Python。
 
-```sh
-rustup target add aarch64-apple-darwin x86_64-apple-darwin
-flutter pub get
+```bash
+flutter pub get --enforce-lockfile
 python3 tool/check.py
 python3 tool/build_macos_release.py
 ```
 
-构建脚本持有本机打包锁，复用 `~/Library/Caches/LoongPass/native-macos`。产物位于 `build/macos/Build/Products/Release/LoongPass.app`。编译库、账号文件、构建缓存和安装包由 Git 忽略。
+Windows 构建与打包可在 PowerShell 执行。
 
-推送与 `pubspec.yaml` 版本一致的 `v1.0.0-beta.N` tag 会触发 CI 构建 Universal 包、校验架构与签名，并创建 GitHub prerelease。
+```powershell
+flutter pub get --enforce-lockfile
+flutter build windows --release
+.\tool\package_windows.ps1
+```
 
-## 贡献与许可
+安装程序打包使用 Inno Setup 6。正式发布由 GitHub Actions 构建两个平台，检查通过后生成签名更新清单并发布 Release。
 
-项目方向和工程约束见 [AGENTS.md](AGENTS.md)，协议来源见 [SOURCE-ORIGIN.md](SOURCE-ORIGIN.md)。MIT 许可及第三方声明随源码保留。
+## 开源与致谢
+
+LoongPass 以 MIT 许可公开。账号与活动适配参考 LoongPort、workbuddy-switch 和 zcode-switch，并保留原作者声明。第三方组件的来源和许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

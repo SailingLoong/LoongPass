@@ -1,5 +1,5 @@
 // Thin Flutter/native wiring. Credentials remain in memory; only attempt state
-// uses the existing app-private append/flush/readback/directory-sync approach.
+// uses the existing app-private append/flush/readback/native-sync approach.
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'workbuddy_account_flow.dart';
@@ -22,7 +22,7 @@ Future<WorkBuddyAccountFlow> createWorkBuddyMemoryOwner() async {
   requireWorkBuddyProductionAccess();
   try {
     final path=await _channel.invokeMethod<Object?>('prepareWorkBuddyJournal');
-    if(path is! String||!path.startsWith('/')||path.contains('\u0000')) {
+    if(path is! String||!Directory(path).isAbsolute||path.contains('\u0000')) {
       throw const WorkBuddyApiFailure('JournalUnavailable',mayHaveBeenSent:false);
     }
     late final WorkBuddyAccountFlow flow;

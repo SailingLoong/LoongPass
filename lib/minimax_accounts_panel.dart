@@ -1,9 +1,9 @@
+import 'desktop_platform.dart';
 import 'compact_accounts_table.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'mac_minimax_accounts.dart';
+import 'native_minimax_accounts.dart';
 import 'minimax_accounts.dart';
 import 'credit_summary_view.dart';
 
@@ -21,8 +21,7 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   List<MiniMaxAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available =>
-      widget.open != null || defaultTargetPlatform == TargetPlatform.macOS;
+  bool get _available => widget.open != null || nativeAccountsSupported;
   String get _name => widget.region == 'cn' ? 'MiniMax CN' : 'MiniMax';
   @override
   void initState() {
@@ -33,7 +32,7 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   Future<void> _restore() => _run(() async {
     final service = widget.open != null
         ? await widget.open!()
-        : await openMacMiniMaxAccounts(
+        : await openNativeMiniMaxAccounts(
             region: widget.region,
             onAutomaticFinished: _refresh,
           );
