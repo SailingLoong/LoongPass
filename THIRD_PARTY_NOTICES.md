@@ -49,3 +49,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## Rust dependencies and template images
 
 THIRD_PARTY_RUST/INDEX.json lists the resolved macOS dependency packages and their declared licenses. Corresponding upstream license/notice files are retained under THIRD_PARTY_RUST/. This conservative inventory also retains build/development dependency notices. Official Flutter template image attribution is retained in FLUTTER-TEMPLATE-IMAGES-LICENSE and ICON-PROVENANCE.md.
+
+## Sparkle
+
+The macOS updater uses Sparkle 2.10.1 through Swift Package Manager. Its license
+and bundled third-party notices are retained in SPARKLE-LICENSE.txt and in the
+embedded Sparkle framework. Update ownership and verification were informed by
+LoongPort e32d3d1d; Tauri updater code and its multi-route downloader were not copied.

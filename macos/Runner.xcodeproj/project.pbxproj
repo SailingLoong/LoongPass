@@ -21,6 +21,8 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+        A82900000000000000000001 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A82900000000000000000002 /* AppUpdater.swift */; };
+        A82900000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A82900000000000000000005 /* Sparkle */; };
 		D56A2392A0E5481D80A20DD1 /* ZcodeCaptchaWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */; };
 		BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDDEF012345678900000000 /* WorkBuddyVault.swift */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
@@ -79,6 +81,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+        A82900000000000000000002 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeCaptchaWindow.swift; sourceTree = "<group>"; };
 		BBDDEF012345678900000000 /* WorkBuddyVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyVault.swift; sourceTree = "<group>"; };
 		331C80D5294CF71000263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -131,6 +134,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
+                A82900000000000000000003 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -206,6 +210,7 @@
 			isa = PBXGroup;
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
+                A82900000000000000000002 /* AppUpdater.swift */,
 				ABCDEF012345678900000000 /* AccountDocumentBridge.swift */,
 				E7A300000000000000000000 /* TraeLocalAuthorization.swift */,
 				E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */,
@@ -276,6 +281,7 @@
 			name = Runner;
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
+                A82900000000000000000005 /* Sparkle */,
 			);
 			productName = Runner;
 			productReference = 33CC10ED2044A3C60003C045 /* LoongPass.app */;
@@ -323,6 +329,7 @@
 			mainGroup = 33CC10E42044A3C60003C045;
 			packageReferences = (
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
+                A82900000000000000000006 /* Sparkle */,
 			);
 			productRefGroup = 33CC10EE2044A3C60003C045 /* Products */;
 			projectDirPath = "";
@@ -429,6 +436,7 @@
 				D56A2392A0E5481D80A20DD1 /* ZcodeCaptchaWindow.swift in Sources */,
 				3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
+                A82900000000000000000001 /* AppUpdater.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -791,7 +799,20 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+        A82900000000000000000006 /* Sparkle */ = {
+            isa = XCRemoteSwiftPackageReference;
+            repositoryURL = "https://github.com/sparkle-project/Sparkle";
+            requirement = {kind = exactVersion; version = 2.10.1; };
+        };
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+        A82900000000000000000005 /* Sparkle */ = {
+            isa = XCSwiftPackageProductDependency;
+            package = A82900000000000000000006 /* Sparkle */;
+            productName = Sparkle;
+        };
 		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FlutterGeneratedPluginSwiftPackage;

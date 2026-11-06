@@ -8,6 +8,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from release_version import read_release_version
 
 
 def verify_app(app):
@@ -45,16 +46,17 @@ def main():
         environment["CARGO_BUILD_JOBS"] = "2"
         environment.setdefault("CARGO_TARGET_DIR", str(cache / "native-macos"))
         flutter = os.environ.get("FLUTTER_BIN", "flutter")
-        version_line = next(line for line in (root / "pubspec.yaml").read_text().splitlines()
-                            if line.startswith("version: "))
-        version, build = version_line.removeprefix("version: ").split("+")
+        release = read_release_version(root)
         result = subprocess.run([flutter, "--suppress-analytics", "build", "macos", "--release",
-                                 "--no-pub", "--build-name=" + version,
-                                 "--build-number=" + build], cwd=root, env=environment)
+                                 "--no-pub", "--build-name=" + release.macos_name,
+                                 "--build-number=" + release.build], cwd=root, env=environment)
         if result.returncode:
             return result.returncode
         app = root / "build/macos/Build/Products/Release/LoongPass.app"
         verify_app(app)
+        info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+        assert info["CFBundleShortVersionString"] == release.macos_name
+        assert info["CFBundleVersion"] == release.build
         print("Verified universal macOS app:", app)
         return 0
 

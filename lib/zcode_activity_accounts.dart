@@ -196,9 +196,10 @@ class ZcodeActivityAccounts {
     'authorization_required',
     'discoveryIncomplete',
   };
-  static String _id(String family, String uid) => sourceSha256(
-    utf8.encode('$family\u0000$uid'),
-  ).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+  static String _id(String family, String uid) =>
+      sourceSha256(utf8.encode('$family\u0000$uid'))
+          .map((v) => v.toRadixString(16).padLeft(2, '0'))
+          .join();
   Future<List<ZcodeActivityAccount>> accounts() async => [
     for (final a in ((await _read()).data['accounts'] as Map).values)
       ZcodeActivityAccount(a),
@@ -229,6 +230,20 @@ class ZcodeActivityAccounts {
   Future<int> availableDeviceCount() async =>
       _available((await _read()).data).length;
 
+  static String _newDeviceId(Set<String> occupied) {
+    final random = Random.secure();
+    while (true) {
+      final bytes = List.generate(16, (_) => random.nextInt(256));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      final id =
+          '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+          '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+      if (!occupied.contains(id)) return id;
+    }
+  }
+
   Future<Uri> beginAuthorization(
     String family,
     Map<String, dynamic> context, {
@@ -257,8 +272,11 @@ class ZcodeActivityAccounts {
       selected['deviceMid'] = available.isNotEmpty
           ? available.first
           : zcodeDeviceId(selected['deviceMid']);
-      if (_occupied(doc.data).contains(selected['deviceMid']))
-        throw const ZcodeFailure('device_in_use');
+      final occupied = _occupied(doc.data);
+      if (occupied.contains(selected['deviceMid'])) {
+        // Freeze this allocation in _Login; only a verified account persists it.
+        selected['deviceMid'] = _newDeviceId(occupied);
+      }
     }
     final random = Random.secure();
     final token = List.generate(

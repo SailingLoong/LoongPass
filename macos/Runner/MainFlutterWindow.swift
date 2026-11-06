@@ -3,6 +3,7 @@ import Darwin
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  private let appUpdater = AppUpdater()
   private let zcodeSwitchBridge = ZcodeSwitchBridge()
   private let zcodeCaptcha = ZcodeCaptchaWindow()
   private let qoderFileStore = QoderFileStore()
@@ -42,6 +43,7 @@ class MainFlutterWindow: NSWindow {
     self.minSize = NSSize(width: 480, height: 600)
     self.title = "LoongPass"
     RegisterGeneratedPlugins(registry: flutterViewController)
+    appUpdater.register(with: flutterViewController.engine.binaryMessenger)
 
     // Register only: no production owner, discovery, configuration or launch.
     zcodeSwitchBridge.register(with: flutterViewController.engine.binaryMessenger, window: self)

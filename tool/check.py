@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import plistlib
 import subprocess
+import sys
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
@@ -24,6 +25,7 @@ for check in sorted((root / "test").glob("*checks.dart")):
     run([dart, str(check)])
 for check in sorted((root / "tool").glob("workbuddy_*checks.dart")):
     run([dart, str(check)])
+run([sys.executable, str(root / "test/appcast_checks.py")])
 
 if os.uname().sysname == "Darwin":
     with tempfile.TemporaryDirectory(prefix="loongpass-native-checks-") as scratch:

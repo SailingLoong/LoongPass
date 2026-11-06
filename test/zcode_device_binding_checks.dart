@@ -2,27 +2,121 @@ import 'dart:convert';
 import 'dart:async';
 
 import '../lib/zcode_api.dart';
+import '../lib/zcode_activity_accounts.dart';
 import 'memory_account_store.dart';
 import 'zcode_activities_checks.dart' as fixture;
+
+final _uuidV4 = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+);
+
+Future<void> _automaticAllocation() async {
+  final store = MemoryAccountStore('automatic-device-allocation');
+  final http = fixture.FakeZcode();
+  final owner = await fixture.account(store, http);
+  final firstId = (await owner.accounts()).single.id;
+  await owner.setAutomatic(firstId, false);
+  store.data['devicePool'] = [fixture.context['deviceMid']];
+  final firstAccount = jsonEncode(store.data['accounts'][firstId]);
+  final original = jsonEncode(store.data);
+  http.userId = 'new-account';
+  final start = http.received.length;
+  await owner.beginAuthorization('bigmodel', fixture.context);
+  final device = http.received.last.context['deviceMid'];
+  fixture.check(
+    _uuidV4.hasMatch(device!) && device != fixture.context['deviceMid'],
+    'an exhausted imported pool must allocate a fresh UUIDv4',
+  );
+  store.beforeWrite = () async {
+    throw StateError('synthetic save failure');
+  };
+  try {
+    await owner.pollAuthorizationOnce();
+  } on ZcodeFailure catch (_) {}
+  fixture.check(
+    owner.loginPending && jsonEncode(store.data) == original,
+    'failed publication must retain the obtained authorization without changing storage',
+  );
+  final polls = http.polls;
+  store.beforeWrite = null;
+  await owner.pollAuthorizationOnce();
+  final id = (await owner.accounts())
+      .singleWhere((a) => a.uid == 'new-account')
+      .id;
+  fixture.check(
+    http.polls == polls &&
+        !owner.loginPending &&
+        store.data['accounts'][id]['context']['deviceMid'] == device &&
+        http.received
+            .skip(start)
+            .every((r) => r.context['deviceMid'] == device),
+    'init, poll and save retry must share one generated binding and reuse the grant',
+  );
+  fixture.check(
+    jsonEncode(store.data['accounts'][firstId]) == firstAccount &&
+        (store.data['devicePool'] as List).length == 1,
+    'allocation must preserve old accounts and avoid duplicating bindings into the imported pool',
+  );
+  await owner.beginAuthorization('bigmodel', fixture.context, accountId: id);
+  await owner.pollAuthorizationOnce();
+  fixture.check(
+    http.received.last.context['deviceMid'] == device,
+    'reauthorizing a saved account must reuse its generated binding',
+  );
+  http.loseReply = true;
+  http.revealReceipt = false;
+  await owner.claim(id);
+  await owner.tick();
+  fixture.check(
+    http.claims == 1 &&
+        store.data['accounts'][id]['context']['deviceMid'] == device &&
+        store.data['accounts'][id]['claims']['night']['state'] == 'pending',
+    'an unknown claim must retain its device and journal without reissuing the claim',
+  );
+  owner.dispose();
+  final restored = ZcodeActivityAccounts(
+    store: store,
+    api: ZcodeApi(http),
+    now: () => fixture.now,
+  );
+  http.userId = 'third-account';
+  await restored.beginAuthorization('bigmodel', fixture.context);
+  final nextDevice = http.received.last.context['deviceMid'];
+  fixture.check(
+    _uuidV4.hasMatch(nextDevice!) &&
+        nextDevice != device &&
+        nextDevice != fixture.context['deviceMid'],
+    'restored bindings must be excluded from subsequent allocation',
+  );
+  await restored.pollAuthorizationOnce();
+  fixture.check(
+    (await restored.accounts()).length == 3 &&
+        store.data['accounts'][id]['context']['deviceMid'] == device,
+    'each newly saved account must retain its own device after restoration',
+  );
+  restored.dispose();
+}
 
 Future<void> main() async {
   final store = MemoryAccountStore('device-binding');
   final http = fixture.FakeZcode();
   final owner = await fixture.account(store, http);
   final before = http.received.length;
-  var occupied = false;
-  try {
-    await owner.beginAuthorization('bigmodel', fixture.context);
-  } on ZcodeFailure catch (e) {
-    occupied = e.code == 'device_in_use';
-  }
+  final original = jsonEncode(store.data);
+  await owner.beginAuthorization('bigmodel', fixture.context);
+  final generated = http.received.last.context['deviceMid'];
   fixture.check(
-    occupied,
-    'new account must not authorize using an occupied native device',
+    _uuidV4.hasMatch(generated!) && generated != fixture.context['deviceMid'],
+    'new account must receive a fresh UUIDv4 when the native device is occupied',
   );
   fixture.check(
-    http.received.length == before,
-    'occupied device must be rejected before OAuth',
+    http.received.length == before + 1,
+    'allocation must proceed through the existing official OAuth endpoint',
+  );
+  owner.cancelAuthorization();
+  fixture.check(
+    jsonEncode(store.data) == original,
+    'cancelled allocation must not persist a device or change existing accounts',
   );
   final id = (await owner.accounts()).single.id;
   const first = '22222222-2222-4333-8444-555555555555';
@@ -277,5 +371,6 @@ Future<void> main() async {
     'legacy native UUID acceptance must not hide saved accounts',
   );
   compatible.dispose();
+  await _automaticAllocation();
   print('ZCode device binding checks passed');
 }

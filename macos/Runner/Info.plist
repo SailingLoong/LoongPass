@@ -30,5 +30,19 @@
 	<string>NSApplication</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>切换账号时请求 WorkBuddy 正常退出，待授权文件安全更新后重新打开。</string>
+	<key>SUFeedURL</key>
+	<string>https://loongpass.com/updates/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>/a/FT41tq7pZZgqNUyu9Ns32Qo8NHxziqIOFAnwHRb4=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SURequireSignedFeed</key>
+	<true/>
 </dict>
 </plist>

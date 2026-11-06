@@ -9,6 +9,9 @@ import 'zcode_accounts_panel.dart';
 import 'ui_preferences.dart';
 import 'account_workspace_registry.dart';
 import 'workspace_accounts.dart';
+import 'workspace_tools.dart';
+import 'app_updates.dart';
+import 'dart:async';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +71,7 @@ class _AccountPage extends StatefulWidget {
 }
 
 class _AccountPageState extends State<_AccountPage> {
+  final _updates = AppUpdates();
   final _registry = AccountWorkspaceRegistry();
   final _workspace = GlobalKey<AppWorkspaceState>();
   late final Map<ManagedApp, Widget> _pages = {
@@ -99,7 +103,14 @@ class _AccountPageState extends State<_AccountPage> {
   };
   void _openApp(ManagedApp app) => _workspace.currentState?.selectApp(app);
   @override
+  void initState() {
+    super.initState();
+    if (!widget.identityValidationOnly) unawaited(_updates.load());
+  }
+
+  @override
   void dispose() {
+    _updates.dispose();
     _registry.dispose();
     super.dispose();
   }
@@ -118,6 +129,10 @@ class _AccountPageState extends State<_AccountPage> {
         sections: widget.identityValidationOnly
             ? const {}
             : {
+                WorkspaceSection.settings: WorkspaceSettingsPage(
+                  preferences: widget.preferences,
+                  updates: _updates,
+                ),
                 WorkspaceSection.overview: WorkspaceOverviewPage(
                   registry: _registry,
                   onOpenApp: _openApp,

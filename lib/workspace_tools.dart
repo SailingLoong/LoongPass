@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'ui_preferences.dart';
+import 'app_updates.dart';
 
 class ModelServicesPage extends StatelessWidget {
   const ModelServicesPage({super.key});
@@ -74,8 +75,13 @@ class ModelServicesPage extends StatelessWidget {
 }
 
 class WorkspaceSettingsPage extends StatelessWidget {
-  const WorkspaceSettingsPage({super.key, required this.preferences});
+  const WorkspaceSettingsPage({
+    super.key,
+    required this.preferences,
+    this.updates,
+  });
   final UiPreferences preferences;
+  final AppUpdates? updates;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -83,6 +89,8 @@ class WorkspaceSettingsPage extends StatelessWidget {
       title: '设置',
       subtitle: '让 LoongPass 按你的习惯显示。',
       children: [
+        if (updates != null)
+          WorkspaceCard(child: AppUpdateCard(updates: updates!)),
         if (preferences.error != null)
           WorkspaceCard(
             child: Column(
