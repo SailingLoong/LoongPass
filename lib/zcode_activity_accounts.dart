@@ -75,6 +75,7 @@ class ZcodeActivityAccounts {
   final AccountDocumentStore store;
   final ZcodeApi api;
   final int Function() now;
+  final Future<String?> Function(ZcodeCaptchaConfig)? requestVerification;
   FutureOr<void> Function()? onChanged;
   static final _writers = <String>{};
   bool _closed = false;
@@ -86,6 +87,7 @@ class ZcodeActivityAccounts {
   ZcodeActivityAccounts({
     required this.store,
     required this.api,
+    this.requestVerification,
     int Function()? now,
   }) : now = now ?? (() => DateTime.now().millisecondsSinceEpoch);
 
@@ -505,6 +507,7 @@ class ZcodeActivityAccounts {
     bool automatic = false,
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
   }) async {
+    verify ??= requestVerification;
     var doc = await _read();
     var a = (doc.data['accounts'] as Map)[id] as Map<String, dynamic>?;
     if (a == null) throw const ZcodeFailure('account_missing');
@@ -615,7 +618,7 @@ class ZcodeActivityAccounts {
           doc = await _read();
           a = (doc.data['accounts'] as Map)[id];
           claims = a!['claims'];
-          if (automatic || verify == null) return;
+          if (verify == null) return;
           final config = ZcodeCaptchaConfig.parse(
             await _request(ZcodeApi.configPath, a),
           );
@@ -684,7 +687,6 @@ class ZcodeActivityAccounts {
           a['status'] = current['state'];
         await _write(doc);
         if (current['state'] != 'verificationRequired' ||
-            automatic ||
             verify == null ||
             verification != null)
           return;

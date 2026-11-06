@@ -36,6 +36,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
         ZcodeActivityAccounts(
           store: MacAccountDocumentStore('ZCode'),
           api: ZcodeApi(ZcodeHttp()),
+          requestVerification: _verify,
         );
     _owner!.onChanged = _reload;
     await _reload();
@@ -125,7 +126,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     'noOffer' => '服务端当前没有可领取活动。',
     'discoveryIncomplete' => '部分活动信息暂不可用，尚不能确认是否有其他可领取奖励。',
     'pending' => '领取结果待核对；只查询回执，不会重复发送。',
-    'verificationRequired' => '需要验证码，自动领取已暂停。点击“核对并领取活动”完成验证。',
+    'verificationRequired' => '官方验证尚未完成，自动领取已暂停。点击“核对并领取活动”继续验证。',
     'activationRequired' => '活动要求先使用官方 ZCode 客户端，自动领取已暂停。',
     'ineligible' => '服务端确认本次不符合活动领取条件。',
     'authorization_required' => '授权已失效，请通过官网重新授权此账号。',

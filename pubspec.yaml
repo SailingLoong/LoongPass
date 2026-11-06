@@ -1,6 +1,6 @@
 name: loongpass
 description: A lightweight same-machine Flutter account tool, in development preview.
-version: 1.0.0-beta.26+26
+version: 1.0.0-beta.28+28
 publish_to: none
 environment:
   sdk: '>=3.10.0 <4.0.0'
