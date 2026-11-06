@@ -23,8 +23,8 @@
 - [x] Implement the saved account owner and background timer using AccountDocumentStore.
 - [x] Replace the disabled prototype page with official authorization and activity controls; observe existing native version/device context without reading credentials.
 - [x] Run focused tests, repository checks and Universal candidate build. Verify official login, saved identity and restart.
-- [ ] Verify a real activity grant. One automatic attempt is pending; repeated official balance checks have not exposed a new entitlement. Do not replay it.
-- [x] Record actual evidence and remaining live gaps, preserve source provenance, commit/push authorized changes and remove owned intermediate build artifacts. Main source commit: `12d2edb`; only the real reward receipt remains pending.
+- [x] Verify a real activity grant. A second account received a matching new official entitlement after human verification in beta 24. The first account's earlier unknown automatic attempt remains pending and must not be replayed.
+- [x] Record actual evidence and remaining live gaps, preserve source provenance, commit/push authorized changes and remove owned intermediate build artifacts. Initial source commit: `12d2edb`; captcha follow-up source: `1063920`. Future usable balance and the first account's unknown result remain separate acceptance gaps.
 
 ## Review focus
 
@@ -36,7 +36,7 @@ Reuse LoongPort's official captcha config and Aliyun SDK protocol in a dedicated
 
 - [x] Regression tests for definite rejection, restart recovery, cancellation, proof ownership and uncertain verified submissions.
 - [x] Native verification window, existing claim button integration, full checks and one Universal build.
-- [ ] Real human verification, official receipt/amount/expiry reconciliation and restart verification.
+- [x] Real human verification, official receipt/amount/expiry reconciliation and restart verification. Official grant is 500,000,000 tokens, effective 2026-11-06 23:00 and expiring 2026-11-09 09:00 (Asia/Shanghai); current remaining balance is not yet available before activation.
 
 - Lost HTTP/save acknowledgements must not cause another claim POST.
 - A different provider with the same user ID must not share credentials or receipts.
