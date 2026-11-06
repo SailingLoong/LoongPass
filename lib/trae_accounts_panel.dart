@@ -110,6 +110,7 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
       a.credited == null ? '已核对官方签到状态。' : '已核对签到，本次余额净增加 ${a.credited} 积分。',
     'observedClaimed' => '官方显示今日已签到，本次没有重复领取。',
     'unknown' => '领取结果待核对，同一日期不会重复发送。',
+    'ineligible' => '当前账号暂无可领取的签到奖励。',
     _ => '等待签到检查。',
   };
   @override

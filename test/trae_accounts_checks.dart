@@ -50,6 +50,7 @@ class FakeTrae implements TraeTransport {
   final balances = <String, num>{};
   int claims = 0, refreshes = 0;
   bool loseReceipt = false, identityMismatch = false, failProfile = false;
+  bool enabled = true;
   @override
   Future<TraeReply> post(
     String path,
@@ -83,7 +84,7 @@ class FakeTrae implements TraeTransport {
     if (path == TraeHttp.status)
       return TraeReply(200, {
         'code': 0,
-        'enable': true,
+        'enable': enabled,
         'checked_in': signed.contains(uid),
         'did_checked_in': false,
         'credits': 100,

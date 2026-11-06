@@ -439,7 +439,7 @@ class TraeAccounts {
       return;
     }
     if (b['enable'] != true) {
-      current['outcome'] = 'unavailable';
+      current['outcome'] = 'ineligible';
       await _write(doc);
       return;
     }
