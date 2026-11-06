@@ -179,15 +179,13 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      AccountPanelHelp(
-        text:
-            '${widget.region.label} 多账号保存与自动签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。',
-      ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
+      AccountPanelToolbar(
+        title: widget.region.label,
+        accountCount: _accounts.length,
+        helpText:
+            '${widget.region.label} 多账号保存与自动签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。' +
+            ' 自动检查：启动约 30 秒后，之后每 15 分钟；关闭应用后停止。',
+        actions: [
           FilledButton(
             key: const Key('qoder-login'),
             onPressed: !_busy && _owner != null && !_owner!.loginPending
@@ -227,14 +225,13 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
               balance: _balance(a.uid),
               credits: _owner!.credits(a.uid)?.packages,
               status: _outcome(a.outcome),
-              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
+              receipt: a.latestClaim,
               needsAttention: a.outcome == 'unknown',
               notice: _message,
               details: _details(a),
             ),
         ],
       ),
-      const Text('自动检查：启动约 30 秒后，之后每 15 分钟；关闭应用后停止。'),
     ],
   );
 }

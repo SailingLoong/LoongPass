@@ -400,25 +400,28 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AccountPanelHelp(
-          text: widget.savedAccounts
+        AccountPanelToolbar(
+          title: 'WorkBuddy',
+          accountCount: _accounts.accounts.length,
+          helpText: widget.savedAccounts
               ? 'WorkBuddy 多账号保存与自动签到。启动时恢复账号，应用运行期间自动检查。授权以明文保存在本机应用私有目录。'
               : widget.identityValidationOnly
               ? 'WorkBuddy 临时双账号身份验证 · 凭据仅留在内存，退出即清空。此模式不提供签到、额度、自动化或持久保存。'
               : 'WorkBuddy 多账号独立授权与签到接线预览。自动默认关闭，可逐账号选择本次会话自动检查与签到；不切换桌面账号，凭据仅保留在本次内存中。',
+          actions: [
+            FilledButton(
+              key: const Key('workbuddy-login'),
+              onPressed: _available && !_busy ? _start : null,
+              child: const Text('授权 WorkBuddy 账号'),
+            ),
+            if (widget.savedAccounts)
+              TextButton(
+                key: const Key('workbuddy-restore'),
+                onPressed: _available && !_busy ? _restore : null,
+                child: const Text('恢复已保存账号'),
+              ),
+          ],
         ),
-        const SizedBox(height: 12),
-        FilledButton(
-          key: const Key('workbuddy-login'),
-          onPressed: _available && !_busy ? _start : null,
-          child: const Text('授权 WorkBuddy 账号'),
-        ),
-        if (widget.savedAccounts)
-          TextButton(
-            key: const Key('workbuddy-restore'),
-            onPressed: _available && !_busy ? _restore : null,
-            child: const Text('恢复已保存账号'),
-          ),
         if (!_available)
           Padding(
             padding: const EdgeInsets.only(top: 12),
@@ -497,7 +500,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                 status:
                     account.message ??
                     (account.status == null ? '已授权' : _status(account.status!)),
-                latestClaim: account.latestClaim?.display ?? '暂无已确认记录',
+                receipt: account.latestClaim,
                 needsAttention: {
                   WorkBuddyState.unconfirmed,
                   WorkBuddyState.needsVerification,

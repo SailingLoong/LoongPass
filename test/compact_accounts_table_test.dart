@@ -4,8 +4,51 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import '../lib/compact_accounts_table.dart';
 import '../lib/credit_summary.dart';
+import '../lib/ui_preferences.dart';
 
 void main() {
+  testWidgets(
+    'favorites survive table recreation and unmatched search offers reset',
+    (tester) async {
+      final preferences = UiPreferences();
+      addTearDown(preferences.dispose);
+      Widget page() => UiPreferencesScope(
+        preferences: preferences,
+        child: MaterialApp(
+          home: Scaffold(
+            body: CompactAccountsTable(
+              entries: const [
+                AccountTableEntry(
+                  id: 'saved',
+                  label: 'Saved account',
+                  identity: 'synthetic',
+                  balance: '880 积分',
+                  status: 'ready',
+                  details: Text('Details'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpWidget(page());
+      await tester.tap(find.byTooltip('设为常用'));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(page());
+      await tester.tap(find.text('常用'));
+      await tester.pumpAndSettle();
+      expect(find.text('Saved account'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('account-search')),
+        'no match',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('清除搜索和筛选'));
+      await tester.pumpAndSettle();
+      expect(find.text('Saved account'), findsOneWidget);
+    },
+  );
   testWidgets(
     'expired snapshot batches cannot hide the next future expiry from filtering',
     (tester) async {

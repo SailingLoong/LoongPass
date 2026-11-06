@@ -3,3 +3,8 @@ analyzer:
     - build/**
     - macos/Flutter/ephemeral/**
     - macos/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - linux/**

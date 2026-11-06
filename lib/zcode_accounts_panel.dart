@@ -242,16 +242,13 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const AccountPanelHelp(
-        text: 'ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。',
-      ),
-      const SizedBox(height: 8),
-      const Text('授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。'),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
+      AccountPanelToolbar(
+        title: 'ZCode',
+        accountCount: _accounts.length,
+        helpText:
+            'ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。' +
+            ' 授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。',
+        actions: [
           FilledButton(
             key: const Key('zcode-login'),
             onPressed: _busy || _owner == null || _owner!.loginPending
@@ -302,7 +299,10 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
               expiryText: _expiry(a),
               expiryAt: _nextExpiry(a),
               status: _status(a.status),
-              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
+              receipt: a.latestClaim,
+              observedAt: a.checkedAt == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(a.checkedAt!),
               needsAttention: {
                 'pending',
                 'verificationRequired',

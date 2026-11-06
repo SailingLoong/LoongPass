@@ -1,89 +1,21 @@
+export 'account_panel_header.dart';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'credit_summary.dart';
+import 'account_table_entry.dart';
+export 'account_table_entry.dart';
 import 'credit_summary_view.dart';
-
-class AccountPanelHelp extends StatelessWidget {
-  const AccountPanelHelp({super.key, required this.text});
-  final String text;
-  @override
-  Widget build(BuildContext context) => TextButton.icon(
-    icon: const Icon(Icons.help_outline, size: 14),
-    label: const Text('使用说明'),
-    onPressed: () => showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('账号与领取说明'),
-        content: Text(text),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// Immutable presentation snapshot. The owning platform supplies all facts and
-/// explicit actions; searching, paging and opening details never perform I/O.
-class AccountTableEntry {
-  const AccountTableEntry({
-    required this.id,
-    required this.label,
-    required this.identity,
-    required this.balance,
-    required this.status,
-    required this.details,
-    this.credits,
-    this.expiryText,
-    this.expiryAt,
-    this.latestClaim = '暂无已确认记录',
-    this.needsAttention = false,
-    this.onActivate,
-    this.onOpenDetails,
-    this.notice,
-    this.activationEnabled = true,
-  });
-  final String id, label, identity, balance, status, latestClaim;
-  final Widget details;
-  final CreditSummary? credits;
-  final String? expiryText;
-  final DateTime? expiryAt;
-  final bool needsAttention, activationEnabled;
-  final VoidCallback? onActivate, onOpenDetails;
-  final String? notice;
-  DateTime? get nextExpiry =>
-      expiryAt ?? _batches(credits).firstOrNull?.expiresAt;
-}
-
-List<CreditExpiry> _batches(CreditSummary? credits) {
-  final now = DateTime.now();
-  return [
-    for (final batch in credits?.expiring ?? <CreditExpiry>[])
-      if (batch.remaining > 0 && batch.expiresAt.isAfter(now)) batch,
-  ]..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
-}
-
-String accountPoints(num value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value.toString();
-String creditBalance(CreditSummary? summary) => summary == null
-    ? '尚未查询'
-    : summary.totalRemaining == null
-    ? '余额未知'
-    : '${accountPoints(summary.totalRemaining!)} 积分';
-String accountDate(DateTime time) {
-  final d = time.toLocal();
-  String two(int v) => v.toString().padLeft(2, '0');
-  return '${d.year}-${two(d.month)}-${two(d.day)}';
-}
+import 'ui_preferences.dart';
+import 'account_workspace_registry.dart';
 
 class CompactAccountsTable extends StatefulWidget {
-  const CompactAccountsTable({super.key, required this.entries});
+  const CompactAccountsTable({
+    super.key,
+    required this.entries,
+    this.preferenceScope = 'accounts',
+  });
   final List<AccountTableEntry> entries;
+  final String preferenceScope;
   @override
   State<CompactAccountsTable> createState() => _CompactAccountsTableState();
 }
@@ -93,8 +25,37 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   final _scroll = ScrollController();
   late final _live = ValueNotifier(widget.entries);
   final _favorites = <String>{};
+  UiPreferences? _preferences;
+  AccountPresentationScope? _source;
+  String get _preferenceScope => _source?.app.name ?? widget.preferenceScope;
+  String _preferenceKey(AccountTableEntry entry) =>
+      entry.preferenceId ?? '${_preferenceScope}/${entry.id}';
+  bool _favorite(AccountTableEntry entry) =>
+      _preferences?.isFavorite(_preferenceKey(entry)) ??
+      _favorites.contains(entry.id);
+  double get _rowHeight => _preferences?.rowHeight ?? 36;
   int _page = 0, _size = 10;
   String _filter = '全部', _sort = '默认排序';
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _preferences = UiPreferencesScope.maybeOf(context);
+    final source = AccountPresentationScope.maybeOf(context);
+    if (source?.app != _source?.app || source?.registry != _source?.registry) {
+      _source = source;
+      _publish();
+    }
+    _size = _preferences?.pageSize(_preferenceScope) ?? _size;
+  }
+
+  void _publish() {
+    final source = _source;
+    if (source == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) source.registry.publish(source.app, this, widget.entries);
+    });
+  }
+
   @override
   void didUpdateWidget(covariant CompactAccountsTable oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -102,7 +63,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _live.value = widget.entries;
     });
-    _favorites.retainAll(widget.entries.map((e) => e.id));
+    _publish();
   }
 
   @override
@@ -110,6 +71,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     _search.dispose();
     _scroll.dispose();
     _live.dispose();
+    final source = _source;
+    if (source != null)
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => source.registry.remove(source.app, this),
+      );
     super.dispose();
   }
 
@@ -138,7 +104,9 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Text('最近 3 批 · 当前剩余额度'),
-                          for (final b in _batches(row.credits).take(3))
+                          for (final b in upcomingCreditBatches(
+                            row.credits,
+                          ).take(3))
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               child: Text(
@@ -168,6 +136,15 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(row.notice!),
                             ),
+                          const Text(
+                            '最近一次成功领取',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text(row.latestClaim),
+                          ),
+                          const Divider(),
                           row.details,
                         ],
                       ),
@@ -189,19 +166,37 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
     final now = DateTime.now(), week = now.add(const Duration(days: 7));
-    final rows = widget.entries.where((e) {
-      if (!'${e.label} ${e.identity}'.toLowerCase().contains(query))
-        return false;
-      return switch (_filter) {
-        '常用' => _favorites.contains(e.id),
-        '7 天内到期' =>
-          e.nextExpiry != null &&
-              e.nextExpiry!.isAfter(now) &&
-              !e.nextExpiry!.isAfter(week),
-        '待处理' => e.needsAttention,
-        _ => true,
+    bool matches(AccountTableEntry e, String filter) => switch (filter) {
+      '常用' => _favorite(e),
+      '7 天内到期' =>
+        e.nextExpiry != null &&
+            e.nextExpiry!.isAfter(now) &&
+            !e.nextExpiry!.isAfter(week),
+      '待处理' => e.needsAttention,
+      _ => true,
+    };
+    final rows = widget.entries
+        .where(
+          (e) =>
+              '${e.label} ${e.identity} ${e.sourceLabel ?? ''}'
+                  .toLowerCase()
+                  .contains(query) &&
+              matches(e, _filter),
+        )
+        .toList();
+    if (_sort == '默认排序') {
+      final positions = {
+        for (var i = 0; i < widget.entries.length; i++) widget.entries[i].id: i,
       };
-    }).toList();
+      rows.sort((a, b) {
+        final favorites = (_favorite(b) ? 1 : 0).compareTo(
+          _favorite(a) ? 1 : 0,
+        );
+        return favorites != 0
+            ? favorites
+            : positions[a.id]!.compareTo(positions[b.id]!);
+      });
+    }
     if (_sort == '到期优先')
       rows.sort((a, b) {
         final x = a.nextExpiry, y = b.nextExpiry;
@@ -258,7 +253,20 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                     _filter = f;
                     _page = 0;
                   }),
-                  child: Text(f),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(f),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${widget.entries.where((e) => matches(e, f)).length}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               DropdownButton<String>(
                 value: _sort,
@@ -276,90 +284,122 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
             ],
           ),
         ),
-        LayoutBuilder(
-          builder: (context, box) => Scrollbar(
-            controller: _scroll,
-            thumbVisibility: box.maxWidth < 780,
-            child: SingleChildScrollView(
+        if (visible.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, box) => Scrollbar(
               controller: _scroll,
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: math.max(780, box.maxWidth),
-                child: Table(
-                  columnWidths: const {
-                    0: FlexColumnWidth(3.4),
-                    1: FlexColumnWidth(1.65),
-                    2: FlexColumnWidth(2.4),
-                    3: FlexColumnWidth(2.55),
-                  },
-                  defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                  children: [
-                    TableRow(
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerLow,
-                      ),
-                      children: [
-                        for (final label in ['账号', '余额', '即将到期', '最近领取'])
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 10,
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: colors.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    for (final e in visible)
+              thumbVisibility: box.maxWidth < 780,
+              child: SingleChildScrollView(
+                controller: _scroll,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: math.max(780, box.maxWidth),
+                  child: Table(
+                    columnWidths: const {
+                      0: FlexColumnWidth(3.4),
+                      1: FlexColumnWidth(1.65),
+                      2: FlexColumnWidth(2.4),
+                      3: FlexColumnWidth(2.55),
+                    },
+                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                    children: [
                       TableRow(
-                        key: ValueKey('row-${e.id}'),
                         decoration: BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(
-                              color: colors.outlineVariant.withValues(
-                                alpha: .45,
-                              ),
-                            ),
-                          ),
+                          color: colors.surfaceContainerLow,
                         ),
                         children: [
-                          _AccountName(
-                            entry: e,
-                            favorite: _favorites.contains(e.id),
-                            onFavorite: () => setState(() {
-                              _favorites.contains(e.id)
-                                  ? _favorites.remove(e.id)
-                                  : _favorites.add(e.id);
-                            }),
-                            onDetails: () => _details(e.id),
-                          ),
-                          _cell(
-                            e.balance,
-                            tooltip: e.credits == null
-                                ? e.balance
-                                : '${e.balance}\n查询于 ${creditTime(e.credits!.observedAt)}',
-                          ),
-                          _expiry(e),
-                          _cell(e.latestClaim),
+                          for (final label in ['账号', '余额', '即将到期', '最近领取'])
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 10,
+                              ),
+                              child: Text(
+                                label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
-                  ],
+                      for (final e in visible)
+                        TableRow(
+                          key: ValueKey('row-${e.id}'),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(
+                                color: colors.outlineVariant.withValues(
+                                  alpha: .45,
+                                ),
+                              ),
+                            ),
+                          ),
+                          children: [
+                            _AccountName(
+                              entry: e,
+                              height: _rowHeight,
+                              favorite: _favorite(e),
+                              onFavorite: () => setState(() {
+                                if (_preferences != null) {
+                                  _preferences!.toggleFavorite(
+                                    _preferenceKey(e),
+                                  );
+                                } else {
+                                  _favorites.contains(e.id)
+                                      ? _favorites.remove(e.id)
+                                      : _favorites.add(e.id);
+                                }
+                              }),
+                              onDetails: () => _details(e.id),
+                            ),
+                            InkWell(
+                              onTap: () => _details(e.id),
+                              child: SizedBox(
+                                height: _rowHeight,
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: _cell(
+                                    e.balance,
+                                    tooltip:
+                                        '${e.balance}\n${e.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(e.queriedAt!)}'}',
+                                  ),
+                                ),
+                              ),
+                            ),
+                            _expiry(e),
+                            _cell(e.latestClaim),
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
         if (visible.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),
-            child: Text(
-              widget.entries.isEmpty ? '添加账号后，在这里查看余额、到期与领取记录。' : '没有匹配的账号。',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.entries.isEmpty
+                      ? '添加账号后，在这里查看余额、到期与领取记录。'
+                      : '没有匹配的账号。',
+                ),
+                if (widget.entries.isNotEmpty)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _search.clear();
+                      _filter = '全部';
+                      _page = 0;
+                    }),
+                    child: const Text('清除搜索和筛选'),
+                  ),
+              ],
             ),
           ),
         Padding(
@@ -386,6 +426,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                 onChanged: (n) => setState(() {
                   _size = n!;
                   _page = 0;
+                  _preferences?.setPageSize(_preferenceScope, n);
                 }),
               ),
               IconButton(
@@ -409,6 +450,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
             ],
           ),
         ),
+        if (widget.entries.isNotEmpty)
+          Text(
+            '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
+            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+          ),
       ],
     );
   }
@@ -426,19 +472,29 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     ),
   );
   Widget _expiry(AccountTableEntry row) {
-    final batches = _batches(row.credits);
-    final text =
-        row.expiryText ??
-        (batches.isEmpty
-            ? '到期信息未知'
-            : '${accountPoints(batches.first.remaining)} 积分 · ${accountDate(batches.first.expiresAt)}${batches.length > 1 ? ' +${batches.length - 1}' : ''}');
+    final batches = upcomingCreditBatches(row.credits);
+    final text = row.upcomingExpiryText;
     if (batches.isEmpty && row.expiryText == null) return _cell(text);
     return InkWell(
       key: ValueKey('expiry-${row.id}'),
       onTap: () => _details(row.id, expiry: true),
       child: SizedBox(
-        height: 36,
-        child: Align(alignment: Alignment.centerLeft, child: _cell(text)),
+        height: _rowHeight,
+        child: DefaultTextStyle.merge(
+          style: TextStyle(
+            color:
+                row.nextExpiry != null &&
+                    row.nextExpiry!.isAfter(DateTime.now()) &&
+                    row.nextExpiry!.isBefore(
+                      DateTime.now().add(const Duration(days: 7)),
+                    )
+                ? (Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFFFFC46B)
+                      : const Color(0xFF8D5300))
+                : null,
+          ),
+          child: Align(alignment: Alignment.centerLeft, child: _cell(text)),
+        ),
       ),
     );
   }
@@ -450,9 +506,11 @@ class _AccountName extends StatefulWidget {
     required this.favorite,
     required this.onFavorite,
     required this.onDetails,
+    required this.height,
   });
   final AccountTableEntry entry;
   final bool favorite;
+  final double height;
   final VoidCallback onFavorite, onDetails;
   @override
   State<_AccountName> createState() => _AccountNameState();
@@ -474,7 +532,7 @@ class _AccountNameState extends State<_AccountName> {
       child: FocusableActionDetector(
         onShowFocusHighlight: (v) => setState(() => _focused = v),
         child: SizedBox(
-          height: 36,
+          height: widget.height,
           child: Row(
             children: [
               IconButton(
@@ -502,7 +560,9 @@ class _AccountNameState extends State<_AccountName> {
                       minimumSize: const Size(0, 32),
                     ),
                     child: Text(
-                      e.label,
+                      e.sourceLabel == null
+                          ? e.label
+                          : '${e.label} · ${e.sourceLabel}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(

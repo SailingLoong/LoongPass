@@ -181,14 +181,13 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const AccountPanelHelp(
-        text: 'TRAE CN 账号保存、自动签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。',
-      ),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
+      AccountPanelToolbar(
+        title: 'TRAE CN',
+        accountCount: _accounts.length,
+        helpText:
+            'TRAE CN 账号保存、自动签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。' +
+            ' 启动约 30 秒后检查，之后每 15 分钟；关闭应用后停止。',
+        actions: [
           FilledButton(
             key: const Key('trae-import'),
             onPressed: _busy || _owner == null || _owner!.loginPending
@@ -233,14 +232,13 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
               balance: creditBalance(_owner!.credits(a.uid)),
               credits: _owner!.credits(a.uid),
               status: _outcome(a),
-              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
+              receipt: a.latestClaim,
               needsAttention: a.outcome == 'unknown',
               notice: _message,
               details: _details(a),
             ),
         ],
       ),
-      const Text('启动约 30 秒后检查，之后每 15 分钟；关闭应用后停止。'),
     ],
   );
 }

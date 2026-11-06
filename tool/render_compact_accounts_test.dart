@@ -11,6 +11,9 @@ import '../lib/main.dart';
 import '../lib/app_sidebar.dart';
 import '../lib/compact_accounts_table.dart';
 import '../lib/credit_summary.dart';
+import '../lib/claim_receipt.dart';
+import '../lib/account_workspace_registry.dart';
+import '../lib/workspace_accounts.dart';
 
 void main() {
   setUpAll(() async {
@@ -41,6 +44,9 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final boundary = GlobalKey();
+        final registry = AccountWorkspaceRegistry();
+        final workspace = GlobalKey<AppWorkspaceState>();
+        addTearDown(registry.dispose);
         final entries = [
           for (var n = 1; n <= 20; n++)
             AccountTableEntry(
@@ -60,7 +66,10 @@ void main() {
               ),
               status: n == 5 ? '领取结果待核对' : '自动领取已开启',
               needsAttention: n == 5,
-              latestClaim: '+100 积分 · 2026-11-06 09:30',
+              receipt: ClaimReceipt(
+                amount: 100,
+                confirmedAt: DateTime(2026, 11, 6, 9, 30),
+              ),
               onActivate: () {},
               details: const Text('演示账号详情'),
             ),
@@ -73,34 +82,58 @@ void main() {
               theme: loongPassTheme(brightness),
               home: Scaffold(
                 body: AppWorkspace(
+                  key: workspace,
                   initialApp: ManagedApp.workbuddy,
+                  sections: {
+                    WorkspaceSection.overview: WorkspaceOverviewPage(
+                      registry: registry,
+                      onOpenApp: (app) =>
+                          workspace.currentState!.selectApp(app),
+                      onOpenModels: () => workspace.currentState!.selectSection(
+                        WorkspaceSection.models,
+                      ),
+                    ),
+                    WorkspaceSection.accounts: WorkspaceAccountsPage(
+                      registry: registry,
+                    ),
+                    WorkspaceSection.activity: WorkspaceActivityPage(
+                      registry: registry,
+                      onOpenApp: (app) =>
+                          workspace.currentState!.selectApp(app),
+                    ),
+                  },
                   pages: {
-                    ManagedApp.workbuddy: AccountWorkspacePage(
-                      'WorkBuddy',
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Wrap(
-                            spacing: 8,
-                            children: [
-                              FilledButton(
-                                onPressed: () {},
-                                child: const Text('添加账号'),
-                              ),
-                              TextButton(
-                                onPressed: () {},
-                                child: const Text('使用说明'),
-                              ),
-                              const Text('演示数据'),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            '客户端当前账号：尚未核对',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                          CompactAccountsTable(entries: entries),
-                        ],
+                    ManagedApp.workbuddy: AccountPresentationScope(
+                      app: ManagedApp.workbuddy,
+                      registry: registry,
+                      child: AccountWorkspacePage(
+                        'WorkBuddy',
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AccountPanelToolbar(
+                              title: 'WorkBuddy',
+                              accountCount: entries.length,
+                              helpText: '演示数据，不操作真实账号。',
+                              actions: [
+                                FilledButton(
+                                  onPressed: () {},
+                                  child: const Text('添加账号'),
+                                ),
+                                TextButton(
+                                  onPressed: () {},
+                                  child: const Text('恢复已保存账号'),
+                                ),
+                              ],
+                            ),
+                            const Text(
+                              '演示数据 · 客户端当前账号：尚未核对',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                            CompactAccountsTable(entries: entries),
+                          ],
+                        ),
+                        showTitle: false,
                       ),
                     ),
                   },
@@ -125,7 +158,7 @@ void main() {
             36,
           );
         }
-        await tester.runAsync(() async {
+        Future<void> capture(String name) => tester.runAsync(() async {
           final canvas =
               boundary.currentContext!.findRenderObject()
                   as RenderRepaintBoundary;
@@ -139,10 +172,25 @@ void main() {
           );
           await output.create(recursive: true);
           await File(
-            '${output.path}/flutter-compact-${size.width.toInt()}-${brightness.name}.png',
+            '${output.path}/flutter-workspace-${size.width.toInt()}-${brightness.name}-$name.png',
           ).writeAsBytes(bytes.buffer.asUint8List());
           image.dispose();
         });
+        await capture('accounts');
+        await mouse.moveTo(Offset.zero);
+        if (size.width == 1024) {
+          await tester.tap(find.byKey(const Key('toggle-sidebar')));
+          await tester.pumpAndSettle();
+          await capture('collapsed');
+          await tester.tap(find.byKey(const Key('toggle-sidebar')));
+          await tester.pumpAndSettle();
+        }
+        for (final section in ['overview', 'models', 'activity', 'settings']) {
+          await tester.tap(find.byKey(ValueKey('nav-$section')));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          await capture(section);
+        }
         await mouse.removePointer();
       }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
     }

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import '../lib/app_sidebar.dart';
+import '../lib/ui_preferences.dart';
 
 void main() {
   Future<void> mount(
@@ -27,6 +30,55 @@ void main() {
       ),
     );
   }
+
+  testWidgets(
+    'sidebar toggle shares the brand row and model entry stays reachable',
+    (tester) async {
+      await mount(tester);
+      expect(
+        (tester.getCenter(find.byKey(const Key('toggle-sidebar'))).dy -
+                tester.getCenter(find.text('LoongPass')).dy)
+            .abs(),
+        lessThan(5),
+      );
+      await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Magpie'), findsWidgets);
+      expect(find.text('尚未接入'), findsWidgets);
+      expect(find.textContaining('127.0.0.1'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'dragging an app preserves selected content and unfinished input',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.byKey(const ValueKey('app-qoder')));
+      await tester.pump();
+      await tester.enterText(find.byKey(const Key('draft')), 'keep me');
+      expect(find.byKey(const Key('drag-qoder')), findsOneWidget);
+      final source = tester.getCenter(find.byKey(const Key('drag-qoder')));
+      final target = tester.getCenter(find.byKey(const Key('app-zcode')));
+      final gesture = await tester.startGesture(
+        source,
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, -24));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveTo(Offset(source.dx, target.dy + 4));
+      await tester.pump(const Duration(milliseconds: 500));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.byKey(const Key('app-qoder'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('app-zcode'))).dy),
+      );
+      expect(find.text('keep me'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('app-zcode')));
+      await tester.pumpAndSettle();
+      expect(find.text('ZCode content'), findsOneWidget);
+    },
+  );
 
   testWidgets('regional app buttons navigate without account actions', (
     tester,
@@ -68,7 +120,12 @@ void main() {
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey('app-workbuddy')).hitTestable(),
         100,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('app-order')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const ValueKey('app-workbuddy')));
@@ -87,4 +144,64 @@ void main() {
     expect(find.text('ZCode content'), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 64);
   });
+
+  testWidgets(
+    'keyboard move and persisted order keep the selected app on remount',
+    (tester) async {
+      String? stored;
+      final preferences = UiPreferences(write: (value) async => stored = value);
+      Future<void> show(UiPreferences state) => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AppWorkspace(
+              preferences: state,
+              initialApp: ManagedApp.workbuddy,
+              pages: const {ManagedApp.workbuddy: Text('WorkBuddy selected')},
+            ),
+          ),
+        ),
+      );
+      await show(preferences);
+      final button = find.descendant(
+        of: find.byKey(const Key('app-workbuddy')),
+        matching: find.byType(TextButton),
+      );
+      Focus.of(
+        tester.element(
+          find.descendant(of: button, matching: find.byType(Text)).first,
+        ),
+      ).requestFocus();
+      await tester.pump();
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+      await tester.pumpAndSettle();
+      await preferences.saved;
+      expect(preferences.appOrder.map((a) => a.name), [
+        'zcode',
+        'qoderCn',
+        'qoder',
+        'minimaxCn',
+        'workbuddy',
+        'minimax',
+        'traeCn',
+      ]);
+      await tester.pumpWidget(const SizedBox());
+      final restored = UiPreferences(read: () async => stored);
+      await restored.load();
+      await show(restored);
+      await tester.pumpAndSettle();
+      expect(find.text('WorkBuddy selected'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('app-workbuddy'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('app-minimax'))).dy),
+      );
+      await tester.tap(find.byKey(const Key('toggle-sidebar')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('region-qoderCn')), findsOneWidget);
+      expect(find.byKey(const Key('region-qoder')), findsOneWidget);
+      expect(find.text('CN'), findsWidgets);
+      expect(find.text('GL'), findsWidgets);
+    },
+  );
 }
