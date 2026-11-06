@@ -1,3 +1,4 @@
+import 'compact_accounts_table.dart';
 import 'credit_summary_view.dart';
 
 import 'dart:async';
@@ -277,15 +278,130 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
     super.dispose();
   }
 
+  Widget _details(WorkBuddyAccountSession selected) {
+    final status = selected.status, result = selected.result;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(selected.uid!),
+            Text(selected.domain ?? ''),
+            Text(
+              widget.savedAccounts
+                  ? '已核实授权身份 · 本机保存账号'
+                  : '已核实授权身份 · 本次内存会话 · 未切换桌面账号',
+            ),
+            if (selected.message case final String message) Text(message),
+            const SizedBox(height: 8),
+            if (!widget.identityValidationOnly) ...[
+              if (widget.savedAccounts)
+                Text(
+                  _automatic?.enabled(selected.id) ?? false
+                      ? '自动签到已开启：30 秒后首查，之后每 15 分钟检查；今日已签到时等待下一天。退出应用即停止。'
+                      : '自动签到已暂停，请核对授权状态与签到记录。',
+                ),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    key: const Key('workbuddy-status'),
+                    onPressed: _busy
+                        ? null
+                        : () =>
+                              _run(() => _accounts.refreshStatus(selected.id)),
+                    child: const Text('查询此账号签到状态'),
+                  ),
+                  OutlinedButton(
+                    key: const Key('workbuddy-balance'),
+                    onPressed: _busy
+                        ? null
+                        : () =>
+                              _run(() => _accounts.refreshBalance(selected.id)),
+                    child: const Text('查询此账号完整额度'),
+                  ),
+                  OutlinedButton(
+                    key: const Key('workbuddy-claim'),
+                    onPressed:
+                        !_busy && !_accounts.claimBusy && selected.canClaim
+                        ? () => _claim(selected)
+                        : null,
+                    child: const Text('核对并签到'),
+                  ),
+                  if (widget.savedAccounts &&
+                      widget.create == null &&
+                      widget.openAuthorization == null &&
+                      defaultTargetPlatform == TargetPlatform.macOS)
+                    OutlinedButton(
+                      key: const Key('workbuddy-desktop-switch'),
+                      onPressed: _busy || _accounts.claimBusy || selected.busy
+                          ? null
+                          : () => _activateDesktop(selected),
+                      child: const Text('切换 WorkBuddy 客户端'),
+                    ),
+                  TextButton(
+                    key: const Key('workbuddy-remove'),
+                    onPressed: _busy ? null : () => _remove(selected),
+                    child: const Text('移除本次内存账号'),
+                  ),
+                ],
+              ),
+              if (!widget.savedAccounts)
+                SwitchListTile.adaptive(
+                  key: const Key('workbuddy-automatic'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('本次会话自动签到'),
+                  subtitle: const Text(
+                    '共享会话定时器启动 30 秒后首查，之后每 15 分钟检查；新增账号随下一轮。关闭或退出即停止，未知结果不重发。重启后需重新授权和选择。',
+                  ),
+                  value: _automatic?.enabled(selected.id) ?? false,
+                  onChanged:
+                      (_automatic?.enabled(selected.id) ?? false) ||
+                          (!_busy &&
+                              !selected.busy &&
+                              selected.canClaim &&
+                              selected.claimOwnerAvailable)
+                      ? (value) => _toggleAutomatic(selected, value)
+                      : null,
+                ),
+              if (!selected.claimOwnerAvailable)
+                const Text('尚缺持久化领取记录，不能发送签到。'),
+            ] else
+              TextButton(
+                key: const Key('workbuddy-remove'),
+                onPressed: _busy ? null : () => _remove(selected),
+                child: const Text('移除本次内存账号'),
+              ),
+            if (selected.credits case final credits?)
+              CreditSummaryView(summary: credits)
+            else if (selected.totalRemaining case final double total)
+              Text('已核实完整剩余额度：$total'),
+            if (status != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_status(status)),
+              ),
+            if (result != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_result(result)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selected = _accounts.selected, pending = _accounts.pending;
-    final status = selected?.status, result = selected?.result;
+    final pending = _accounts.pending;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          widget.savedAccounts
+        AccountPanelHelp(
+          text: widget.savedAccounts
               ? 'WorkBuddy 多账号保存与自动签到。启动时恢复账号，应用运行期间自动检查。授权以明文保存在本机应用私有目录。'
               : widget.identityValidationOnly
               ? 'WorkBuddy 临时双账号身份验证 · 凭据仅留在内存，退出即清空。此模式不提供签到、额度、自动化或持久保存。'
@@ -360,149 +476,50 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
               ),
             ),
           ),
-        if (_accounts.accounts.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final account in _accounts.accounts)
-                  ChoiceChip(
-                    key: Key('workbuddy-account-${account.id}'),
-                    label: Text('${account.uid} · ${account.domain}'),
-                    selected: selected?.id == account.id,
-                    onSelected: _busy
-                        ? null
-                        : (value) {
-                            if (value)
-                              setState(() {
-                                _message = null;
-                                _accounts.select(account.id);
-                              });
-                          },
-                  ),
-              ],
-            ),
+        if (!widget.identityValidationOnly && widget.savedAccounts)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text('客户端当前账号：尚未核对', style: TextStyle(fontSize: 12)),
           ),
-        if (selected?.uid != null)
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(selected!.uid!),
-                  Text(selected.domain ?? ''),
-                  Text(
-                    widget.savedAccounts
-                        ? '已核实授权身份 · 本机保存账号'
-                        : '已核实授权身份 · 本次内存会话 · 未切换桌面账号',
-                  ),
-                  if (selected.message case final String message) Text(message),
-                  const SizedBox(height: 8),
-                  if (!widget.identityValidationOnly) ...[
-                    if (widget.savedAccounts)
-                      Text(
-                        _automatic?.enabled(selected.id) ?? false
-                            ? '自动签到已开启：30 秒后首查，之后每 15 分钟检查；今日已签到时等待下一天。退出应用即停止。'
-                            : '自动签到已暂停，请核对授权状态与签到记录。',
-                      ),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton(
-                          key: const Key('workbuddy-status'),
-                          onPressed: _busy
-                              ? null
-                              : () => _run(
-                                  () => _accounts.refreshStatus(selected.id),
-                                ),
-                          child: const Text('查询此账号签到状态'),
-                        ),
-                        OutlinedButton(
-                          key: const Key('workbuddy-balance'),
-                          onPressed: _busy
-                              ? null
-                              : () => _run(
-                                  () => _accounts.refreshBalance(selected.id),
-                                ),
-                          child: const Text('查询此账号完整额度'),
-                        ),
-                        OutlinedButton(
-                          key: const Key('workbuddy-claim'),
-                          onPressed:
-                              !_busy &&
-                                  !_accounts.claimBusy &&
-                                  selected.canClaim
-                              ? () => _claim(selected)
-                              : null,
-                          child: const Text('核对并签到'),
-                        ),
-                        if (widget.savedAccounts &&
-                            widget.create == null &&
-                            widget.openAuthorization == null &&
-                            defaultTargetPlatform == TargetPlatform.macOS)
-                          OutlinedButton(
-                            key: const Key('workbuddy-desktop-switch'),
-                            onPressed:
-                                _busy || _accounts.claimBusy || selected.busy
-                                ? null
-                                : () => _activateDesktop(selected),
-                            child: const Text('切换 WorkBuddy 客户端'),
-                          ),
-                        TextButton(
-                          key: const Key('workbuddy-remove'),
-                          onPressed: _busy ? null : () => _remove(selected),
-                          child: const Text('移除本次内存账号'),
-                        ),
-                      ],
-                    ),
-                    if (!widget.savedAccounts)
-                      SwitchListTile.adaptive(
-                        key: const Key('workbuddy-automatic'),
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('本次会话自动签到'),
-                        subtitle: const Text(
-                          '共享会话定时器启动 30 秒后首查，之后每 15 分钟检查；新增账号随下一轮。关闭或退出即停止，未知结果不重发。重启后需重新授权和选择。',
-                        ),
-                        value: _automatic?.enabled(selected.id) ?? false,
-                        onChanged:
-                            (_automatic?.enabled(selected.id) ?? false) ||
-                                (!_busy &&
-                                    !selected.busy &&
-                                    selected.canClaim &&
-                                    selected.claimOwnerAvailable)
-                            ? (value) => _toggleAutomatic(selected, value)
-                            : null,
-                      ),
-                    if (!selected.claimOwnerAvailable)
-                      const Text('尚缺持久化领取记录，不能发送签到。'),
-                  ] else
-                    TextButton(
-                      key: const Key('workbuddy-remove'),
-                      onPressed: _busy ? null : () => _remove(selected),
-                      child: const Text('移除本次内存账号'),
-                    ),
-                  if (selected.credits case final credits?)
-                    CreditSummaryView(summary: credits)
-                  else if (selected.totalRemaining case final double total)
-                    Text('已核实完整剩余额度：$total'),
-                  if (status != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(_status(status)),
-                    ),
-                  if (result != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(_result(result)),
-                    ),
-                ],
+        CompactAccountsTable(
+          entries: [
+            for (final account in _accounts.accounts)
+              AccountTableEntry(
+                id: account.id,
+                label: account.uid!,
+                identity: account.domain ?? '',
+                balance: account.credits != null
+                    ? creditBalance(account.credits)
+                    : account.totalRemaining != null
+                    ? '${accountPoints(account.totalRemaining!)} 积分'
+                    : '尚未查询',
+                credits: account.credits,
+                status:
+                    account.message ??
+                    (account.status == null ? '已授权' : _status(account.status!)),
+                latestClaim: account.latestClaim?.display ?? '暂无已确认记录',
+                needsAttention: {
+                  WorkBuddyState.unconfirmed,
+                  WorkBuddyState.needsVerification,
+                }.contains(account.result?.state),
+                onActivate:
+                    widget.savedAccounts &&
+                        widget.create == null &&
+                        widget.openAuthorization == null &&
+                        defaultTargetPlatform == TargetPlatform.macOS
+                    ? () => _activateDesktop(account)
+                    : null,
+                activationEnabled:
+                    !_busy && !_accounts.claimBusy && !account.busy,
+                onOpenDetails: () => setState(() {
+                  _message = null;
+                  _accounts.select(account.id);
+                }),
+                notice: _message,
+                details: _details(account),
               ),
-            ),
-          ),
+          ],
+        ),
       ],
     );
   }

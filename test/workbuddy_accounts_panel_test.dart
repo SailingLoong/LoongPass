@@ -36,12 +36,11 @@ void main() {
     failOpen = true;
     await addAccount();
     expect(find.textContaining('未能确认授权页已打开'), findsOneWidget);
-    final firstChoice = find.widgetWithText(ChoiceChip,
-      'message-account-A · www.workbuddy.cn');
+    final firstChoice = find.byKey(const Key('account-session-1'));
     await tester.ensureVisible(firstChoice);
     await tester.tap(firstChoice);
     await tester.pumpAndSettle();
-    expect(find.text('message-account-A'), findsOneWidget);
+    expect(find.text('message-account-A'), findsWidgets);
     expect(find.textContaining('未能确认授权页已打开'), findsNothing);
     expect(first.posts, 0);
     expect(second.posts, 0);
@@ -104,9 +103,13 @@ void main() {
     await tester.pump(const Duration(seconds: 30));
     await tester.pumpAndSettle();
     expect(server.posts, 1);
+    await tester.tap(find.byKey(const Key('account-session-1')));
+    await tester.pumpAndSettle();
     expect(find.textContaining('已核实本次到账 20'), findsOneWidget);
     expect(find.text('今日签到已完成'), findsOneWidget);
     expect(find.textContaining('当前活动可签到'), findsNothing);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('workbuddy-login')));
     await tester.tap(find.byKey(const Key('workbuddy-login')));
     await tester.pump();await tester.pump(const Duration(milliseconds: 300));
@@ -198,6 +201,8 @@ void main() {
     await tester.tap(find.text('继续官方授权'));
     await tester.pumpAndSettle();
     expect(find.text('synthetic-user'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('account-session-1')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('workbuddy-claim')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));

@@ -1,3 +1,4 @@
+import 'compact_accounts_table.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -99,11 +100,73 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
     super.dispose();
   }
 
+  Widget _details(MiniMaxAccount a) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(a.uid),
+          Text(_status(a)),
+          if (a.rewardExpiresAtMs case final int expires)
+            Text(
+              '最近领取批次：${a.points} 积分 · ${DateTime.fromMillisecondsSinceEpoch(expires)} 到期（发放记录，剩余未核实）',
+            ),
+          if (_service!.credits(a.id) case final summary?)
+            CreditSummaryView(summary: summary),
+          Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _service!.refreshCredits(a.id);
+                        await _refresh();
+                      }),
+                child: const Text('查询余额与到期'),
+              ),
+              OutlinedButton(
+                onPressed: _busy || a.status == 'unknown'
+                    ? null
+                    : () => _run(() async {
+                        await _service!.claim(a.id);
+                        await _refresh();
+                      }),
+                child: const Text('核对并签到'),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('自动签到'),
+                  Switch(
+                    value: a.automatic,
+                    onChanged: _busy
+                        ? null
+                        : (enabled) => _run(() async {
+                            await _service!.setAutomatic(a.id, enabled);
+                            if (enabled) _service!.startAutomatic();
+                            await _refresh();
+                          }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text('$_name 多账号保存与自动签到。授权后在本机私有目录明文保存；应用启动时恢复，运行期间自动检查。'),
+      AccountPanelHelp(
+        text: '$_name 多账号保存与自动签到。授权后在本机私有目录明文保存；应用启动时恢复，运行期间自动检查。',
+      ),
       const SizedBox(height: 12),
       Wrap(
         spacing: 12,
@@ -145,69 +208,23 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(_message!),
         ),
-      for (final a in _accounts)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(a.uid),
-                Text(_status(a)),
-                if (a.rewardExpiresAtMs case final int expires)
-                  Text(
-                    '最近领取批次：${a.points} 积分 · ${DateTime.fromMillisecondsSinceEpoch(expires)} 到期（发放记录，剩余未核实）',
-                  ),
-                if (_service!.credits(a.id) case final summary?)
-                  CreditSummaryView(summary: summary),
-                Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _service!.refreshCredits(a.id);
-                              await _refresh();
-                            }),
-                      child: const Text('查询余额与到期'),
-                    ),
-                    OutlinedButton(
-                      onPressed: _busy || a.status == 'unknown'
-                          ? null
-                          : () => _run(() async {
-                              await _service!.claim(a.id);
-                              await _refresh();
-                            }),
-                      child: const Text('核对并签到'),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('自动签到'),
-                        Switch(
-                          value: a.automatic,
-                          onChanged: _busy
-                              ? null
-                              : (enabled) => _run(() async {
-                                  await _service!.setAutomatic(a.id, enabled);
-                                  if (enabled) _service!.startAutomatic();
-                                  await _refresh();
-                                }),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
+      CompactAccountsTable(
+        entries: [
+          for (final a in _accounts)
+            AccountTableEntry(
+              id: a.id,
+              label: a.label,
+              identity: a.uid,
+              balance: creditBalance(_service!.credits(a.id)),
+              credits: _service!.credits(a.id),
+              status: _status(a),
+              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
+              needsAttention: {'unknown', 'needsLogin'}.contains(a.status),
+              notice: _message,
+              details: _details(a),
             ),
-          ),
-        ),
+        ],
+      ),
       const Text('自动检查：启动后约 30 秒，之后每 15 分钟；关闭应用后停止。'),
     ],
   );

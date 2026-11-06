@@ -1,3 +1,4 @@
+import 'compact_accounts_table.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -107,12 +108,80 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
     super.dispose();
   }
 
+  Widget _details(QoderSavedAccount a) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(a.uid),
+          Text(_outcome(a.outcome)),
+          Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.claim(a.uid);
+                        await _reload();
+                      }),
+                child: const Text('核对并签到'),
+              ),
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.refreshCredits(a.uid);
+                        await _reload();
+                      }),
+                child: const Text('查询积分与到期'),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('自动签到'),
+                  Switch(
+                    value: a.automatic,
+                    onChanged: _busy
+                        ? null
+                        : (enabled) => _run(() async {
+                            await _owner!.setAutomatic(a.uid, enabled);
+                            await _reload();
+                          }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (_owner!.credits(a.uid) case final credits?) ...[
+            if (credits.planRemaining case final remaining?)
+              Text('套餐剩余：$remaining'),
+            if (credits.addOnRemaining case final remaining?)
+              Text('附加积分剩余：$remaining'),
+            const Text('以下仅为官方返回的专属积分包；与汇总可能重叠，其他积分的到期明细尚未提供。'),
+            CreditSummaryView(summary: credits.packages),
+          ],
+        ],
+      ),
+    ),
+  );
+
+  String _balance(String uid) {
+    final c = _owner!.credits(uid);
+    if (c == null) return '尚未查询';
+    return '套餐 ${c.planRemaining == null ? '未知' : accountPoints(c.planRemaining!)} / 附加 ${c.addOnRemaining == null ? '未知' : accountPoints(c.addOnRemaining!)} 积分';
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(
-        '${widget.region.label} 多账号保存与自动签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。',
+      AccountPanelHelp(
+        text:
+            '${widget.region.label} 多账号保存与自动签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -148,70 +217,23 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(_message!),
         ),
-      for (final a in _accounts)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(a.uid),
-                Text(_outcome(a.outcome)),
-                Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.claim(a.uid);
-                              await _reload();
-                            }),
-                      child: const Text('核对并签到'),
-                    ),
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.refreshCredits(a.uid);
-                              await _reload();
-                            }),
-                      child: const Text('查询积分与到期'),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('自动签到'),
-                        Switch(
-                          value: a.automatic,
-                          onChanged: _busy
-                              ? null
-                              : (enabled) => _run(() async {
-                                  await _owner!.setAutomatic(a.uid, enabled);
-                                  await _reload();
-                                }),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                if (_owner!.credits(a.uid) case final credits?) ...[
-                  if (credits.planRemaining case final remaining?)
-                    Text('套餐剩余：$remaining'),
-                  if (credits.addOnRemaining case final remaining?)
-                    Text('附加积分剩余：$remaining'),
-                  const Text('以下仅为官方返回的专属积分包；与汇总可能重叠，其他积分的到期明细尚未提供。'),
-                  CreditSummaryView(summary: credits.packages),
-                ],
-              ],
+      CompactAccountsTable(
+        entries: [
+          for (final a in _accounts)
+            AccountTableEntry(
+              id: a.uid,
+              label: a.label,
+              identity: a.uid,
+              balance: _balance(a.uid),
+              credits: _owner!.credits(a.uid)?.packages,
+              status: _outcome(a.outcome),
+              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
+              needsAttention: a.outcome == 'unknown',
+              notice: _message,
+              details: _details(a),
             ),
-          ),
-        ),
+        ],
+      ),
       const Text('自动检查：启动约 30 秒后，之后每 15 分钟；关闭应用后停止。'),
     ],
   );

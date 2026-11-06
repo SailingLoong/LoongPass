@@ -1,3 +1,4 @@
+import 'claim_receipt.dart';
 // Region-bound independent grants and explicit free benefits. MIT-derived protocol:
 // candidate-669 qoder_cn_device_login, qoder_http_auth/transport,
 // qoder_daily/cn_benefits{,_contract}. No desktop auth-file access.
@@ -178,13 +179,15 @@ class QoderSavedAccount {
   final bool automatic;
   final int authorizationExpiresAt;
   final String? outcome;
+  final ClaimReceipt? latestClaim;
   const QoderSavedAccount(
     this.uid,
     this.label,
     this.automatic,
     this.authorizationExpiresAt,
-    this.outcome,
-  );
+    this.outcome, {
+    this.latestClaim,
+  });
 }
 
 class QoderDeviceAccounts {
@@ -287,8 +290,30 @@ class QoderDeviceAccounts {
           e.value['automatic'] == true,
           e.value['expiresAt'],
           e.value['lastOutcome'],
+          latestClaim: _latestClaim(store.data['claims'] as Map, e.key),
         ),
     ];
+  }
+
+  ClaimReceipt? _latestClaim(Map claims, String uid) {
+    final success = [
+      for (final e in claims.entries)
+        if ((jsonDecode(e.key) as List).first == uid)
+          if (e.value['state'] == 'claimed')
+            e.value as Map
+          else if (e.value['previousSuccess'] is Map)
+            e.value['previousSuccess'] as Map,
+    ];
+    if (success.isEmpty) return null;
+    final times = [
+      for (final c in success)
+        if (c['confirmedAtMs'] is int) c['confirmedAtMs'] as int,
+    ]..sort();
+    return ClaimReceipt(
+      confirmedAt: times.isEmpty
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(times.last),
+    );
   }
 
   Future<void> setAutomatic(String uid, bool enabled) async {
@@ -951,6 +976,10 @@ class QoderDeviceAccounts {
           'target': target,
           'generation': a['generation'],
           'listingClaimed': false,
+          if (old?['state'] == 'claimed')
+            'previousSuccess': {'confirmedAtMs': old['confirmedAtMs']}
+          else if (old?['previousSuccess'] is Map)
+            'previousSuccess': old['previousSuccess'],
         };
         await _save(s); // Durable CAS BEFORE POST.
         final current = await _read();
@@ -1024,6 +1053,10 @@ class QoderDeviceAccounts {
         s.data['claims'][key]['state'] = outcome == 'unknown'
             ? 'unknown'
             : 'claimed';
+        if (outcome == 'claimedDeltaUnknown') {
+          s.data['claims'][key]['confirmedAtMs'] = _now();
+          (s.data['claims'][key] as Map).remove('previousSuccess');
+        }
         await _save(s);
         out.add({'campaignId': id, 'outcome': outcome});
       }

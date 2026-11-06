@@ -46,6 +46,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
       expect(find.textContaining('需要验证码'), findsOneWidget);
@@ -88,6 +92,10 @@ void main() {
       expect(find.textContaining('Z.AI'), findsNothing);
       expect(http.claims, 0);
       expect(http.balanceCalls, 0);
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('检查活动与额度'));
       await tester.pumpAndSettle();
       expect(find.text('当前有可领取活动，尚未领取。'), findsOneWidget);

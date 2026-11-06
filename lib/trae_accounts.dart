@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'claim_receipt.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'account_document_store.dart';
@@ -17,13 +18,32 @@ class TraeAccount {
   final String uid, label, outcome, authorizationOwner;
   final bool automatic;
   final num? credited;
+  final ClaimReceipt? latestClaim;
   TraeAccount(Map<String, dynamic> value)
     : uid = value['uid'],
       label = value['label'],
       outcome = value['outcome'] ?? 'unavailable',
       automatic = value['automatic'] == true,
       authorizationOwner = value['owner'],
-      credited = value['credited'];
+      credited = value['credited'],
+      latestClaim = _latestClaim(value['claims'] as Map?);
+
+  static ClaimReceipt? _latestClaim(Map? claims) {
+    final days = [
+      for (final e in (claims ?? {}).entries)
+        if (e.value['outcome'] == 'claimed') e.key as String,
+    ]..sort();
+    if (days.isEmpty) return null;
+    final row = claims![days.last];
+    return ClaimReceipt(
+      amount: row['credited'],
+      amountLabel: '余额净增 ',
+      day: days.last,
+      confirmedAt: row['confirmedAtMs'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(row['confirmedAtMs'])
+          : null,
+    );
+  }
 }
 
 /// Owns authorization, persistence, refresh and scheduling. Widgets only issue
@@ -507,6 +527,7 @@ class TraeAccounts {
     row['credited'] = credited;
     row['claims'][day]['outcome'] = outcome;
     row['claims'][day]['credited'] = credited;
+    if (outcome == 'claimed') row['claims'][day]['confirmedAtMs'] = now();
     await _write(saved);
   });
   Future<void> setAutomatic(String uid, bool enabled) => _exclusive(() async {

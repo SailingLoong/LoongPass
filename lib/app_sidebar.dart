@@ -50,10 +50,10 @@ class _AppWorkspaceState extends State<AppWorkspace> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: const Color(0xFFF2F4F7),
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             child: SizedBox(
               key: const Key('app-sidebar'),
-              width: compact ? 76 : 188,
+              width: compact ? 64 : 180,
               child: Column(
                 children: [
                   Padding(
@@ -66,7 +66,7 @@ class _AppWorkspaceState extends State<AppWorkspace> {
                         : const Text(
                             'LoongPass',
                             style: TextStyle(
-                              fontSize: 19,
+                              fontSize: 17,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -89,7 +89,7 @@ class _AppWorkspaceState extends State<AppWorkspace> {
                       children: [
                         for (final app in ManagedApp.values)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.only(bottom: 4),
                             child: Semantics(
                               key: ValueKey('selected-${app.name}'),
                               selected: _selected == app,
@@ -103,19 +103,23 @@ class _AppWorkspaceState extends State<AppWorkspace> {
                                       ? () => setState(() => _selected = app)
                                       : null,
                                   style: TextButton.styleFrom(
-                                    minimumSize: const Size(44, 48),
+                                    minimumSize: const Size(40, 38),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
-                                      vertical: 10,
+                                      vertical: 6,
                                     ),
                                     foregroundColor: _selected == app
-                                        ? const Color(0xFF1664FF)
-                                        : const Color(0xFF4E5969),
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
                                     backgroundColor: _selected == app
-                                        ? const Color(0xFFE1EAFF)
+                                        ? Theme.of(
+                                            context,
+                                          ).colorScheme.primaryContainer
                                         : Colors.transparent,
                                     shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
                                   ),
                                   child: Row(
@@ -125,8 +129,8 @@ class _AppWorkspaceState extends State<AppWorkspace> {
                                     children: [
                                       ExcludeSemantics(
                                         child: Container(
-                                          width: 28,
-                                          height: 28,
+                                          width: 24,
+                                          height: 24,
                                           alignment: Alignment.center,
                                           decoration: BoxDecoration(
                                             color: app.color,
@@ -178,10 +182,10 @@ class _AppWorkspaceState extends State<AppWorkspace> {
               ),
             ),
           ),
-          const VerticalDivider(
+          VerticalDivider(
             width: 1,
             thickness: 1,
-            color: Color(0xFFE5E6EB),
+            color: Theme.of(context).colorScheme.outlineVariant,
           ),
           Expanded(
             child: IndexedStack(

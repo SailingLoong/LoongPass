@@ -16,34 +16,8 @@ class AccountToolApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'LoongPass',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF1664FF),
-      ).copyWith(primary: const Color(0xFF1664FF), onPrimary: Colors.white),
-      scaffoldBackgroundColor: const Color(0xFFF7F8FA),
-      visualDensity: VisualDensity.compact,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE5E6EB)),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-        ),
-      ),
-    ),
+    theme: loongPassTheme(Brightness.light),
+    darkTheme: loongPassTheme(Brightness.dark),
     home: _AccountPage(identityValidationOnly: workBuddyIdentityOnly),
   );
 }
@@ -52,20 +26,6 @@ class AccountToolApp extends StatelessWidget {
 class _AccountPage extends StatelessWidget {
   const _AccountPage({this.identityValidationOnly = false});
   final bool identityValidationOnly;
-
-  Widget _appPage(String name, Widget panel) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text(
-        name,
-        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
-      ),
-      const SizedBox(height: 6),
-      const Text('同机账号管理', style: TextStyle(color: Color(0xFF86909C))),
-      const SizedBox(height: 20),
-      panel,
-    ],
-  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -86,43 +46,103 @@ class _AccountPage extends StatelessWidget {
         pages: {
           ManagedApp.zcode: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage(
-                  'ZCode',
-                  const ZcodeAccountsPanel(),
-                ),
+              : AccountWorkspacePage('ZCode', const ZcodeAccountsPanel()),
           ManagedApp.qoderCn: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage(
+              : AccountWorkspacePage(
                   'Qoder CN',
                   const QoderDeviceAccountsPanel(region: QoderRegion.cn),
                 ),
           ManagedApp.qoder: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage(
+              : AccountWorkspacePage(
                   'Qoder',
                   const QoderDeviceAccountsPanel(region: QoderRegion.global),
                 ),
           ManagedApp.minimaxCn: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage(
+              : AccountWorkspacePage(
                   'MiniMax CN',
                   const MiniMaxAccountsPanel(region: 'cn'),
                 ),
           ManagedApp.minimax: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage(
+              : AccountWorkspacePage(
                   'MiniMax',
                   const MiniMaxAccountsPanel(region: 'global'),
                 ),
-          ManagedApp.workbuddy: _appPage(
+          ManagedApp.workbuddy: AccountWorkspacePage(
             'WorkBuddy',
             WorkBuddyAccountsPanel(savedAccounts: true),
           ),
           ManagedApp.traeCn: identityValidationOnly
               ? const SizedBox.shrink()
-              : _appPage('TRAE CN', const TraeAccountsPanel()),
+              : AccountWorkspacePage('TRAE CN', const TraeAccountsPanel()),
         },
       ),
     ),
+  );
+}
+
+ThemeData loongPassTheme(Brightness brightness) {
+  final colors = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF2863CE),
+    brightness: brightness,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: colors,
+    scaffoldBackgroundColor: colors.surface,
+    visualDensity: VisualDensity.compact,
+    textTheme: const TextTheme(
+      bodyMedium: TextStyle(fontSize: 13),
+      bodySmall: TextStyle(fontSize: 11),
+      labelLarge: TextStyle(fontSize: 12),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: colors.surfaceContainerLowest,
+      isDense: true,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(color: colors.outlineVariant),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(minimumSize: const Size(0, 32)),
+    ),
+  );
+}
+
+class AccountWorkspacePage extends StatelessWidget {
+  const AccountWorkspacePage(this.name, this.panel, {super.key});
+  final String name;
+  final Widget panel;
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      Text(
+        name,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: 8),
+      panel,
+    ],
   );
 }

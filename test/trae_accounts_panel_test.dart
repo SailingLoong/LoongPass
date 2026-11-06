@@ -18,7 +18,13 @@ void main() {
     );
     await owner.importCurrent(fixtures.context());
     await tester.pumpWidget(
-      MaterialApp(home: Scaffold(body: TraeAccountsPanel(create: () => owner))),
+      MaterialApp(
+        home: Scaffold(body: TraeAccountsPanel(create: () => owner)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(ValueKey('account-${(await owner.accounts()).first.uid}')),
     );
     await tester.pumpAndSettle();
     expect(find.text('等待签到检查。'), findsOneWidget);

@@ -30,7 +30,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('toggle-examples')), findsNothing);
       expect(find.byKey(const Key('backup-file')), findsNothing);
-      expect(find.byKey(const Key('account-search')), findsNothing);
+      expect(find.byKey(const Key('account-search')), findsOneWidget);
       expect(find.text('导入样例'), findsNothing);
       expect(find.text('ZCode 样例 A'), findsNothing);
       expect(find.byKey(const Key('switch-zcode-a')), findsNothing);

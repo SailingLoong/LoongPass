@@ -85,6 +85,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Qoder'), findsOneWidget);
     expect(find.text('ZCode content'), findsOneWidget);
-    expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 76);
+    expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 64);
   });
 }

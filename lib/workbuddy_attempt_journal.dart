@@ -21,7 +21,7 @@ const _fields = {
 /// This protects ordinary exceptions and process restart, not malicious
 /// same-UID edits, manual deletion, old-backup rollback, or bypassing this owner.
 /// Identifiers are local plaintext; credentials must never be passed as fields.
-class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore {
+class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore, WorkBuddyAttemptHistory {
   static final _busy = <String>{};
   final Directory root;
   final Future<void> Function() syncDirectory;
@@ -35,6 +35,12 @@ class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore {
   Future<WorkBuddyAttempt?> read(String subjectKey) {
     _validateKey(subjectKey);
     return _locked((_, history) async => history[subjectKey]);
+  }
+
+  @override
+  Future<WorkBuddyAttempt?> latestSuccessful(String subjectKey) {
+    _validateKey(subjectKey);
+    return _locked((_, history) async => history[subjectKey], successesOnly: true);
   }
 
   @override
@@ -53,7 +59,7 @@ class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore {
   }
 
   Future<T> _locked<T>(Future<T> Function(RandomAccessFile,
-      Map<String, WorkBuddyAttempt>) action) async {
+      Map<String, WorkBuddyAttempt>) action, {bool successesOnly = false}) async {
     // Register before awaiting, including across separate owner objects.
     final path = root.absolute.path;
     if (!_busy.add(path)) throw const WorkBuddyFailure('JournalBusy');
@@ -94,7 +100,7 @@ class WorkBuddyAttemptJournal implements WorkBuddyAttemptStore {
       if (bytes.length != length) throw const WorkBuddyFailure('JournalCorrupt');
       final Map<String, WorkBuddyAttempt> history;
       try {
-        history = _history(utf8.decode(bytes, allowMalformed: false));
+        history = _history(utf8.decode(bytes, allowMalformed: false), successesOnly: successesOnly);
       } catch (_) {
         throw const WorkBuddyFailure('JournalCorrupt');
       }
@@ -225,8 +231,9 @@ WorkBuddyAttempt _decode(String line) {
   return row;
 }
 
-Map<String, WorkBuddyAttempt> _history(String text) {
+Map<String, WorkBuddyAttempt> _history(String text, {bool successesOnly = false}) {
   final rows = <String, WorkBuddyAttempt>{};
+  final successes = <String, WorkBuddyAttempt>{};
   if (text.isEmpty) return rows;
   if (!text.endsWith('\n')) _invalid();
   final lines = text.split('\n')..removeLast();
@@ -234,6 +241,7 @@ Map<String, WorkBuddyAttempt> _history(String text) {
     final row = _decode(line);
     _transition(rows[row.subject.key], row);
     rows[row.subject.key] = row;
+    if (row.settled == WorkBuddyState.claimed) successes[row.subject.key] = row;
   }
-  return rows;
+  return successesOnly ? successes : rows;
 }
