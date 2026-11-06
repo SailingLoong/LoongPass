@@ -219,12 +219,25 @@ Future<void> main() async {
         restored.running && restored.callerKey == key,
         'enabled connection/key did not survive restart',
       );
+      store.beforeWrite = () async => throw StateError('disk unavailable');
+      try {
+        await restored.stop();
+      } catch (_) {}
+      check(
+        restored.running && store.data['enabled'] == true,
+        'failed stop save changed runtime without persisting intent',
+      );
+      store.beforeWrite = null;
+      store.afterWrite = () async => throw StateError('lost acknowledgement');
       await restored.stop();
+      store.afterWrite = null;
       check(
         !restored.running && store.data['enabled'] == false,
         'stop did not persist',
       );
     } finally {
+      store.beforeWrite = null;
+      store.afterWrite = null;
       await restored.dispose();
     }
 

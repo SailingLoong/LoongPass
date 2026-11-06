@@ -130,6 +130,15 @@ class ModelService {
       await store.write(current.revision, value);
       _settings = value;
     } catch (_) {
+      // Atomic replacement may have committed before its acknowledgement was lost.
+      try {
+        final saved = await store.read();
+        if (saved.data.length == value.length &&
+            value.entries.every((e) => saved.data[e.key] == e.value)) {
+          _settings = saved.data;
+          return;
+        }
+      } catch (_) {}
       throw const ModelServiceFailure('save_failed');
     }
   }
@@ -196,8 +205,8 @@ class ModelService {
   });
 
   Future<void> stop() => _command(() async {
-    await _closeListener();
     if (_settings != null) await _save({..._settings!, 'enabled': false});
+    await _closeListener();
   });
 
   Future<void> _closeListener() async {

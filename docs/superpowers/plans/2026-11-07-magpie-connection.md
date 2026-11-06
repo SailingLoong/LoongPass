@@ -20,20 +20,20 @@ An uncertain result never triggers automatic replay or another account.
 ## Decisions
 
 The official Magpie custom-provider/import mechanism fits the existing product
-boundary and avoids an additional credential owner. Exporting platform tokens
-would create a second stored copy. Reimplementing Magpie's client conversions
-would duplicate its responsibility. Neither is part of this implementation.
+boundary. It keeps platform authorization with the existing account owner and
+client conversions with Magpie, with one adapter contract for model sources.
 
 ## Execution
 
-- [ ] Claude verifies the first saved-account source and exact native protocol.
-- [ ] Add isolated checks for authentication, bounded input, SSE, single dispatch,
+- [x] Claude verifies the first saved-account source and exact native protocol.
+- [x] Add isolated checks for authentication, bounded input, SSE, single dispatch,
   persisted intent, startup failure and shutdown. Claude records the missing-feature failure.
-- [ ] Implement the loopback owner, first provider and existing model-service page.
-- [ ] Claude runs targeted checks, the repository checks and the real
+- [x] Implement the loopback owner, first provider and existing model-service page.
+- [x] Claude runs targeted checks, the repository checks and the real
   Claude Code → installed Magpie → LoongPass → official service chain.
-- [ ] Review the diff and raw evidence, update public capability boundaries,
-  merge/push main, advance workspace gitlinks and clean task intermediates.
+- [x] Review the diff and raw evidence and update public capability boundaries.
+
+Delivery uses remote main, a matching workspace gitlink and task-owned cleanup.
 
 ## Review focus
 

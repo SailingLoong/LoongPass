@@ -44,7 +44,7 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Magpie'), findsWidgets);
-      expect(find.text('尚未接入'), findsWidgets);
+      expect(find.text('尚未启动'), findsWidgets);
       expect(find.textContaining('127.0.0.1'), findsNothing);
     },
   );

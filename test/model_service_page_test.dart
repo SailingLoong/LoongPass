@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,6 +42,14 @@ void main() {
           find.widgetWithText(TextField, 'synthetic-model'),
           findsOneWidget,
         );
+        await tester.enterText(find.byType(TextField), '');
+        service.register(SyntheticProvider());
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextField>(find.byType(TextField)).controller!.text,
+          '',
+        );
+        await tester.enterText(find.byType(TextField), 'synthetic-model');
 
         Future<void> tapAndWait(String label, bool running) async {
           await tester.runAsync(() async {

@@ -1,5 +1,9 @@
 # 验收记录
 
+## 2026-11-07 主线 Magpie 连接
+
+Claude Code 已通过本机 Magpie 调用 LoongPass 生产源码中的本地服务与 MiniMax CN 适配器，完成精确文本、SSE 和 Bash 工具往返。全仓检查通过，包含 221 项 Flutter 测试、平台协议和原生检查。该轮使用已保存账号的只读测试存储，账号文件摘要核对一致；新 GUI 构建与安装验收随后续发布进行。单账号范围、持久化失败处理与官方积分核对边界见 [完整记录](docs/verification/2026-11-07-magpie-connection.md)。
+
 ## beta 29 集成
 
 本版的设备自动分配、紧凑工作区及应用更新检查记录见 [beta 29 验收](docs/verification/2026-11-07-beta29.md)。各平台此前的真实授权/领取证据保留如下，不能自动视为新包再次完整验收。

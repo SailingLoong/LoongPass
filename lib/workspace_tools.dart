@@ -14,6 +14,8 @@ class ModelServicesPage extends StatefulWidget {
 class _ModelServicesPageState extends State<ModelServicesPage> {
   final _model = TextEditingController();
   String? _providerId, _accountId, _message;
+  bool _selectionHydrated = false;
+  ModelProvider? _accountProvider;
   Future<List<ModelAccount>>? _accounts;
   @override
   void initState() {
@@ -24,12 +26,19 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
 
   void _synchronise() {
     final service = widget.service;
-    if (service == null) return;
-    if (_model.text.isEmpty && service.model != null)
-      _model.text = service.model!;
-    if (_providerId == null && service.providers.isNotEmpty) {
-      _providerId = service.providerId ?? service.providers.first.id;
+    if (service == null || service.busy) return;
+    if (!_selectionHydrated && service.providerId != null) {
+      _providerId = service.providerId;
       _accountId = service.accountId;
+      _model.text = service.model!;
+      _selectionHydrated = true;
+    }
+    if (_providerId == null && service.providers.isNotEmpty) {
+      _providerId = service.providers.first.id;
+    }
+    final providers = service.providers.where((p) => p.id == _providerId);
+    final current = providers.isEmpty ? null : providers.first;
+    if (!identical(current, _accountProvider)) {
       _reloadAccounts();
     }
   }
@@ -43,9 +52,10 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
     final providers = widget.service?.providers.where(
       (p) => p.id == _providerId,
     );
-    _accounts = providers == null || providers.isEmpty
-        ? Future.value([])
-        : providers.first.accounts();
+    _accountProvider = providers == null || providers.isEmpty
+        ? null
+        : providers.first;
+    _accounts = _accountProvider?.accounts() ?? Future.value([]);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -206,7 +216,7 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                 if (service.error != null)
                   Text(switch (service.error) {
                     'port_unavailable' => '本地端口 3426 不可用，请检查占用后重新启动。',
-                    'save_failed' => '连接设置保存失败，请重新操作。停止服务后仍需确认设置已保存。',
+                    'save_failed' => '连接设置未保存，操作未完成，请重试。',
                     'invalid_settings' => '连接设置无法读取，服务未自动启动。',
                     _ => '本地连接不可用，请核对配置后重试。',
                   }),

@@ -138,11 +138,11 @@ class WorkspaceOverviewPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '模型服务 · 尚未接入',
+                  '模型服务',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                const Text('Magpie 入口已保留；当前还不能通过 LoongPass 调用模型。'),
+                const Text('在模型服务中查看本机连接设置和可用来源。'),
                 TextButton(
                   onPressed: onOpenModels,
                   child: const Text('查看模型服务'),
