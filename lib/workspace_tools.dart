@@ -160,7 +160,7 @@ class WorkspaceSettingsPage extends StatelessWidget {
             children: [
               const Text('应用排序', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
-              const Text('在左侧上下拖动应用。键盘聚焦应用后，也可用 ⌥↑ / ⌥↓ 调整。顺序会保存在本机。'),
+              const Text('在左侧上下拖动应用。键盘聚焦应用后，也可用 Option + ↑ / ↓ 调整。顺序会保存在本机。'),
               TextButton(
                 onPressed: preferences.resetOrder,
                 child: const Text('恢复默认应用顺序'),
@@ -174,7 +174,9 @@ class WorkspaceSettingsPage extends StatelessWidget {
             children: [
               Text('运行与数据', style: TextStyle(fontWeight: FontWeight.w600)),
               SizedBox(height: 8),
-              Text('授权以明文保存在本机应用私有目录。自动签到与活动领取只在 LoongPass 运行期间执行；开关在各账号详情中设置。'),
+              Text(
+                '授权以明文保存在本机应用私有目录。自动签到与活动领取只在 LoongPass 运行期间执行；开关在各账号详情中设置。',
+              ),
               SizedBox(height: 8),
               Text('界面偏好单独保存，不包含账号凭据、余额或领取记录。'),
             ],

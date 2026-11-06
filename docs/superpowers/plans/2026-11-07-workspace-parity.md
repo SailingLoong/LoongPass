@@ -38,8 +38,8 @@ Files: shared workspace/presentation components, compact_accounts_table.dart,
 five platform panels, their existing tests, tool/render_compact_accounts_test.dart.
 
 ### Task 3: Acceptance and delivery
-- [ ] Run tool/check.py; render real widgets at wide/narrow light/dark sizes.
-- [ ] Request one fresh read-only review of this task's changes; fix material findings.
+- [x] Run tool/check.py; render real widgets at wide/narrow light/dark sizes.
+- [x] Request one fresh read-only review of this task's changes; fix material findings.
 - [ ] Build one beta28 Universal candidate under shared locks, verify and archive.
 - [ ] Update draft PR/evidence, preserve source branch; clean task intermediates.
 

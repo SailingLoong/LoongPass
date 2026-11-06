@@ -121,7 +121,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                           key: ValueKey('drag-${app.name}'),
                           index: widget.index,
                           child: const Tooltip(
-                            message: '拖动排序 · ⌥↑ / ⌥↓',
+                            message: '拖动排序 · Option + ↑ / ↓',
                             child: Icon(Icons.drag_indicator, size: 16),
                           ),
                         ),
