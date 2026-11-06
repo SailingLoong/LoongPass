@@ -19,19 +19,28 @@ bool zcodeText(Object? v, [int max = 256]) =>
     v.length <= max &&
     !v.runes.any((c) => c < 32 || (c >= 127 && c <= 159));
 
+String zcodeDeviceId(dynamic value) {
+  if (value is! String ||
+      !RegExp(
+        r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
+      ).hasMatch(value))
+    throw const ZcodeFailure('device_required');
+  return value.toLowerCase();
+}
+
 Map<String, String> zcodeContext(Map<String, dynamic> value) {
   const keys = ['version', 'platform', 'deviceMid', 'language', 'timezone'];
   if (keys.any((k) => !zcodeText(value[k], 128)) ||
       !RegExp(
         r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$',
       ).hasMatch(value['version']) ||
-      !{'darwin-arm64', 'darwin-x64'}.contains(value['platform']) ||
-      !RegExp(
-        r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
-      ).hasMatch(value['deviceMid'])) {
+      !{'darwin-arm64', 'darwin-x64'}.contains(value['platform'])) {
     throw const ZcodeFailure('device_required');
   }
-  return {for (final key in keys) key: value[key] as String};
+  return {
+    for (final key in keys) key: value[key] as String,
+    'deviceMid': zcodeDeviceId(value['deviceMid']),
+  };
 }
 
 class ZcodeRequest {
