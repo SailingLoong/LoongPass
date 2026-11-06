@@ -9,6 +9,56 @@ import 'zcode_activities_checks.dart' as fixture;
 
 void main() {
   testWidgets(
+    'known expiry with unknown balance stays visible and filterable',
+    (tester) async {
+      final store = MemoryAccountStore('expiry-panel');
+      final owner = await fixture.account(store, fixture.FakeZcode());
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      (store.data['accounts'] as Map).values.single['buckets'] = [
+        {
+          'label': 'Expired',
+          'unit': 'tokens',
+          'remaining': 100,
+          'expiresAt': now - 86400,
+        },
+        {
+          'label': 'Empty',
+          'unit': 'tokens',
+          'remaining': 0,
+          'expiresAt': now + 3600,
+        },
+        {
+          'label': 'Unknown',
+          'unit': 'tokens',
+          'remaining': null,
+          'expiresAt': now + 86400,
+        },
+        {
+          'label': 'Later',
+          'unit': 'tokens',
+          'remaining': 30,
+          'expiresAt': now + 172800,
+        },
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ZcodeAccountsPanel(create: () => owner),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('7 天内到期'));
+      await tester.pumpAndSettle();
+      expect(find.text('Synthetic'), findsOneWidget);
+      expect(find.textContaining('剩余未知'), findsOneWidget);
+      expect(find.text('到期信息未知'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
     'rebind authorizes the selected account on a different saved device',
     (tester) async {
       const channel = MethodChannel('com.sailingloong.loongpass/files');
@@ -39,6 +89,10 @@ void main() {
             ),
           ),
         ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('重新绑定设备'));
@@ -91,6 +145,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
       expect(find.textContaining('官方验证尚未完成'), findsOneWidget);
@@ -133,6 +191,10 @@ void main() {
       expect(find.textContaining('Z.AI'), findsNothing);
       expect(http.claims, 0);
       expect(http.balanceCalls, 0);
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('检查活动与额度'));
       await tester.pumpAndSettle();
       expect(find.text('当前有可领取活动，尚未领取。'), findsOneWidget);

@@ -1,3 +1,4 @@
+import 'claim_receipt.dart';
 import 'dart:math';
 
 import 'workbuddy_api.dart';
@@ -104,6 +105,8 @@ class WorkBuddyAccountFlow {
   String? _message;
   WorkBuddyState? _status;
   WorkBuddyResult? _result;
+  ClaimReceipt? _latestClaim;
+  ClaimReceipt? get latestClaim => _latestClaim;
 
   bool Function()? _operationAdmission;
   bool get _live {
@@ -241,6 +244,7 @@ class WorkBuddyAccountFlow {
       if (!_same(epoch) || !_live) return false;
       _restoredCredential = c;
       _bind(account);
+      await _loadLatestClaim();
       return true;
     } catch (_) {
       return false;
@@ -428,6 +432,7 @@ class WorkBuddyAccountFlow {
           isCurrent: isCurrent,
         );
       }
+      await _loadLatestClaim();
       _message = '已核实授权账号，仅保留在本次内存中；未签到，未切换桌面账号。';
     } catch (error) {
       if (_same(epoch)) {
@@ -490,6 +495,25 @@ class WorkBuddyAccountFlow {
     }
   }
 
+  Future<void> _loadLatestClaim() async {
+    final subject = _subject, attempts = store;
+    if (subject == null || attempts == null || identityValidationOnly) return;
+    try {
+      final row = attempts is WorkBuddyAttemptHistory
+          ? await (attempts as WorkBuddyAttemptHistory).latestSuccessful(
+              subject.key,
+            )
+          : await attempts.read(subject.key);
+      if (!_closed &&
+          _subject == subject &&
+          row?.settled == WorkBuddyState.claimed) {
+        _latestClaim = ClaimReceipt(amount: row!.credited, day: row.day);
+      }
+    } catch (_) {
+      /* Receipt history is optional; never replay a claim to fill it. */
+    }
+  }
+
   Future<void> claim({bool Function()? admission}) async {
     final core = _core, subject = _subject;
     if (!canClaim || core == null || subject == null) return;
@@ -506,6 +530,7 @@ class WorkBuddyAccountFlow {
     _message = null;
     try {
       final result = await core.claim(subject);
+      await _loadLatestClaim();
       if (_same(epoch)) {
         _result = _live
             ? result
@@ -540,6 +565,7 @@ class WorkBuddyAccountFlow {
     _busy = false;
     _status = null;
     _result = null;
+    _latestClaim = null;
     _message = null;
   }
 }

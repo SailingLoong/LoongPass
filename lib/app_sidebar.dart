@@ -1,205 +1,274 @@
+import 'app_navigation_item.dart';
 import 'package:flutter/material.dart';
+import 'managed_app.dart';
+import 'ui_preferences.dart';
+import 'workspace_tools.dart';
+export 'managed_app.dart';
 
-enum ManagedApp {
-  zcode('ZCode', 'Z', Color(0xFF1664FF)),
-  qoderCn('Qoder CN', 'Q', Color(0xFF7554D9)),
-  qoder('Qoder', 'Q', Color(0xFF7554D9)),
-  minimaxCn('MiniMax CN', 'M', Color(0xFFE66B32)),
-  minimax('MiniMax', 'M', Color(0xFFE66B32)),
-  workbuddy('WorkBuddy', 'W', Color(0xFF168978)),
-  traeCn('TRAE CN', 'T', Color(0xFF168978));
+enum WorkspaceSection {
+  overview('总览', Icons.space_dashboard_outlined),
+  accounts('账号与积分', Icons.account_balance_wallet_outlined),
+  models('模型服务', Icons.route_outlined),
+  activity('活动记录', Icons.receipt_long_outlined),
+  settings('设置', Icons.tune);
 
-  const ManagedApp(this.label, this.monogram, this.color);
+  const WorkspaceSection(this.label, this.icon);
   final String label;
-  final String monogram;
-  final Color color;
+  final IconData icon;
 }
 
-/// Navigation only: selecting an app never switches an account or runs I/O.
-/// Pages stay mounted, retaining unfinished input and in-flight operation state.
+/// Navigation never switches an account or runs I/O. Mounted page identity is
+/// stable, independently of the user's sidebar order.
 class AppWorkspace extends StatefulWidget {
   const AppWorkspace({
     super.key,
     required this.pages,
     this.initialApp = ManagedApp.zcode,
     this.enabledApps,
+    this.preferences,
+    this.sections = const {},
   });
   final Map<ManagedApp, Widget> pages;
   final ManagedApp initialApp;
   final Set<ManagedApp>? enabledApps;
-
+  final UiPreferences? preferences;
+  final Map<WorkspaceSection, Widget> sections;
   @override
-  State<AppWorkspace> createState() => _AppWorkspaceState();
+  State<AppWorkspace> createState() => AppWorkspaceState();
 }
 
-class _AppWorkspaceState extends State<AppWorkspace> {
-  late ManagedApp _selected;
-  @override
-  void initState() {
-    super.initState();
-    _selected = widget.initialApp;
+class AppWorkspaceState extends State<AppWorkspace> {
+  late ManagedApp _selected = widget.initialApp;
+  WorkspaceSection? _section;
+  late final UiPreferences _preferences = widget.preferences ?? UiPreferences();
+  void selectApp(ManagedApp app) {
+    if (widget.enabledApps != null && !widget.enabledApps!.contains(app))
+      return;
+    setState(() {
+      _selected = app;
+      _section = null;
+    });
   }
 
-  bool _collapsed = false;
+  void selectSection(WorkspaceSection section) =>
+      setState(() => _section = section);
+  @override
+  void dispose() {
+    if (widget.preferences == null) _preferences.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final compact = constraints.maxWidth < 760 || _collapsed;
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Material(
-            color: const Color(0xFFF2F4F7),
-            child: SizedBox(
-              key: const Key('app-sidebar'),
-              width: compact ? 76 : 188,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: compact
-                        ? const Tooltip(
-                            message: 'LoongPass',
-                            child: Icon(Icons.switch_account_outlined),
-                          )
-                        : const Text(
-                            'LoongPass',
-                            style: TextStyle(
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                  ),
-                  if (constraints.maxWidth >= 760)
-                    IconButton(
-                      key: const Key('toggle-sidebar'),
-                      tooltip: compact ? '展开应用栏' : '收起应用栏',
-                      onPressed: () => setState(() => _collapsed = !_collapsed),
-                      icon: Icon(
-                        compact ? Icons.chevron_right : Icons.chevron_left,
-                      ),
-                    ),
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
-                      ),
-                      children: [
-                        for (final app in ManagedApp.values)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: Semantics(
-                              key: ValueKey('selected-${app.name}'),
-                              selected: _selected == app,
-                              child: Tooltip(
-                                message: app.label,
-                                child: TextButton(
-                                  key: ValueKey('app-${app.name}'),
-                                  onPressed:
-                                      widget.enabledApps == null ||
-                                          widget.enabledApps!.contains(app)
-                                      ? () => setState(() => _selected = app)
-                                      : null,
-                                  style: TextButton.styleFrom(
-                                    minimumSize: const Size(44, 48),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 10,
+  Widget build(BuildContext context) => UiPreferencesScope(
+    preferences: _preferences,
+    child: ListenableBuilder(
+      listenable: _preferences,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760 || _preferences.collapsed;
+          final colors = Theme.of(context).colorScheme;
+          final sections = {
+            WorkspaceSection.models: const ModelServicesPage(),
+            WorkspaceSection.settings: WorkspaceSettingsPage(
+              preferences: _preferences,
+            ),
+            ...widget.sections,
+          };
+          final sectionOrder = WorkspaceSection.values
+              .where(sections.containsKey)
+              .toList();
+          Widget sectionButton(WorkspaceSection section) =>
+              SidebarNavigationButton(
+                key: ValueKey('nav-${section.name}'),
+                label: section.label,
+                icon: Icon(section.icon, size: 19),
+                compact: compact,
+                selected: _section == section,
+                onPressed: () => selectSection(section),
+              );
+          final toggle = IconButton(
+            key: const Key('toggle-sidebar'),
+            tooltip: constraints.maxWidth < 760
+                ? 'LoongPass'
+                : compact
+                ? '展开应用栏'
+                : '收起应用栏',
+            onPressed: constraints.maxWidth < 760
+                ? null
+                : () => _preferences.setCollapsed(!_preferences.collapsed),
+            style: IconButton.styleFrom(
+              fixedSize: const Size(30, 30),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(5),
+              ),
+            ),
+            icon: const Icon(Icons.view_sidebar_outlined, size: 19),
+          );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Material(
+                color: colors.surfaceContainerLow,
+                child: SizedBox(
+                  key: const Key('app-sidebar'),
+                  width: compact ? 64 : 196,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 48,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Row(
+                            children: [
+                              if (!compact)
+                                const Expanded(
+                                  child: Text(
+                                    'LoongPass',
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w700,
                                     ),
-                                    foregroundColor: _selected == app
-                                        ? const Color(0xFF1664FF)
-                                        : const Color(0xFF4E5969),
-                                    backgroundColor: _selected == app
-                                        ? const Color(0xFFE1EAFF)
-                                        : Colors.transparent,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: compact
-                                        ? MainAxisAlignment.center
-                                        : MainAxisAlignment.start,
-                                    children: [
-                                      ExcludeSemantics(
-                                        child: Container(
-                                          width: 28,
-                                          height: 28,
-                                          alignment: Alignment.center,
-                                          decoration: BoxDecoration(
-                                            color: app.color,
-                                            borderRadius: BorderRadius.circular(
-                                              7,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            app.monogram,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      if (!compact) ...[
-                                        const SizedBox(width: 10),
-                                        Flexible(
-                                          child: Text(
-                                            app.label,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                      if (compact)
-                                        Semantics(
-                                          label: app.label,
-                                          child: const SizedBox.shrink(),
-                                        ),
-                                    ],
                                   ),
                                 ),
+                              if (compact) Expanded(child: toggle) else toggle,
+                            ],
+                          ),
+                        ),
+                      ),
+                      for (final section in [
+                        WorkspaceSection.overview,
+                        WorkspaceSection.accounts,
+                      ])
+                        if (sections.containsKey(section))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: sectionButton(section),
+                          ),
+                      if (!compact)
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(16, 12, 12, 6),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '我的应用',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF86909C),
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                      Expanded(
+                        child: ReorderableListView.builder(
+                          key: const Key('app-order'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          buildDefaultDragHandles: false,
+                          itemCount: _preferences.appOrder.length,
+                          onReorderItem: _preferences.reorder,
+                          proxyDecorator: (child, index, animation) => Material(
+                            elevation: 4,
+                            color: colors.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(6),
+                            child: child,
+                          ),
+                          itemBuilder: (context, index) {
+                            final app = _preferences.appOrder[index];
+                            return AppNavigationItem(
+                              key: ValueKey('ordered-${app.name}'),
+                              app: app,
+                              index: index,
+                              compact: compact,
+                              selected: _section == null && _selected == app,
+                              onMove: (delta) =>
+                                  _preferences.reorder(index, index + delta),
+                              onPressed:
+                                  widget.enabledApps == null ||
+                                      widget.enabledApps!.contains(app)
+                                  ? () => selectApp(app)
+                                  : null,
+                            );
+                          },
+                        ),
+                      ),
+                      Divider(
+                        height: 12,
+                        indent: 12,
+                        endIndent: 12,
+                        color: colors.outlineVariant,
+                      ),
+                      for (final section in [
+                        WorkspaceSection.models,
+                        WorkspaceSection.activity,
+                        WorkspaceSection.settings,
+                      ])
+                        if (sections.containsKey(section))
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: sectionButton(section),
+                          ),
+                      if (_preferences.error != null)
+                        TextButton(
+                          onPressed: () =>
+                              selectSection(WorkspaceSection.settings),
+                          child: compact
+                              ? const Icon(Icons.warning_amber, size: 16)
+                              : const Text('布局尚未保存'),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        child: Tooltip(
+                          message: '账号保存在本机；自动任务仅在运行期间执行',
+                          child: compact
+                              ? const Icon(Icons.computer_outlined, size: 15)
+                              : Text(
+                                  '本机保存 · 开发预览',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text(
-                      '开发预览',
-                      style: TextStyle(fontSize: 11, color: Color(0xFF86909C)),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          const VerticalDivider(
-            width: 1,
-            thickness: 1,
-            color: Color(0xFFE5E6EB),
-          ),
-          Expanded(
-            child: IndexedStack(
-              index: _selected.index,
-              sizing: StackFit.expand,
-              children: [
-                for (final app in ManagedApp.values)
-                  KeyedSubtree(
-                    key: ValueKey('page-${app.name}'),
-                    child:
-                        widget.pages[app] ??
-                        Center(child: Text('${app.label} 尚未接入')),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      );
-    },
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: colors.outlineVariant,
+              ),
+              Expanded(
+                child: IndexedStack(
+                  index: _section == null
+                      ? _selected.index
+                      : ManagedApp.values.length +
+                            sectionOrder.indexOf(_section!),
+                  sizing: StackFit.expand,
+                  children: [
+                    for (final app in ManagedApp.values)
+                      KeyedSubtree(
+                        key: ValueKey('page-${app.name}'),
+                        child:
+                            widget.pages[app] ??
+                            Center(child: Text('${app.label} 尚未接入')),
+                      ),
+                    for (final section in sectionOrder)
+                      KeyedSubtree(
+                        key: ValueKey('section-${section.name}'),
+                        child: sections[section]!,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
   );
 }

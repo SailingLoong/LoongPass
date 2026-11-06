@@ -82,6 +82,10 @@ abstract interface class WorkBuddyAttemptStore {
   );
 }
 
+abstract interface class WorkBuddyAttemptHistory {
+  Future<WorkBuddyAttempt?> latestSuccessful(String subjectKey);
+}
+
 class WorkBuddyResult {
   final WorkBuddyState state;
   final double? credited;

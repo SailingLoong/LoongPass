@@ -1,3 +1,4 @@
+import 'compact_accounts_table.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -140,18 +141,114 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     super.dispose();
   }
 
+  Widget _details(ZcodeActivityAccount a) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text('${a.family == 'bigmodel' ? '智谱 BigModel' : 'Z.AI'} · ${a.uid}'),
+          Text(_status(a.status)),
+          Text('设备号尾号 ${a.deviceSuffix}'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton(
+                key: ValueKey('zcode-inspect-${a.id}'),
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.inspect(a.id);
+                        await _reload();
+                      }),
+                child: const Text('检查活动与额度'),
+              ),
+              OutlinedButton(
+                key: ValueKey('zcode-claim-${a.id}'),
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.claim(a.id, verify: _verify);
+                        await _reload();
+                      }),
+                child: const Text('核对并领取活动'),
+              ),
+              TextButton(
+                onPressed: _busy || _owner!.loginPending
+                    ? null
+                    : () => _login(account: a),
+                child: const Text('重新授权'),
+              ),
+              TextButton(
+                onPressed:
+                    _busy || _owner!.loginPending || _availableDevices == 0
+                    ? null
+                    : () => _login(account: a, replaceDevice: true),
+                child: const Text('重新绑定设备'),
+              ),
+            ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('自动领取活动'),
+            value: a.automatic,
+            onChanged: _busy
+                ? null
+                : (v) => _run(() async {
+                    await _owner!.setAutomatic(a.id, v);
+                    await _reload();
+                  }),
+          ),
+          if (a.checkedAt != null) Text('最近核对：${_time(a.checkedAt! ~/ 1000)}'),
+          if (a.buckets.isEmpty) const Text('尚无已核实的可用额度明细。'),
+          for (final b in a.buckets)
+            Text(
+              '${b.label}：剩余 ${b.remaining ?? '未知'} ${b.unit}；'
+              '${b.expiresAt == null ? '到期时间未知' : '${_time(b.expiresAt!)} 到期'}',
+            ),
+        ],
+      ),
+    ),
+  );
+  DateTime? _nextExpiry(ZcodeActivityAccount a) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final times = [
+      for (final b in a.buckets)
+        if (b.expiresAt != null && b.expiresAt! > now && b.remaining != 0)
+          b.expiresAt!,
+    ]..sort();
+    return times.isEmpty
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(times.first * 1000);
+  }
+
+  String _expiry(ZcodeActivityAccount a) {
+    final next = _nextExpiry(a);
+    if (next == null) return '到期信息未知';
+    final b = a.buckets.firstWhere(
+      (b) =>
+          b.expiresAt == next.millisecondsSinceEpoch ~/ 1000 &&
+          b.remaining != 0,
+    );
+    final quantity = b.remaining == null
+        ? '剩余未知'
+        : '${accountPoints(b.remaining!)} ${b.unit}';
+    return '$quantity · ${accountDate(next)}';
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text('ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。'),
-      const SizedBox(height: 8),
-      const Text('授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。'),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
+      AccountPanelToolbar(
+        title: 'ZCode',
+        accountCount: _accounts.length,
+        helpText:
+            'ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。' +
+            ' 授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。',
+        actions: [
           FilledButton(
             key: const Key('zcode-login'),
             onPressed: _busy || _owner == null || _owner!.loginPending
@@ -184,86 +281,39 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(_message!),
         ),
-      for (final a in _accounts)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  '${a.family == 'bigmodel' ? '智谱 BigModel' : 'Z.AI'} · ${a.uid}',
-                ),
-                Text(_status(a.status)),
-                Text('设备号尾号 ${a.deviceSuffix}'),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    OutlinedButton(
-                      key: ValueKey('zcode-inspect-${a.id}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.inspect(a.id);
-                              await _reload();
-                            }),
-                      child: const Text('检查活动与额度'),
-                    ),
-                    OutlinedButton(
-                      key: ValueKey('zcode-claim-${a.id}'),
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.claim(a.id, verify: _verify);
-                              await _reload();
-                            }),
-                      child: const Text('核对并领取活动'),
-                    ),
-                    TextButton(
-                      onPressed: _busy || _owner!.loginPending
-                          ? null
-                          : () => _login(account: a),
-                      child: const Text('重新授权'),
-                    ),
-                    TextButton(
-                      onPressed:
-                          _busy ||
-                              _owner!.loginPending ||
-                              _availableDevices == 0
-                          ? null
-                          : () => _login(account: a, replaceDevice: true),
-                      child: const Text('重新绑定设备'),
-                    ),
-                  ],
-                ),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('自动领取活动'),
-                  value: a.automatic,
-                  onChanged: _busy
-                      ? null
-                      : (v) => _run(() async {
-                          await _owner!.setAutomatic(a.id, v);
-                          await _reload();
-                        }),
-                ),
-                if (a.checkedAt != null)
-                  Text('最近核对：${_time(a.checkedAt! ~/ 1000)}'),
-                if (a.buckets.isEmpty) const Text('尚无已核实的可用额度明细。'),
-                for (final b in a.buckets)
-                  Text(
-                    '${b.label}：剩余 ${b.remaining ?? '未知'} ${b.unit}；'
-                    '${b.expiresAt == null ? '到期时间未知' : '${_time(b.expiresAt!)} 到期'}',
-                  ),
-              ],
+      CompactAccountsTable(
+        entries: [
+          for (final a in _accounts)
+            AccountTableEntry(
+              id: a.id,
+              label: a.label,
+              identity: a.uid,
+              balance: a.buckets.isEmpty
+                  ? '尚未查询'
+                  : a.buckets
+                        .map(
+                          (b) =>
+                              '${b.label} ${b.remaining == null ? '未知' : accountPoints(b.remaining!)} ${b.unit}',
+                        )
+                        .join(' / '),
+              expiryText: _expiry(a),
+              expiryAt: _nextExpiry(a),
+              status: _status(a.status),
+              receipt: a.latestClaim,
+              observedAt: a.checkedAt == null
+                  ? null
+                  : DateTime.fromMillisecondsSinceEpoch(a.checkedAt!),
+              needsAttention: {
+                'pending',
+                'verificationRequired',
+                'activationRequired',
+                'authorization_required',
+              }.contains(a.status),
+              notice: _message,
+              details: _details(a),
             ),
-          ),
-        ),
+        ],
+      ),
     ],
   );
 }

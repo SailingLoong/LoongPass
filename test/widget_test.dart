@@ -12,6 +12,25 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
+  testWidgets(
+    'secondary workspaces are reachable without example model credentials',
+    (tester) async {
+      await desktop(tester);
+      for (final section in [
+        'overview',
+        'accounts',
+        'models',
+        'activity',
+        'settings',
+      ]) {
+        await tester.tap(find.byKey(ValueKey('nav-$section')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('lp_demo'), findsNothing);
+        expect(find.textContaining('127.0.0.1:5240'), findsNothing);
+      }
+    },
+  );
   testWidgets('production navigation has regional account workspaces', (
     tester,
   ) async {
@@ -30,7 +49,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('toggle-examples')), findsNothing);
       expect(find.byKey(const Key('backup-file')), findsNothing);
-      expect(find.byKey(const Key('account-search')), findsNothing);
+      expect(find.byKey(const Key('account-search')), findsOneWidget);
       expect(find.text('导入样例'), findsNothing);
       expect(find.text('ZCode 样例 A'), findsNothing);
       expect(find.byKey(const Key('switch-zcode-a')), findsNothing);
@@ -62,7 +81,7 @@ void main() {
       } else {
         expect(find.text('LoongPass'), findsOneWidget);
       }
-      expect(find.text('开发预览'), findsOneWidget);
+      expect(find.byTooltip('账号保存在本机；自动任务仅在运行期间执行'), findsOneWidget);
       for (final app in [
         'zcode',
         'qoderCn',

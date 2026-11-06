@@ -1,3 +1,4 @@
+import 'claim_receipt.dart';
 // Regional MiniMax account owner. Credentials, identity and claim journal are
 // atomically stored together in one private native-owned document.
 import 'dart:async';
@@ -95,6 +96,7 @@ class MiniMaxAccount {
   final String id, status, uid, region, label;
   final bool automatic;
   final num? points;
+  final ClaimReceipt? latestClaim;
   final int expiresAtMs;
   MiniMaxAccount._(Map<String, dynamic> a)
     : id = a['id'],
@@ -104,8 +106,23 @@ class MiniMaxAccount {
       label = a['label'],
       automatic = a['automatic'],
       points = (a['operation'] as Map?)?['points'],
+      latestClaim = _latest(a),
       expiresAtMs = a['expiresAtMs'],
       _rewardExpiresAtMs = (a['operation'] as Map?)?['expiresAtMs'];
+  static ClaimReceipt? _latest(Map a) {
+    final op = (a['operation'] as Map?)?['state'] == 'claimed'
+        ? a['operation']
+        : a['previousSuccessfulOperation'];
+    if (op is! Map || op['state'] != 'claimed') return null;
+    return ClaimReceipt(
+      amount: op['points'],
+      day: op['day'],
+      confirmedAt: op['confirmedAtMs'] is int
+          ? DateTime.fromMillisecondsSinceEpoch(op['confirmedAtMs'])
+          : null,
+    );
+  }
+
   int? get rewardExpiresAtMs => _rewardExpiresAtMs;
   final int? _rewardExpiresAtMs;
   Map<String, Object?> toJson() => {
@@ -170,6 +187,7 @@ class MiniMaxAccountStore {
       'policyRevision',
       'status',
       'operation',
+      'previousSuccessfulOperation',
       'sourceGeneration',
       'sourceFingerprint',
     };
@@ -198,28 +216,30 @@ class MiniMaxAccountStore {
             'needsLogin',
           ].contains(a['status']))
         throw const MiniMaxAccountError('StorageUnavailable');
-      final op = a['operation'];
-      if (op != null &&
-          (op is! Map ||
-              op.keys.any(
-                (k) => ![
-                  'id',
-                  'day',
-                  'state',
-                  'points',
-                  'claimId',
-                  'expiresAtMs',
-                ].contains(k),
-              ) ||
-              op['id'] is! String ||
-              op['day'] is! String ||
-              ![
-                'pending',
-                'unknown',
-                'claimed',
-                'alreadyClaimed',
-              ].contains(op['state'])))
-        throw const MiniMaxAccountError('StorageUnavailable');
+      for (final op in [a['operation'], a['previousSuccessfulOperation']]) {
+        if (op != null &&
+            (op is! Map ||
+                op.keys.any(
+                  (k) => ![
+                    'id',
+                    'day',
+                    'state',
+                    'points',
+                    'claimId',
+                    'confirmedAtMs',
+                    'expiresAtMs',
+                  ].contains(k),
+                ) ||
+                op['id'] is! String ||
+                op['day'] is! String ||
+                ![
+                  'pending',
+                  'unknown',
+                  'claimed',
+                  'alreadyClaimed',
+                ].contains(op['state'])))
+          throw const MiniMaxAccountError('StorageUnavailable');
+      }
     }
   }
 }
@@ -440,6 +460,7 @@ class MiniMaxAccounts {
           'policyRevision': (old?['policyRevision'] as int? ?? 0) + 1,
           'status': _unresolved(operation) ? 'unknown' : 'unavailable',
           'operation': operation,
+          'previousSuccessfulOperation': old?['previousSuccessfulOperation'],
           'sourceGeneration': c.generation,
           'sourceFingerprint': c.fingerprint,
         };
@@ -652,6 +673,9 @@ class MiniMaxAccounts {
           return false;
         current['status'] = status;
         if (status != 'claimable') return false;
+        if ((current['operation'] as Map?)?['state'] == 'claimed') {
+          current['previousSuccessfulOperation'] = current['operation'];
+        }
         current['operation'] = {
           'id': opId,
           'day': _day(),
@@ -703,6 +727,10 @@ class MiniMaxAccounts {
         if (op['id'] != opId) throw const MiniMaxAccountError('SourceChanged');
         op['state'] = receipt?.$1 ?? 'unknown';
         op['points'] = receipt?.$2;
+        if (receipt?.$1 == 'claimed') {
+          op['confirmedAtMs'] = nowMs();
+          current.remove('previousSuccessfulOperation');
+        }
         op['claimId'] = receipt?.$3;
         op['expiresAtMs'] = receipt?.$4;
         current['status'] = receipt?.$1 ?? 'unknown';

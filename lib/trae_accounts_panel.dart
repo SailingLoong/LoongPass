@@ -1,3 +1,4 @@
+import 'compact_accounts_table.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -119,16 +120,74 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
     super.dispose();
   }
 
+  Widget _details(TraeAccount a) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          Text(a.uid),
+          Text(_outcome(a)),
+          if (a.authorizationOwner == 'officialClient')
+            const Text('复用客户端当前授权；到期后需重新读取或独立官网授权。'),
+          Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.claim(a.uid);
+                        await _reload();
+                      }),
+                child: const Text('核对并签到'),
+              ),
+              OutlinedButton(
+                onPressed: _busy
+                    ? null
+                    : () => _run(() async {
+                        await _owner!.refreshCredits(a.uid);
+                        await _reload();
+                      }),
+                child: const Text('查询积分与到期'),
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('自动签到'),
+                  Switch(
+                    value: a.automatic,
+                    onChanged: _busy
+                        ? null
+                        : (v) => _run(() async {
+                            await _owner!.setAutomatic(a.uid, v);
+                            await _reload();
+                          }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (_owner!.credits(a.uid) case final credits?)
+            CreditSummaryView(summary: credits),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text('TRAE CN 账号保存、自动签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。'),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
+      AccountPanelToolbar(
+        title: 'TRAE CN',
+        accountCount: _accounts.length,
+        helpText:
+            'TRAE CN 账号保存、自动签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。' +
+            ' 启动约 30 秒后检查，之后每 15 分钟；关闭应用后停止。',
+        actions: [
           FilledButton(
             key: const Key('trae-import'),
             onPressed: _busy || _owner == null || _owner!.loginPending
@@ -163,67 +222,23 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(_message!),
         ),
-      for (final a in _accounts)
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  a.label,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(a.uid),
-                Text(_outcome(a)),
-                if (a.authorizationOwner == 'officialClient')
-                  const Text('复用客户端当前授权；到期后需重新读取或独立官网授权。'),
-                Wrap(
-                  spacing: 12,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.claim(a.uid);
-                              await _reload();
-                            }),
-                      child: const Text('核对并签到'),
-                    ),
-                    OutlinedButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              await _owner!.refreshCredits(a.uid);
-                              await _reload();
-                            }),
-                      child: const Text('查询积分与到期'),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('自动签到'),
-                        Switch(
-                          value: a.automatic,
-                          onChanged: _busy
-                              ? null
-                              : (v) => _run(() async {
-                                  await _owner!.setAutomatic(a.uid, v);
-                                  await _reload();
-                                }),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                if (_owner!.credits(a.uid) case final credits?)
-                  CreditSummaryView(summary: credits),
-              ],
+      CompactAccountsTable(
+        entries: [
+          for (final a in _accounts)
+            AccountTableEntry(
+              id: a.uid,
+              label: a.label,
+              identity: a.uid,
+              balance: creditBalance(_owner!.credits(a.uid)),
+              credits: _owner!.credits(a.uid),
+              status: _outcome(a),
+              receipt: a.latestClaim,
+              needsAttention: a.outcome == 'unknown',
+              notice: _message,
+              details: _details(a),
             ),
-          ),
-        ),
-      const Text('启动约 30 秒后检查，之后每 15 分钟；关闭应用后停止。'),
+        ],
+      ),
     ],
   );
 }

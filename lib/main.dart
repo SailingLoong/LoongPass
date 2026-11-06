@@ -6,123 +6,204 @@ import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
 import 'trae_accounts_panel.dart';
 import 'zcode_accounts_panel.dart';
+import 'ui_preferences.dart';
+import 'account_workspace_registry.dart';
+import 'workspace_accounts.dart';
 
-void main() => runApp(const AccountToolApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final preferences = UiPreferences.persistent();
+  await preferences.load();
+  runApp(AccountToolApp(preferences: preferences));
+}
 
-class AccountToolApp extends StatelessWidget {
-  const AccountToolApp({super.key, this.workBuddyIdentityOnly = false});
+class AccountToolApp extends StatefulWidget {
+  const AccountToolApp({
+    super.key,
+    this.workBuddyIdentityOnly = false,
+    this.preferences,
+  });
   final bool workBuddyIdentityOnly;
+  final UiPreferences? preferences;
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'LoongPass',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF1664FF),
-      ).copyWith(primary: const Color(0xFF1664FF), onPrimary: Colors.white),
-      scaffoldBackgroundColor: const Color(0xFFF7F8FA),
-      visualDensity: VisualDensity.compact,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE5E6EB)),
-        ),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-        ),
-      ),
+  State<AccountToolApp> createState() => _AccountToolAppState();
+}
+
+class _AccountToolAppState extends State<AccountToolApp> {
+  late final _preferences = widget.preferences ?? UiPreferences();
+  late final _home = _AccountPage(
+    identityValidationOnly: widget.workBuddyIdentityOnly,
+    preferences: _preferences,
+  );
+  @override
+  void dispose() {
+    if (widget.preferences == null) _preferences.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _preferences,
+    builder: (context, _) => MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'LoongPass',
+      theme: loongPassTheme(Brightness.light),
+      darkTheme: loongPassTheme(Brightness.dark),
+      themeMode: _preferences.themeMode,
+      home: _home,
     ),
-    home: _AccountPage(identityValidationOnly: workBuddyIdentityOnly),
   );
 }
 
-/// Only account-related app workspaces are reachable from production navigation.
-class _AccountPage extends StatelessWidget {
-  const _AccountPage({this.identityValidationOnly = false});
+/// Composition owns mounted platform pages; auxiliary pages only read UI snapshots.
+class _AccountPage extends StatefulWidget {
+  const _AccountPage({
+    this.identityValidationOnly = false,
+    required this.preferences,
+  });
   final bool identityValidationOnly;
+  final UiPreferences preferences;
+  @override
+  State<_AccountPage> createState() => _AccountPageState();
+}
 
-  Widget _appPage(String name, Widget panel) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      Text(
-        name,
-        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+class _AccountPageState extends State<_AccountPage> {
+  final _registry = AccountWorkspaceRegistry();
+  final _workspace = GlobalKey<AppWorkspaceState>();
+  late final Map<ManagedApp, Widget> _pages = {
+    for (final entry in <ManagedApp, Widget>{
+      ManagedApp.zcode: const ZcodeAccountsPanel(),
+      ManagedApp.qoderCn: const QoderDeviceAccountsPanel(
+        region: QoderRegion.cn,
       ),
-      const SizedBox(height: 6),
-      const Text('同机账号管理', style: TextStyle(color: Color(0xFF86909C))),
-      const SizedBox(height: 20),
-      panel,
-    ],
-  );
+      ManagedApp.qoder: const QoderDeviceAccountsPanel(
+        region: QoderRegion.global,
+      ),
+      ManagedApp.minimaxCn: const MiniMaxAccountsPanel(region: 'cn'),
+      ManagedApp.minimax: const MiniMaxAccountsPanel(region: 'global'),
+      ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
+      ManagedApp.traeCn: const TraeAccountsPanel(),
+    }.entries)
+      entry.key:
+          widget.identityValidationOnly && entry.key != ManagedApp.workbuddy
+          ? const SizedBox.shrink()
+          : AccountPresentationScope(
+              app: entry.key,
+              registry: _registry,
+              child: AccountWorkspacePage(
+                entry.key.label,
+                entry.value,
+                showTitle: false,
+              ),
+            ),
+  };
+  void _openApp(ManagedApp app) => _workspace.currentState?.selectApp(app);
+  @override
+  void dispose() {
+    _registry.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
       child: AppWorkspace(
+        key: _workspace,
+        preferences: widget.preferences,
         initialApp: ManagedApp.workbuddy,
-        enabledApps: identityValidationOnly
+        enabledApps: widget.identityValidationOnly
             ? const {ManagedApp.workbuddy}
-            : const {
-                ManagedApp.zcode,
-                ManagedApp.qoderCn,
-                ManagedApp.qoder,
-                ManagedApp.minimaxCn,
-                ManagedApp.minimax,
-                ManagedApp.workbuddy,
-                ManagedApp.traeCn,
+            : null,
+        pages: _pages,
+        sections: widget.identityValidationOnly
+            ? const {}
+            : {
+                WorkspaceSection.overview: WorkspaceOverviewPage(
+                  registry: _registry,
+                  onOpenApp: _openApp,
+                  onOpenModels: () => _workspace.currentState?.selectSection(
+                    WorkspaceSection.models,
+                  ),
+                ),
+                WorkspaceSection.accounts: WorkspaceAccountsPage(
+                  registry: _registry,
+                ),
+                WorkspaceSection.activity: WorkspaceActivityPage(
+                  registry: _registry,
+                  onOpenApp: _openApp,
+                ),
               },
-        pages: {
-          ManagedApp.zcode: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage(
-                  'ZCode',
-                  const ZcodeAccountsPanel(),
-                ),
-          ManagedApp.qoderCn: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage(
-                  'Qoder CN',
-                  const QoderDeviceAccountsPanel(region: QoderRegion.cn),
-                ),
-          ManagedApp.qoder: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage(
-                  'Qoder',
-                  const QoderDeviceAccountsPanel(region: QoderRegion.global),
-                ),
-          ManagedApp.minimaxCn: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage(
-                  'MiniMax CN',
-                  const MiniMaxAccountsPanel(region: 'cn'),
-                ),
-          ManagedApp.minimax: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage(
-                  'MiniMax',
-                  const MiniMaxAccountsPanel(region: 'global'),
-                ),
-          ManagedApp.workbuddy: _appPage(
-            'WorkBuddy',
-            WorkBuddyAccountsPanel(savedAccounts: true),
-          ),
-          ManagedApp.traeCn: identityValidationOnly
-              ? const SizedBox.shrink()
-              : _appPage('TRAE CN', const TraeAccountsPanel()),
-        },
       ),
     ),
+  );
+}
+
+ThemeData loongPassTheme(Brightness brightness) {
+  final colors = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF2863CE),
+    brightness: brightness,
+  );
+  return ThemeData(
+    useMaterial3: true,
+    colorScheme: colors,
+    scaffoldBackgroundColor: colors.surface,
+    visualDensity: VisualDensity.compact,
+    textTheme: const TextTheme(
+      bodyMedium: TextStyle(fontSize: 13),
+      bodySmall: TextStyle(fontSize: 11),
+      labelLarge: TextStyle(fontSize: 12),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: colors.surfaceContainerLowest,
+      isDense: true,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(6),
+        borderSide: BorderSide(color: colors.outlineVariant),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(minimumSize: const Size(0, 32)),
+    ),
+  );
+}
+
+class AccountWorkspacePage extends StatelessWidget {
+  const AccountWorkspacePage(
+    this.name,
+    this.panel, {
+    super.key,
+    this.showTitle = true,
+  });
+  final String name;
+  final Widget panel;
+  final bool showTitle;
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(16),
+    children: [
+      if (showTitle)
+        Text(
+          name,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+        ),
+      if (showTitle) const SizedBox(height: 8),
+      panel,
+    ],
   );
 }

@@ -1,3 +1,4 @@
+import 'claim_receipt.dart';
 // Account roster. Flows own authentication and claims; the injected store owns
 // saved authorization, and the independent journal owns check-in attempts.
 import 'dart:async';
@@ -27,6 +28,7 @@ class WorkBuddyAccountSession {
   String? get message => _flow.message;
   WorkBuddyState? get status => _flow.status;
   WorkBuddyResult? get result => _flow.result;
+  ClaimReceipt? get latestClaim => _flow.latestClaim;
   CreditSummary? get credits => _flow.credits;
   double? get totalRemaining => _flow.totalRemaining;
   @override
