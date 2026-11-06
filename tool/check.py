@@ -30,3 +30,8 @@ if os.uname().sysname == "Darwin":
         run(["xcrun", "swiftc", "macos/Runner/AccountFile.swift",
              "macos/Runner/WorkBuddyDesktopTransaction.swift", "tool/workbuddy_desktop_checks.swift", "-o", desktop])
         run([desktop])
+        processes = str(Path(scratch) / "workbuddy-process-checks")
+        run(["xcrun", "swiftc", "macos/Runner/AccountFile.swift",
+             "macos/Runner/WorkBuddyDesktopTransaction.swift", "macos/Runner/WorkBuddyProcesses.swift",
+             "tool/workbuddy_process_checks.swift", "-o", processes])
+        run([processes])

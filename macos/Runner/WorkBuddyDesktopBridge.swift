@@ -34,7 +34,7 @@ import Darwin
                 guard ProcessInfo.processInfo.systemUptime < deadline else { result("expired"); return }
                 guard try self.installedClient().path == bundle.path else { throw WorkBuddyDesktopTransaction.Failure.sourceChanged }
                 let transaction = WorkBuddyDesktopTransaction(root: root, journal: journal) {
-                    guard try Self.writers(in: bundle).isEmpty else { throw WorkBuddyDesktopTransaction.Failure.busy }
+                    guard try WorkBuddyProcesses.writers(in: bundle).isEmpty else { throw WorkBuddyDesktopTransaction.Failure.busy }
                 }
                 try transaction.apply(session)
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -121,73 +121,10 @@ import Darwin
         }
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         while true {
-            if try Self.writers(in: bundle).isEmpty { return }
+            if try WorkBuddyProcesses.writers(in: bundle).isEmpty { return }
             guard ProcessInfo.processInfo.systemUptime < deadline else { throw WorkBuddyDesktopTransaction.Failure.busy }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
     }
 
-    private static func arguments(of pid: pid_t) throws -> [String] {
-        var query: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-        var size = 0
-        guard sysctl(&query, 3, nil, &size, nil, 0) == 0, size >= 4, size <= 1_048_576 else {
-            if errno == ESRCH { return [] }
-            throw WorkBuddyDesktopTransaction.Failure.busy
-        }
-        var bytes = [UInt8](repeating: 0, count: size)
-        guard sysctl(&query, 3, &bytes, &size, nil, 0) == 0 else {
-            if errno == ESRCH { return [] }
-            throw WorkBuddyDesktopTransaction.Failure.busy
-        }
-        let count = bytes.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }
-        guard count > 0, count < 16384 else { throw WorkBuddyDesktopTransaction.Failure.busy }
-        var offset = 4
-        while offset < size, bytes[offset] != 0 { offset += 1 } // Executable path.
-        while offset < size, bytes[offset] == 0 { offset += 1 }
-        var result: [String] = []
-        for _ in 0..<count {
-            let start = offset
-            while offset < size, bytes[offset] != 0 { offset += 1 }
-            guard offset < size, let value = String(bytes: bytes[start..<offset], encoding: .utf8) else {
-                throw WorkBuddyDesktopTransaction.Failure.busy
-            }
-            result.append(value)
-            offset += 1
-        }
-        return result // Environment variables are never parsed or returned.
-    }
-
-    private static func writers(in bundle: URL) throws -> [pid_t] {
-        let stride = MemoryLayout<pid_t>.stride
-        let bytes = proc_listpids(UInt32(PROC_UID_ONLY), geteuid(), nil, 0)
-        guard bytes > 0, bytes < 131072 * stride else { throw WorkBuddyDesktopTransaction.Failure.busy }
-        var pids = [pid_t](repeating: 0, count: Int(bytes) / stride + 256)
-        let actual = Int(proc_listpids(UInt32(PROC_UID_ONLY), geteuid(), &pids, Int32(pids.count * stride)))
-        guard actual > 0, actual % stride == 0, actual < pids.count * stride,
-            pids.prefix(actual / stride).contains(getpid()) else {
-            throw WorkBuddyDesktopTransaction.Failure.busy
-        }
-        var result: [pid_t] = []
-        for pid in pids.prefix(actual / stride) where pid > 0 && pid != getpid() {
-            var info = proc_bsdinfo()
-            let size = MemoryLayout<proc_bsdinfo>.size
-            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(size)) == size else {
-                if kill(pid, 0) == -1 && errno == ESRCH { continue }
-                throw WorkBuddyDesktopTransaction.Failure.busy
-            }
-            guard info.pbi_uid == geteuid() else { continue }
-            var path = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-            guard proc_pidpath(pid, &path, UInt32(path.count)) > 0 else {
-                if kill(pid, 0) == -1 && errno == ESRCH { continue }
-                throw WorkBuddyDesktopTransaction.Failure.busy
-            }
-            let executable = String(cString: path)
-            if executable.hasPrefix(bundle.path + "/") { result.append(pid); continue }
-            if ["node", "bun", "workbuddy"].contains(URL(fileURLWithPath: executable).lastPathComponent.lowercased()),
-                try arguments(of: pid).contains(where: { $0.contains(bundle.path + "/") }) {
-                result.append(pid)
-            }
-        }
-        return result
-    }
 }

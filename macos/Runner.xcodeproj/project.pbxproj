@@ -33,6 +33,7 @@
 		E7A300000000000000000001 /* TraeLocalAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A300000000000000000000 /* TraeLocalAuthorization.swift */; };
 		E7A310000000000000000001 /* WorkBuddyDesktopBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */; };
 		E7A310000000000000000101 /* WorkBuddyDesktopTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */; };
+		E7A310000000000000000201 /* WorkBuddyProcesses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000200 /* WorkBuddyProcesses.swift */; };
 		ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000001 /* QoderFileStore.swift */; };
 		ABCDEF012345678900000012 /* AccountFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000002 /* AccountFile.swift */; };
 		3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */; };
@@ -99,6 +100,7 @@
 		E7A300000000000000000000 /* TraeLocalAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraeLocalAuthorization.swift; sourceTree = "<group>"; };
 		E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyDesktopBridge.swift; sourceTree = "<group>"; };
 		E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyDesktopTransaction.swift; sourceTree = "<group>"; };
+		E7A310000000000000000200 /* WorkBuddyProcesses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyProcesses.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000001 /* QoderFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QoderFileStore.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000002 /* AccountFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFile.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000000 /* ZcodeSwitchBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeSwitchBridge.swift; sourceTree = "<group>"; };
@@ -202,6 +204,7 @@
 				E7A300000000000000000000 /* TraeLocalAuthorization.swift */,
 				E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */,
 				E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */,
+		E7A310000000000000000200 /* WorkBuddyProcesses.swift */,
 				BBDDEF012345678900000000 /* WorkBuddyVault.swift */,
 				ABCDEF012345678900000001 /* QoderFileStore.swift */,
 				ABCDEF012345678900000002 /* AccountFile.swift */,
@@ -404,6 +407,7 @@
 				E7A300000000000000000001 /* TraeLocalAuthorization.swift in Sources */,
 				E7A310000000000000000001 /* WorkBuddyDesktopBridge.swift in Sources */,
 				E7A310000000000000000101 /* WorkBuddyDesktopTransaction.swift in Sources */,
+		E7A310000000000000000201 /* WorkBuddyProcesses.swift in Sources */,
 				BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */,
 				ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */,
 				ABCDEF012345678900000012 /* AccountFile.swift in Sources */,
