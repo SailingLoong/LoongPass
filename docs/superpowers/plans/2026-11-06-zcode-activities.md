@@ -24,7 +24,7 @@
 - [x] Replace the disabled prototype page with official authorization and activity controls; observe existing native version/device context without reading credentials.
 - [x] Run focused tests, repository checks and Universal candidate build. Verify official login, saved identity and restart.
 - [ ] Verify a real activity grant. One automatic attempt is pending; repeated official balance checks have not exposed a new entitlement. Do not replay it.
-- [ ] Record actual evidence and remaining live gaps, preserve source provenance, commit/push authorized changes and remove owned intermediate build artifacts.
+- [x] Record actual evidence and remaining live gaps, preserve source provenance, commit/push authorized changes and remove owned intermediate build artifacts. Main source commit: `12d2edb`; only the real reward receipt remains pending.
 
 ## Review focus
 
