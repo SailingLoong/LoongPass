@@ -27,7 +27,7 @@ def verify_feed(path, archive, version, build):
     assert len(items) == 1, "Expected one source-matched update"
     item = items[0]
     assert item.findtext("{" + SPARKLE + "}version") == build
-    assert item.findtext("{" + SPARKLE + "}shortVersionString") == ReleaseVersion(version, build).macos_name
+    assert item.findtext("{" + SPARKLE + "}shortVersionString") == version
     enclosure = item.find("enclosure")
     assert enclosure is not None
     assert enclosure.get("url") == download_prefix(version) + archive.name
@@ -72,6 +72,14 @@ def main():
                     "--download-url-prefix", download_prefix(version),
                     "--embed-release-notes", "--link", f"{REPOSITORY}/releases/tag/v{version}",
                     "-o", str(feed), str(archive.parent)], input=key, text=True, check=True)
+    # Apple requires a numeric bundle version; the signed display version retains
+    # the prerelease suffix so the native channel policy can identify beta items.
+    ET.register_namespace("sparkle", SPARKLE)
+    tree = ET.parse(feed)
+    tree.find("./channel/item/{" + SPARKLE + "}shortVersionString").text = version
+    tree.write(feed, encoding="utf-8", xml_declaration=True)
+    subprocess.run([str(tools / "sign_update"), "--ed-key-file", "-", str(feed)],
+                   input=key, text=True, check=True)
     signature = verify_feed(feed, archive, version, build)
     verify_signatures(tools, feed, archive, signature, key)
     notes.unlink()  # Embedded notes are covered by the feed signature.

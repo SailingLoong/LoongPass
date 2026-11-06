@@ -4,6 +4,7 @@ import base64
 import hashlib
 import importlib
 import json
+import os
 import plistlib
 import subprocess
 import sys
@@ -24,7 +25,7 @@ publish = module("publish_appcast")
 release = module("publish_release")
 
 
-def feed(build=29, length=123, url=None, short_version="1.0.0"):
+def feed(build=29, length=123, url=None, short_version="1.0.0-beta.29"):
     url = url or "https://loongpass.com/api/download/v1.0.0-beta.29/LoongPass-macOS-universal.zip"
     return f'''<rss xmlns:sparkle="{make.SPARKLE}"><channel><item>
     <sparkle:version>{build}</sparkle:version><sparkle:shortVersionString>{short_version}</sparkle:shortVersionString>
@@ -110,7 +111,7 @@ class PublishingChecks(unittest.TestCase):
 
             def sparkle(command, **kwargs):
                 if Path(command[0]).name == "generate_appcast":
-                    (output / "appcast.xml").write_text(feed(length=len(original)))
+                    (output / "appcast.xml").write_text(feed(length=len(original), short_version="1.0.0"))
 
             with patch.object(make, "ROOT", root), patch.object(sys, "argv", ["make_appcast", str(output), "--tools", str(root)]), \
                     patch.dict(make.os.environ, {"SPARKLE_PRIVATE_KEY": "synthetic-key"}), \
@@ -124,36 +125,74 @@ class PublishingChecks(unittest.TestCase):
         for build in [29, 30]:
             with tempfile.TemporaryDirectory() as directory:
                 manifest = Path(directory) / "appcast.xml"; manifest.write_text(feed())
-                with patch.object(publish.sys, "argv", ["publish", str(manifest)]), patch.object(publish, "api", side_effect=[
+                with patch.object(sys, "argv", ["publish", str(manifest), "--tools", directory]), patch.object(publish, "api", side_effect=[
                     [{"ref": "refs/heads/updates", "object": {"sha": "old-head"}}],
                     {"content": base64.b64encode(feed(build=build, length=999).encode()).decode()},
                 ]) as api:
                     with self.assertRaises(RuntimeError): publish.main()
                     self.assertEqual(api.call_count, 2)
 
-    def test_update_uses_parent_and_nonforce_patch(self):
+    def publish_fixture(self, content, *, stable=True, same=False):
+        calls = []
+        previous = content if same else feed(build=28)
+        def api(path, data=None, method=None):
+            calls.append((path, data, method))
+            if path == "/git/matching-refs/heads/updates":
+                return [{"ref": "refs/heads/updates", "object": {"sha": "old-head"}}]
+            if path.startswith("/contents/appcast.xml?"):
+                return {"content": base64.b64encode(previous.encode()).decode()}
+            if path == "/git/commits/old-head":
+                return {"tree": {"sha": "old-tree"}}
+            if path == "/git/trees/old-tree":
+                return {"tree": [{"path": "appcast.xml"}] + ([{"path": "appcast-stable.xml"}] if stable else [])}
+            if path == "/git/trees": return {"sha": "new-tree"}
+            if path == "/git/commits": return {"sha": "new-head"}
+            if path == "/git/refs/heads/updates": return {}
+            raise AssertionError(path)
         with tempfile.TemporaryDirectory() as directory:
-            manifest = Path(directory) / "appcast.xml"; manifest.write_text(feed())
-            with patch.object(publish.sys, "argv", ["publish", str(manifest)]), patch.object(publish, "api", side_effect=[
-                [{"ref": "refs/heads/updates", "object": {"sha": "old-head"}}],
-                {"content": base64.b64encode(feed(build=28).encode()).decode()},
-                {"sha": "new-tree"}, {"sha": "new-head"}, {},
-            ]) as api:
+            manifest = Path(directory) / "appcast.xml"; manifest.write_bytes(content.encode())
+            with patch.object(sys, "argv", ["publish", str(manifest), "--tools", directory]), \
+                    patch.dict(os.environ, {"SPARKLE_PRIVATE_KEY": "synthetic-key"}), \
+                    patch.object(publish, "api", side_effect=api), \
+                    patch.object(publish, "empty_stable_feed", return_value="signed-empty-feed", create=True):
                 publish.main()
-                self.assertEqual(api.call_args_list[3].args[1]["parents"], ["old-head"])
-                self.assertEqual(api.call_args_list[4].args, ("/git/refs/heads/updates", {"sha": "new-head", "force": False}))
-                self.assertEqual(api.call_args_list[4].kwargs, {"method": "PATCH"})
+        return calls
+
+    def test_beta_preserves_existing_stable_feed_and_refuses_concurrent_overwrite(self):
+        calls = self.publish_fixture(feed())
+        tree = next(data for path, data, _ in calls if path == "/git/trees")
+        self.assertEqual(tree["base_tree"], "old-tree")
+        self.assertEqual([item["path"] for item in tree["tree"]], ["appcast.xml"])
+        commit = next(data for path, data, _ in calls if path == "/git/commits")
+        self.assertEqual(commit["parents"], ["old-head"])
+        self.assertEqual(calls[-1], ("/git/refs/heads/updates", {"sha": "new-head", "force": False}, "PATCH"))
+
+    def test_first_beta_bootstraps_stable_feed_even_when_inclusive_feed_is_unchanged(self):
+        calls = self.publish_fixture(feed(), stable=False, same=True)
+        tree = next(data for path, data, _ in calls if path == "/git/trees")
+        items = {entry["path"]: entry["content"] for entry in tree["tree"]}
+        self.assertEqual(items["appcast-stable.xml"], "signed-empty-feed")
+
+    def test_stable_release_updates_both_channels_with_identical_signed_bytes(self):
+        content = feed(short_version="1.0.0").replace("\n", "\r\n")
+        calls = self.publish_fixture(content)
+        tree = next(data for path, data, _ in calls if path == "/git/trees")
+        self.assertEqual({item["path"]: item["content"] for item in tree["tree"]},
+                         {"appcast.xml": content, "appcast-stable.xml": content})
 
     def test_same_signed_bytes_are_idempotent_even_with_crlf(self):
+        calls = self.publish_fixture(feed().replace("\n", "\r\n"), same=True)
+        self.assertFalse(any(data for _, data, _ in calls))
+
+    def test_empty_feed_must_pass_signature_verification(self):
         with tempfile.TemporaryDirectory() as directory:
-            content = feed().replace("\n", "\r\n").encode()
-            manifest = Path(directory) / "appcast.xml"; manifest.write_bytes(content)
-            with patch.object(publish.sys, "argv", ["publish", str(manifest)]), patch.object(publish, "api", side_effect=[
-                [{"ref": "refs/heads/updates", "object": {"sha": "old-head"}}],
-                {"content": base64.b64encode(content).decode()},
-            ]) as api:
-                publish.main()
-                self.assertEqual(api.call_count, 2)
+            def reject_verification(command, **kwargs):
+                if "--verify" in command: raise subprocess.CalledProcessError(1, command)
+                return subprocess.CompletedProcess(command, 0)
+            with patch.object(publish.subprocess, "run", side_effect=reject_verification) as signer:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    publish.empty_stable_feed(Path(directory), "synthetic-key")
+                self.assertEqual(signer.call_count, 2)
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ def main():
     key = os.environ.pop("SPARKLE_PRIVATE_KEY").strip()
     assert key, "Publishing verification key is required"
     version, build = read_release_version(ROOT)
+    prerelease = "-" in version
     tag = "v" + version
     source = (directory / "SOURCE_COMMIT").read_text().strip()
     assert source == subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -35,12 +36,12 @@ def main():
         verify_archive(archive, version, build)
         signature = verify_feed(directory / "appcast.xml", archive, version, build)
         verify_signatures(args.tools, directory / "appcast.xml", archive, signature, key)
-        subprocess.run(["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", "--prerelease",
+        subprocess.run(["gh", "release", "create", tag, "--repo", REPO, "--verify-tag", *(["--prerelease"] if prerelease else ["--latest"]),
                         "--title", "LoongPass " + tag, "--notes-file", str(ROOT / "RELEASE-NOTES.md"),
                         *[str(p) for p in sorted(directory.iterdir()) if p.is_file()]], check=True)
     else:
         release = json.loads(existing.stdout)
-        assert not release["draft"] and release["prerelease"] and release["tag_name"] == tag
+        assert not release["draft"] and release["prerelease"] == prerelease and release["tag_name"] == tag
         assets = {a["name"]: a for a in release["assets"]}
         archive = assets["LoongPass-macOS-universal.zip"]
         with tempfile.TemporaryDirectory(prefix="loongpass-release-resume-") as scratch:
@@ -62,7 +63,8 @@ def main():
             # can produce different ZIP bytes; never overwrite existing assets.
             (directory / "appcast.xml").write_bytes(feed)
         print("Reused verified existing release", tag)
-    subprocess.run([sys.executable, str(ROOT / "tool/publish_appcast.py"), str(directory / "appcast.xml")], check=True)
+    subprocess.run([sys.executable, str(ROOT / "tool/publish_appcast.py"), str(directory / "appcast.xml"),
+                    "--tools", str(args.tools)], check=True, env={**os.environ, "SPARKLE_PRIVATE_KEY": key})
 
 
 if __name__ == "__main__":

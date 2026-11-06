@@ -6,7 +6,8 @@ import 'package:flutter/services.dart';
 class AppUpdates extends ChangeNotifier {
   static const _channel = MethodChannel('com.sailingloong.loongpass/updates');
   String? version, error;
-  bool automaticChecks = false, automaticDownloads = false, canCheck = false;
+  bool automaticUpdates = false, receiveBetaUpdates = false;
+  bool canCheck = false, canChangeChannel = false;
   bool _disposed = false, _busy = false;
   bool get available => version != null && !_busy;
 
@@ -20,9 +21,10 @@ class AppUpdates extends ChangeNotifier {
   void _apply(dynamic value) {
     if (_disposed || value is! Map) return;
     version = value['version'] as String?;
-    automaticChecks = value['automaticChecks'] == true;
-    automaticDownloads = value['automaticDownloads'] == true;
+    automaticUpdates = value['automaticUpdates'] == true;
+    receiveBetaUpdates = value['receiveBetaUpdates'] == true;
     canCheck = value['canCheck'] == true;
+    canChangeChannel = value['canChangeChannel'] == true;
     error = null;
     notifyListeners();
   }
@@ -42,10 +44,10 @@ class AppUpdates extends ChangeNotifier {
   }
 
   Future<void> check() => _invoke('check');
-  Future<void> setAutomaticChecks(bool value) =>
-      _invoke('setAutomaticChecks', value);
-  Future<void> setAutomaticDownloads(bool value) =>
-      _invoke('setAutomaticDownloads', value);
+  Future<void> setAutomaticUpdates(bool value) =>
+      _invoke('setAutomaticUpdates', value);
+  Future<void> setReceiveBetaUpdates(bool value) =>
+      _invoke('setReceiveBetaUpdates', value);
   @override
   void dispose() {
     _disposed = true;
@@ -66,20 +68,25 @@ class AppUpdateCard extends StatelessWidget {
         const Text('应用更新', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         Text(updates.version == null ? '正在读取版本信息' : '当前版本 ${updates.version}'),
-        const Text('公开测试版更新，保留本机账号和设置。'),
+        const Text('更新会保留本机账号和设置。'),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('自动检查更新'),
-          value: updates.automaticChecks,
-          onChanged: updates.available ? updates.setAutomaticChecks : null,
+          title: const Text('自动检查并下载更新'),
+          subtitle: const Text('校验通过后在退出时安装，也可以主动安装并重启。'),
+          value: updates.automaticUpdates,
+          onChanged: updates.available ? updates.setAutomaticUpdates : null,
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('自动下载更新'),
-          subtitle: const Text('校验通过后在退出时安装，也可以主动安装并重启。'),
-          value: updates.automaticDownloads,
-          onChanged: updates.available && updates.automaticChecks
-              ? updates.setAutomaticDownloads
+          title: const Text('接收 Beta 版更新'),
+          subtitle: Text(
+            updates.available && !updates.canChangeChannel
+                ? '更新进行中或已下载，安装或跳过后可切换渠道。'
+                : '提前体验新功能，稳定性可能不如正式版。关闭后仅接收正式版。',
+          ),
+          value: updates.receiveBetaUpdates,
+          onChanged: updates.available && updates.canChangeChannel
+              ? updates.setReceiveBetaUpdates
               : null,
         ),
         if (updates.error != null) Text(updates.error!),
