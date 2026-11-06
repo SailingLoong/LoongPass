@@ -1,8 +1,11 @@
 """Synthetic publishing checks; no GitHub access or signing credentials."""
 from pathlib import Path
 import base64
-import importlib.util
+import hashlib
+import importlib
+import json
 import plistlib
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,14 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tool"))
 
 
 def module(name):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / "tool" / (name + ".py"))
-    value = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(value)
-    return value
+    return importlib.import_module(name)
 
 
 make = module("make_appcast")
 publish = module("publish_appcast")
+release = module("publish_release")
 
 
 def feed(build=29, length=123, url=None, short_version="1.0.0"):
@@ -32,6 +33,52 @@ def feed(build=29, length=123, url=None, short_version="1.0.0"):
 
 
 class PublishingChecks(unittest.TestCase):
+    def test_resume_does_not_publish_feed_rejected_by_signature_verifier(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "macos/Runner").mkdir(parents=True)
+            (root / "pubspec.yaml").write_text("version: 1.0.0-beta.29+29\n")
+            info = {"CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "29",
+                    "SUPublicEDKey": "synthetic-public-key", "SURequireSignedFeed": True,
+                    "SUVerifyUpdateBeforeExtraction": True,
+                    "SUFeedURL": "https://loongpass.com/updates/appcast.xml"}
+            (root / "macos/Runner/Info.plist").write_bytes(plistlib.dumps(info))
+            output = root / "dist"; output.mkdir()
+            archive = output / "LoongPass-macOS-universal.zip"
+            with zipfile.ZipFile(archive, "w") as zipped:
+                zipped.writestr("LoongPass.app/Contents/Info.plist", plistlib.dumps(info))
+            content = archive.read_bytes()
+            digest = hashlib.sha256(content).hexdigest()
+            (output / "SOURCE_COMMIT").write_text("source-head")
+            (output / "appcast.xml").write_text(feed(length=len(content)))
+            published = []
+
+            def external(command, **kwargs):
+                if command[:2] == ["gh", "api"]:
+                    data = {"draft": False, "prerelease": True, "tag_name": "v1.0.0-beta.29",
+                            "assets": [{"name": archive.name, "digest": "sha256:" + digest, "size": len(content)}]}
+                    return subprocess.CompletedProcess(command, 0, json.dumps(data), "")
+                if command[:3] == ["gh", "release", "download"]:
+                    saved = Path(command[command.index("--dir") + 1])
+                    (saved / "SOURCE_COMMIT").write_text("source-head")
+                    (saved / "SHA256SUMS").write_text(digest + "  " + archive.name + "\n")
+                    (saved / "appcast.xml").write_text(feed(length=len(content)))
+                    (saved / archive.name).write_bytes(content)
+                elif Path(command[0]).name == "sign_update":
+                    raise subprocess.CalledProcessError(1, command, stderr="Invalid signature")
+                elif any(str(part).endswith("publish_appcast.py") for part in command):
+                    published.append(command)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.object(release, "ROOT", root), patch.object(make, "ROOT", root), \
+                    patch.object(sys, "argv", ["publish_release", str(output), "--tools", str(root)]), \
+                    patch.dict(make.os.environ, {"SPARKLE_PRIVATE_KEY": "synthetic-key"}), \
+                    patch.object(release.subprocess, "check_output", return_value="source-head"), \
+                    patch.object(release.subprocess, "run", side_effect=external):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    release.main()
+            self.assertEqual(published, [])
+
     def test_feed_must_match_exact_source_and_archive(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "LoongPass-macOS-universal.zip"

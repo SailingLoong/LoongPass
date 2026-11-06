@@ -17,6 +17,8 @@ jobs:
   build:
     runs-on: macos-15
     timeout-minutes: 60
+    env:
+      PACKAGE_APP: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
@@ -42,8 +44,10 @@ jobs:
       - name: Verify source behavior
         run: python3 tool/check.py
       - name: Build universal macOS app
+        if: env.PACKAGE_APP == 'true'
         run: python3 tool/build_macos_release.py
       - name: Package source-matched app
+        if: env.PACKAGE_APP == 'true'
         run: |
           mkdir -p dist
           ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/LoongPass.app dist/LoongPass-macOS-universal.zip
@@ -57,9 +61,21 @@ jobs:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: python3 tool/make_appcast.py dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: env.PACKAGE_APP == 'true'
         with:
           name: LoongPass-macOS-universal
           path: dist/
+          retention-days: 14
+      - name: Preserve source-pinned publishing verifier
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p verify-tools
+          cp build/macos/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update SPARKLE-LICENSE.txt verify-tools/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: LoongPass-update-verifier
+          path: verify-tools/
           retention-days: 14
       - name: Remove build intermediates
         if: always()
@@ -68,9 +84,10 @@ jobs:
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Download CI artifact and publish prerelease
@@ -79,6 +96,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           RUN_ID: ${{ github.run_id }}
           REPOSITORY: ${{ github.repository }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-macOS-universal --dir dist
-          python3 tool/publish_release.py dist
+          gh run download "$RUN_ID" --repo "$REPOSITORY" --name LoongPass-update-verifier --dir verify-tools
+          chmod +x verify-tools/sign_update
+          python3 tool/publish_release.py dist --tools verify-tools
