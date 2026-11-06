@@ -7,6 +7,48 @@ import '../lib/credit_summary.dart';
 
 void main() {
   testWidgets(
+    'expired snapshot batches cannot hide the next future expiry from filtering',
+    (tester) async {
+      final now = DateTime.now();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CompactAccountsTable(
+              entries: [
+                AccountTableEntry(
+                  id: 'mixed',
+                  label: 'Mixed batches',
+                  identity: 'synthetic',
+                  balance: '300 积分',
+                  status: 'ready',
+                  details: const Text('Details'),
+                  credits: CreditSummary(
+                    300,
+                    0,
+                    now.subtract(const Duration(days: 2)),
+                    [
+                      CreditExpiry(now.subtract(const Duration(days: 1)), 100),
+                      CreditExpiry(now.add(const Duration(days: 1)), 200),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('7 天内到期'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mixed batches'), findsOneWidget);
+      expect(find.textContaining('200 积分'), findsOneWidget);
+      expect(find.textContaining('100 积分'), findsNothing);
+      await tester.tap(find.byKey(const Key('expiry-mixed')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('200 积分'), findsWidgets);
+      expect(find.textContaining('100 积分'), findsNothing);
+    },
+  );
+  testWidgets(
     'open details follows owner messages and values without reopening',
     (tester) async {
       final rows = ValueNotifier<List<AccountTableEntry>>([]);
@@ -64,9 +106,18 @@ void main() {
                     status: '等待检查',
                     credits: i == 20
                         ? CreditSummary(880, 260, DateTime(2026, 11, 6), [
-                            CreditExpiry(DateTime(2026, 11, 7), 120),
-                            CreditExpiry(DateTime(2026, 11, 8), 200),
-                            CreditExpiry(DateTime(2026, 11, 9), 300),
+                            CreditExpiry(
+                              DateTime.now().add(const Duration(days: 1)),
+                              120,
+                            ),
+                            CreditExpiry(
+                              DateTime.now().add(const Duration(days: 2)),
+                              200,
+                            ),
+                            CreditExpiry(
+                              DateTime.now().add(const Duration(days: 3)),
+                              300,
+                            ),
                           ])
                         : null,
                     onActivate: activate,

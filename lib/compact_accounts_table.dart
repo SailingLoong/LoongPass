@@ -59,10 +59,13 @@ class AccountTableEntry {
       expiryAt ?? _batches(credits).firstOrNull?.expiresAt;
 }
 
-List<CreditExpiry> _batches(CreditSummary? credits) => [
-  for (final b in credits?.expiring ?? <CreditExpiry>[])
-    if (b.remaining > 0) b,
-]..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
+List<CreditExpiry> _batches(CreditSummary? credits) {
+  final now = DateTime.now();
+  return [
+    for (final batch in credits?.expiring ?? <CreditExpiry>[])
+      if (batch.remaining > 0 && batch.expiresAt.isAfter(now)) batch,
+  ]..sort((a, b) => a.expiresAt.compareTo(b.expiresAt));
+}
 
 String accountPoints(num value) => value == value.roundToDouble()
     ? value.toStringAsFixed(0)
@@ -185,8 +188,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
-    final now = DateTime.now(),
-        week = DateTime.now().add(const Duration(days: 7));
+    final now = DateTime.now(), week = now.add(const Duration(days: 7));
     final rows = widget.entries.where((e) {
       if (!'${e.label} ${e.identity}'.toLowerCase().contains(query))
         return false;

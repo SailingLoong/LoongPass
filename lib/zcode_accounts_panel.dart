@@ -212,9 +212,10 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     ),
   );
   DateTime? _nextExpiry(ZcodeActivityAccount a) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final times = [
       for (final b in a.buckets)
-        if (b.expiresAt != null && b.remaining != null && b.remaining! > 0)
+        if (b.expiresAt != null && b.expiresAt! > now && b.remaining != 0)
           b.expiresAt!,
     ]..sort();
     return times.isEmpty
@@ -228,9 +229,12 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     final b = a.buckets.firstWhere(
       (b) =>
           b.expiresAt == next.millisecondsSinceEpoch ~/ 1000 &&
-          (b.remaining ?? 0) > 0,
+          b.remaining != 0,
     );
-    return '${accountPoints(b.remaining!)} ${b.unit} · ${accountDate(next)}';
+    final quantity = b.remaining == null
+        ? '剩余未知'
+        : '${accountPoints(b.remaining!)} ${b.unit}';
+    return '$quantity · ${accountDate(next)}';
   }
 
   @override
