@@ -30,6 +30,7 @@ Map<String, dynamic> plan(String instance, {int end = 1793903600}) => {
 };
 
 class FakeZcode implements ZcodeTransport {
+  String userId = 'same-id';
   int claims = 0, polls = 0, balanceCalls = 0;
   int serverTime = now ~/ 1000;
   bool stringTimes = false;
@@ -66,8 +67,10 @@ class FakeZcode implements ZcodeTransport {
         200,
         envelope({
           'status': 'ready',
-          'user': {'user_id': 'same-id', 'name': 'Synthetic'},
-          'token': 'synthetic-$provider',
+          'user': {'user_id': userId, 'name': 'Synthetic'},
+          'token': userId == 'same-id'
+              ? 'synthetic-$provider'
+              : 'synthetic-$provider-$userId',
           provider: {
             'access_token': 'provider-secret',
             'refresh_token': 'refresh-secret',
@@ -147,13 +150,14 @@ Future<ZcodeActivityAccounts> account(
   MemoryAccountStore store,
   FakeZcode http, {
   String family = 'bigmodel',
+  Map<String, String> deviceContext = context,
 }) async {
   final a = ZcodeActivityAccounts(
     store: store,
     api: ZcodeApi(http),
     now: () => now,
   );
-  await a.beginAuthorization(family, context);
+  await a.beginAuthorization(family, deviceContext);
   await a.pollAuthorizationOnce();
   return a;
 }
@@ -462,7 +466,7 @@ Future<void> main() async {
     'explicit unauthorized response requires login',
   );
   expiredHttp.claimCode = 0;
-  await expired.beginAuthorization('bigmodel', context);
+  await expired.beginAuthorization('bigmodel', context, accountId: eid);
   await expired.pollAuthorizationOnce();
   await expired.claim(eid);
   check(
@@ -475,7 +479,15 @@ Future<void> main() async {
   final regionalStore = MemoryAccountStore('regional');
   final cn = await account(regionalStore, FakeZcode());
   cn.dispose();
-  final global = await account(regionalStore, FakeZcode(), family: 'zai');
+  final global = await account(
+    regionalStore,
+    FakeZcode(),
+    family: 'zai',
+    deviceContext: {
+      ...context,
+      'deviceMid': '99999999-2222-4333-8444-555555555555',
+    },
+  );
   final regional = await global.accounts();
   check(
     regional.length == 2 && regional[0].id != regional[1].id,

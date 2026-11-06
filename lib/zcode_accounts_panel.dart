@@ -21,6 +21,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   ZcodeActivityAccounts? _owner;
   List<ZcodeActivityAccount> _accounts = [];
   bool _busy = false;
+  int _availableDevices = 0;
   String? _message;
   @override
   void initState() {
@@ -42,10 +43,14 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   });
   Future<void> _reload() async {
     final values = await _owner!.accounts();
+    final available = await _owner!.availableDeviceCount();
     if (mounted)
       setState(() {
         _accounts = values;
-        _message = _owner!.message ?? _message;
+        _availableDevices = available;
+        _message = _owner!.authorizationError == null
+            ? _owner!.message ?? _message
+            : _failureMessage(_owner!.authorizationError!);
       });
   }
 
@@ -58,12 +63,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     try {
       await action();
     } on ZcodeFailure catch (e) {
-      if (mounted)
-        setState(
-          () => _message = e.code == 'device_required'
-              ? '未找到本机 ZCode 的已有设备信息。请安装并打开一次官方客户端后重试。'
-              : '操作未完成（${e.code}）。未确认的领取会保留记录。',
-        );
+      if (mounted) setState(() => _message = _failureMessage(e.code));
     } catch (_) {
       if (mounted)
         setState(() => _message = '无法读取设备信息或打开官方授权页面。请确认本机已安装并使用过 ZCode。');
@@ -72,12 +72,30 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     }
   }
 
-  Future<void> _login() => _run(() async {
+  String _failureMessage(String code) => switch (code) {
+    'device_required' => '未找到本机 ZCode 的已有设备信息。请安装并打开一次官方客户端后重试。',
+    'device_in_use' => '这个设备号已被账号使用，请使用其他已有设备重新绑定。',
+    'device_pool_empty' => '没有可分配的已有设备号，原账号未改变。',
+    'account_mismatch' => '授权返回了其他账号，未更换任何已保存账号。请登录所选账号后重试。',
+    'binding_changed' => '账号设备已被其他操作更新，本次授权未覆盖它。',
+    'device_rebind_required' => '该账号已保存。请从该账号的“重新授权”或“重新绑定设备”继续。',
+    _ => '操作未完成（$code）。未确认的领取会保留记录。',
+  };
+
+  Future<void> _login({
+    ZcodeActivityAccount? account,
+    bool replaceDevice = false,
+  }) => _run(() async {
     final context = await _channel.invokeMapMethod<String, dynamic>(
       'zcodeRequestContext',
     );
     if (context == null) throw const ZcodeFailure('device_required');
-    final url = await _owner!.beginAuthorization('bigmodel', context);
+    final url = await _owner!.beginAuthorization(
+      'bigmodel',
+      context,
+      accountId: account?.id,
+      replaceDevice: replaceDevice,
+    );
     try {
       await _channel.invokeMethod<void>('openZcodeAuthorization', {
         'url': url.toString(),
@@ -131,6 +149,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
           Text(a.label, style: const TextStyle(fontWeight: FontWeight.w600)),
           Text('${a.family == 'bigmodel' ? '智谱 BigModel' : 'Z.AI'} · ${a.uid}'),
           Text(_status(a.status)),
+          Text('设备号尾号 ${a.deviceSuffix}'),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -154,6 +173,19 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
                         await _reload();
                       }),
                 child: const Text('核对并领取活动'),
+              ),
+              TextButton(
+                onPressed: _busy || _owner!.loginPending
+                    ? null
+                    : () => _login(account: a),
+                child: const Text('重新授权'),
+              ),
+              TextButton(
+                onPressed:
+                    _busy || _owner!.loginPending || _availableDevices == 0
+                    ? null
+                    : () => _login(account: a, replaceDevice: true),
+                child: const Text('重新绑定设备'),
               ),
             ],
           ),
@@ -179,7 +211,6 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
       ),
     ),
   );
-
   DateTime? _nextExpiry(ZcodeActivityAccount a) {
     final times = [
       for (final b in a.buckets)
@@ -228,8 +259,10 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
               onPressed: _busy
                   ? null
                   : () {
-                      _owner!.cancelAuthorization();
-                      setState(() => _message = '授权已取消。');
+                      final cancelled = _owner!.cancelAuthorization();
+                      setState(
+                        () => _message = cancelled ? '授权已取消。' : '保存已开始，正在核对结果。',
+                      );
                     },
               child: const Text('取消授权'),
             ),
@@ -240,6 +273,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
         ],
       ),
       if (_busy) const LinearProgressIndicator(),
+      if (_availableDevices > 0) Text('已有设备池：$_availableDevices 个可分配设备号'),
       if (_message != null)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),

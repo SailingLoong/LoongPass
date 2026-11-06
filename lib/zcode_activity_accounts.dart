@@ -8,7 +8,7 @@ import 'zcode_api.dart';
 import 'zcode_rewards.dart';
 
 class ZcodeActivityAccount {
-  final String id, uid, family, label, status;
+  final String id, uid, family, label, status, deviceSuffix;
   final bool automatic;
   final int? checkedAt;
   final List<ZcodeBucket> buckets;
@@ -18,6 +18,7 @@ class ZcodeActivityAccount {
       family = a['family'],
       label = a['label'],
       status = a['status'],
+      deviceSuffix = (a['context']['deviceMid'] as String).substring(30),
       automatic = a['automatic'],
       checkedAt = a['checkedAt'],
       buckets = [
@@ -31,10 +32,21 @@ class ZcodeActivityAccount {
 class _Login {
   final String family, pollToken;
   final Map<String, String> context;
+  final String? accountId;
+  final String? originalDevice;
+  final bool replaceDevice;
   String? flow;
   int expires = 0, interval = 1, nextPoll = 0;
   Map<String, dynamic>? ready;
-  _Login(this.family, this.pollToken, this.context);
+  bool committing = false;
+  _Login(
+    this.family,
+    this.pollToken,
+    this.context,
+    this.accountId,
+    this.replaceDevice,
+    this.originalDevice,
+  );
 }
 
 /// Sole owner of saved identities, authorization recovery, durable activity
@@ -49,6 +61,7 @@ class ZcodeActivityAccounts {
   _Login? _login;
   Timer? _poll, _startup, _timer;
   String? message;
+  String? authorizationError;
   bool get loginPending => _login != null;
   ZcodeActivityAccounts({
     required this.store,
@@ -87,6 +100,12 @@ class ZcodeActivityAccounts {
       if (doc.data['version'] != 1 ||
           doc.data['accounts'] is! Map<String, dynamic>)
         throw const FormatException();
+      final pool = doc.data['devicePool'] ?? <String>[];
+      if (pool is! List ||
+          pool.length > 100 ||
+          pool.any((v) => zcodeDeviceId(v) != v) ||
+          pool.toSet().length != pool.length)
+        throw const FormatException();
       for (final e in (doc.data['accounts'] as Map<String, dynamic>).entries) {
         final a = e.value;
         if (a is! Map<String, dynamic> ||
@@ -101,6 +120,15 @@ class ZcodeActivityAccounts {
             !_statuses.contains(a['status']))
           throw const FormatException();
         zcodeContext(Map<String, dynamic>.from(a['context']));
+        final history = a['bindingHistory'] ?? <dynamic>[];
+        if (history is! List) throw const FormatException();
+        for (final previous in history) {
+          if (previous is! Map ||
+              previous['claims'] is! Map ||
+              previous['changedAt'] is! int)
+            throw const FormatException();
+          zcodeContext(Map<String, dynamic>.from(previous['context']));
+        }
         if (_id(a['family'], a['uid']) != a['id'])
           throw const FormatException();
         for (final c in (a['claims'] as Map).values) {
@@ -146,68 +174,125 @@ class ZcodeActivityAccounts {
     'authorization_required',
     'discoveryIncomplete',
   };
-  static String _id(String family, String uid) =>
-      sourceSha256(utf8.encode('$family\u0000$uid'))
-          .map((v) => v.toRadixString(16).padLeft(2, '0'))
-          .join();
+  static String _id(String family, String uid) => sourceSha256(
+    utf8.encode('$family\u0000$uid'),
+  ).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
   Future<List<ZcodeActivityAccount>> accounts() async => [
     for (final a in ((await _read()).data['accounts'] as Map).values)
       ZcodeActivityAccount(a),
   ];
 
-  Future<Uri> beginAuthorization(String family, Map<String, dynamic> context) =>
-      _exclusive(() async {
-        if (!{'bigmodel', 'zai'}.contains(family))
-          throw const ZcodeFailure('invalid_provider');
-        if (_login != null) throw const ZcodeFailure('busy');
-        final random = Random.secure();
-        final token = List.generate(
-          32,
-          (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-        ).join();
-        final login = _Login(family, token, zcodeContext(context));
-        _login = login;
-        try {
-          final d = zcodeData(
-            await api.request(
-              ZcodeApi.initPath,
-              token,
-              login.context,
-              body: {'provider': family},
-              isCurrent: () => !_closed && identical(_login, login),
-            ),
-          );
-          final url = d['authorize_url'] is String
-              ? Uri.tryParse(d['authorize_url'])
-              : null;
-          final hosts = family == 'bigmodel'
-              ? {'bigmodel.cn', 'zcode.z.ai'}
-              : {'z.ai', 'zcode.z.ai'};
-          if (url == null ||
-              url.scheme != 'https' ||
-              !hosts.contains(url.host) ||
-              url.userInfo.isNotEmpty ||
-              url.port != 443 ||
-              url.fragment.isNotEmpty ||
-              !zcodeText(d['flow_id']) ||
-              !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(d['flow_id']) ||
-              d['expires_at'] is! int ||
-              d['expires_at'] * 1000 <= now() ||
-              d['poll_interval_sec'] is! int ||
-              d['poll_interval_sec'] < 1 ||
-              d['poll_interval_sec'] > 300) {
-            throw const ZcodeFailure('invalid_response');
-          }
-          login.flow = d['flow_id'];
-          login.expires = min(d['expires_at'] * 1000 as int, now() + 600000);
-          login.interval = d['poll_interval_sec'];
-          message = '请在智谱官方页面完成授权，完成后会自动保存。';
-          return url;
-        } catch (_) {
-          if (identical(_login, login)) _login = null;
-          rethrow;
-        }
-      });
+  static Set<String> _occupied(
+    Map<String, dynamic> data, {
+    String? except,
+    bool includeHistory = true,
+  }) => {
+    for (final entry in (data['accounts'] as Map).entries) ...{
+      if (entry.key != except)
+        zcodeDeviceId(entry.value['context']['deviceMid']),
+      for (final old
+          in includeHistory ? entry.value['bindingHistory'] ?? [] : [])
+        zcodeDeviceId(old['context']['deviceMid']),
+    },
+  };
+
+  static List<String> _available(Map<String, dynamic> data) {
+    final occupied = _occupied(data);
+    return [
+      for (final id in data['devicePool'] ?? [])
+        if (!occupied.contains(id)) id as String,
+    ];
+  }
+
+  Future<int> availableDeviceCount() async =>
+      _available((await _read()).data).length;
+
+  Future<Uri> beginAuthorization(
+    String family,
+    Map<String, dynamic> context, {
+    String? accountId,
+    bool replaceDevice = false,
+  }) => _exclusive(() async {
+    if (!{'bigmodel', 'zai'}.contains(family))
+      throw const ZcodeFailure('invalid_provider');
+    if (_login != null) throw const ZcodeFailure('busy');
+    authorizationError = null;
+    final doc = await _read();
+    final target = accountId == null
+        ? null
+        : (doc.data['accounts'] as Map)[accountId];
+    if (accountId != null && (target == null || target['family'] != family))
+      throw const ZcodeFailure('account_missing');
+    if (replaceDevice && target == null)
+      throw const ZcodeFailure('account_missing');
+    final selected = zcodeContext(context);
+    final available = _available(doc.data);
+    if (target != null && !replaceDevice) {
+      selected['deviceMid'] = zcodeDeviceId(target['context']['deviceMid']);
+    } else {
+      if (replaceDevice && available.isEmpty)
+        throw const ZcodeFailure('device_pool_empty');
+      selected['deviceMid'] = available.isNotEmpty
+          ? available.first
+          : zcodeDeviceId(selected['deviceMid']);
+      if (_occupied(doc.data).contains(selected['deviceMid']))
+        throw const ZcodeFailure('device_in_use');
+    }
+    final random = Random.secure();
+    final token = List.generate(
+      32,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    final login = _Login(
+      family,
+      token,
+      selected,
+      accountId,
+      replaceDevice,
+      target == null ? null : zcodeDeviceId(target['context']['deviceMid']),
+    );
+    _login = login;
+    try {
+      final d = zcodeData(
+        await api.request(
+          ZcodeApi.initPath,
+          token,
+          login.context,
+          body: {'provider': family},
+          isCurrent: () => !_closed && identical(_login, login),
+        ),
+      );
+      final url = d['authorize_url'] is String
+          ? Uri.tryParse(d['authorize_url'])
+          : null;
+      final hosts = family == 'bigmodel'
+          ? {'bigmodel.cn', 'zcode.z.ai'}
+          : {'z.ai', 'zcode.z.ai'};
+      if (url == null ||
+          url.scheme != 'https' ||
+          !hosts.contains(url.host) ||
+          url.userInfo.isNotEmpty ||
+          url.port != 443 ||
+          url.fragment.isNotEmpty ||
+          !zcodeText(d['flow_id']) ||
+          !RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(d['flow_id']) ||
+          d['expires_at'] is! int ||
+          d['expires_at'] * 1000 <= now() ||
+          d['poll_interval_sec'] is! int ||
+          d['poll_interval_sec'] < 1 ||
+          d['poll_interval_sec'] > 300) {
+        throw const ZcodeFailure('invalid_response');
+      }
+      login.flow = d['flow_id'];
+      login.expires = min(d['expires_at'] * 1000 as int, now() + 600000);
+      login.interval = d['poll_interval_sec'];
+      message = '请在智谱官方页面完成授权，完成后会自动保存。';
+      return url;
+    } catch (_) {
+      if (identical(_login, login)) _login = null;
+      rethrow;
+    }
+  });
   void followAuthorization() {
     _alive();
     _poll?.cancel();
@@ -216,7 +301,11 @@ class ZcodeActivityAccounts {
         await pollAuthorizationOnce();
       } on ZcodeFailure catch (e) {
         if (e.code != 'busy')
-          message = loginPending ? '授权结果保留中，正在重试保存或等待官网。' : '授权已结束（${e.code}）。';
+          if (loginPending) {
+            message = '授权结果保留中，正在重试保存或等待官网。';
+          } else {
+            authorizationError = e.code;
+          }
         await _notify();
       }
     });
@@ -227,7 +316,7 @@ class ZcodeActivityAccounts {
     if (login == null || login.flow == null) return;
     if (login.ready == null) {
       if (now() >= login.expires) {
-        cancelAuthorization();
+        _endAuthorization();
         throw const ZcodeFailure('authorization_expired');
       }
       if (now() < login.nextPoll) return;
@@ -242,7 +331,7 @@ class ZcodeActivityAccounts {
       );
       if (d['status'] == 'pending') return;
       if (d['status'] == 'failed') {
-        cancelAuthorization();
+        _endAuthorization();
         throw const ZcodeFailure('authorization_failed');
       }
       final user = d['user'];
@@ -268,6 +357,35 @@ class ZcodeActivityAccounts {
     if (_closed || !identical(_login, login)) return;
     final id = _id(login.family, ready['uid']),
         old = map[id] as Map<String, dynamic>?;
+    if (login.accountId != null && login.accountId != id) {
+      _endAuthorization();
+      throw const ZcodeFailure('account_mismatch');
+    }
+    if (login.accountId != null &&
+        (old == null ||
+            (zcodeDeviceId(old['context']['deviceMid']) !=
+                    login.originalDevice &&
+                !(old['context']['deviceMid'] == login.context['deviceMid'] &&
+                    old['token'] == ready['token'])))) {
+      _endAuthorization();
+      throw const ZcodeFailure('binding_changed');
+    }
+    final deviceChanged =
+        old != null &&
+        zcodeDeviceId(old['context']['deviceMid']) !=
+            login.context['deviceMid'];
+    if (deviceChanged && !login.replaceDevice) {
+      _endAuthorization();
+      throw const ZcodeFailure('device_rebind_required');
+    }
+    if (_occupied(
+      doc.data,
+      except: id,
+      includeHistory: deviceChanged || old == null,
+    ).contains(login.context['deviceMid'])) {
+      _endAuthorization();
+      throw const ZcodeFailure('device_in_use');
+    }
     map[id] = {
       ...?old,
       'id': id,
@@ -275,13 +393,29 @@ class ZcodeActivityAccounts {
       'family': login.family,
       'context': login.context,
       'automatic': old?['automatic'] ?? true,
-      'status': old?['status'] == 'authorization_required'
+      'status': deviceChanged || old?['status'] == 'authorization_required'
           ? 'unavailable'
           : old?['status'] ?? 'unavailable',
-      'claims': old?['claims'] ?? <String, dynamic>{},
+      'claims': deviceChanged
+          ? <String, dynamic>{}
+          : old?['claims'] ?? <String, dynamic>{},
+      if (deviceChanged)
+        'bindingHistory': [
+          ...?old['bindingHistory'],
+          {
+            'context': old['context'],
+            'claims': old['claims'],
+            'changedAt': now(),
+          },
+        ],
       'buckets': old?['buckets'] ?? [],
     };
+    login.committing = true;
     await _write(doc);
+    // A lost acknowledgement may follow a successful atomic commit. Keep
+    // cancellation disabled on failure until the retained grant is reconciled.
+    login.committing = false;
+    _alive();
     if (identical(_login, login)) {
       _login = null;
       _poll?.cancel();
@@ -289,8 +423,15 @@ class ZcodeActivityAccounts {
     message = '账号已保存；自动检查活动已开启。';
     startAutomatic();
   });
-  void cancelAuthorization() {
+  bool cancelAuthorization() {
+    if (_login?.committing == true) return false;
+    _endAuthorization();
+    return true;
+  }
+
+  void _endAuthorization() {
     _login = null;
+    authorizationError = null;
     _poll?.cancel();
     _poll = null;
   }
@@ -439,6 +580,12 @@ class ZcodeActivityAccounts {
         await _write(doc);
         return;
       }
+      if (_occupied(
+        doc.data,
+        except: id,
+        includeHistory: false,
+      ).contains(zcodeDeviceId(a['context']['deviceMid'])))
+        throw const ZcodeFailure('device_in_use');
       // An unverified attempt and at most one fresh human-verified attempt.
       for (var attempt = 0; attempt < 2; attempt++) {
         ZcodeVerification? verification;
@@ -583,7 +730,8 @@ class ZcodeActivityAccounts {
 
   void dispose() {
     _closed = true;
-    cancelAuthorization();
+    _login = null;
+    _poll?.cancel();
     _startup?.cancel();
     _timer?.cancel();
   }

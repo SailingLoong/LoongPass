@@ -9,6 +9,55 @@ import 'zcode_activities_checks.dart' as fixture;
 
 void main() {
   testWidgets(
+    'rebind authorizes the selected account on a different saved device',
+    (tester) async {
+      const channel = MethodChannel('com.sailingloong.loongpass/files');
+      var opened = false;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            if (call.method == 'zcodeRequestContext') return fixture.context;
+            if (call.method == 'openZcodeAuthorization') {
+              opened = true;
+              return null;
+            }
+            throw StateError('Unexpected method');
+          });
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null),
+      );
+      final store = MemoryAccountStore('rebind-panel');
+      final http = fixture.FakeZcode();
+      final owner = await fixture.account(store, http);
+      const replacement = '22222222-2222-4333-8444-666666666666';
+      store.data['devicePool'] = [replacement];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ZcodeAccountsPanel(create: () => owner),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重新绑定设备'));
+      await tester.pumpAndSettle();
+      expect(opened, isTrue);
+      expect(http.received.last.context['deviceMid'], replacement);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('666666'), findsOneWidget);
+      expect((store.data['accounts'] as Map).length, 1);
+      expect(http.claims, 0);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
     'manual verification receives public config and cancellation preserves rejection',
     (tester) async {
       const channel = MethodChannel('com.sailingloong.loongpass/files');
