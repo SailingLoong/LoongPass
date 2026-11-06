@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'app_theme.dart';
+export 'app_theme.dart';
 import 'app_sidebar.dart';
 import 'qoder_device_panel.dart';
 import 'qoder_device_accounts.dart';
@@ -11,9 +14,10 @@ import 'account_workspace_registry.dart';
 import 'workspace_accounts.dart';
 import 'workspace_tools.dart';
 import 'app_updates.dart';
-import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'mac_account_document_store.dart';
+import 'model_service.dart';
+import 'minimax_model_provider.dart';
+import 'dart:async';
 import 'rewards/reward_accounts.dart';
 import 'rewards/reward_accounts_panel.dart';
 import 'rewards/reward_providers.dart';
@@ -78,6 +82,7 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  final _models = ModelService(store: MacAccountDocumentStore('ModelService'));
   final _registry = AccountWorkspaceRegistry();
   final _workspace = GlobalKey<AppWorkspaceState>();
   late final _rewardHttp = {
@@ -99,8 +104,16 @@ class _AccountPageState extends State<_AccountPage> {
       ManagedApp.qoder: const QoderDeviceAccountsPanel(
         region: QoderRegion.global,
       ),
-      ManagedApp.minimaxCn: const MiniMaxAccountsPanel(region: 'cn'),
-      ManagedApp.minimax: const MiniMaxAccountsPanel(region: 'global'),
+      ManagedApp.minimaxCn: MiniMaxAccountsPanel(
+        region: 'cn',
+        onOwnerReady: (owner) =>
+            _models.register(MiniMaxModelProvider(owner, 'cn')),
+      ),
+      ManagedApp.minimax: MiniMaxAccountsPanel(
+        region: 'global',
+        onOwnerReady: (owner) =>
+            _models.register(MiniMaxModelProvider(owner, 'global')),
+      ),
       ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
       ManagedApp.traeCn: const TraeAccountsPanel(),
       for (final provider in rewardProviders)
@@ -133,6 +146,10 @@ class _AccountPageState extends State<_AccountPage> {
     if (!widget.identityValidationOnly && _rewardsEnabled) {
       unawaited(_rewards.start().catchError((_) {}));
     }
+    if (!widget.identityValidationOnly &&
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      unawaited(_models.load().catchError((Object _) {}));
+    }
   }
 
   @override
@@ -142,6 +159,7 @@ class _AccountPageState extends State<_AccountPage> {
     for (final http in _rewardHttp.values) {
       http.close();
     }
+    unawaited(_models.dispose());
     _registry.dispose();
     super.dispose();
   }
@@ -160,6 +178,8 @@ class _AccountPageState extends State<_AccountPage> {
         sections: widget.identityValidationOnly
             ? const {}
             : {
+                if (defaultTargetPlatform == TargetPlatform.macOS)
+                  WorkspaceSection.models: ModelServicesPage(service: _models),
                 WorkspaceSection.settings: WorkspaceSettingsPage(
                   preferences: widget.preferences,
                   updates: _updates,
@@ -184,51 +204,6 @@ class _AccountPageState extends State<_AccountPage> {
   );
 }
 
-ThemeData loongPassTheme(Brightness brightness) {
-  final colors = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF2863CE),
-    brightness: brightness,
-  );
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: colors,
-    scaffoldBackgroundColor: colors.surface,
-    visualDensity: VisualDensity.compact,
-    textTheme: const TextTheme(
-      bodyMedium: TextStyle(fontSize: 13),
-      bodySmall: TextStyle(fontSize: 11),
-      labelLarge: TextStyle(fontSize: 12),
-    ),
-    inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: colors.surfaceContainerLowest,
-      isDense: true,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(6),
-        borderSide: BorderSide(color: colors.outlineVariant),
-      ),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 34),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-      ),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: TextButton.styleFrom(minimumSize: const Size(0, 32)),
-    ),
-  );
-}
-
 class AccountWorkspacePage extends StatelessWidget {
   const AccountWorkspacePage(
     this.name,
@@ -241,13 +216,10 @@ class AccountWorkspacePage extends StatelessWidget {
   final bool showTitle;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(16),
+    padding: const EdgeInsets.all(24),
     children: [
       if (showTitle)
-        Text(
-          name,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
+        Text(name, style: Theme.of(context).textTheme.headlineSmall),
       if (showTitle) const SizedBox(height: 8),
       panel,
     ],

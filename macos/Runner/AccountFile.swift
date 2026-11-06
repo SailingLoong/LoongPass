@@ -9,7 +9,7 @@ final class AccountFile {
     private let lockFD: Int32
     private static var stores: [String: AccountFile] = [:]
     private static let registryLock = NSLock()
-    static let documentScopes: Set<String> = ["MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode", "RewardChannels"]
+    static let documentScopes: Set<String> = ["MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode", "RewardChannels", "ModelService"]
     static func named(_ name: String) throws -> AccountFile {
         registryLock.lock(); defer { registryLock.unlock() }
         guard documentScopes.contains(name) || ["Qoder-cn", "Qoder-global", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }

@@ -27,26 +27,33 @@ class AppNavigationItemState extends State<AppNavigationItem> {
   @override
   Widget build(BuildContext context) {
     final app = widget.app;
+    final colors = Theme.of(context).colorScheme;
     Widget icon = ExcludeSemantics(
       child: SizedBox(
         width: 28,
-        height: 30,
+        height: 28,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             Container(
-              width: 26,
-              height: 26,
+              width: 22,
+              height: 22,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: app.color,
-                borderRadius: BorderRadius.circular(7),
+                color: Color.alphaBlend(
+                  app.color.withValues(alpha: .10),
+                  colors.surfaceContainerLowest,
+                ),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 app.monogram,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+                style: TextStyle(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Color.lerp(app.color, Colors.white, .45)
+                      : app.color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -58,7 +65,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                   key: ValueKey('region-${app.name}'),
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: colors.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(
@@ -164,6 +171,9 @@ class SidebarNavigationButton extends StatelessWidget {
             vertical: 4,
           ),
           foregroundColor: selected ? colors.primary : colors.onSurfaceVariant,
+          textStyle: Theme.of(context).textTheme.labelLarge!.copyWith(
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
           backgroundColor: selected
               ? colors.primaryContainer
               : Colors.transparent,
