@@ -6,8 +6,49 @@ import 'synthetic_fixture.dart' as fixture;
 import 'memory_account_store.dart';
 import '../lib/qoder_device_accounts.dart';
 import 'qoder_cn_checks.dart' as qoder;
+import '../lib/zcode_activity_accounts.dart';
 
 void main() {
+  test(
+    'ZCode retains confirmed history after rebinding without inventing receipt amounts or times',
+    () {
+      final account = ZcodeActivityAccount({
+        'id': 'synthetic',
+        'uid': 'synthetic',
+        'family': 'bigmodel',
+        'label': 'Test',
+        'status': 'pending',
+        'automatic': false,
+        'context': {'deviceMid': '11111111-1111-4111-8111-111111111111'},
+        'claims': {
+          'new': {'state': 'pending', 'submittedAt': 100000},
+        },
+        'bindingHistory': [
+          {
+            'claims': {
+              'old': {
+                'state': 'claimed',
+                'submittedAt': 90000,
+                'endsAt': 200000,
+              },
+            },
+          },
+        ],
+        'buckets': [
+          {
+            'label': '订阅',
+            'unit': 'tokens',
+            'remaining': 620,
+            'expiresAt': 200000,
+          },
+        ],
+      });
+      expect(account.latestClaim, isNotNull);
+      expect(account.latestClaim?.amount, isNull);
+      expect(account.latestClaim?.confirmedAt, isNull);
+      expect(account.latestClaim?.display, contains('时间未知'));
+    },
+  );
   test(
     'Qoder retains its receipt when the same campaign reopens and the next send is unknown',
     () async {

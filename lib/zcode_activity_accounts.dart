@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'account_document_store.dart';
+import 'claim_receipt.dart';
 import 'source_digest.dart';
 import 'zcode_api.dart';
 import 'zcode_rewards.dart';
@@ -11,6 +12,7 @@ class ZcodeActivityAccount {
   final String id, uid, family, label, status, deviceSuffix;
   final bool automatic;
   final int? checkedAt;
+  final ClaimReceipt? latestClaim;
   final List<ZcodeBucket> buckets;
   ZcodeActivityAccount(Map<String, dynamic> a)
     : id = a['id'],
@@ -21,10 +23,28 @@ class ZcodeActivityAccount {
       deviceSuffix = (a['context']['deviceMid'] as String).substring(30),
       automatic = a['automatic'],
       checkedAt = a['checkedAt'],
+      latestClaim = _latestClaim(a),
       buckets = [
         for (final b in a['buckets'] as List)
           ZcodeBucket.fromJson(Map<String, dynamic>.from(b)),
       ];
+  static ClaimReceipt? _latestClaim(Map<String, dynamic> account) {
+    // These receipts confirm an entitlement, not an awarded amount or instant.
+    // Submission and plan-expiry times must not become receipt timestamps.
+    final histories = [
+      account['claims'],
+      for (final binding in account['bindingHistory'] ?? const [])
+        binding['claims'],
+    ];
+    for (final claims in histories) {
+      if (claims is Map &&
+          claims.values.any((c) => c is Map && c['state'] == 'claimed')) {
+        return const ClaimReceipt();
+      }
+    }
+    return null;
+  }
+
   @override
   String toString() => 'ZcodeActivityAccount([redacted])';
 }

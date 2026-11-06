@@ -297,9 +297,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
               expiryText: _expiry(a),
               expiryAt: _nextExpiry(a),
               status: _status(a.status),
-              latestClaim: a.status == 'claimed'
-                  ? '已确认权益 · 领取时间未知'
-                  : '暂无可展示的成功记录',
+              latestClaim: a.latestClaim?.display ?? '暂无已确认记录',
               needsAttention: {
                 'pending',
                 'verificationRequired',

@@ -38,6 +38,9 @@ Never call selection a successful client switch. Tests use synthetic identities.
   narrow widths. Review the branch once; correct material findings.
 - Record evidence and commit the implementation. Reclaim task build/test caches;
   retain source worktree until integrated. No release/real-account claim implied.
+- Build one Universal beta.26 candidate through the existing locked build script
+  after the other chat's beta.25 build finishes; keep its package separately from
+  disposable build intermediates. Do not replace the active account session.
 
 ## Review Focus
 Check old persisted records, unresolved claims after a success, mixed units,
