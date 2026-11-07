@@ -31,6 +31,7 @@ import 'workbuddy_model_provider.dart';
 import 'workbuddy_accounts.dart';
 import 'workbuddy_automatic.dart';
 import 'workbuddy_flutter.dart';
+import 'workbuddy_desktop_flutter.dart';
 import 'workbuddy_vault.dart';
 import 'workbuddy_vault_flutter.dart';
 import 'native_minimax_accounts.dart';
@@ -221,7 +222,12 @@ class _AccountPageState extends State<_AccountPage> {
       _models.register(MiniMaxModelProvider(entry.value, entry.key));
     }
     _models.register(LoomyModelProvider(_rewards));
-    _models.register(WorkBuddyModelProvider(_workbuddy));
+    _models.register(
+      WorkBuddyModelProvider(
+        _workbuddy,
+        clientVersion: WorkBuddyDesktopFlutter.clientVersion,
+      ),
+    );
     _models.register(QoderModelProvider(_qoderOwners[QoderRegion.cn]!));
     final prompt =
         jsonDecode(

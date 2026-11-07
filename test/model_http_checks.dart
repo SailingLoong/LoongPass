@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import '../lib/model_http.dart';
 import '../lib/model_provider.dart';
@@ -13,8 +14,15 @@ Future<void> main() async {
   final accepted = Completer<void>();
   server.listen((r) async {
     calls++;
-    await r.drain<void>();
+    final body = await utf8.decoder.bind(r).join();
     switch (r.uri.path) {
+      case '/utf8':
+        check(
+          jsonDecode(body)['text'] == '中文 — native prompt',
+          'JSON body was not UTF-8',
+        );
+        r.response.statusCode = 204;
+        await r.response.close();
       case '/redirect':
         r.response.statusCode = 307;
         r.response.headers.set('location', '/target');
@@ -35,6 +43,17 @@ Future<void> main() async {
   final transport = ModelHttp();
   final root = Uri.parse('http://127.0.0.1:${server.port}');
   try {
+    await transport.exchange(
+      root.resolve('/utf8'),
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: {'text': '中文 — native prompt'},
+      isCurrent: () => true,
+      consume: (r) async {
+        check(r.status == 204, 'UTF-8 request failed');
+        await r.body.drain<void>();
+      },
+    );
     final obj = await modelJson(
       transport,
       root.resolve('/json'),

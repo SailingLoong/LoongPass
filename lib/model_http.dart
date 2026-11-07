@@ -66,7 +66,7 @@ class ModelHttp implements ModelTransport {
               if (k.toLowerCase() == 'content-type') request.headers.set(k, v);
             });
           }
-          request.write(body is String ? body : jsonEncode(body));
+          request.add(utf8.encode(body is String ? body : jsonEncode(body)));
         }
       }
       check();

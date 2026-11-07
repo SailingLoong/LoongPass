@@ -28,13 +28,19 @@ class Wire implements ModelTransport {
     check(isCurrent(), 'no account lease');
     calls.add((uri, headers, body));
     check(uri.host == 'copilot.tencent.com', 'login host reused for inference');
+    check(
+      headers['User-Agent'] == 'WorkBuddy/6.0.1 LoongPass' &&
+          headers['X-IDE-Version'] == '6.0.1' &&
+          headers['X-Requested-With'] == 'XMLHttpRequest',
+      'runtime compatibility headers absent',
+    );
     final value = method == 'GET'
         ? jsonEncode({
             'code': 0,
             'data': {
               'agents': [
                 {
-                  'name': 'cli',
+                  'name': 'craft',
                   'models': ['claude-live', 'chat-live'],
                 },
               ],
@@ -91,7 +97,11 @@ Future<void> main() async {
         'not saved',
       );
     }
-    var source = WorkBuddyModelProvider(owner, transport: wire);
+    var source = WorkBuddyModelProvider(
+      owner,
+      transport: wire,
+      clientVersion: () async => '6.0.1',
+    );
     final accounts = await source.accounts();
     check(
       accounts.length == 2 &&
@@ -155,7 +165,11 @@ Future<void> main() async {
       vault,
       () async => saved.rows.keys.toList().reversed.toList(),
     );
-    source = WorkBuddyModelProvider(owner, transport: wire);
+    source = WorkBuddyModelProvider(
+      owner,
+      transport: wire,
+      clientVersion: () async => '6.0.1',
+    );
     final restored = (await source.accounts()).firstWhere(
       (x) => x.id == first.id,
     );

@@ -62,12 +62,16 @@ Future<void> main() async {
     for (final entry in [(a, 'only-a', 'only-b'), (b, 'only-b', 'only-a')]) {
       final reply = await request(firstModels, entry.$1.key);
       check(reply.$1 == 200, 'account catalog unavailable');
-      final ids = (jsonDecode(reply.$2)['data'] as List)
-          .map((m) => m['id'])
-          .toList();
+      final data = jsonDecode(reply.$2)['data'] as List;
+      final ids = data.map((m) => m['id']).toList();
       check(
         ids.contains(entry.$2) && !ids.contains(entry.$3),
         'catalog leaked another account model',
+      );
+      check(
+        (data.first as Map)['native_endpoints'] is List &&
+            (data.first as Map)['native_endpoints'].single == '/messages',
+        'catalog lacks native protocol metadata',
       );
     }
     check(

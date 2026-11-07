@@ -1,4 +1,4 @@
-// Native gateway contract: magpie-community/providers/loomy/index.mjs (MIT),
+// Native gateway contract: magpie-community/plugins/packages/loomy/index.mjs (MIT),
 // pinned by the workspace. No guessed fallback catalog or session lifetime.
 import 'dart:async';
 import 'model_provider.dart';

@@ -41,6 +41,11 @@ class ModelService {
   Uri? get endpoint => _server == null
       ? null
       : Uri(scheme: 'http', host: '127.0.0.1', port: _server!.port);
+  List<ModelDefinition> _modelsFor(Map row) => [
+    for (final model
+        in _catalogs[row['id']]?.models ?? const <ModelDefinition>[])
+      if (row['legacyModel'] == null || model.id == row['legacyModel']) model,
+  ];
   List<ModelBinding> get bindings => List.unmodifiable([
     for (final row in _rows.values)
       ModelBinding(
@@ -50,7 +55,7 @@ class ModelService {
         key: row['key'],
         registrationId: row['registrationId'],
         enabled: row['enabled'],
-        models: _catalogs[row['id']]?.models ?? const [],
+        models: _modelsFor(row),
         error: _catalogErrors[row['id']],
         queriedAt: _queriedAt[row['id']],
       ),
@@ -63,7 +68,9 @@ class ModelService {
     final catalog = _catalogs[id];
     if (catalog == null || catalog.models.isEmpty) return null;
     final root = endpoint!;
-    final protocols = catalog.models.map((m) => m.protocol).toSet();
+    final models = _modelsFor(row);
+    if (models.isEmpty) return null;
+    final protocols = models.map((m) => m.protocol).toSet();
     final source = _providers[providerId];
     return Uri(
       scheme: 'magpie',
@@ -72,7 +79,7 @@ class ModelService {
         'id': 'loongpass-$providerId',
         'name': 'LoongPass ' + (source?.name ?? providerId),
         'key': row['key'],
-        'models': catalog.models.map((m) => m.id).join(','),
+        'models': models.map((m) => m.id).join(','),
         if (protocols.contains(ModelProtocol.messages))
           'anthropic': root
               .resolve('/providers/$providerId/messages')
@@ -101,11 +108,42 @@ class ModelService {
     }
     _providers[provider.id] = provider;
     _subscriptions[provider.id] = provider.changes.listen(
-      (_) => _scheduleRefresh(provider.id),
-      onError: (Object _) => _scheduleRefresh(provider.id),
+      (_) => _ownerChanged(provider.id),
+      onError: (Object _) => _ownerChanged(provider.id),
     );
     if (_loaded) _scheduleRefresh(provider.id);
     _notify();
+  }
+
+  void _ownerChanged(String providerId) {
+    if (_closed) return;
+    // Revocation cannot wait behind queued discovery or a transport waiting for
+    // headers. Read the owner's current account lifetimes immediately; normal
+    // token rotation retains the same registration and persistent caller key.
+    unawaited(() async {
+      final provider = _providers[providerId];
+      if (provider == null) return;
+      List<ModelAccount> accounts;
+      try {
+        accounts = await provider.accounts();
+      } catch (_) {
+        accounts = [];
+      }
+      if (_closed || !identical(_providers[providerId], provider)) return;
+      for (final row in _rows.values.where(
+        (r) => r['providerId'] == providerId,
+      )) {
+        if (!accounts.any(
+          (a) =>
+              a.id == row['accountId'] &&
+              a.registrationId == row['registrationId'],
+        )) {
+          _cancelFor(row['id']);
+          _catalogs.remove(row['id']);
+        }
+      }
+      _scheduleRefresh(providerId);
+    }());
   }
 
   void _scheduleRefresh(String providerId) {
@@ -561,13 +599,9 @@ class ModelService {
         await _error(response, 503, 'model_catalog_unavailable');
         return;
       }
-      final models = catalog.models
-          .where(
-            (m) =>
-                m.protocol == protocol &&
-                (row['legacyModel'] == null || m.id == row['legacyModel']),
-          )
-          .toList();
+      final models = _modelsFor(
+        row,
+      ).where((m) => m.protocol == protocol).toList();
       if (request.method == 'GET' && relative == '/v1/models') {
         response.headers.contentType = ContentType.json;
         response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
@@ -580,9 +614,7 @@ class ModelService {
         await response.close();
         return;
       }
-      final callPath = protocol == ModelProtocol.messages
-          ? '/v1/messages'
-          : '/v1/chat/completions';
+      final callPath = '/v1${protocol.endpoint}';
       if (request.method != 'POST' || relative != callPath) {
         await _error(response, 404, 'endpoint_not_supported');
         return;

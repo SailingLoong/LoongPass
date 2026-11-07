@@ -1,6 +1,12 @@
 import 'dart:async';
 
-enum ModelProtocol { messages, chat }
+enum ModelProtocol {
+  messages('/messages'),
+  chat('/chat/completions');
+
+  const ModelProtocol(this.endpoint);
+  final String endpoint;
+}
 
 class ModelAccount {
   final String id, label;
@@ -28,6 +34,8 @@ class ModelDefinition {
     'object': 'model',
     'owned_by': owner,
     'name': name,
+    'supported_endpoints': [protocol.endpoint],
+    'native_endpoints': [protocol.endpoint],
     if (contextWindow != null) 'context_length': contextWindow,
     if (outputLimit != null) 'max_output_tokens': outputLimit,
     if (tools != null) 'supports_tool_calls': tools,

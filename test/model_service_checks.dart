@@ -20,6 +20,30 @@ Future<void> fails(Future<void> Function() action, String code) async {
 }
 
 Future<void> main() async {
+  final missingProvider = PoolProvider('first', ModelProtocol.messages);
+  final missing = ModelService(
+    store: MemoryAccountStore('removed-legacy-model')
+      ..data = {
+        'version': 1,
+        'enabled': false,
+        'providerId': 'first',
+        'accountId': 'a',
+        'model': 'removed-model',
+        'key': List.filled(43, 'z').join(),
+      },
+    port: 0,
+  )..register(missingProvider);
+  try {
+    await missing.load();
+    await missing.start();
+    check(
+      missing.importUriFor('legacy') == null,
+      'removed legacy model produced a broken import link',
+    );
+  } finally {
+    await missing.dispose();
+    await missingProvider.events.close();
+  }
   final store = MemoryAccountStore('migration')
     ..data = {
       'version': 1,
@@ -52,6 +76,14 @@ Future<void> main() async {
     check(
       service.bindings.single.key == List.filled(43, 'x').join(),
       'legacy key changed',
+    );
+    check(
+      service.importUriFor('legacy')!.queryParameters['models'] == 'only-a',
+      'legacy import advertised extra models',
+    );
+    check(
+      service.bindings.single.models.length == 1,
+      'legacy UI advertised extra models',
     );
     final models = await request('/v1/models');
     check(models.$1 == 200, 'legacy root unavailable');

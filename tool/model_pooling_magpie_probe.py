@@ -33,6 +33,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--magpie", default="/Applications/magpie.app/Contents/MacOS/magpie")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--automatic-api", action="store_true", help="Use native per-protocol catalog discovery without model API overrides")
+    parser.add_argument("--claude", help="Also verify single-send failures with this Claude Code executable")
     args = parser.parse_args()
     provider = "loongpass-pool-probe-" + uuid.uuid4().hex[:10]
     events = []
@@ -74,6 +76,7 @@ def main():
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(raw)))
+            self.send_header("x-should-retry", "false")
             self.end_headers()
             self.wfile.write(raw)
 
@@ -91,7 +94,7 @@ def main():
             ids = [MESSAGES] if self.path.startswith("/anthropic") else [SHARED, "pool-probe-only-" + ("a" if key == KEY_A else "b")]
             with lock:
                 events.append({"operation": "models", "key": "a" if key == KEY_A else "b", "path": self.path})
-            self.reply(200, {"object": "list", "data": [{"id": model, "object": "model", "owned_by": "synthetic"} for model in ids]})
+            self.reply(200, {"object": "list", "data": [{"id": model, "object": "model", "owned_by": "synthetic", "supported_endpoints": ["/messages" if model == MESSAGES else "/chat/completions"], "native_endpoints": ["/messages" if model == MESSAGES else "/chat/completions"]} for model in ids]})
 
         def do_POST(self):
             key = self.key()
@@ -115,6 +118,7 @@ def main():
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Connection", "close")
+                self.send_header("x-should-retry", "false")
                 self.end_headers()
                 if anthropic:
                     chunks = [
@@ -189,8 +193,10 @@ def main():
             if response.status != 200:
                 raise RuntimeError("native key-add API refused the synthetic key")
         cli("provider", "refresh", provider)
-        for model, api in [(SHARED, "chat"), (MESSAGES, "anthropic"), ("pool-probe-only-a", "chat"), ("pool-probe-only-b", "chat")]:
-            cli("model", "api", provider + "/" + model, api)
+        if not args.automatic_api:
+            for model, api in [(SHARED, "chat"), (MESSAGES, "anthropic"), ("pool-probe-only-a", "chat"), ("pool-probe-only-b", "chat")]:
+                cli("model", "api", provider + "/" + model, api)
+        result["automatic_protocol_discovery"] = args.automatic_api
         # Issued keys are scoped at creation and expire. Removing this unique
         # provider makes the key unable to name any source after cleanup.
         issued = json.loads(cli("gateway-key", "issue", "--ttl", "5m", "--name", provider, "--models", provider + "/*", "--json"))
@@ -259,6 +265,30 @@ def main():
             if not stream:
                 assert status == 502, (case, status)
             result["checks"][case + "-single-send"] = "passed"
+        if args.claude:
+            child_env = {k: v for k, v in environment.items() if not k.startswith(("ANTHROPIC_", "CLAUDE_CODE_"))}
+            child_env.update(ANTHROPIC_BASE_URL=gateway, ANTHROPIC_API_KEY=caller,
+                             CLAUDE_CONFIG_DIR=str(Path(profile.name) / "claude"),
+                             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1", DISABLE_TELEMETRY="1",
+                             CLAUDE_CODE_MAX_RETRIES="0")
+            child_env["CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK"] = "1"
+            for case in ("http-error", "cut-stream"):
+                with lock:
+                    state["case"] = case
+                    before = len(events)
+                command = [args.claude, "--bare", "-p", "--no-session-persistence", "--setting-sources", "",
+                           "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--tools", "",
+                           "--model", provider + "/" + MESSAGES, "--max-turns", "1",
+                           "--system-prompt", "You are a synthetic protocol test.", "--output-format", "json", "Reply with synthetic marker."]
+                try:
+                    completed = subprocess.run(command, env=child_env, cwd=profile.name, capture_output=True, text=True, timeout=30)
+                    result["checks"]["claude-" + case + "-exit"] = completed.returncode
+                except subprocess.TimeoutExpired:
+                    result["checks"]["claude-" + case + "-exit"] = "timeout"
+                with lock:
+                    calls = [e for e in events[before:] if e["operation"] == "call"]
+                result["checks"]["claude-" + case + "-sends"] = len(calls)
+                assert len(calls) == 1, (case, len(calls))
         result["status"] = "passed"
         print(json.dumps({"phase": "verified", "checks": result["checks"]}), flush=True)
     finally:

@@ -1,5 +1,5 @@
 // MiniMax Code native Messages contract. Model configuration parsing follows
-// magpie-community/providers/minimax/index.mjs (MIT), pinned in workspace upstream.
+// magpie-community/plugins/packages/minimax/index.mjs (MIT), pinned in workspace upstream.
 import 'dart:async';
 import 'dart:math';
 import 'minimax_accounts.dart';

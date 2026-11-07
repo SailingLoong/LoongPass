@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'account_registration.dart';
 import 'model_provider.dart';
 import 'model_http.dart';
+import 'model_sse.dart';
 import 'zcode_api.dart';
 import 'zcode_activity_accounts.dart';
 
@@ -398,28 +399,19 @@ class ZcodeModelProvider extends ModelProvider {
       );
       return;
     }
-    final iterator = StreamIterator(upstream.body);
-    final prefix = <int>[];
-    bool recognized = false;
+    final iterator = StreamIterator(modelSseEvents(upstream.body));
+    Map<String, dynamic> valueOf(ModelSseEvent event) {
+      try {
+        final value = jsonDecode(event.data);
+        if (value is Map<String, dynamic>) return value;
+      } catch (_) {}
+      throw const ModelServiceFailure('invalid_response');
+    }
+
+    var recognized = false;
     try {
       while (await iterator.moveNext()) {
-        prefix.addAll(iterator.current);
-        if (prefix.length > 262144)
-          throw const ModelServiceFailure('invalid_response');
-        final text = utf8.decode(prefix, allowMalformed: true);
-        final end = text.indexOf('\n\n');
-        if (end < 0) continue;
-        final data = const LineSplitter()
-            .convert(text.substring(0, end))
-            .where((l) => l.startsWith('data:'))
-            .firstOrNull;
-        if (data == null) continue;
-        dynamic value;
-        try {
-          value = jsonDecode(data.substring(5).trim());
-        } catch (_) {
-          throw const ModelServiceFailure('invalid_response');
-        }
+        final value = valueOf(iterator.current);
         final error = _businessError(value);
         if (error != null) {
           await consume(
@@ -432,7 +424,8 @@ class ZcodeModelProvider extends ModelProvider {
           );
           return;
         }
-        if (value is Map && value['type'] == 'message_start') {
+        if (value['type'] == 'ping') continue;
+        if (value['type'] == 'message_start') {
           recognized = true;
           break;
         }
@@ -441,10 +434,15 @@ class ZcodeModelProvider extends ModelProvider {
       if (!recognized)
         throw const ModelServiceFailure('upstream_stream_incomplete');
       Stream<List<int>> replay() async* {
-        yield prefix;
-        while (await iterator.moveNext()) {
-          yield iterator.current;
-        }
+        do {
+          final event = iterator.current;
+          final value = valueOf(event);
+          if (_businessError(value) != null)
+            throw const ModelServiceFailure('upstream_stream_incomplete');
+          yield event.encode();
+          if (value['type'] == 'message_stop') return;
+        } while (await iterator.moveNext());
+        throw const ModelServiceFailure('upstream_stream_incomplete');
       }
 
       await consume(

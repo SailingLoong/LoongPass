@@ -171,6 +171,8 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(switch (service.error) {
+                      'client_version_unavailable' => '请先安装并打开该来源的官方客户端，再刷新目录。',
+                      'unsupported_client_version' => '请更新该来源的官方客户端后重试。',
                       'port_unavailable' => '本机服务端口被占用，请关闭占用程序后重试。',
                       'save_failed' => '连接设置未保存，请重试。',
                       'invalid_settings' => '连接设置无法读取，服务未自动启动。',
@@ -292,7 +294,7 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
             ),
         const WorkspaceCard(
           child: Text(
-            '首次导入某个来源后，将同一来源的其他账号密钥加入 Magpie 的同一服务。启用账号轮换，并设置错误直接返回；失败或中断的请求不会自动换账号重发。请使用支持这些选项的新版 Magpie。连接仅监听本机，启动设置会随 LoongPass 恢复。',
+            '首次导入某个来源后，将同一来源的其他账号密钥加入 Magpie 的同一服务。启用账号轮换，并设置错误直接返回、关闭等待重试。使用 Claude Code 时，启动前设置 CLAUDE_CODE_MAX_RETRIES=0 和 CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1，并关闭模型 fallback，避免客户端自行重发失败或中断的请求。请使用支持这些选项的新版 Magpie。连接仅监听本机，启动设置会随 LoongPass 恢复。',
           ),
         ),
       ],

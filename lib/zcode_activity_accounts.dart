@@ -559,8 +559,14 @@ class ZcodeActivityAccounts {
           () async {
             final response = await read(ZcodeApi.balancePath);
             final parsed = ZcodeBalance.parse(response, now());
-            _observe(a, parsed);
-            await _write(doc);
+            final latest = await _read();
+            final current = (latest.data['accounts'] as Map)[id];
+            if (current is! Map<String, dynamic> ||
+                current['registrationId'] != a['registrationId'] ||
+                current['token'] != a['token'])
+              throw const ZcodeFailure('binding_changed');
+            _observe(current, parsed);
+            await _write(latest);
             return response;
           },
           () => read(ZcodeApi.configPath),

@@ -55,6 +55,7 @@ class Official extends f.FakeZcode {
 class Wire implements ModelTransport {
   final calls = <(Uri, Map<String, String>, Object?)>[];
   bool quota = false;
+  String? sseOverride;
   @override
   Future<void> exchange(
     Uri uri, {
@@ -124,7 +125,8 @@ class Wire implements ModelTransport {
     final answer = quota
         ? jsonEncode({'code': '1005', 'msg': 'exceed quota limit'})
         : request['stream'] == true
-        ? 'event: message_start\ndata: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"GLM-Live","content":[]}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n'
+        ? sseOverride ??
+              'event: message_start\ndata: {"type":"message_start","message":{"id":"m","type":"message","role":"assistant","model":"GLM-Live","content":[]}}\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\n'
         : jsonEncode({
             'id': 'm',
             'type': 'message',
@@ -160,6 +162,9 @@ Future<void> main() async {
   final source = ZcodeModelProvider(owner, prompt: prompt, transport: wire);
   try {
     final id = (await owner.accounts()).single.id;
+    // Existing saved accounts predate registration IDs. The first lease may
+    // publish registration and balance in separate durable writes.
+    (store.data['accounts'][id] as Map).remove('registrationId');
     final catalog = await source.discoverModels(id);
     check(
       catalog.models.single.id == 'GLM-Live' &&
@@ -218,6 +223,58 @@ Future<void> main() async {
       isCurrent: () => true,
       cancelled: Completer<void>().future,
     );
+    const begin =
+        'event: message_start\ndata: {"type":"message_start","message":{"id":"m"}}\n\n';
+    const stop = 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    final framingFailures = <String>[];
+    for (final sse in [
+      ': heartbeat\n\n$begin$stop',
+      '$begin$stop'.replaceAll('\n', '\r\n'),
+    ]) {
+      wire.sseOverride = sse;
+      var complete = false;
+      try {
+        await source.dispatch(
+          id,
+          catalog.registrationId,
+          ModelProtocol.messages,
+          {...body, 'stream': true},
+          (r) async {
+            complete = (await utf8.decoder.bind(r.body).join()).contains(
+              'message_stop',
+            );
+          },
+          isCurrent: () => true,
+          cancelled: Completer<void>().future,
+        );
+      } catch (_) {
+        framingFailures.add(sse.contains('heartbeat') ? 'heartbeat' : 'CRLF');
+      }
+      if (!complete && framingFailures.isEmpty)
+        framingFailures.add('missing terminal');
+    }
+    wire.sseOverride = begin;
+    final beforeCut = wire.calls.length;
+    var cut = false;
+    try {
+      await source.dispatch(
+        id,
+        catalog.registrationId,
+        ModelProtocol.messages,
+        {...body, 'stream': true},
+        (r) async {
+          await r.body.drain<void>();
+        },
+        isCurrent: () => true,
+        cancelled: Completer<void>().future,
+      );
+    } catch (_) {
+      cut = true;
+    }
+    if (!cut || wire.calls.length != beforeCut + 1)
+      framingFailures.add('graceful truncation');
+    check(framingFailures.isEmpty, 'SSE regressions: $framingFailures');
+    wire.sseOverride = null;
     wire.quota = true;
     final count = wire.calls.length;
     await source.dispatch(

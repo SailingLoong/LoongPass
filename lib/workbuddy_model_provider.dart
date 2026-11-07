@@ -1,5 +1,5 @@
 // WorkBuddy native mixed-protocol contract, adapted from
-// magpie-community/providers/workbuddy/index.mjs (MIT), workspace pinned source.
+// magpie-community/plugins/packages/workbuddy/index.mjs (MIT), workspace pinned source.
 import 'dart:async';
 import 'workbuddy_accounts.dart';
 import 'model_provider.dart';
@@ -8,8 +8,12 @@ import 'model_http.dart';
 class WorkBuddyModelProvider extends ModelProvider {
   final WorkBuddyAccounts owner;
   final ModelTransport transport;
-  WorkBuddyModelProvider(this.owner, {ModelTransport? transport})
-    : transport = transport ?? ModelHttp();
+  final Future<String> Function() clientVersion;
+  WorkBuddyModelProvider(
+    this.owner, {
+    required this.clientVersion,
+    ModelTransport? transport,
+  }) : transport = transport ?? ModelHttp();
   @override
   String get id => 'workbuddy-cn';
   @override
@@ -24,17 +28,44 @@ class WorkBuddyModelProvider extends ModelProvider {
       if (a.stableId != null && a.registrationId != null)
         ModelAccount(a.stableId!, a.uid!, registrationId: a.registrationId),
   ];
-  Map<String, String> _headers(String domain, String uid, String token) => {
-    'Authorization': 'Bearer $token',
-    'X-User-Id': uid,
-    'X-Domain': domain,
-    'X-Product': 'SaaS',
-    'X-IDE-Type': 'WorkBuddy',
-    'User-Agent': 'LoongPass',
-    'X-Agent-Type': 'main',
-    'X-Agent-Purpose': 'conversation',
-    'Accept': 'application/json, text/event-stream',
-  };
+  Future<Map<String, String>> _headers(
+    String domain,
+    String uid,
+    String token,
+  ) async {
+    final String raw;
+    try {
+      raw = await clientVersion();
+    } catch (_) {
+      throw const ModelServiceFailure('client_version_unavailable');
+    }
+    if (!RegExp(r'^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?$').hasMatch(raw))
+      throw const ModelServiceFailure('client_version_unavailable');
+    final parts = raw.split('.').take(3).toList(),
+        numbers = raw.split('.').take(3).map(int.parse).toList();
+    if (numbers[0] < 5 ||
+        numbers[0] == 5 &&
+            (numbers[1] < 9 || numbers[1] == 9 && numbers[2] < 3))
+      throw const ModelServiceFailure('unsupported_client_version');
+    final version = parts.join('.');
+    return {
+      'Authorization': 'Bearer $token',
+      'X-User-Id': uid,
+      'X-Domain': domain,
+      'X-Product': 'SaaS',
+      'X-IDE-Type': 'WorkBuddy',
+      'X-IDE-Name': 'WorkBuddy',
+      'X-IDE-Version': version,
+      'User-Agent': 'WorkBuddy/$version LoongPass',
+      'X-Title': 'LoongPass',
+      'X-Requested-With': 'XMLHttpRequest',
+      'X-Agent-Type': 'main',
+      'X-Agent-Intent': 'craft',
+      'X-Agent-Purpose': 'conversation',
+      'Accept': 'application/json, text/event-stream',
+    };
+  }
+
   @override
   Future<ModelCatalog> discoverModels(String accountId) async {
     final a = (await accounts()).where((a) => a.id == accountId).firstOrNull;
@@ -48,7 +79,7 @@ class WorkBuddyModelProvider extends ModelProvider {
       final response = await modelJson(
         transport,
         Uri.https('copilot.tencent.com', '/v3/config'),
-        headers: _headers(domain, uid, token),
+        headers: await _headers(domain, uid, token),
         isCurrent: current,
       );
       if (response['code'] != null &&
@@ -63,7 +94,7 @@ class WorkBuddyModelProvider extends ModelProvider {
         final definitions = config['models'] as List;
         for (final agent in config['agents']) {
           if (agent is! Map ||
-              agent['name'] != 'cli' ||
+              agent['name'] != 'craft' ||
               agent['models'] is! List)
             continue;
           for (final id in agent['models']) {
@@ -109,7 +140,7 @@ class WorkBuddyModelProvider extends ModelProvider {
   }) => owner.withInferenceAuthorization(
     accountId,
     registrationId,
-    (domain, uid, token, current) => transport.exchange(
+    (domain, uid, token, current) async => transport.exchange(
       Uri.https(
         'copilot.tencent.com',
         protocol == ModelProtocol.messages
@@ -119,7 +150,7 @@ class WorkBuddyModelProvider extends ModelProvider {
       method: 'POST',
       body: body,
       headers: {
-        ..._headers(domain, uid, token),
+        ...await _headers(domain, uid, token),
         if (protocol == ModelProtocol.messages)
           'anthropic-version': '2023-06-01',
       },
