@@ -12,7 +12,7 @@ final class AccountFile {
     static let documentScopes: Set<String> = ["MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode", "RewardChannels", "ModelService"]
     static func named(_ name: String) throws -> AccountFile {
         registryLock.lock(); defer { registryLock.unlock() }
-        guard documentScopes.contains(name) || ["Qoder-cn", "Qoder-global", "WorkBuddy-switch"].contains(name) else { throw Failure.unavailable }
+        guard documentScopes.contains(name) || ["Qoder-cn", "Qoder-global", "WorkBuddy-switch", "Codex"].contains(name) else { throw Failure.unavailable }
         if let existing = stores[name] { return existing }
         let support = try AppDataDirectory.applicationSupport()
         let app = support.appendingPathComponent("LoongPass", isDirectory: true)

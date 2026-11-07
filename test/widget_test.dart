@@ -43,6 +43,7 @@ void main() {
       'minimax',
       'workbuddy',
       'traeCn',
+      'codex',
     ]) {
       expect(find.byKey(ValueKey('app-$app')), findsOneWidget);
       await tester.tap(find.byKey(ValueKey('app-$app')));
@@ -90,6 +91,7 @@ void main() {
         'minimax',
         'workbuddy',
         'traeCn',
+        'codex',
       ]) {
         await tester.tap(find.byKey(ValueKey('app-$app')));
         await tester.pumpAndSettle();

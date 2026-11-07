@@ -29,6 +29,7 @@ void main() {
         'traeCn',
         'lobsterai',
         'loomy',
+        'codex',
       ]);
       expect(restored.isFavorite('qoderCn/same-id'), isTrue);
       expect(restored.isFavorite('qoder/same-id'), isFalse);
@@ -59,6 +60,7 @@ void main() {
         'traeCn',
         'lobsterai',
         'loomy',
+        'codex',
       ]);
       expect(preferences.pageSize('qoder'), 10);
       expect(preferences.themeMode, ThemeMode.system);
@@ -98,6 +100,7 @@ void main() {
         'traeCn',
         'lobsterai',
         'loomy',
+        'codex',
       ]);
       fail = true;
       preferences.setCollapsed(true);

@@ -9,6 +9,8 @@ import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
 import 'trae_accounts_panel.dart';
 import 'zcode_accounts_panel.dart';
+import 'codex_accounts.dart';
+import 'codex_accounts_panel.dart';
 import 'ui_preferences.dart';
 import 'account_workspace_registry.dart';
 import 'workspace_accounts.dart';
@@ -82,8 +84,11 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
-  final _models = ModelService(store: NativeAccountDocumentStore('ModelService'));
+  final _models = ModelService(
+    store: NativeAccountDocumentStore('ModelService'),
+  );
   final _registry = AccountWorkspaceRegistry();
+  final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
   late final _rewardHttp = {
     for (final provider in rewardProviders)
@@ -116,6 +121,7 @@ class _AccountPageState extends State<_AccountPage> {
       ),
       ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
       ManagedApp.traeCn: const TraeAccountsPanel(),
+      ManagedApp.codex: CodexAccountsPanel(owner: _codex),
       for (final provider in rewardProviders)
         ManagedApp.values.firstWhere(
           (app) => app.name == provider.id,
@@ -143,6 +149,7 @@ class _AccountPageState extends State<_AccountPage> {
   void initState() {
     super.initState();
     if (!widget.identityValidationOnly) unawaited(_updates.load());
+    if (!widget.identityValidationOnly) unawaited(_codex.start());
     if (!widget.identityValidationOnly && _rewardsEnabled) {
       unawaited(_rewards.start().catchError((_) {}));
     }
@@ -155,6 +162,7 @@ class _AccountPageState extends State<_AccountPage> {
   @override
   void dispose() {
     _updates.dispose();
+    _codex.dispose();
     _rewards.dispose();
     for (final http in _rewardHttp.values) {
       http.close();

@@ -23,6 +23,7 @@ void main() {
       expect(preferences.appOrder.skip(7).map((app) => app.name), [
         'lobsterai',
         'loomy',
+        'codex',
       ]);
       expect(
         ManagedApp.values.map((app) => app.name).toSet().length,

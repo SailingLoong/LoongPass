@@ -29,6 +29,7 @@ The artwork is not recolored or redrawn. Sources were checked on 2026-11-07.
 | `trae.png` | [TRAE CN](https://www.trae.cn/), official macOS app 3.4.11, `Contents/Resources/Trae CN.icns` |
 | `lobsterai.png` | [Official LobsterAI website logo](https://lobsterai.youdao.com/assets/logo-BIV1P83T.webp) |
 | `loomy.png` | [Official Loomy website icon](https://loomy.xunfei.cn/icon.png?5f7e7b8be5d4c76b), retrieved through its [image endpoint](https://loomy.xunfei.cn/_next/image?url=%2Ficon.png&w=128&q=75) |
+| `codex.png` | Official ChatGPT/Codex macOS app 26.1103.31037, `Contents/Resources/icon-codex-dark-color.png` |
 
 These product icons and trademarks belong to their respective owners and are
 used to identify the applications managed by LoongPass. They are not licensed

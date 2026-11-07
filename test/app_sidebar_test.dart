@@ -187,6 +187,7 @@ void main() {
         'traeCn',
         'lobsterai',
         'loomy',
+        'codex',
       ]);
       await tester.pumpWidget(const SizedBox());
       final restored = UiPreferences(read: () async => stored);

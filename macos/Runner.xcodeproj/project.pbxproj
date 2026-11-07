@@ -36,7 +36,7 @@
 		E7A300000000000000000001 /* TraeLocalAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A300000000000000000000 /* TraeLocalAuthorization.swift */; };
 		E7A310000000000000000001 /* WorkBuddyDesktopBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */; };
 		E7A310000000000000000101 /* WorkBuddyDesktopTransaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */; };
-		E7A310000000000000000201 /* WorkBuddyProcesses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000200 /* WorkBuddyProcesses.swift */; };
+		E7A310000000000000000201 /* DesktopClientProcesses.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A310000000000000000200 /* DesktopClientProcesses.swift */; };
 		ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000001 /* QoderFileStore.swift */; };
 		ABCDEF012345678900000012 /* AccountFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000002 /* AccountFile.swift */; };
 		ABCDEF012345678900000032 /* AppDataDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF012345678900000022 /* AppDataDirectory.swift */; };
@@ -48,6 +48,12 @@
 		3172ABCDEF00000000000104 /* ZcodePromotionBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000004 /* ZcodePromotionBridgeTests.swift */; };
 		3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */; };
 		3172ABCDEF00000000000106 /* ZcodeFactsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */; };
+		CDD100000000000000000000 /* CodexAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000000 /* CodexAccounts.swift */; };
+		CDD100000000000000000001 /* CodexAppServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000001 /* CodexAppServer.swift */; };
+		CDD100000000000000000002 /* CodexDesktopClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000002 /* CodexDesktopClient.swift */; };
+		CDD100000000000000000003 /* CodexBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000003 /* CodexBridge.swift */; };
+		CDD100000000000000000004 /* CodexActivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000004 /* CodexActivation.swift */; };
+		CDD100000000000000000005 /* CodexLocalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000005 /* CodexLocalSettings.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -107,7 +113,7 @@
 		E7A300000000000000000000 /* TraeLocalAuthorization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraeLocalAuthorization.swift; sourceTree = "<group>"; };
 		E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyDesktopBridge.swift; sourceTree = "<group>"; };
 		E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyDesktopTransaction.swift; sourceTree = "<group>"; };
-		E7A310000000000000000200 /* WorkBuddyProcesses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyProcesses.swift; sourceTree = "<group>"; };
+		E7A310000000000000000200 /* DesktopClientProcesses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopClientProcesses.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000001 /* QoderFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QoderFileStore.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000002 /* AccountFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFile.swift; sourceTree = "<group>"; };
 		ABCDEF012345678900000022 /* AppDataDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataDirectory.swift; sourceTree = "<group>"; };
@@ -119,6 +125,12 @@
 		3172ABCDEF00000000000004 /* ZcodePromotionBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodePromotionBridgeTests.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeAppIdentity.swift; sourceTree = "<group>"; };
 		3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeFactsProvider.swift; sourceTree = "<group>"; };
+		CDD000000000000000000000 /* CodexAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAccounts.swift; sourceTree = "<group>"; };
+		CDD000000000000000000001 /* CodexAppServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexAppServer.swift; sourceTree = "<group>"; };
+		CDD000000000000000000002 /* CodexDesktopClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDesktopClient.swift; sourceTree = "<group>"; };
+		CDD000000000000000000003 /* CodexBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexBridge.swift; sourceTree = "<group>"; };
+		CDD000000000000000000004 /* CodexActivation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivation.swift; sourceTree = "<group>"; };
+		CDD000000000000000000005 /* CodexLocalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLocalSettings.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -215,12 +227,18 @@
 				E7A300000000000000000000 /* TraeLocalAuthorization.swift */,
 				E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */,
 				E7A310000000000000000100 /* WorkBuddyDesktopTransaction.swift */,
-		E7A310000000000000000200 /* WorkBuddyProcesses.swift */,
+		E7A310000000000000000200 /* DesktopClientProcesses.swift */,
 				BBDDEF012345678900000000 /* WorkBuddyVault.swift */,
 				ABCDEF012345678900000001 /* QoderFileStore.swift */,
 				ABCDEF012345678900000002 /* AccountFile.swift */,
 				ABCDEF012345678900000022 /* AppDataDirectory.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				CDD000000000000000000005 /* CodexLocalSettings.swift */,
+				CDD000000000000000000004 /* CodexActivation.swift */,
+				CDD000000000000000000003 /* CodexBridge.swift */,
+				CDD000000000000000000002 /* CodexDesktopClient.swift */,
+				CDD000000000000000000001 /* CodexAppServer.swift */,
+				CDD000000000000000000000 /* CodexAccounts.swift */,
 				3172ABCDEF00000000000006 /* ZcodeFactsProvider.swift */,
 				3172ABCDEF00000000000005 /* ZcodeAppIdentity.swift */,
 				3172ABCDEF00000000000001 /* ZcodeContextOwner.swift */,
@@ -436,12 +454,18 @@
 				E7A300000000000000000001 /* TraeLocalAuthorization.swift in Sources */,
 				E7A310000000000000000001 /* WorkBuddyDesktopBridge.swift in Sources */,
 				E7A310000000000000000101 /* WorkBuddyDesktopTransaction.swift in Sources */,
-		E7A310000000000000000201 /* WorkBuddyProcesses.swift in Sources */,
+		E7A310000000000000000201 /* DesktopClientProcesses.swift in Sources */,
 				BBDDEF012345678900000010 /* WorkBuddyVault.swift in Sources */,
 				ABCDEF012345678900000011 /* QoderFileStore.swift in Sources */,
 				ABCDEF012345678900000012 /* AccountFile.swift in Sources */,
 				ABCDEF012345678900000032 /* AppDataDirectory.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
+				CDD100000000000000000005 /* CodexLocalSettings.swift in Sources */,
+				CDD100000000000000000004 /* CodexActivation.swift in Sources */,
+				CDD100000000000000000003 /* CodexBridge.swift in Sources */,
+				CDD100000000000000000002 /* CodexDesktopClient.swift in Sources */,
+				CDD100000000000000000001 /* CodexAppServer.swift in Sources */,
+				CDD100000000000000000000 /* CodexAccounts.swift in Sources */,
 				3172ABCDEF00000000000106 /* ZcodeFactsProvider.swift in Sources */,
 				3172ABCDEF00000000000105 /* ZcodeAppIdentity.swift in Sources */,
 				3172ABCDEF00000000000101 /* ZcodeContextOwner.swift in Sources */,

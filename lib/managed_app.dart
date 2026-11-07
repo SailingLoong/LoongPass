@@ -35,6 +35,12 @@ class ManagedApp {
     'CN',
     iconName: 'trae',
   );
+  static const codex = ManagedApp._(
+    'codex',
+    'Codex',
+    '官方账号',
+    'GL',
+  );
   static final values = List<ManagedApp>.unmodifiable([
     zcode,
     qoderCn,
@@ -50,6 +56,7 @@ class ManagedApp {
         provider.region,
         provider.regionCode,
       ),
+    codex,
   ]);
   final String name, label, region, regionCode;
   final String? _iconName;

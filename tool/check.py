@@ -49,6 +49,26 @@ if os.uname().sysname == "Darwin":
         run([desktop])
         processes = str(Path(scratch) / "workbuddy-process-checks")
         run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
-             "macos/Runner/WorkBuddyDesktopTransaction.swift", "macos/Runner/WorkBuddyProcesses.swift",
+             "macos/Runner/WorkBuddyDesktopTransaction.swift", "macos/Runner/DesktopClientProcesses.swift",
              "tool/workbuddy_process_checks.swift", "-o", processes])
         run([processes])
+        codex_accounts = str(Path(scratch) / "codex-accounts-checks")
+        run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
+             "macos/Runner/CodexAccounts.swift", "macos/Runner/CodexLocalSettings.swift", "tool/codex_accounts_checks.swift", "-o", codex_accounts])
+        run([codex_accounts])
+        for name in ["codex_local_settings", "codex_settings_transaction"]:
+            executable = str(Path(scratch) / (name + "-checks"))
+            run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
+                 "macos/Runner/CodexAccounts.swift", "macos/Runner/CodexLocalSettings.swift", "tool/" + name + "_checks.swift", "-o", executable])
+            run([executable])
+        codex_runtime = str(Path(scratch) / "codex-runtime-checks")
+        run(["xcrun", "swiftc", "macos/Runner/CodexAppServer.swift", "tool/codex_runtime_checks.swift", "-o", codex_runtime])
+        run([codex_runtime])
+        codex_activation = str(Path(scratch) / "codex-activation-checks")
+        run(["xcrun", "swiftc", "macos/Runner/CodexAppServer.swift", "macos/Runner/CodexActivation.swift",
+             "tool/codex_activation_checks.swift", "-o", codex_activation])
+        run([codex_activation])
+        codex_processes = str(Path(scratch) / "codex-process-checks")
+        run(["xcrun", "swiftc", "macos/Runner/DesktopClientProcesses.swift", "macos/Runner/CodexAppServer.swift",
+             "macos/Runner/CodexDesktopClient.swift", "tool/codex_process_checks.swift", "-o", codex_processes])
+        run([codex_processes])
