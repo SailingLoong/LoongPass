@@ -23,6 +23,8 @@ $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Componen
 $runtime = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
 if (!$runtime) { throw 'Visual C++ distributable runtime unavailable' }
 Copy-Item "$($runtime.FullName)\*.dll" $bundle
+# Native validation programs finish before packaging and are never distributed.
+Get-ChildItem -LiteralPath $bundle -Filter 'loongpass_*_checks.exe' -File | Remove-Item -Force
 & python "$PSScriptRoot\bundle_licenses.py" $root $bundle
 if ($LASTEXITCODE -ne 0) { throw 'Windows license bundling failed' }
 $source = (& git -C $root rev-parse HEAD).Trim()

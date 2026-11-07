@@ -10,6 +10,7 @@ build/
 native/**/target/
 artifacts/
 dist/
+dist-windows/
 *.dmg
 *.zip
 *.log
