@@ -1,19 +1,20 @@
 # 验收记录
 
-## 1.0.0 双平台发布检查（2026-11-07）
+## 1.0.0 双平台正式发布（2026-11-07）
 
 - 应用主线 `403b4d6a3b89cd69b2dceff9736caff8cea9e3e8` 的 [GitHub CI](https://github.com/SailingLoong/LoongPass/actions/runs/42345541993) 已通过 macOS 源码检查与 Windows x64 构建、共享 Dart 检查、原生私有存储和 CNG 授权协议检查、安装版及便携版打包。本地整合主线后 237 项 Flutter 测试通过。
 - Windows 更新器从固定 WinSparkle 0.9.4 源码构建，最小扩展复用自动检查器的跳过版本规则，并保留上游下载、验签及安装。候选 [SDK 与应用 CI](https://github.com/SailingLoong/LoongPass/actions/runs/42344698792) 已通过。
-- Windows 验收设备在传入候选安装包后离线。实机安装、真实账号授权/恢复/余额核对及更新界面仍待验收，不能将上述合成测试和构建结果视为实机账号验收。macOS 的既有账号证据及新增功能边界继续以各模块记录为准。
+- 正式标签 `v1.0.0` 指向 `c6eed9c565456d403ed5a051c7131d12ef2aae4c`。[标签 CI](https://github.com/SailingLoong/LoongPass/actions/runs/42346394632) 已通过两平台检查、打包和发布；[正式安装包](https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.0) 与官网下载已核对源码、SHA-256、架构和更新签名。
+- Apple Silicon 已通过 Sparkle 从 build 30 安装更新至 `1.0.0 (31)`，12 个账号及两个更新开关保留，WorkBuddy 官方完整额度查询成功。Windows x64 正式包已在真实设备安装，恢复 12 个已有账号，两个更新开关独立保存，原生 WinSparkle 手动检查返回当前为最新版本。Windows 全新授权、领取及更新安装的边界见[本次实机记录](docs/verification/2026-11-07-stable-1.0.0.md)。
 - 本次 Windows 分发范围为 WorkBuddy、MiniMax、Qoder、TRAE 国内版与 ZCode 的账号和积分管理。WorkBuddy 客户端切换、Magpie 模型服务、LobsterAI 与 Loomy 试验入口当前仅开放于 macOS。
 
 ## 新增 LobsterAI 与 Loomy 源码
 
-新增两平台的登录、账号保存、每日奖励/赠送池、余额、领取意图与后台调度已实现，并通过本机分析、235 项 Flutter 测试、协议及原生检查；详见 [接入检查](docs/verification/2026-11-07-reward-channels.md)。未用真实账号完成新增平台的授权、进程重启与到账，也未发布包含这些渠道的新安装包。
+新增两平台的登录、账号保存、每日奖励/赠送池、余额、领取意图与后台调度已实现，并通过本机分析、235 项 Flutter 测试、协议及原生检查；详见 [接入检查](docs/verification/2026-11-07-reward-channels.md)。代码已包含于 1.0.0 的 macOS 包；尚未用真实账号完成新增平台的授权、进程重启与到账。
 
 ## 2026-11-07 主线 Magpie 连接
 
-Claude Code 已通过本机 Magpie 调用 LoongPass 生产源码中的本地服务与 MiniMax CN 适配器，完成精确文本、SSE 和 Bash 工具往返。全仓检查通过，包含 221 项 Flutter 测试、平台协议和原生检查。该轮使用已保存账号的只读测试存储，账号文件摘要核对一致；新 GUI 构建与安装验收随后续发布进行。单账号范围、持久化失败处理与官方积分核对边界见 [完整记录](docs/verification/2026-11-07-magpie-connection.md)。
+Claude Code 已通过本机 Magpie 调用 LoongPass 生产源码中的本地服务与 MiniMax CN 适配器，完成精确文本、SSE 和 Bash 工具往返。全仓检查通过，包含 221 项 Flutter 测试、平台协议和原生检查。该轮使用已保存账号的只读测试存储，账号文件摘要核对一致；代码已包含于 1.0.0 的 macOS 包，本次未重复模型调用验收。单账号范围、持久化失败处理与官方积分核对边界见 [完整记录](docs/verification/2026-11-07-magpie-connection.md)。
 
 ## beta 29 集成
 
