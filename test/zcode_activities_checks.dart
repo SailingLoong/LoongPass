@@ -163,6 +163,34 @@ Future<ZcodeActivityAccounts> account(
 }
 
 Future<void> main() async {
+  final creditStore = MemoryAccountStore('credits-only'),
+      creditHttp = FakeZcode();
+  final savedCredits = await account(creditStore, creditHttp);
+  final creditId = (await savedCredits.accounts()).single.id;
+  await savedCredits.setAutomatic(creditId, false);
+  savedCredits.dispose();
+  final creditOwner = ZcodeActivityAccounts(
+    store: creditStore,
+    api: ZcodeApi(creditHttp),
+    now: () => now,
+  );
+  try {
+    final before = creditHttp.balanceCalls;
+    creditOwner.startAutomatic();
+    await Future<void>.delayed(Duration.zero);
+    check(
+      creditHttp.balanceCalls > before && creditHttp.claims == 0,
+      'startup must read credits without claiming',
+    );
+    final ready = creditHttp.balanceCalls;
+    await creditOwner.tick();
+    check(
+      creditHttp.balanceCalls > ready && creditHttp.claims == 0,
+      'disabled rewards must still refresh credits',
+    );
+  } finally {
+    creditOwner.dispose();
+  }
   final store = MemoryAccountStore('zcode-test');
   final http = FakeZcode();
   var a = await account(store, http);

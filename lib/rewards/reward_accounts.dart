@@ -443,6 +443,15 @@ class RewardAccounts {
   Future<void> start() async {
     await restore();
     if (_closed || _automatic != null) return;
+    for (final provider in providers.keys) {
+      for (final account in accountsFor(provider)) {
+        if (_closed) return;
+        try {
+          await refreshCredits(provider, account.identity);
+        } catch (_) {}
+      }
+    }
+    if (_closed) return;
     _startup = Timer(const Duration(seconds: 30), () => unawaited(tick()));
     _automatic = Timer.periodic(
       const Duration(minutes: 15),

@@ -25,6 +25,7 @@ class WorkBuddyAccountSession {
   bool get busy => _saving || _flow.busy;
   bool get canClaim => _verified && _flow.canClaim;
   bool get claimOwnerAvailable => _flow.claimOwnerAvailable;
+  bool get supportsCreditQueries => !_flow.identityValidationOnly;
   String? get message => _flow.message;
   WorkBuddyState? get status => _flow.status;
   WorkBuddyResult? get result => _flow.result;
@@ -45,13 +46,16 @@ class WorkBuddyAccounts {
   final _identities = <String, String>{};
   bool _closed = false, _claiming = false, _restoring = false;
   int _sequence = 0, _epoch = 0;
+  bool _refreshingCredits = false;
   String? _selected, _message;
   WorkBuddyAccounts({
     required this.create,
     this.onChanged,
     this.onAccountReady,
   });
-  void _ready(String id) {
+  Future<void> _ready(String id) async {
+    await refreshBalance(id);
+    if (_closed || _sessions[id]?.uid == null) return;
     try {
       onAccountReady?.call(id);
     } catch (_) {
@@ -156,7 +160,8 @@ class WorkBuddyAccounts {
       _identities[identity] = owner.id;
       _selected = owner.id;
       _message = null;
-      _ready(owner.id);
+      await _ready(owner.id);
+      if (!_owns(owner)) return null;
       return owner.id;
     } catch (_) {
       if (slot != null && _owns(slot)) _retire(slot);
@@ -316,7 +321,7 @@ class WorkBuddyAccounts {
       return null;
     } finally {
       slot._saving = false;
-      if (_owns(slot) && slot._verified) _ready(id);
+      if (_owns(slot) && slot._verified) await _ready(id);
     }
   }
 
@@ -374,6 +379,28 @@ class WorkBuddyAccounts {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot) || slot.uid == null) return;
     await slot._flow.refreshBalance();
+  }
+
+  Future<void> refreshCredits() async {
+    if (_closed || _refreshingCredits) return;
+    _refreshingCredits = true;
+    try {
+      for (final account in accounts) {
+        if (_closed) break;
+        try {
+          await refreshBalance(account.id);
+        } catch (_) {
+          // A failed account never blocks the other saved accounts.
+        }
+        if (!_closed) {
+          try {
+            onChanged?.call();
+          } catch (_) {}
+        }
+      }
+    } finally {
+      _refreshingCredits = false;
+    }
   }
 
   Future<String> activateDesktop(

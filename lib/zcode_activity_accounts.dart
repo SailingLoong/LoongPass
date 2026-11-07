@@ -196,10 +196,9 @@ class ZcodeActivityAccounts {
     'authorization_required',
     'discoveryIncomplete',
   };
-  static String _id(String family, String uid) =>
-      sourceSha256(utf8.encode('$family\u0000$uid'))
-          .map((v) => v.toRadixString(16).padLeft(2, '0'))
-          .join();
+  static String _id(String family, String uid) => sourceSha256(
+    utf8.encode('$family\u0000$uid'),
+  ).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
   Future<List<ZcodeActivityAccount>> accounts() async => [
     for (final a in ((await _read()).data['accounts'] as Map).values)
       ZcodeActivityAccount(a),
@@ -515,6 +514,28 @@ class ZcodeActivityAccounts {
   }
 
   Future<void> inspect(String id) => _exclusive(() => _run(id, submit: false));
+  Future<void> _refreshCredits(String id) async {
+    final doc = await _read();
+    final account = (doc.data['accounts'] as Map)[id] as Map<String, dynamic>?;
+    if (account == null) throw const ZcodeFailure('account_missing');
+    _observe(account, await _balance(account));
+    await _write(doc);
+  }
+
+  Future<void> _refreshAllCredits() async {
+    if (_closed || _writers.contains(store.identity) || loginPending) return;
+    await _exclusive(() async {
+      for (final account in await accounts()) {
+        if (_closed) break;
+        try {
+          await _refreshCredits(account.id);
+        } on ZcodeFailure catch (e) {
+          if (e.code == 'storage_unavailable') rethrow;
+        }
+      }
+    });
+  }
+
   Future<void> claim(
     String id, {
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
@@ -742,9 +763,12 @@ class ZcodeActivityAccounts {
     await _exclusive(() async {
       for (final a in await accounts()) {
         if (_closed) break;
-        if (!a.automatic) continue;
         try {
-          await _run(a.id, submit: true, automatic: true);
+          if (a.automatic) {
+            await _run(a.id, submit: true, automatic: true);
+          } else {
+            await _refreshCredits(a.id);
+          }
         } on ZcodeFailure catch (e) {
           if (e.code == 'storage_unavailable') rethrow;
         }
@@ -755,6 +779,7 @@ class ZcodeActivityAccounts {
   void startAutomatic() {
     _alive();
     if (_timer != null) return;
+    unawaited(_refreshAllCredits().catchError((_) {}));
     Future<void> run() async {
       try {
         await tick();

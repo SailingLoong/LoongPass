@@ -44,4 +44,26 @@ void main() {
   print(
     'PASS Qoder separate quotas, partial packages, expiry units and remaining amounts',
   );
+  final official = normalizeQoderCredits({
+    'displayMode': 'qoder',
+    'qoderUsage': {
+      'userQuota': {'total': 100, 'used': 5, 'remaining': 70},
+      'addOnQuota': {'cap': 50, 'remaining': 40},
+      'dedicatedResourcePackages': [
+        {'remaining': 125, 'expiresAt': '2026-11-10T08:00:00+08:00'},
+        {'remaining': 20, 'expiresAt': 253402214400000},
+      ],
+    },
+  }, now);
+  if (official.planRemaining != 70 ||
+      official.addOnRemaining != 40 ||
+      official.packages.expiring.single.remaining != 125 ||
+      official.packages.expiring.single.expiresAt !=
+          DateTime.utc(2026, 11, 10) ||
+      official.packages.withoutExpiry != 20 ||
+      official.packages.totalRemaining != null)
+    throw StateError('Official remaining, ISO expiry or sentinel misread');
+  print(
+    'PASS Qoder official remaining and ISO package dates without availability flags',
+  );
 }

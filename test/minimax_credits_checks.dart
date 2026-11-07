@@ -71,4 +71,44 @@ void main() {
   print(
     'PASS MiniMax current remaining, earliest expiry, pagination and malformed response',
   );
+  final empty = normalizeMiniMaxCredits([
+    {
+      'total_count': 0,
+      'base_resp': {'status_code': 0},
+    },
+  ], now: now);
+  if (empty.totalRemaining != 0 || empty.expiring.isNotEmpty)
+    throw StateError('Successful empty ledger is not zero');
+  final formatted = normalizeMiniMaxCredits([
+    {
+      'total_count': 1,
+      'base_resp': {'status_code': 0},
+      'details': [
+        {...row(0, 1), 'remaining_amount': '1,200.50'},
+      ],
+    },
+  ], now: now);
+  if (formatted.totalRemaining != 1200.5 ||
+      formatted.expiring.single.remaining != 1200.5 ||
+      formatted.expiring.single.expiresAt != DateTime.utc(2026, 11, 7))
+    throw StateError('Formatted amount or expiry changed units');
+  for (final invalid in [
+    {
+      'total_count': 1,
+      'base_resp': {'status_code': 0},
+    },
+    {
+      'total_count': 0,
+      'base_resp': {'status_code': 401},
+    },
+    {'total_count': 0},
+  ]) {
+    try {
+      normalizeMiniMaxCredits([invalid], now: now);
+      throw StateError('Unverified or nonempty missing ledger accepted');
+    } on MiniMaxCreditsError {}
+  }
+  print(
+    'PASS MiniMax successful empty ledger, formatted amounts and business rejection',
+  );
 }

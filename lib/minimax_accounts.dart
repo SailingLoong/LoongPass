@@ -597,16 +597,14 @@ class MiniMaxAccounts {
         );
         _alive();
         final body = response.body;
-        if (response.status != 200 ||
-            body == null ||
-            body['details'] is! List ||
-            body['total_count'] is! int)
+        if (response.status != 200 || body == null)
           throw const MiniMaxAccountError('InvalidResponse');
-        final rows = body['details'] as List;
-        received += rows.length;
+        final pageDetails = parseMiniMaxCreditPage(body);
+        received += pageDetails.rows.length;
         pages.add(body);
-        if (received >= body['total_count']) break;
-        if (rows.isEmpty) throw const MiniMaxAccountError('InvalidResponse');
+        if (received >= pageDetails.totalCount) break;
+        if (pageDetails.rows.isEmpty)
+          throw const MiniMaxAccountError('InvalidResponse');
       }
       await store._access((a) async {
         _match(a, id, account);
@@ -773,7 +771,6 @@ class MiniMaxAccounts {
         if (a.automatic) {
           try {
             await _claim(a.id, true);
-            await refreshCredits(a.id);
           } on MiniMaxAccountError catch (e) {
             if (e.code == 'NeedsLogin') {
               try {
@@ -783,6 +780,11 @@ class MiniMaxAccounts {
               } catch (_) {}
             }
           }
+        }
+        try {
+          await refreshCredits(a.id);
+        } catch (_) {
+          // Credits are independent of automatic rewards and their outcome.
         }
       }
     } finally {
@@ -801,6 +803,7 @@ class MiniMaxAccounts {
   void startAutomatic() {
     _alive();
     if (_timer != null || _startupTimer != null) return;
+    unawaited(_refreshAllCredits());
     _startupTimer = Timer(const Duration(seconds: 30), () {
       _startupTimer = null;
       if (!_closed) unawaited(automaticTick().catchError((_) {}));
@@ -808,6 +811,25 @@ class MiniMaxAccounts {
     _timer = Timer.periodic(const Duration(minutes: 15), (_) {
       if (!_closed) unawaited(automaticTick().catchError((_) {}));
     });
+  }
+
+  Future<void> _refreshAllCredits() async {
+    try {
+      for (final account in await list()) {
+        if (_closed) break;
+        try {
+          await refreshCredits(account.id);
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Storage and authorization errors remain owned by the account service.
+    } finally {
+      if (!_closed) {
+        try {
+          await onAutomaticFinished?.call();
+        } catch (_) {}
+      }
+    }
   }
 
   void dispose() {

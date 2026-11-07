@@ -22,6 +22,7 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
   double? quota(Object? value) {
     if (value == null) return null;
     if (value is! Map) throw const FormatException('Invalid quota');
+    if (value.containsKey('remaining')) return number(value['remaining']);
     final total = number(value['total']), used = number(value['used']);
     return (total - used).clamp(0, total);
   }
@@ -33,7 +34,7 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
     throw const FormatException('Invalid packages');
   for (final row in rows) {
     if (row is! Map) throw const FormatException('Invalid package');
-    if (row['available'] != true) continue;
+    if (row['available'] == false) continue;
     final remaining = number(row['remaining']);
     if (remaining == 0) continue;
     final raw = row['expires_at'] ?? row['expiresAt'];
@@ -41,9 +42,22 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
       unknown += remaining;
       continue;
     }
-    if (raw is! num || !raw.isFinite || raw <= 0)
+    final int expiry;
+    if (raw is num && raw.isFinite && raw > 0) {
+      expiry = (raw < 10000000000 ? raw * 1000 : raw).round();
+    } else if (raw is String &&
+        RegExp(r'(?:Z|[+-]\d{2}:?\d{2})$').hasMatch(raw)) {
+      final date = DateTime.tryParse(raw);
+      if (date == null) throw const FormatException('Invalid expiry');
+      expiry = date.millisecondsSinceEpoch;
+    } else {
       throw const FormatException('Invalid expiry');
-    final expiry = (raw < 10000000000 ? raw * 1000 : raw).round();
+    }
+    // The official service uses year 9999 for an unspecified renewal/expiry.
+    if (expiry >= DateTime.utc(9999).millisecondsSinceEpoch) {
+      unknown += remaining;
+      continue;
+    }
     if (expiry <= now.millisecondsSinceEpoch) continue;
     groups[expiry] = (groups[expiry] ?? 0) + remaining;
   }

@@ -161,7 +161,9 @@ Future<void> loomyRewards() async {
   final records = FakeTransport((r) {
     check(
       r.method == 'GET' &&
-          r.url.path == '/api/v1/points/records' &&
+          r.url.path == '/api/v2/points/records' &&
+          r.url.queryParameters['direction'] == 'debit' &&
+          r.url.queryParameters['granularity'] == 'chat' &&
           r.headers['token'] == 'synthetic-session' &&
           r.headers['Authorization'] == null,
       'read-only business token',
@@ -173,6 +175,19 @@ Future<void> loomyRewards() async {
     });
   });
   final credits = await provider.credits(records, loomySession());
+  final dailyOnly = await provider.credits(
+    FakeTransport(
+      (r) => loomy({
+        'data': {'dailyRemainingPoints': 123, 'dailyLimitPoints': 5000},
+      }),
+    ),
+    loomySession(),
+  );
+  check(
+    dailyOnly.totalRemaining == null &&
+        dailyOnly.expiring.single.remaining == 123,
+    'a daily-only snapshot must not invent a complete wallet balance',
+  );
   check(
     credits.totalRemaining == 19992 &&
         credits.withoutExpiry == 15000 &&
@@ -445,7 +460,7 @@ Future<void> loomySessionLifetime() async {
       });
     }
     check(
-      request.url.path == '/api/v1/points/records' &&
+      request.url.path == '/api/v2/points/records' &&
           request.headers['token'] == 'retained-session',
       'saved session used for official read',
     );

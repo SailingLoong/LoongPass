@@ -248,6 +248,7 @@ class QoderDeviceAccounts {
 
   void startAutomatic() {
     if (_closed || _automaticTimer != null) return;
+    unawaited(_refreshAllCredits());
     _startupTimer = Timer(
       const Duration(seconds: 30),
       () => unawaited(automaticTick()),
@@ -264,18 +265,38 @@ class QoderDeviceAccounts {
     try {
       for (final account in await accountViews()) {
         if (_closed) break;
-        if (!account.automatic) continue;
+        if (account.automatic) {
+          try {
+            await claim(account.uid);
+          } on QoderAccountError catch (e) {
+            message = '${region.label} 账号检查未完成（${e.code}）。';
+          }
+        }
         try {
-          await claim(account.uid);
           await refreshCredits(account.uid);
-        } on QoderAccountError catch (e) {
-          message = '${region.label} 账号检查未完成（${e.code}）。';
+        } catch (_) {
+          message = '${region.label} 余额查询未完成。';
         }
       }
     } catch (_) {
       message = '无法读取已保存账号。';
     } finally {
       _ticking = false;
+      await _notify();
+    }
+  }
+
+  Future<void> _refreshAllCredits() async {
+    try {
+      for (final account in await accountViews()) {
+        if (_closed) break;
+        try {
+          await refreshCredits(account.uid);
+        } catch (_) {}
+      }
+    } catch (_) {
+      message = '无法读取已保存账号。';
+    } finally {
       await _notify();
     }
   }

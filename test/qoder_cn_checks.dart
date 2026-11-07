@@ -99,6 +99,14 @@ class Transport implements QoderTransport {
     }
     if (url.path.endsWith('/userinfo'))
       return QoderResponse(200, {'id': wrongUid ? 'other' : 'account-a'});
+    if (url.path.endsWith('/me/usage'))
+      return QoderResponse(200, {
+        'uid': 'account-a',
+        'displayMode': 'qoder',
+        'qoderUsage': {
+          'addOnQuota': {'total': 100, 'used': 25},
+        },
+      });
     if (method == 'POST') {
       if (failPost) throw StateError('SECRET');
       return QoderResponse(200, {'status': 'CLAIMED', 'campaignId': 'free'});
@@ -136,6 +144,36 @@ Future<void> main() async {
     await q.startLogin();
     expect(await q.pollLogin() == 'account-a', 'login');
   }
+
+  await test(
+    'disabled rewards still refresh credits and startup is read only',
+    () async {
+      final n = Native(), t = Transport();
+      final owner = client(n, t);
+      try {
+        await login(owner);
+        await owner.setAutomatic('account-a', false);
+        await owner.automaticTick();
+        expect(
+          owner.credits('account-a')?.addOnRemaining == 75,
+          'disabled reward policy suppressed usage',
+        );
+        final before = t.calls.length;
+        owner.startAutomatic();
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          t.calls.skip(before).any((p) => p.endsWith('/me/usage')),
+          'startup did not query credits',
+        );
+        expect(
+          !t.calls.skip(before).any((p) => p.startsWith('POST')),
+          'startup credit read submitted a reward',
+        );
+      } finally {
+        owner.dispose();
+      }
+    },
+  );
 
   await test(
     'real command contract grant URL contains challenge not verifier',

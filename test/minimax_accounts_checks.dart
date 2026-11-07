@@ -29,6 +29,7 @@ MiniMaxReply response(Map<String, dynamic> data) => MiniMaxReply(200, {
 });
 
 class FakeHttp extends MiniMaxHttp {
+  int creditCalls = 0;
   final calls = <MiniMaxEndpoint>[];
   MiniMaxReply profile = const MiniMaxReply(200, {
     'statusInfo': {'code': 0},
@@ -74,7 +75,11 @@ class FakeHttp extends MiniMaxHttp {
     required String userId,
     required int pageNumber,
     bool Function()? isCurrent,
-  }) async => const MiniMaxReply(200, {'details': [], 'total_count': 0});
+  }) async {
+    creditCalls++;
+    return const MiniMaxReply(200, {'details': [], 'total_count': 0});
+  }
+
   @override
   Future<MiniMaxReply> send(
     MiniMaxEndpoint e, {
@@ -160,6 +165,30 @@ Future<void> main() async {
   );
   Future<MiniMaxAccount> imported(MiniMaxAccounts s) async =>
       s.save(await s.verifySource(read, confirmed: true), confirmed: true);
+  await check('credits refresh without reward opt-in and after reward errors', (
+    d,
+  ) async {
+    final h = FakeHttp(), s = service(d, h);
+    try {
+      final a = await imported(s);
+      await s.setAutomatic(a.id, false);
+      await s.automaticTick();
+      expect(
+        h.creditCalls == 1 && s.credits(a.id)?.totalRemaining == 0,
+        'disabled reward policy suppressed credit read',
+      );
+      await s.setAutomatic(a.id, true);
+      h.status = const MiniMaxReply(503, null);
+      await s.automaticTick();
+      expect(h.creditCalls == 2, 'failed reward status suppressed credit read');
+      expect(
+        !h.calls.contains(MiniMaxEndpoint.claim),
+        'reading credits claimed a reward',
+      );
+    } finally {
+      s.dispose();
+    }
+  });
   await check(
     'verified identity and credentials save atomically; DTO redacts',
     (d) async {
