@@ -1,12 +1,18 @@
 # 验收记录
 
+## 2026-11-07 LobsterAI 下线
+
+主线已移除 LobsterAI 的注册、协议实现和图标，导航、账号页及自动任务不再提供该渠道。官方账号受限提示明确限制第三方反向代理、插件转接及额度共享，重复异常可能永久停用。旧版安装包及下方发布记录保留其历史事实，本次源码移除不代表已发布新安装包。Loomy 继续沿用原有账号和任务契约。
+
+本次 `python3 tool/check.py` 退出码 0：Dart 分析无问题，264 项 Flutter 测试、全部共享协议及 macOS 原生检查通过。新增升级回归在移除前捕获旧自动账号发出的请求，移除后确认恢复和调度均不发请求；旧顺序中的已移除 ID 被忽略，其余顺序保留。Loomy 的 6 组协议检查继续通过。全部使用合成账号和隔离存储，没有向真实 LobsterAI 账号发请求。
+
 ## 1.0.0 双平台正式发布（2026-11-07）
 
 - 应用主线 `403b4d6a3b89cd69b2dceff9736caff8cea9e3e8` 的 [GitHub CI](https://github.com/SailingLoong/LoongPass/actions/runs/42345541993) 已通过 macOS 源码检查与 Windows x64 构建、共享 Dart 检查、原生私有存储和 CNG 授权协议检查、安装版及便携版打包。本地整合主线后 237 项 Flutter 测试通过。
 - Windows 更新器从固定 WinSparkle 0.9.4 源码构建，最小扩展复用自动检查器的跳过版本规则，并保留上游下载、验签及安装。候选 [SDK 与应用 CI](https://github.com/SailingLoong/LoongPass/actions/runs/42344698792) 已通过。
 - 正式标签 `v1.0.0` 指向 `c6eed9c565456d403ed5a051c7131d12ef2aae4c`。[标签 CI](https://github.com/SailingLoong/LoongPass/actions/runs/42346394632) 已通过两平台检查、打包和发布；[正式安装包](https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.0) 与官网下载已核对源码、SHA-256、架构和更新签名。
 - Apple Silicon 已通过 Sparkle 从 build 30 安装更新至 `1.0.0 (31)`，12 个账号及两个更新开关保留，WorkBuddy 官方完整额度查询成功。Windows x64 正式包已在真实设备安装，恢复 12 个已有账号，两个更新开关独立保存，原生 WinSparkle 手动检查返回当前为最新版本。Windows 全新授权、领取及更新安装的边界见[本次实机记录](docs/verification/2026-11-07-stable-1.0.0.md)。
-- 本次 Windows 分发范围为 WorkBuddy、MiniMax、Qoder、TRAE 国内版与 ZCode 的账号和积分管理。WorkBuddy 客户端切换、Magpie 模型服务、LobsterAI 与 Loomy 试验入口当前仅开放于 macOS。
+- 本次 Windows 分发范围为 WorkBuddy、MiniMax、Qoder、TRAE 国内版与 ZCode 的账号和积分管理。该正式包中的 WorkBuddy 客户端切换、Magpie 模型服务、LobsterAI 与 Loomy 试验入口仅开放于 macOS；LobsterAI 后续已从主线移除。
 
 ## 新增 LobsterAI 与 Loomy 源码
 

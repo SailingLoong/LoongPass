@@ -185,7 +185,6 @@ void main() {
         'workbuddy',
         'minimax',
         'traeCn',
-        'lobsterai',
         'loomy',
         'codex',
       ]);

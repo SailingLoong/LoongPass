@@ -27,7 +27,6 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
-        'lobsterai',
         'loomy',
         'codex',
       ]);
@@ -44,7 +43,7 @@ void main() {
     () async {
       final preferences = UiPreferences(
         read: () async => jsonEncode({
-          'appOrder': ['qoder', 'old-app', 'qoder', null, 'zcode'],
+          'appOrder': ['qoder', 'lobsterai', 'qoder', null, 'zcode'],
           'pageSizes': {'qoder': 999},
           'theme': 'invalid',
         }),
@@ -58,7 +57,6 @@ void main() {
         'minimax',
         'workbuddy',
         'traeCn',
-        'lobsterai',
         'loomy',
         'codex',
       ]);
@@ -98,7 +96,6 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
-        'lobsterai',
         'loomy',
         'codex',
       ]);

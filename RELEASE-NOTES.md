@@ -1,3 +1,7 @@
+主线待发布
+
+- 移除 LobsterAI 的账号、奖励和自动任务入口。官方限制第三方转接及额度共享，存在账号受限和永久停用风险。以下 1.0.0 内容保留原发布范围。
+
 LoongPass 1.0.0：统一管理 AI 平台多账号、免费奖励和积分到期信息。
 
 - 首次同时提供 macOS Universal、Windows x64 安装版和便携版。macOS 包包含 Apple Silicon 与 Intel 架构。
