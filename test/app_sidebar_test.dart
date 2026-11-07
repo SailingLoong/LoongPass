@@ -201,9 +201,9 @@ void main() {
       await tester.tap(find.byKey(const Key('toggle-sidebar')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('region-qoderCn')), findsOneWidget);
-      expect(find.byKey(const Key('region-qoder')), findsOneWidget);
+      expect(find.byKey(const Key('region-qoder')), findsNothing);
       expect(find.text('CN'), findsWidgets);
-      expect(find.text('GL'), findsWidgets);
+      expect(find.text('GL'), findsNothing);
     },
   );
 }

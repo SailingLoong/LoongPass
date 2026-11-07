@@ -147,6 +147,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          final context = tester.element(find.byKey(workspace));
+          await Future.wait([
+            for (final app in ManagedApp.values)
+              precacheImage(AssetImage(app.iconAsset), context),
+          ]);
+        });
+        await tester.pumpAndSettle();
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: Offset.zero);
         await mouse.moveTo(

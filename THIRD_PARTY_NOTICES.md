@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Supported application icons
+
+The product icons in `assets/app_icons/` and their trademarks belong to their
+respective owners and identify supported applications. They are not covered by
+LoongPass's MIT license. Official sources and versions are recorded in
+ICON-PROVENANCE.md.
+
 ## ZCode official authorization and activities
 
 The Dart authorization and activity adapters are adapted from SailingLoong/LoongPort

@@ -35,43 +35,33 @@ class AppNavigationItemState extends State<AppNavigationItem> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Color.alphaBlend(
-                  app.color.withValues(alpha: .10),
-                  colors.surfaceContainerLowest,
-                ),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                app.monogram,
-                style: TextStyle(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Color.lerp(app.color, Colors.white, .45)
-                      : app.color,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            Image.asset(
+              app.iconAsset,
+              width: 24,
+              height: 24,
+              fit: BoxFit.contain,
             ),
-            if (widget.compact)
+            if (app.regionCode == 'CN')
               Positioned(
-                right: -3,
-                bottom: -2,
+                right: 0,
+                bottom: 0,
                 child: Container(
                   key: ValueKey('region-${app.name}'),
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
-                    color: colors.surfaceContainerLow,
+                    color: colors.surfaceContainerLowest,
+                    border: Border.all(color: colors.outlineVariant, width: .5),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(
                     app.regionCode,
-                    style: const TextStyle(
-                      fontSize: 8,
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 7,
+                      height: 1,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
