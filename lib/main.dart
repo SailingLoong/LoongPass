@@ -18,16 +18,37 @@ import 'native_account_document_store.dart';
 import 'model_service.dart';
 import 'minimax_model_provider.dart';
 import 'dart:async';
+import 'dart:io';
 import 'rewards/reward_accounts.dart';
 import 'rewards/reward_accounts_panel.dart';
 import 'rewards/reward_providers.dart';
 import 'rewards/reward_transport.dart';
 
 Future<void> main() async {
+  void trace(String phase) {
+    if (!Platform.isWindows) return;
+    try {
+      File(
+        '${Platform.environment['LOCALAPPDATA']}\\LoongPass-startup-trace.txt',
+      ).writeAsStringSync(
+        '${DateTime.now().toIso8601String()} $phase\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
+  }
+
+  trace('main entered');
   WidgetsFlutterBinding.ensureInitialized();
+  trace('binding initialized');
   final preferences = UiPreferences.persistent();
+  trace('preferences constructed');
   await preferences.load();
+  trace('preferences loaded');
   runApp(AccountToolApp(preferences: preferences));
+  trace('runApp returned');
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => trace('first framework frame'),
+  );
 }
 
 class AccountToolApp extends StatefulWidget {
