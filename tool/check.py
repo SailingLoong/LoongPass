@@ -25,7 +25,8 @@ for check in sorted((root / "test").glob("*checks.dart")):
     run([dart, str(check)])
 for check in sorted((root / "tool").glob("workbuddy_*checks.dart")):
     run([dart, str(check)])
-run([sys.executable, str(root / "test/appcast_checks.py")])
+for check in sorted((root / "test").glob("*checks.py")):
+    run([sys.executable, str(check)])
 
 if os.uname().sysname == "Darwin":
     with tempfile.TemporaryDirectory(prefix="loongpass-native-checks-") as scratch:

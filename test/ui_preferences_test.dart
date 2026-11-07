@@ -27,6 +27,8 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
+        'lobsterai',
+        'loomy',
       ]);
       expect(restored.isFavorite('qoderCn/same-id'), isTrue);
       expect(restored.isFavorite('qoder/same-id'), isFalse);
@@ -55,6 +57,8 @@ void main() {
         'minimax',
         'workbuddy',
         'traeCn',
+        'lobsterai',
+        'loomy',
       ]);
       expect(preferences.pageSize('qoder'), 10);
       expect(preferences.themeMode, ThemeMode.system);
@@ -92,6 +96,8 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
+        'lobsterai',
+        'loomy',
       ]);
       fail = true;
       preferences.setCollapsed(true);

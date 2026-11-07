@@ -34,7 +34,11 @@ void main() {
       'MaterialIcons',
     )..addFont(Future.value(ByteData.sublistView(icons)))).load();
   });
-  for (final size in [const Size(1024, 720), const Size(480, 800)]) {
+  for (final size in [
+    const Size(1024, 720),
+    const Size(800, 632),
+    const Size(480, 800),
+  ]) {
     for (final brightness in Brightness.values) {
       testWidgets('compact ${size.width.toInt()} ${brightness.name}', (
         tester,

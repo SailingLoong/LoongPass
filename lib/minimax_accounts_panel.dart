@@ -8,9 +8,15 @@ import 'minimax_accounts.dart';
 import 'credit_summary_view.dart';
 
 class MiniMaxAccountsPanel extends StatefulWidget {
-  const MiniMaxAccountsPanel({super.key, this.region = 'cn', this.open});
+  const MiniMaxAccountsPanel({
+    super.key,
+    this.region = 'cn',
+    this.open,
+    this.onOwnerReady,
+  });
   final String region;
   final Future<MiniMaxAccounts> Function()? open;
+  final void Function(MiniMaxAccounts)? onOwnerReady;
   @override
   State<MiniMaxAccountsPanel> createState() => _MiniMaxAccountsPanelState();
 }
@@ -41,6 +47,7 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
       return;
     }
     _service = service;
+    widget.onOwnerReady?.call(service);
     await _refresh();
     service.startAutomatic();
   });

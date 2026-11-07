@@ -23,9 +23,8 @@ $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Componen
 $runtime = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT" -Directory | Sort-Object FullName -Descending | Select-Object -First 1
 if (!$runtime) { throw 'Visual C++ distributable runtime unavailable' }
 Copy-Item "$($runtime.FullName)\*.dll" $bundle
-foreach ($file in @('LICENSE','THIRD_PARTY_NOTICES.md','FLUTTER-TEMPLATE-IMAGES-LICENSE','WINSPARKLE-LICENSE.txt','WEBVIEW2-LICENSE.txt','NLOHMANN-LICENSE.txt')) {
-  Copy-Item (Join-Path $root $file) $bundle
-}
+& python "$PSScriptRoot\bundle_licenses.py" $root $bundle
+if ($LASTEXITCODE -ne 0) { throw 'Windows license bundling failed' }
 $source = (& git -C $root rev-parse HEAD).Trim()
 [IO.File]::WriteAllText((Join-Path $dist 'SOURCE_COMMIT.windows'), "$source`n", [Text.UTF8Encoding]::new($false))
 $metadata = @{ version=$name; build=$build; architecture='x64'; source=$source; executableSHA256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() }

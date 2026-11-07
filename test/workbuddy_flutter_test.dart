@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loongpass/workbuddy_flutter.dart';
@@ -14,7 +16,9 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
-          return '/synthetic/LoongPass/WorkBuddy';
+          return Directory.fromUri(
+            Directory.systemTemp.uri.resolve('loongpass-synthetic-workbuddy/'),
+          ).path;
         });
     final owner = await createWorkBuddyMemoryOwner();
     expect(calls.map((c) => c.method), ['prepareWorkBuddyJournal']);

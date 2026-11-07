@@ -682,6 +682,49 @@ Future<void> main() async {
     expect(h.refreshCalls == 1, 'rotation repeated after committed write');
     s.dispose();
   });
+  await check('inference shares account lock and observes owner shutdown', (
+    d,
+  ) async {
+    final h = FakeHttp(), s = service(d, h);
+    final a = await authorized(s);
+    final entered = Completer<void>(), release = Completer<void>();
+    final inference = s.withInferenceAuthorization(a.id, (
+      region,
+      token,
+      current,
+    ) async {
+      expect(
+        region == 'cn' && token == 'synthetic-access',
+        'wrong inference credential',
+      );
+      entered.complete();
+      await release.future;
+      return current();
+    });
+    await entered.future;
+    await reject(() => s.claim(a.id), 'Busy');
+    await reject(() => s.setAutomatic(a.id, false), 'Busy');
+    s.dispose();
+    release.complete();
+    expect(!await inference, 'closed owner retained inference authority');
+  });
+  await check('inference reuses persisted refresh before dispatch', (d) async {
+    final h = FakeHttp(), s = service(d, h);
+    final a = await authorized(s);
+    time += 550000;
+    await s.withInferenceAuthorization(a.id, (region, token, current) async {
+      final row = (documents[d.path]!.data['accounts'] as Map).values.single;
+      expect(
+        token == 'synthetic-new' && row['accessToken'] == token,
+        'dispatch preceded durable rotation',
+      );
+      expect(
+        h.refreshCalls == 1 && current(),
+        'inference bypassed refresh owner',
+      );
+    });
+    s.dispose();
+  });
   stdout.writeln('RESULT $passed passed, $failed failed');
   await root.delete(recursive: true);
   exitCode = failed == 0 ? 0 : 1;

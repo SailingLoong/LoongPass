@@ -70,7 +70,7 @@ class AppUpdateCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(updates.version == null ? '正在读取版本信息' : '当前版本 ${updates.version}'),
         const Text('更新会保留本机账号和设置。'),
-        SwitchListTile(
+        SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           title: const Text('自动检查并下载更新'),
           subtitle: Text(
@@ -81,7 +81,7 @@ class AppUpdateCard extends StatelessWidget {
           value: updates.automaticUpdates,
           onChanged: updates.available ? updates.setAutomaticUpdates : null,
         ),
-        SwitchListTile(
+        SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
           title: const Text('接收 Beta 版更新'),
           subtitle: Text(

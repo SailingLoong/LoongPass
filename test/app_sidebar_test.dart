@@ -44,7 +44,7 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Magpie'), findsWidgets);
-      expect(find.text('尚未接入'), findsWidgets);
+      expect(find.text('尚未启动'), findsWidgets);
       expect(find.textContaining('127.0.0.1'), findsNothing);
     },
   );
@@ -96,7 +96,7 @@ void main() {
         isTrue,
       );
     }
-    expect(find.text('TRAE CN 尚未接入'), findsOneWidget);
+    expect(find.text('${ManagedApp.values.last.label} 尚未接入'), findsOneWidget);
     expect(find.text('ZCode content'), findsNothing);
   });
   testWidgets('navigation and repeated clicks preserve an unfinished form', (
@@ -185,6 +185,8 @@ void main() {
         'workbuddy',
         'minimax',
         'traeCn',
+        'lobsterai',
+        'loomy',
       ]);
       await tester.pumpWidget(const SizedBox());
       final restored = UiPreferences(read: () async => stored);

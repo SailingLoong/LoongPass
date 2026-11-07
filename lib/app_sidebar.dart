@@ -81,7 +81,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
               SidebarNavigationButton(
                 key: ValueKey('nav-${section.name}'),
                 label: section.label,
-                icon: Icon(section.icon, size: 19),
+                icon: Icon(section.icon, size: 17),
                 compact: compact,
                 selected: _section == section,
                 onPressed: () => selectSection(section),
@@ -116,19 +116,22 @@ class AppWorkspaceState extends State<AppWorkspace> {
                   child: Column(
                     children: [
                       SizedBox(
-                        height: 48,
+                        height: 56,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: Row(
                             children: [
                               if (!compact)
-                                const Expanded(
+                                Expanded(
                                   child: Text(
                                     'LoongPass',
-                                    style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium!
+                                        .copyWith(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                   ),
                                 ),
                               if (compact) Expanded(child: toggle) else toggle,
@@ -146,15 +149,15 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             child: sectionButton(section),
                           ),
                       if (!compact)
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(16, 12, 12, 6),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 20, 12, 6),
                           child: Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
                               '我的应用',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Color(0xFF86909C),
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -225,7 +228,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           child: compact
                               ? const Icon(Icons.computer_outlined, size: 15)
                               : Text(
-                                  '本机保存',
+                                  '账号保存在本机',
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: colors.onSurfaceVariant,

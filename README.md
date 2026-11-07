@@ -10,6 +10,7 @@
 [![Flutter](https://img.shields.io/badge/built%20with-Flutter-02569b.svg)](https://flutter.dev)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+
 [官方网站与下载](https://loongpass.com) · [更新记录](https://github.com/SailingLoong/LoongPass/releases) · [问题反馈](https://github.com/SailingLoong/LoongPass/issues)
 
 </div>
@@ -58,6 +59,7 @@
 | Qoder CN / Qoder | 国内与海外入口独立，保存设备绑定 | 活动核对、套餐和附加积分、领取记录 |
 | TRAE CN | 官方设备身份导入与官网授权 | 余额、领取及到期信息 |
 | ZCode 智谱 BigModel | 官方授权、多账号和固定设备绑定 | 官方活动发现、领取、余额与到期批次 |
+| LobsterAI / Loomy（macOS） | 官网授权或本人手机号短信验证，多账号保存 | 每日奖励、余额和领取记录，Loomy 不反复补充已消耗赠送池 |
 
 ZCode 需要先安装并打开一次官方客户端，以读取版本、已有设备信息和请求上下文。添加账号时优先分配未占用的已有设备号，不足时生成 UUIDv4，授权成功后固定保存。领取结果未知时继续核对原设备与回执。详情见 [ZCODE-ACTIVITIES.md](ZCODE-ACTIVITIES.md)。
 
@@ -81,6 +83,24 @@ TRAE CN 需要官方客户端设备信息，可选择其 `User/globalStorage/sto
 保存采用唯一写入者、版本比较、原子替换和读回核对。账号授权发送至对应平台的官方接口。请保管账号目录，提交问题时移除令牌、设备标识及原始认证响应。
 
 积分按官方单位展示。到期明细缺失时显示未知，已发放额度与当前剩余额度分别处理。
+
+最近领取只展示已确认记录，后续领取未确认时保留上次成功。旧记录没有具体时刻时显示时间未知；
+TRAE 的余额净增与发放金额分开标明，Qoder 套餐与附加额度分别显示。到期列展示最近一批的
+当前剩余量，点击可看最近三批及查询时间。表格不会因搜索或查看明细而触发签到。
+
+工作区包含总览、全部账号、模型服务、活动记录和设置。侧栏可折叠、调整平台顺序并在重启后恢复；地区标签帮助区分国内外入口。
+
+## Magpie 模型服务（macOS）
+
+macOS 可将已保存的 MiniMax 账号作为本机 Magpie 的模型来源。
+
+1. 在「模型服务」中选择来源、已保存账号和官方客户端配置中的模型 ID，点击「保存并启动」。
+2. 点击「复制 Magpie 接入链接」，在 Magpie 中导入。
+3. 在 Magpie 中为客户端选择 LoongPass 的模型，保持 LoongPass 运行。
+
+服务监听 `127.0.0.1:3426`，使用独立的本地调用密钥。平台令牌由原账号模块管理并发送给官方接口，Magpie 配置保存的是本地连接密钥。连接的账号、模型及启用意图跨重启恢复；停止操作在停用设置保存后关闭服务，保存失败可重试。
+
+已通过 Claude Code 实测 MiniMax CN 的 `MiniMax-M3.1-Flash` 文本、流式及工具往返。本次连接固定使用一个账号和模型，国际版真实调用、其他平台推理与多账号调度分别推进。源码运行验收及积分核对范围见 [Magpie 连接验收](docs/verification/2026-11-07-magpie-connection.md)。
 
 ## 从源码构建
 
