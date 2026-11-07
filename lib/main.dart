@@ -19,6 +19,7 @@ import 'app_updates.dart';
 import 'native_account_document_store.dart';
 import 'model_service.dart';
 import 'minimax_model_provider.dart';
+import 'loomy_model_provider.dart';
 import 'native_minimax_accounts.dart';
 import 'dart:async';
 import 'rewards/reward_accounts.dart';
@@ -154,16 +155,21 @@ class _AccountPageState extends State<_AccountPage> {
     if (!widget.identityValidationOnly) unawaited(_updates.load());
     if (!widget.identityValidationOnly) unawaited(_codex.start());
     if (!widget.identityValidationOnly && _rewardsEnabled) {
-      unawaited(_rewards.start().catchError((_) {}));
+      unawaited(_startModelServices());
     }
-    if (!widget.identityValidationOnly &&
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      for (final entry in _minimaxOwners.entries) {
-        _models.register(MiniMaxModelProvider(entry.value, entry.key));
-        entry.value.startAutomatic();
-      }
-      unawaited(_models.load().catchError((Object _) {}));
+  }
+
+  Future<void> _startModelServices() async {
+    try {
+      await _rewards.start();
+    } catch (_) {}
+    if (!mounted) return;
+    for (final entry in _minimaxOwners.entries) {
+      _models.register(MiniMaxModelProvider(entry.value, entry.key));
+      entry.value.startAutomatic();
     }
+    _models.register(LoomyModelProvider(_rewards));
+    await _models.load().catchError((Object _) {});
   }
 
   @override

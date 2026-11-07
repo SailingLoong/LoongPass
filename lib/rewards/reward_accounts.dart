@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import '../account_document_store.dart';
+import '../account_registration.dart';
 import '../credit_summary.dart';
 import '../claim_receipt.dart';
 import 'reward_provider.dart';
@@ -16,10 +17,12 @@ class RewardAccount {
     this.receipt,
     this.credits, {
     this.needsAttention = false,
+    this.registrationId,
   });
   final String provider, identity, label, outcome;
   final bool automatic;
   final bool needsAttention;
+  final String? registrationId;
   final String? day;
   final ClaimReceipt? receipt;
   final CreditSummary? credits;
@@ -47,6 +50,8 @@ class RewardAccounts {
   final Map<String, RewardTransport> transports;
   final DateTime Function() now;
   final _changes = StreamController<void>.broadcast(sync: true);
+  final _authorizationChanges = StreamController<String>.broadcast();
+  Stream<String> get authorizationChanges => _authorizationChanges.stream;
   final _credits = <String, CreditSummary>{};
   final _attention = <String>{};
   Map<String, dynamic> _data = {
@@ -107,6 +112,7 @@ class RewardAccounts {
       day,
       receipt,
       _credits[key],
+      registrationId: row['registrationId'] as String?,
       needsAttention:
           _attention.contains(key) ||
           state == 'intent' ||
@@ -174,6 +180,7 @@ class RewardAccounts {
             !_text(row['label']) ||
             row['credentials'] is! Map<String, dynamic> ||
             row['automatic'] is! bool ||
+            row['registrationId'] != null && !_text(row['registrationId']) ||
             entry.key !=
                 _key(row['provider'] as String, row['identity'] as String)) {
           throw const FormatException();
@@ -262,6 +269,9 @@ class RewardAccounts {
 
   Future<void> restore() => _run(() async {
     await _read();
+    for (final id in providers.keys) {
+      _authorizationChanges.add(id);
+    }
   });
 
   Future<Uri?> beginLogin(String provider, {String? phone}) => _run(() async {
@@ -303,9 +313,11 @@ class RewardAccounts {
       'label': session.label,
       'credentials': session.credentials,
       'automatic': old?['automatic'] ?? true,
+      'registrationId': old?['registrationId'] ?? newAccountRegistrationId(),
     };
     await _save(doc);
     cancelLogin();
+    _authorizationChanges.add(provider);
     _attention.remove(key);
     try {
       _credits[key] = await _provider(
@@ -326,6 +338,37 @@ class RewardAccounts {
     _loginProvider = null;
     _notify();
   }
+
+  /// Uses this owner's refresh, identity and exclusion boundary through body
+  /// consumption. Reading account snapshots never enters this path.
+  Future<T> withInferenceAuthorization<T>(
+    String provider,
+    String identity,
+    Future<T> Function(
+      RewardSession session,
+      bool Function() isCurrent,
+      String registrationId,
+    )
+    use, {
+    String? expectedRegistrationId,
+  }) => _run(() async {
+    final session = await _refresh(provider, identity);
+    final doc = await _read(), row = _row(doc, provider, identity);
+    if (row['registrationId'] == null) {
+      row['registrationId'] = newAccountRegistrationId();
+      await _save(doc);
+    }
+    final registration = row['registrationId'] as String;
+    if (expectedRegistrationId != null &&
+        registration != expectedRegistrationId)
+      throw const RewardFailure('account_changed');
+    var active = true;
+    try {
+      return await use(session, () => active && !_closed, registration);
+    } finally {
+      active = false;
+    }
+  });
 
   Future<void> refreshCredits(String provider, String identity) =>
       _accountRun(provider, identity, () async {
@@ -349,6 +392,7 @@ class RewardAccounts {
     await _save(doc);
     _credits.remove(key);
     _attention.remove(key);
+    _authorizationChanges.add(provider);
   });
   Future<void> _record(
     String key,
@@ -466,6 +510,7 @@ class RewardAccounts {
     _automatic?.cancel();
     cancelLogin();
     unawaited(_changes.close());
+    unawaited(_authorizationChanges.close());
     _credits.clear();
   }
 }
