@@ -17,3 +17,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/app_icons/
+    - assets/protocols/zcode_start_prompt.json

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'account_document_store.dart';
+import 'account_registration.dart';
 import 'claim_receipt.dart';
 import 'source_digest.dart';
 import 'zcode_api.dart';
@@ -11,11 +12,13 @@ import 'zcode_rewards.dart';
 class ZcodeActivityAccount {
   final String id, uid, family, label, status, deviceSuffix;
   final bool automatic;
+  final String? registrationId;
   final int? checkedAt;
   final ClaimReceipt? latestClaim;
   final List<ZcodeBucket> buckets;
   ZcodeActivityAccount(Map<String, dynamic> a)
     : id = a['id'],
+      registrationId = a['registrationId'],
       uid = a['uid'],
       family = a['family'],
       label = a['label'],
@@ -69,6 +72,24 @@ class _Login {
   );
 }
 
+/// One ephemeral authorization owned by the saved-account transaction.
+class ZcodeInferenceAuthorization {
+  final String token, registrationId;
+  final Map<String, String> context;
+  final bool Function() isCurrent;
+  final Future<Map<String, dynamic>> Function() balance, clientConfig;
+  ZcodeInferenceAuthorization._(
+    this.token,
+    this.registrationId,
+    this.context,
+    this.isCurrent,
+    this.balance,
+    this.clientConfig,
+  );
+  @override
+  String toString() => 'ZcodeInferenceAuthorization(redacted)';
+}
+
 /// Sole owner of saved identities, authorization recovery, durable activity
 /// attempts and scheduling. Presentation reads never trigger network work.
 class ZcodeActivityAccounts {
@@ -76,6 +97,8 @@ class ZcodeActivityAccounts {
   final ZcodeApi api;
   final int Function() now;
   final Future<String?> Function(ZcodeCaptchaConfig)? requestVerification;
+  final _authorizationChanges = StreamController<void>.broadcast();
+  Stream<void> get authorizationChanges => _authorizationChanges.stream;
   FutureOr<void> Function()? onChanged;
   static final _writers = <String>{};
   bool _closed = false;
@@ -137,6 +160,7 @@ class ZcodeActivityAccounts {
             !zcodeText(a['label']) ||
             !zcodeText(a['token'], 16384) ||
             a['automatic'] is! bool ||
+            a['registrationId'] != null && !zcodeText(a['registrationId']) ||
             a['claims'] is! Map<String, dynamic> ||
             a['buckets'] is! List ||
             !_statuses.contains(a['status']))
@@ -431,6 +455,9 @@ class ZcodeActivityAccounts {
       ...ready,
       'family': login.family,
       'context': login.context,
+      'registrationId': deviceChanged
+          ? newAccountRegistrationId()
+          : old?['registrationId'] ?? newAccountRegistrationId(),
       'automatic': old?['automatic'] ?? true,
       'status': deviceChanged || old?['status'] == 'authorization_required'
           ? 'unavailable'
@@ -459,6 +486,7 @@ class ZcodeActivityAccounts {
       _login = null;
       _poll?.cancel();
     }
+    if (!_closed) _authorizationChanges.add(null);
     message = '账号已保存；自动检查活动已开启。';
     startAutomatic();
   });
@@ -494,6 +522,54 @@ class ZcodeActivityAccounts {
     a['buckets'] = b.buckets.map((v) => v.toJson()).toList();
     a['checkedAt'] = b.checkedAt;
   }
+
+  Future<T> withInferenceAuthorization<T>(
+    String id,
+    Future<T> Function(ZcodeInferenceAuthorization) use, {
+    String? expectedRegistrationId,
+  }) => _exclusive(() async {
+    final doc = await _read();
+    final a = (doc.data['accounts'] as Map)[id];
+    if (a is! Map<String, dynamic> || a['family'] != 'bigmodel')
+      throw const ZcodeFailure('account_missing');
+    if (a['registrationId'] == null) {
+      a['registrationId'] = newAccountRegistrationId();
+      await _write(doc);
+    }
+    if (expectedRegistrationId != null &&
+        a['registrationId'] != expectedRegistrationId)
+      throw const ZcodeFailure('binding_changed');
+    var active = true;
+    bool current() => active && !_closed;
+    Future<Map<String, dynamic>> read(String path) => api.request(
+      path,
+      a['token'],
+      zcodeContext(Map<String, dynamic>.from(a['context'])),
+      isCurrent: current,
+    );
+    try {
+      return await use(
+        ZcodeInferenceAuthorization._(
+          a['token'],
+          a['registrationId'],
+          Map.unmodifiable(
+            zcodeContext(Map<String, dynamic>.from(a['context'])),
+          ),
+          current,
+          () async {
+            final response = await read(ZcodeApi.balancePath);
+            final parsed = ZcodeBalance.parse(response, now());
+            _observe(a, parsed);
+            await _write(doc);
+            return response;
+          },
+          () => read(ZcodeApi.configPath),
+        ),
+      );
+    } finally {
+      active = false;
+    }
+  });
 
   static void _confirmed(Map<String, dynamic> c, Map<String, dynamic> plan) {
     c['state'] = 'claimed';
@@ -794,7 +870,9 @@ class ZcodeActivityAccounts {
   }
 
   void dispose() {
+    if (_closed) return;
     _closed = true;
+    unawaited(_authorizationChanges.close());
     _login = null;
     _poll?.cancel();
     _startup?.cancel();

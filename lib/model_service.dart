@@ -665,6 +665,7 @@ class ModelService {
             reply.contentType,
           );
           response.headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+          response.headers.set('x-should-retry', 'false');
           response.bufferOutput = false;
           committed = true;
           await response.addStream(
