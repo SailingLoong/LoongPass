@@ -20,6 +20,12 @@ import 'native_account_document_store.dart';
 import 'model_service.dart';
 import 'minimax_model_provider.dart';
 import 'loomy_model_provider.dart';
+import 'workbuddy_model_provider.dart';
+import 'workbuddy_accounts.dart';
+import 'workbuddy_automatic.dart';
+import 'workbuddy_flutter.dart';
+import 'workbuddy_vault.dart';
+import 'workbuddy_vault_flutter.dart';
 import 'native_minimax_accounts.dart';
 import 'dart:async';
 import 'rewards/reward_accounts.dart';
@@ -93,6 +99,13 @@ class _AccountPageState extends State<_AccountPage> {
   final _models = ModelService(
     store: NativeAccountDocumentStore('ModelService'),
   );
+  late final _workbuddyStore = WorkBuddyVaultFlutter();
+  late final _workbuddyVault = WorkBuddyVault(_workbuddyStore);
+  late final WorkBuddyAccounts _workbuddy = WorkBuddyAccounts(
+    create: createWorkBuddyMemoryOwner,
+    onAccountReady: (id) => _workbuddyAutomatic.setEnabled(id, true),
+  );
+  late final WorkBuddyAutomatic _workbuddyAutomatic = WorkBuddyAutomatic(_workbuddy);
   final _registry = AccountWorkspaceRegistry();
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
@@ -123,7 +136,14 @@ class _AccountPageState extends State<_AccountPage> {
         region: 'global',
         owner: _minimaxOwners['global'],
       ),
-      ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
+      ManagedApp.workbuddy: widget.identityValidationOnly
+          ? const WorkBuddyAccountsPanel(savedAccounts: true)
+          : WorkBuddyAccountsPanel(
+              savedAccounts: true,
+              owner: _workbuddy,
+              vault: _workbuddyVault,
+              automatic: _workbuddyAutomatic,
+            ),
       ManagedApp.traeCn: const TraeAccountsPanel(),
       ManagedApp.codex: CodexAccountsPanel(owner: _codex),
       for (final provider in rewardProviders)
@@ -169,6 +189,9 @@ class _AccountPageState extends State<_AccountPage> {
       entry.value.startAutomatic();
     }
     _models.register(LoomyModelProvider(_rewards));
+    _models.register(WorkBuddyModelProvider(_workbuddy));
+    await _workbuddy.restoreSaved(_workbuddyVault, _workbuddyStore.savedKeys);
+    if (!mounted) return;
     await _models.load().catchError((Object _) {});
   }
 
@@ -183,6 +206,9 @@ class _AccountPageState extends State<_AccountPage> {
     unawaited(_models.dispose());
     if (!widget.identityValidationOnly &&
         defaultTargetPlatform == TargetPlatform.macOS) {
+      _workbuddyAutomatic.close();
+      _workbuddy.close();
+      _workbuddyVault.close();
       for (final owner in _minimaxOwners.values) {
         owner.dispose();
       }

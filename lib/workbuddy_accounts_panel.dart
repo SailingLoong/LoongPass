@@ -23,6 +23,9 @@ class WorkBuddyAccountsPanel extends StatefulWidget {
     this.openAuthorization,
     this.identityValidationOnly = false,
     this.savedAccounts = false,
+    this.owner,
+    this.vault,
+    this.automatic,
   });
   // Keep callbacks stable for this widget lifetime; use a new key to replace
   // them. Rendering creates only the lazy roster, never native/auth callbacks.
@@ -30,6 +33,9 @@ class WorkBuddyAccountsPanel extends StatefulWidget {
   final Future<void> Function(Uri)? openAuthorization;
   final bool identityValidationOnly;
   final bool savedAccounts;
+  final WorkBuddyAccounts? owner;
+  final WorkBuddyVault? vault;
+  final WorkBuddyAutomatic? automatic;
   @override
   State<WorkBuddyAccountsPanel> createState() => _WorkBuddyAccountsPanelState();
 }
@@ -37,9 +43,11 @@ class WorkBuddyAccountsPanel extends StatefulWidget {
 class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
   late final WorkBuddyAccounts _accounts;
   WorkBuddyAutomatic? _automatic;
+  StreamSubscription<void>? _ownerChanges, _automaticChanges;
   WorkBuddyVault? _savedVault;
   final _savedStore = WorkBuddyVaultFlutter();
-  WorkBuddyVault get _vault => _savedVault ??= WorkBuddyVault(_savedStore);
+  WorkBuddyVault get _vault =>
+      widget.vault ?? (_savedVault ??= WorkBuddyVault(_savedStore));
   bool _busy = false;
   String? _message;
   bool get _available =>
@@ -53,29 +61,40 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
   @override
   void initState() {
     super.initState();
-    _accounts = WorkBuddyAccounts(
-      create:
-          widget.create ??
-          (widget.identityValidationOnly
-              ? createWorkBuddyIdentityOwner
-              : createWorkBuddyMemoryOwner),
-      onChanged: () {
-        if (mounted) setState(() {});
-      },
-      onAccountReady: widget.savedAccounts
-          ? (id) {
-              _automatic?.setEnabled(id, true);
-            }
-          : null,
-    );
+    _accounts =
+        widget.owner ??
+        WorkBuddyAccounts(
+          create:
+              widget.create ??
+              (widget.identityValidationOnly
+                  ? createWorkBuddyIdentityOwner
+                  : createWorkBuddyMemoryOwner),
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+          onAccountReady: widget.savedAccounts
+              ? (id) {
+                  _automatic?.setEnabled(id, true);
+                }
+              : null,
+        );
     if (!widget.identityValidationOnly)
-      _automatic = WorkBuddyAutomatic(
-        _accounts,
-        onChanged: () {
-          if (mounted) setState(() {});
-        },
-      );
-    if (widget.savedAccounts && _available) unawaited(_restore());
+      _automatic =
+          widget.automatic ??
+          WorkBuddyAutomatic(
+            _accounts,
+            onChanged: () {
+              if (mounted) setState(() {});
+            },
+          );
+    _ownerChanges = _accounts.changes.listen((_) {
+      if (mounted) setState(() {});
+    });
+    _automaticChanges = _automatic?.changes.listen((_) {
+      if (mounted) setState(() {});
+    });
+    if (widget.owner == null && widget.savedAccounts && _available)
+      unawaited(_restore());
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -272,9 +291,13 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
 
   @override
   void dispose() {
-    _automatic?.close();
-    _accounts.close();
-    _savedVault?.close();
+    unawaited(_ownerChanges?.cancel());
+    unawaited(_automaticChanges?.cancel());
+    if (widget.owner == null) {
+      _automatic?.close();
+      _accounts.close();
+      _savedVault?.close();
+    }
     super.dispose();
   }
 
