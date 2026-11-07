@@ -17,25 +17,20 @@ set_target_properties(webview2_loader PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${webview2_SOURCE_DIR}/build/native/include"
 )
 
-FetchContent_Declare(winsparkle
-  URL https://github.com/vslavik/winsparkle/releases/download/v0.9.4/WinSparkle-0.9.4.zip
-  URL_HASH SHA256=6037df37fc263bd1650a1c4949681a9d40ffe991d01f35892a406cb5d103c976
-)
-FetchContent_MakeAvailable(winsparkle)
-file(GLOB_RECURSE WINSPARKLE_HEADERS "${winsparkle_SOURCE_DIR}/winsparkle.h")
-list(GET WINSPARKLE_HEADERS 0 WINSPARKLE_HEADER)
-get_filename_component(WINSPARKLE_INCLUDE "${WINSPARKLE_HEADER}" DIRECTORY)
-get_filename_component(WINSPARKLE_ROOT "${WINSPARKLE_INCLUDE}" DIRECTORY)
+file(TO_CMAKE_PATH "$ENV{WINSPARKLE_SDK}" WINSPARKLE_ROOT)
+if(NOT WINSPARKLE_ROOT)
+  message(FATAL_ERROR "Set WINSPARKLE_SDK to the SDK built by tool/build_winsparkle.ps1")
+endif()
 add_library(winsparkle_library SHARED IMPORTED)
 set_target_properties(winsparkle_library PROPERTIES
   IMPORTED_IMPLIB "${WINSPARKLE_ROOT}/x64/Release/WinSparkle.lib"
   IMPORTED_LOCATION "${WINSPARKLE_ROOT}/x64/Release/WinSparkle.dll"
-  INTERFACE_INCLUDE_DIRECTORIES "${WINSPARKLE_INCLUDE}"
+  INTERFACE_INCLUDE_DIRECTORIES "${WINSPARKLE_ROOT}/include"
 )
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 execute_process(
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/../tool/windows_build_config.py"
-          "${CMAKE_CURRENT_BINARY_DIR}/loongpass_config.h"
+          "${CMAKE_CURRENT_BINARY_DIR}/loongpass_config.h" "${WINSPARKLE_ROOT}"
   COMMAND_ERROR_IS_FATAL ANY
 )

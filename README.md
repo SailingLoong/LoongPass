@@ -104,7 +104,7 @@ macOS 可将已保存的 MiniMax 账号作为本机 Magpie 的模型来源。
 
 ## 从源码构建
 
-使用 Flutter 3.47.1 和锁定依赖。macOS 还需 Xcode 与仓库指定的 Rust 工具链，Windows 还需 Visual Studio 的 C++ 桌面开发工具、CMake 与 Python。
+使用 Flutter 3.47.1 和锁定依赖。macOS 还需 Xcode 与仓库指定的 Rust 工具链，Windows 还需 Visual Studio 2022 的 C++ 桌面开发工具、CMake、Python、NuGet CLI 与 PowerShell 7。
 
 ```bash
 flutter pub get --enforce-lockfile
@@ -116,11 +116,17 @@ Windows 构建与打包可在 PowerShell 执行。
 
 ```powershell
 flutter pub get --enforce-lockfile
+$env:WINSPARKLE_SDK = Join-Path $env:LOCALAPPDATA 'LoongPass-build-cache\WinSparkle'
+if (!(Test-Path $env:WINSPARKLE_SDK)) {
+  .\tool\build_winsparkle.ps1 -Destination $env:WINSPARKLE_SDK
+}
 flutter build windows --release
 .\tool\package_windows.ps1
 ```
 
 安装程序打包使用 Inno Setup 6。正式发布由 GitHub Actions 构建两个平台，检查通过后生成签名更新清单并发布 Release。
+
+WinSparkle SDK 从固定上游提交构建，附带最小的自动下载入口扩展，沿用上游的跳过版本与签名校验。构建输入和 SDK 文件均核对哈希，缓存只保留最终 SDK，编译中间目录完成后清理。
 
 ## 开源与致谢
 

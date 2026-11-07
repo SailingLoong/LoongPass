@@ -1,15 +1,18 @@
-LoongPass 1.0.0 beta 30：统一管理 AI 平台多账号、免费奖励和积分到期信息。
+LoongPass 1.0.0：统一管理 AI 平台多账号、免费奖励和积分到期信息。
 
-- 新增 ZCode 智谱 BigModel 官方授权、账号保存、活动发现、自动领取和余额到期查询。新账号优先使用未占用设备号，不足时自动生成一个 UUIDv4，成功授权后固定保存；保存重试和重新授权复用绑定，未知领取结果不会触发换号重领。
-- ZCode 领取遇到官方校验时，先执行官方 SDK 的自动验证；只有需要人工操作才显示验证窗口。beta 27 已实测自动验证及到账，包括单个新 UUID 与新账号的 500,000,000 tokens 权益；beta 29 自动分配耗尽分支由合成测试覆盖，尚未再次用新账号完成这一分支的真实授权。
-- 账号列表改为紧凑表格，支持搜索、筛选、分页、余额及最近到期批次、已确认领取记录。新增总览、全部账号、活动记录和设置；侧栏可折叠、调整平台顺序并保存偏好。
-- 应用更新改为两个独立选项：「自动检查并下载更新」和「接收 Beta 版更新」。Beta 默认关闭，关闭时仅接收正式版，开启时也接收测试版；手动检查同样遵循此选项，不会降级已安装版本。原先关闭自动下载的设置继续保持关闭。
-- macOS 原生更新器核验发布签名后安装并重启，保留账号和设置。beta 29 可直接通过应用内更新升级本版；更早版本首次需要手动安装。
-- 保留 WorkBuddy、MiniMax CN / MiniMax、Qoder CN / Qoder 和 TRAE CN 多账号管理。WorkBuddy 支持官方客户端切换；其他平台尚未支持客户端切换。各平台真实领取与到账证据不同，具体见验收记录。
-- 账号仍在本机私有目录中以明文保存，保留目录/文件权限、原子写入、唯一写入者和重复领取保护，不接入钥匙串。已有账号升级复用授权，无需重新登录。
+- 首次同时提供 macOS Universal、Windows x64 安装版和便携版。macOS 包包含 Apple Silicon 与 Intel 架构。
+- WorkBuddy、MiniMax 国内版与海外版、Qoder 国内版与海外版、TRAE 国内版、ZCode 智谱 BigModel 独立管理账号、授权、奖励与余额。ZCode 按官方活动资格领取，保留固定设备绑定与未知领取记录。
+- 紧凑账号工作区支持搜索、筛选、分页、常用账号、平台排序、浅深色和总览。
+- 更新设置提供「自动检查并下载更新」与「接收 Beta 版更新」两个独立选项，默认均关闭。关闭 Beta 时只接收正式版。原生更新器验证发布签名后安装，保留本机账号和设置。
+- macOS 支持 WorkBuddy 官方客户端账号切换，以及选择单个 MiniMax 国内版账号和模型，经 Magpie 接入 Claude Code 的文本、流式与工具请求。Windows 当前提供账号、奖励和积分管理。
+- macOS 新增 LobsterAI、Loomy 试验入口，真实授权与领取仍在验证。Loomy 按每日赠送池处理，避免重复补充已消耗额度。
 
-下载 LoongPass-macOS-universal.zip，解压后打开 LoongPass.app。支持 macOS 12 及以上，包含 Apple Silicon 和 Intel 架构；Intel 真机尚未验收。当前为本地签名，未做 Apple 公证，macOS 可能要求在“隐私与安全性”中确认打开。
+安装与升级
 
-自动任务仅在 LoongPass 运行期间执行。ZCode 每 10 分钟检查活动，其他平台每 15 分钟检查。活动是否开放、账号及设备是否具备资格均以官方响应为准；不能承诺每天都有活动。真实图形验证码、部分平台令牌轮换仍待验证，Qoder 普通附加积分缺失的到期明细显示未知。Magpie 目前只有状态说明入口，模型接入及积分路由尚未实现。
+macOS 下载 LoongPass-macOS-universal.zip，解压后将 LoongPass.app 放入应用程序目录。beta 29 及后续版本可通过应用内更新升级。Windows 日常使用选择 LoongPass-Windows-x64-Setup.exe，便携使用选择 LoongPass-Windows-x64.zip，完整解压后运行。两种 Windows 包共用当前用户的 AppData 账号目录。
 
-项目按 MIT 许可公开，源码及第三方许可随发布保留；安装包、编译库和账号数据不进入源码仓库。详细验收记录：https://github.com/SailingLoong/LoongPass/blob/main/VALIDATION.md
+应用目前使用 macOS 本地签名，尚未完成 Developer ID 公证；Windows 尚未配置 Authenticode 发布者签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS。应用内更新另有 Ed25519 发布签名保护。
+
+授权数据以明文保存在本机私有目录，采用权限保护、唯一写入者、原子写入与重复领取保护。自动任务仅在应用运行期间执行。活动开放、账号设备资格及最终余额以各平台官方结果为准；官方缺少的到期明细显示未知。
+
+源码按 MIT 许可公开，保留第三方来源与声明。功能与设备验收范围见 https://github.com/SailingLoong/LoongPass/blob/main/VALIDATION.md 。

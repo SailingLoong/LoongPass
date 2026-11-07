@@ -107,6 +107,23 @@ jobs:
         run: |
           dart analyze lib test
           flutter test --no-pub --reporter expanded
+      - name: Identify native toolchain
+        id: toolchain
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -version '[17.0,18.0)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio 2022 is required' }
+          $version = (Get-Content (Join-Path $vs 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt')).Trim()
+          "version=$($env:ImageVersion)-$version" >> $env:GITHUB_OUTPUT
+          "WINSPARKLE_SDK=$(Join-Path $env:RUNNER_TOOL_CACHE 'LoongPass\WinSparkle')" >> $env:GITHUB_ENV
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        id: winsparkle
+        with:
+          path: ${{ env.WINSPARKLE_SDK }}
+          key: winsparkle-x64-${{ steps.toolchain.outputs.version }}-${{ hashFiles('tool/patch_winsparkle.py', 'tool/build_winsparkle.ps1') }}
+      - name: Build pinned Windows update SDK
+        if: steps.winsparkle.outputs.cache-hit != 'true'
+        run: tool/build_winsparkle.ps1 -Destination $env:WINSPARKLE_SDK
       - name: Build Windows application and native checks
         run: |
           flutter build windows --release

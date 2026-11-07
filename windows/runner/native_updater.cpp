@@ -130,7 +130,7 @@ void NativeUpdater::Check(bool automatic) {
   }
   phase_ = Phase::checking;
   Publish();
-  if (automatic) win_sparkle_check_update_with_ui_and_install();
+  if (automatic) win_sparkle_check_update_without_ui_and_install();
   else win_sparkle_check_update_with_ui();
 }
 
