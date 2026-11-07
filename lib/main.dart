@@ -5,6 +5,8 @@ export 'app_theme.dart';
 import 'app_sidebar.dart';
 import 'qoder_device_panel.dart';
 import 'qoder_device_accounts.dart';
+import 'qoder_device_flutter.dart';
+import 'qoder_model_provider.dart';
 import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
 import 'trae_accounts_panel.dart';
@@ -92,6 +94,10 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  late final _qoderOwners = {
+    for (final region in QoderRegion.values)
+      region: createQoderDeviceAccounts(region: region),
+  };
   late final _minimaxOwners = {
     for (final region in ['cn', 'global'])
       region: openNativeMiniMaxAccounts(region: region),
@@ -105,7 +111,9 @@ class _AccountPageState extends State<_AccountPage> {
     create: createWorkBuddyMemoryOwner,
     onAccountReady: (id) => _workbuddyAutomatic.setEnabled(id, true),
   );
-  late final WorkBuddyAutomatic _workbuddyAutomatic = WorkBuddyAutomatic(_workbuddy);
+  late final WorkBuddyAutomatic _workbuddyAutomatic = WorkBuddyAutomatic(
+    _workbuddy,
+  );
   final _registry = AccountWorkspaceRegistry();
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
@@ -122,11 +130,13 @@ class _AccountPageState extends State<_AccountPage> {
   late final Map<ManagedApp, Widget> _pages = {
     for (final entry in <ManagedApp, Widget>{
       ManagedApp.zcode: const ZcodeAccountsPanel(),
-      ManagedApp.qoderCn: const QoderDeviceAccountsPanel(
+      ManagedApp.qoderCn: QoderDeviceAccountsPanel(
         region: QoderRegion.cn,
+        owner: _qoderOwners[QoderRegion.cn],
       ),
-      ManagedApp.qoder: const QoderDeviceAccountsPanel(
+      ManagedApp.qoder: QoderDeviceAccountsPanel(
         region: QoderRegion.global,
+        owner: _qoderOwners[QoderRegion.global],
       ),
       ManagedApp.minimaxCn: MiniMaxAccountsPanel(
         region: 'cn',
@@ -190,6 +200,10 @@ class _AccountPageState extends State<_AccountPage> {
     }
     _models.register(LoomyModelProvider(_rewards));
     _models.register(WorkBuddyModelProvider(_workbuddy));
+    for (final owner in _qoderOwners.values) {
+      owner.startAutomatic();
+    }
+    _models.register(QoderModelProvider(_qoderOwners[QoderRegion.cn]!));
     await _workbuddy.restoreSaved(_workbuddyVault, _workbuddyStore.savedKeys);
     if (!mounted) return;
     await _models.load().catchError((Object _) {});
@@ -206,6 +220,9 @@ class _AccountPageState extends State<_AccountPage> {
     unawaited(_models.dispose());
     if (!widget.identityValidationOnly &&
         defaultTargetPlatform == TargetPlatform.macOS) {
+      for (final owner in _qoderOwners.values) {
+        owner.dispose();
+      }
       _workbuddyAutomatic.close();
       _workbuddy.close();
       _workbuddyVault.close();

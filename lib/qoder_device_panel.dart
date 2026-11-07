@@ -12,9 +12,11 @@ class QoderDeviceAccountsPanel extends StatefulWidget {
     super.key,
     this.region = QoderRegion.cn,
     this.create,
+    this.owner,
   });
   final QoderRegion region;
   final QoderDeviceAccounts Function()? create;
+  final QoderDeviceAccounts? owner;
   @override
   State<QoderDeviceAccountsPanel> createState() =>
       _QoderDeviceAccountsPanelState();
@@ -26,7 +28,8 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   List<QoderSavedAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available => widget.create != null || nativeAccountsSupported;
+  bool get _available =>
+      widget.owner != null || widget.create != null || nativeAccountsSupported;
   @override
   void initState() {
     super.initState();
@@ -35,11 +38,12 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
 
   Future<void> _restore() => _run(() async {
     final owner = _owner ??=
+        widget.owner ??
         widget.create?.call() ??
         createQoderDeviceAccounts(region: widget.region);
     owner.onChanged = _reload;
     await _reload();
-    owner.startAutomatic();
+    if (widget.owner == null) owner.startAutomatic();
   });
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -103,7 +107,8 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   };
   @override
   void dispose() {
-    _owner?.dispose();
+    _owner?.onChanged = null;
+    if (widget.owner == null) _owner?.dispose();
     super.dispose();
   }
 

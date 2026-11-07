@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'qoder_credits.dart';
+import 'account_registration.dart';
 
 enum QoderRegion {
   cn(
@@ -178,7 +179,7 @@ class QoderSavedAccount {
   final String uid, label;
   final bool automatic;
   final int authorizationExpiresAt;
-  final String? outcome;
+  final String? outcome, registrationId;
   final ClaimReceipt? latestClaim;
   const QoderSavedAccount(
     this.uid,
@@ -187,6 +188,7 @@ class QoderSavedAccount {
     this.authorizationExpiresAt,
     this.outcome, {
     this.latestClaim,
+    this.registrationId,
   });
 }
 
@@ -207,6 +209,8 @@ class QoderDeviceAccounts {
        _http = transport,
        _now = nowMs;
   final QoderRegion region;
+  final _authorizationChanges = StreamController<void>.broadcast();
+  Stream<void> get authorizationChanges => _authorizationChanges.stream;
   FutureOr<void> Function()? onChanged;
   bool _closed = false, _ticking = false;
   Timer? _pollTimer, _startupTimer, _automaticTimer;
@@ -311,6 +315,7 @@ class QoderDeviceAccounts {
           e.value['automatic'] == true,
           e.value['expiresAt'],
           e.value['lastOutcome'],
+          registrationId: e.value['registrationId'],
           latestClaim: _latestClaim(store.data['claims'] as Map, e.key),
         ),
     ];
@@ -348,7 +353,9 @@ class QoderDeviceAccounts {
   }
 
   void dispose() {
+    if (_closed) return;
     _closed = true;
+    unawaited(_authorizationChanges.close());
     _pollTimer?.cancel();
     _startupTimer?.cancel();
     _automaticTimer?.cancel();
@@ -406,7 +413,9 @@ class QoderDeviceAccounts {
             a['expiresAt'] is! int ||
             a['expiresAt'] <= 0 ||
             !_uuid(a['machineId']) ||
-            !_uuid(a['generation']))
+            !_uuid(a['generation']) ||
+            a['registrationId'] != null &&
+                !_text(a['registrationId'], max: 128))
           throw 0;
       }
       for (final v in (data['claims'] as Map).values) {
@@ -580,6 +589,9 @@ class QoderDeviceAccounts {
         'refreshExpiresAt': _expiry(b, 'refresh_token', optional: true),
         'machineId': g.material['machineId'],
         'generation': g.material['nonce'],
+        'registrationId':
+            store.data['accounts'][uid]?['registrationId'] ??
+            newAccountRegistrationId(),
         'label': _label(user.body, uid),
         'automatic': true,
       };
@@ -591,6 +603,7 @@ class QoderDeviceAccounts {
       _commitOutcome = 'completed';
       _verified[uid] = g.material['nonce'];
       _rotations.remove(uid);
+      if (!_closed) _authorizationChanges.add(null);
       if (identical(_grant, g)) _grant = null;
       return uid;
     } on QoderAccountError catch (e) {
@@ -755,6 +768,44 @@ class QoderDeviceAccounts {
       _verified[uid] = a['generation'];
     }
     return a;
+  }
+
+  Future<T> withInferenceAuthorization<T>(
+    String uid,
+    Future<T> Function(
+      String token,
+      String machineId,
+      String registrationId,
+      bool Function() isCurrent,
+    )
+    use, {
+    String? expectedRegistrationId,
+  }) async {
+    if (_closed || _claiming || _grant != null)
+      throw const QoderAccountError('busy');
+    _claiming = true;
+    var active = true;
+    try {
+      final store = await _read();
+      final account = await _authorized(store, uid);
+      if (account['registrationId'] == null) {
+        account['registrationId'] = newAccountRegistrationId();
+        await _save(store);
+      }
+      final registration = account['registrationId'] as String;
+      if (expectedRegistrationId != null &&
+          registration != expectedRegistrationId)
+        throw const QoderAccountError('source_changed');
+      return await use(
+        account['token'],
+        account['machineId'],
+        registration,
+        () => active && !_closed && account['expiresAt'] > _now(),
+      );
+    } finally {
+      active = false;
+      _claiming = false;
+    }
   }
 
   final _credits = <String, QoderCredits>{};
