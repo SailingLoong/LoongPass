@@ -1,5 +1,12 @@
 # 验收记录
 
+## 1.0.0 双平台发布检查（2026-11-07）
+
+- 应用主线 `403b4d6a3b89cd69b2dceff9736caff8cea9e3e8` 的 [GitHub CI](https://github.com/SailingLoong/LoongPass/actions/runs/42345541993) 已通过 macOS 源码检查与 Windows x64 构建、共享 Dart 检查、原生私有存储和 CNG 授权协议检查、安装版及便携版打包。本地整合主线后 237 项 Flutter 测试通过。
+- Windows 更新器从固定 WinSparkle 0.9.4 源码构建，最小扩展复用自动检查器的跳过版本规则，并保留上游下载、验签及安装。候选 [SDK 与应用 CI](https://github.com/SailingLoong/LoongPass/actions/runs/42344698792) 已通过。
+- Windows 验收设备在传入候选安装包后离线。实机安装、真实账号授权/恢复/余额核对及更新界面仍待验收，不能将上述合成测试和构建结果视为实机账号验收。macOS 的既有账号证据及新增功能边界继续以各模块记录为准。
+- 本次 Windows 分发范围为 WorkBuddy、MiniMax、Qoder、TRAE 国内版与 ZCode 的账号和积分管理。WorkBuddy 客户端切换、Magpie 模型服务、LobsterAI 与 Loomy 试验入口当前仅开放于 macOS。
+
 ## 新增 LobsterAI 与 Loomy 源码
 
 新增两平台的登录、账号保存、每日奖励/赠送池、余额、领取意图与后台调度已实现，并通过本机分析、235 项 Flutter 测试、协议及原生检查；详见 [接入检查](docs/verification/2026-11-07-reward-channels.md)。未用真实账号完成新增平台的授权、进程重启与到账，也未发布包含这些渠道的新安装包。
