@@ -12,11 +12,11 @@ class MiniMaxAccountsPanel extends StatefulWidget {
     super.key,
     this.region = 'cn',
     this.open,
-    this.onOwnerReady,
+    this.owner,
   });
   final String region;
   final Future<MiniMaxAccounts> Function()? open;
-  final void Function(MiniMaxAccounts)? onOwnerReady;
+  final MiniMaxAccounts? owner;
   @override
   State<MiniMaxAccountsPanel> createState() => _MiniMaxAccountsPanelState();
 }
@@ -24,10 +24,12 @@ class MiniMaxAccountsPanel extends StatefulWidget {
 class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   static const _channel = MethodChannel('com.sailingloong.loongpass/files');
   MiniMaxAccounts? _service;
+  StreamSubscription<void>? _subscription;
   List<MiniMaxAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available => widget.open != null || nativeAccountsSupported;
+  bool get _available =>
+      widget.owner != null || widget.open != null || nativeAccountsSupported;
   String get _name => widget.region == 'cn' ? 'MiniMax CN' : 'MiniMax';
   @override
   void initState() {
@@ -36,20 +38,22 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   }
 
   Future<void> _restore() => _run(() async {
-    final service = widget.open != null
-        ? await widget.open!()
-        : await openNativeMiniMaxAccounts(
-            region: widget.region,
-            onAutomaticFinished: _refresh,
-          );
+    final service =
+        widget.owner ??
+        (widget.open != null
+            ? await widget.open!()
+            : await openNativeMiniMaxAccounts(
+                region: widget.region,
+                onAutomaticFinished: _refresh,
+              ));
     if (!mounted) {
-      service.dispose();
+      if (widget.owner == null) service.dispose();
       return;
     }
     _service = service;
-    widget.onOwnerReady?.call(service);
+    _subscription = service.changes.listen((_) => unawaited(_refresh()));
     await _refresh();
-    service.startAutomatic();
+    if (widget.owner == null) service.startAutomatic();
   });
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -102,7 +106,8 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   };
   @override
   void dispose() {
-    _service?.dispose();
+    unawaited(_subscription?.cancel());
+    if (widget.owner == null) _service?.dispose();
     super.dispose();
   }
 

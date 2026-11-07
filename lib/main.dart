@@ -19,6 +19,7 @@ import 'app_updates.dart';
 import 'native_account_document_store.dart';
 import 'model_service.dart';
 import 'minimax_model_provider.dart';
+import 'native_minimax_accounts.dart';
 import 'dart:async';
 import 'rewards/reward_accounts.dart';
 import 'rewards/reward_accounts_panel.dart';
@@ -84,6 +85,10 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  late final _minimaxOwners = {
+    for (final region in ['cn', 'global'])
+      region: openNativeMiniMaxAccounts(region: region),
+  };
   final _models = ModelService(
     store: NativeAccountDocumentStore('ModelService'),
   );
@@ -111,13 +116,11 @@ class _AccountPageState extends State<_AccountPage> {
       ),
       ManagedApp.minimaxCn: MiniMaxAccountsPanel(
         region: 'cn',
-        onOwnerReady: (owner) =>
-            _models.register(MiniMaxModelProvider(owner, 'cn')),
+        owner: _minimaxOwners['cn'],
       ),
       ManagedApp.minimax: MiniMaxAccountsPanel(
         region: 'global',
-        onOwnerReady: (owner) =>
-            _models.register(MiniMaxModelProvider(owner, 'global')),
+        owner: _minimaxOwners['global'],
       ),
       ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
       ManagedApp.traeCn: const TraeAccountsPanel(),
@@ -155,6 +158,10 @@ class _AccountPageState extends State<_AccountPage> {
     }
     if (!widget.identityValidationOnly &&
         defaultTargetPlatform == TargetPlatform.macOS) {
+      for (final entry in _minimaxOwners.entries) {
+        _models.register(MiniMaxModelProvider(entry.value, entry.key));
+        entry.value.startAutomatic();
+      }
       unawaited(_models.load().catchError((Object _) {}));
     }
   }
@@ -168,6 +175,12 @@ class _AccountPageState extends State<_AccountPage> {
       http.close();
     }
     unawaited(_models.dispose());
+    if (!widget.identityValidationOnly &&
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      for (final owner in _minimaxOwners.values) {
+        owner.dispose();
+      }
+    }
     _registry.dispose();
     super.dispose();
   }

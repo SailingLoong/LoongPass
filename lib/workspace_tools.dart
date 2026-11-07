@@ -12,11 +12,8 @@ class ModelServicesPage extends StatefulWidget {
 }
 
 class _ModelServicesPageState extends State<ModelServicesPage> {
-  final _model = TextEditingController();
   String? _providerId, _accountId, _message;
-  bool _selectionHydrated = false;
-  ModelProvider? _accountProvider;
-  Future<List<ModelAccount>>? _accounts;
+  final _accounts = <String, Future<List<ModelAccount>>>{};
   @override
   void initState() {
     super.initState();
@@ -26,36 +23,15 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
 
   void _synchronise() {
     final service = widget.service;
-    if (service == null || service.busy) return;
-    if (!_selectionHydrated && service.providerId != null) {
-      _providerId = service.providerId;
-      _accountId = service.accountId;
-      _model.text = service.model!;
-      _selectionHydrated = true;
-    }
-    if (_providerId == null && service.providers.isNotEmpty) {
-      _providerId = service.providers.first.id;
-    }
-    final providers = service.providers.where((p) => p.id == _providerId);
-    final current = providers.isEmpty ? null : providers.first;
-    if (!identical(current, _accountProvider)) {
-      _reloadAccounts();
+    if (service == null) return;
+    for (final provider in service.providers) {
+      _accounts.putIfAbsent(provider.id, provider.accounts);
+      _providerId ??= provider.id;
     }
   }
 
   void _changed() {
-    if (!mounted) return;
-    setState(_synchronise);
-  }
-
-  void _reloadAccounts() {
-    final providers = widget.service?.providers.where(
-      (p) => p.id == _providerId,
-    );
-    _accountProvider = providers == null || providers.isEmpty
-        ? null
-        : providers.first;
-    _accounts = _accountProvider?.accounts() ?? Future.value([]);
+    if (mounted) setState(_synchronise);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -63,24 +39,29 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
     try {
       await action();
     } catch (_) {
-      if (mounted) setState(() => _message = '连接操作未完成，请核对账号、模型及本机端口。');
+      if (mounted) setState(() => _message = '操作未完成，请核对账号授权和本机端口后重试。');
     }
+  }
+
+  Future<void> _copy(String text, String message) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (mounted) setState(() => _message = message);
   }
 
   @override
   void dispose() {
     widget.service?.onChanged = null;
-    _model.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
-    final locked = service == null || service.busy || service.running;
+    final locked = service == null || service.busy;
+    final providers = service?.providers.toList() ?? [];
     return WorkspacePage(
       title: '模型服务',
-      subtitle: '通过本机 Magpie，让其他软件使用选定账号的模型能力。',
+      subtitle: '把已保存账号的模型连接到 Magpie，供 Claude Code 等软件使用。',
       children: [
         WorkspaceCard(
           child: Column(
@@ -101,66 +82,48 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(
-                '选择一个来源、账号和官方模型 ID。Magpie 负责模型选择与客户端协议转换，LoongPass 使用该账号的授权发送请求。',
-              ),
-              const SizedBox(height: 12),
+              const Text('每个账号保留独立连接与可用模型。模型目录来自该账号的官方配置，余额以平台查询为准。'),
+              const SizedBox(height: 16),
               if (service == null)
                 const Text('本地模型服务当前在 macOS 提供。')
               else ...[
                 DropdownButtonFormField<String>(
-                  initialValue:
-                      service.providers.any((p) => p.id == _providerId)
-                      ? _providerId
-                      : null,
+                  initialValue: _providerId,
                   decoration: const InputDecoration(labelText: '模型来源'),
                   items: [
-                    for (final p in service.providers)
+                    for (final p in providers)
                       DropdownMenuItem(value: p.id, child: Text(p.name)),
                   ],
                   onChanged: locked
                       ? null
-                      : (value) => setState(() {
-                          _providerId = value;
+                      : (v) => setState(() {
+                          _providerId = v;
                           _accountId = null;
-                          _reloadAccounts();
                         }),
                 ),
                 const SizedBox(height: 12),
                 FutureBuilder<List<ModelAccount>>(
-                  future: _accounts,
+                  future: _accounts[_providerId],
                   builder: (context, snapshot) {
-                    final accounts = snapshot.data ?? const <ModelAccount>[];
+                    final rows = snapshot.data ?? const <ModelAccount>[];
                     return DropdownButtonFormField<String>(
                       key: ValueKey((
                         _providerId,
-                        accounts.map((a) => a.id).join(','),
+                        rows.map((a) => a.id).join(','),
                       )),
-                      initialValue: accounts.any((a) => a.id == _accountId)
+                      initialValue: rows.any((a) => a.id == _accountId)
                           ? _accountId
                           : null,
                       decoration: const InputDecoration(labelText: '已保存账号'),
                       items: [
-                        for (final a in accounts)
+                        for (final a in rows)
                           DropdownMenuItem(value: a.id, child: Text(a.label)),
                       ],
                       onChanged: locked
                           ? null
-                          : (value) => setState(() => _accountId = value),
+                          : (v) => setState(() => _accountId = v),
                     );
                   },
-                ),
-                TextButton(
-                  onPressed: locked ? null : () => setState(_reloadAccounts),
-                  child: const Text('重新读取已保存账号'),
-                ),
-                TextField(
-                  controller: _model,
-                  enabled: !locked,
-                  decoration: const InputDecoration(
-                    labelText: '官方模型 ID',
-                    hintText: '使用官方客户端配置中的模型 ID',
-                  ),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -172,65 +135,164 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                           locked || _providerId == null || _accountId == null
                           ? null
                           : () => _run(() async {
-                              await service.configure(
+                              await service.addAccount(
                                 providerId: _providerId!,
                                 accountId: _accountId!,
-                                model: _model.text.trim(),
                               );
-                              await service.start();
                             }),
-                      child: const Text('保存并启动'),
+                      child: const Text('添加账号连接'),
+                    ),
+                    TextButton(
+                      onPressed: locked
+                          ? null
+                          : () => setState(() {
+                              for (final p in providers) {
+                                _accounts[p.id] = p.accounts();
+                              }
+                            }),
+                      child: const Text('重新读取已保存账号'),
                     ),
                     OutlinedButton(
-                      onPressed: !service.running || service.busy
+                      onPressed: locked || service.bindings.isEmpty
                           ? null
-                          : () => _run(service.stop),
-                      child: const Text('停止本地服务'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: !service.running
-                          ? null
-                          : () => _run(() async {
-                              await Clipboard.setData(
-                                ClipboardData(
-                                  text: service.importUri.toString(),
-                                ),
-                              );
-                              if (mounted)
-                                setState(
-                                  () => _message =
-                                      'Magpie 接入链接已复制，请在 Magpie 中导入。',
-                                );
-                            }),
-                      icon: const Icon(Icons.copy_outlined, size: 17),
-                      label: const Text('复制 Magpie 接入链接'),
+                          : () => _run(
+                              service.running ? service.stop : service.start,
+                            ),
+                      child: Text(service.running ? '停止本地服务' : '启动本地服务'),
                     ),
                   ],
                 ),
-                if (service.endpoint != null) ...[
-                  const SizedBox(height: 12),
-                  SelectableText(service.endpoint.toString()),
-                ],
-                if (service.lastStatus != null)
-                  Text('最近一次上游响应 HTTP ${service.lastStatus}'),
+                if (service.endpoint != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: SelectableText(service.endpoint.toString()),
+                  ),
                 if (service.error != null)
-                  Text(switch (service.error) {
-                    'port_unavailable' => '本地端口 3426 不可用，请检查占用后重新启动。',
-                    'save_failed' => '连接设置未保存，操作未完成，请重试。',
-                    'invalid_settings' => '连接设置无法读取，服务未自动启动。',
-                    _ => '本地连接不可用，请核对配置后重试。',
-                  }),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(switch (service.error) {
+                      'port_unavailable' => '本机服务端口被占用，请关闭占用程序后重试。',
+                      'save_failed' => '连接设置未保存，请重试。',
+                      'invalid_settings' => '连接设置无法读取，服务未自动启动。',
+                      _ => '连接不可用，请核对账号后重试。',
+                    }),
+                  ),
               ],
-              if (_message != null) ...[
-                const SizedBox(height: 10),
-                Text(_message!),
-              ],
+              if (_message != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(_message!),
+                ),
             ],
           ),
         ),
+        if (service != null)
+          for (final binding in service.bindings)
+            WorkspaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FutureBuilder<List<ModelAccount>>(
+                          future: _accounts[binding.providerId],
+                          builder: (context, snapshot) {
+                            final rows =
+                                (snapshot.data ?? const <ModelAccount>[]).where(
+                                  (a) => a.id == binding.accountId,
+                                );
+                            final sources = providers.where(
+                              (p) => p.id == binding.providerId,
+                            );
+                            return Text(
+                              '${sources.isEmpty ? binding.providerId : sources.first.name} · ${rows.isEmpty ? binding.accountId : rows.first.label}',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            );
+                          },
+                        ),
+                      ),
+                      Switch(
+                        value: binding.enabled,
+                        onChanged: locked
+                            ? null
+                            : (v) =>
+                                  _run(() => service.setEnabled(binding.id, v)),
+                      ),
+                    ],
+                  ),
+                  if (binding.models.isEmpty)
+                    const Text('暂无可用模型，请刷新目录或重新授权账号。')
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        for (final model in binding.models)
+                          Chip(label: Text(model.id)),
+                      ],
+                    ),
+                  if (binding.queriedAt != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        '目录查询时间：${binding.queriedAt!.toLocal().toString().split('.').first}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  if (binding.error != null)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('目录更新未完成，请核对账号授权后刷新。'),
+                    ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: locked
+                            ? null
+                            : () =>
+                                  _run(() => service.refreshModels(binding.id)),
+                        child: const Text('刷新模型目录'),
+                      ),
+                      OutlinedButton.icon(
+                        key: ValueKey('copy-${binding.id}'),
+                        onPressed: service.importUriFor(binding.id) == null
+                            ? null
+                            : () => _run(
+                                () => _copy(
+                                  service.importUriFor(binding.id).toString(),
+                                  '接入链接已复制。首次导入此来源时使用此链接。',
+                                ),
+                              ),
+                        icon: const Icon(Icons.copy_outlined, size: 17),
+                        label: const Text('复制 Magpie 接入链接'),
+                      ),
+                      TextButton(
+                        onPressed: () => _run(
+                          () => _copy(
+                            binding.key,
+                            '账号密钥已复制，请添加到 Magpie 中此来源的密钥列表。',
+                          ),
+                        ),
+                        child: const Text('复制账号密钥'),
+                      ),
+                      TextButton(
+                        onPressed: locked
+                            ? null
+                            : () => _run(() => service.revoke(binding.id)),
+                        child: const Text('撤销连接'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
         const WorkspaceCard(
           child: Text(
-            '已实测 MiniMax CN 的文本与流式调用。国际版需单独核对账号和模型。当前每个连接固定使用一个账号，失败时返回结果。上游调用可能消耗该账号额度，余额以平台查询为准。服务仅监听本机，启动设置会在下次打开 LoongPass 时恢复。',
+            '首次导入某个来源后，将同一来源的其他账号密钥加入 Magpie 的同一服务。启用账号轮换，并设置错误直接返回；失败或中断的请求不会自动换账号重发。请使用支持这些选项的新版 Magpie。连接仅监听本机，启动设置会随 LoongPass 恢复。',
           ),
         ),
       ],
