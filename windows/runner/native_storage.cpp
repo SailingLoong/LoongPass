@@ -394,12 +394,16 @@ void ValidateVaultRecord(const Json& row) {
   Require(state == "active" || state == "rotationPending");
   static const std::set<std::string> fields = {
       "schema", "revision", "state", "domain", "endpoint", "uid",
-      "accessToken", "refreshToken", "expiresAt"};
+      "accessToken", "refreshToken", "expiresAt", "registrationId"};
   for (const auto& field : row.items())
     Require(fields.count(field.key()) != 0);
   for (const auto* name : {"domain", "endpoint"}) {
     const auto host = Text(row.at(name));
     Require(host == "www.workbuddy.cn" || host == "www.codebuddy.cn");
+  }
+  if (row.contains("registrationId")) {
+    const auto registration = Text(row.at("registrationId"));
+    Require(registration.size() == 32 && std::all_of(registration.begin(), registration.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }));
   }
   AsciiText(row.at("uid"), 512);
   AsciiText(row.at("accessToken"), 16384);

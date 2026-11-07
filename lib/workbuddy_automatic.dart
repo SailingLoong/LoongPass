@@ -19,6 +19,8 @@ class WorkBuddyAutomatic {
   final WorkBuddyAccounts accounts;
   final WorkBuddySchedule once, periodic;
   final void Function()? onChanged;
+  final _changes = StreamController<void>.broadcast();
+  Stream<void> get changes => _changes.stream;
   final _enabled = <String>{};
   final _revisions = <String, int>{};
   bool _closed = false, _ticking = false;
@@ -46,6 +48,7 @@ class WorkBuddyAutomatic {
   bool _current(String id, int revision) =>
       enabled(id) && _revisions[id] == revision;
   void _notify() {
+    if (!_closed) _changes.add(null);
     try {
       onChanged?.call();
     } catch (_) {
@@ -170,6 +173,7 @@ class WorkBuddyAutomatic {
   void close() {
     if (_closed) return;
     _closed = true;
+    unawaited(_changes.close());
     _revision++;
     _enabled.clear();
     _stopTimers();

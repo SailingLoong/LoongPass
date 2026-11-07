@@ -158,6 +158,43 @@ class WorkBuddyAccountFlow {
   WorkBuddyState? get status => _status;
   WorkBuddyResult? get result => _result;
   double? get totalRemaining => _totalRemaining;
+  String? get registrationId => _vaultLease?.registrationId;
+  Future<T> withInferenceAuthorization<T>(
+    Future<T> Function(
+      String domain,
+      String uid,
+      String accessToken,
+      bool Function() isCurrent,
+    )
+    use, {
+    required bool Function() admission,
+  }) async {
+    final account = _account;
+    if (identityValidationOnly ||
+        !authorized ||
+        _busy ||
+        _restorePending ||
+        account == null ||
+        _vaultLease == null)
+      throw const WorkBuddyApiFailure(
+        'AccountUnavailable',
+        mayHaveBeenSent: false,
+      );
+    final epoch = _epoch;
+    _busy = true;
+    var active = true;
+    try {
+      return await _api.withInferenceAuthorization(
+        account,
+        use,
+        gate: () => active && _same(epoch) && _live && admission(),
+      );
+    } finally {
+      active = false;
+      if (_same(epoch)) _busy = false;
+    }
+  }
+
   Future<String> activateDesktop(
     Future<String> Function(WorkBuddyDesktopSession) activate,
   ) async {

@@ -23,9 +23,11 @@ LoongPass 是统一的多平台、多账号与积分管理桌面工具。核心�
 
 Codex 官方多账号管理是独立的账号切换需求，不属于奖励渠道。复用原 Codex 数据目录，切换官方身份并延续可核实的本机项目和对话偏好，不改写配置文件或对话数据库，不复制目标账号的云端缓存、权限和排队操作；不把本机认证记录等同于运行中客户端已核实的身份。当前接入与验收边界见 `docs/verification/2026-11-07-codex-accounts.md`。
 
-macOS 主线提供本机 Anthropic Messages 服务和官方 Magpie 接入链接。首轮真实验收为 MiniMax CN 的一个已保存账号、一个明确选择的模型，涵盖 Claude Code 文本、流式和工具调用。各平台调用能力与积分扣减仍分别按真实证据验收，记录见 `docs/verification/2026-11-07-magpie-connection.md`。
+macOS 主线提供本机 Anthropic Messages/Chat 服务和官方 Magpie 接入链接。MiniMax CN、Loomy、WorkBuddy CN、Qoder CN、ZCode BigModel 赠送模型已完成七个真实账号的 Claude Code 文本、流式及工具闭环，详情与覆盖边界见 `docs/verification/2026-11-07-model-pooling.md`；早期单账号基线见 `docs/verification/2026-11-07-magpie-connection.md`。Windows/Intel 真机与各来源其他模型不由该结果推导。官方余额观测与逐请求账单归因分别报告。
 
-账号模块继续拥有授权、刷新、身份与额度事实；模型适配器持有同一账号租约完成请求。连接设置只保存使用意图和本地调用密钥，Magpie 负责客户端协议转换与模型选择。同类来源通过 `ModelProvider` 接入既有账号 owner；多账号调度按实际后续需求演进。数据读取和界面展示保持只读，未知调用结果保持单次发送语义。
+账号模块继续拥有授权、刷新、身份与额度事实；模型适配器持有同一账号租约完成请求。连接设置只保存使用意图和每个账号的本地调用密钥，普通令牌轮换保留 key，显式撤销或账号重新注册不恢复旧权限。Magpie 负责客户端协议转换及多个独立请求的账号轮换；首次导入后须追加同来源其他账号 key，并启用 rotate、errors=pass、patience=off。Claude Code 还须关闭其重试与非流式 fallback，具体原生设置见验证记录，不能把网关单次发送当成任意客户端不会重发的保证。
+
+同类来源通过 `ModelProvider` 接入既有账号 owner。动态模型目录及原生协议事实由适配器提供，读取目录与界面展示不触发刷新或领取；启动、账号变化及明确用户操作负责刷新。ZCode 首批仅用该保存账号已生效的 Start Plan 赠送权益，耗尽或拒绝不转付费计划。
 
 ## 当前版本的工程与验收要求
 

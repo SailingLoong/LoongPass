@@ -539,6 +539,36 @@ class WorkBuddyApi {
     return Map<String, Object?>.from(p);
   }
 
+  Future<T> withInferenceAuthorization<T>(
+    WorkBuddyAccount account,
+    Future<T> Function(
+      String domain,
+      String uid,
+      String accessToken,
+      bool Function() isCurrent,
+    )
+    use, {
+    required bool Function() gate,
+  }) async {
+    if (!isCurrent() ||
+        !gate() ||
+        !(await prepareAdmission?.call() ?? true) ||
+        account.expiresAt != null && !now().isBefore(account.expiresAt!))
+      throw const WorkBuddyApiFailure(
+        'ExpiredAuthorization',
+        mayHaveBeenSent: false,
+      );
+    return use(
+      account.domain,
+      account.uid,
+      account._token,
+      () =>
+          isCurrent() &&
+          gate() &&
+          (account.expiresAt == null || now().isBefore(account.expiresAt!)),
+    );
+  }
+
   Future<WorkBuddyDesktopSession> desktopSession(
     WorkBuddyAccount account, {
     required bool Function() gate,

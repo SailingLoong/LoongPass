@@ -103,9 +103,12 @@ class ZcodeHttp implements ZcodeTransport {
     if (r.verification != null && r.path != ZcodeApi.claimPath)
       throw const ZcodeFailure('invalid_request');
     final query = <String, String>{
-      if (r.path == ZcodeApi.balancePath || r.path == ZcodeApi.previewPath)
+      if (r.path == ZcodeApi.balancePath ||
+          r.path == ZcodeApi.previewPath ||
+          r.path == ZcodeApi.configPath)
         'app_version': context['version']!,
-      if (r.path == ZcodeApi.previewPath) 'platform': context['platform']!,
+      if (r.path == ZcodeApi.previewPath || r.path == ZcodeApi.configPath)
+        'platform': context['platform']!,
       if (r.path == ZcodeApi.marketingPath) 'seq': '0',
     };
     final post = r.path == ZcodeApi.initPath || r.path == ZcodeApi.claimPath;

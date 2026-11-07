@@ -1,14 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
+import 'desktop_platform.dart';
 import 'package:flutter/foundation.dart';
 import 'app_theme.dart';
 export 'app_theme.dart';
 import 'app_sidebar.dart';
 import 'qoder_device_panel.dart';
 import 'qoder_device_accounts.dart';
+import 'qoder_device_flutter.dart';
+import 'qoder_model_provider.dart';
 import 'minimax_accounts_panel.dart';
 import 'workbuddy_accounts_panel.dart';
 import 'trae_accounts_panel.dart';
 import 'zcode_accounts_panel.dart';
+import 'native_zcode_activity.dart';
+import 'zcode_model_provider.dart';
 import 'codex_accounts.dart';
 import 'codex_accounts_panel.dart';
 import 'ui_preferences.dart';
@@ -19,6 +26,15 @@ import 'app_updates.dart';
 import 'native_account_document_store.dart';
 import 'model_service.dart';
 import 'minimax_model_provider.dart';
+import 'loomy_model_provider.dart';
+import 'workbuddy_model_provider.dart';
+import 'workbuddy_accounts.dart';
+import 'workbuddy_automatic.dart';
+import 'workbuddy_flutter.dart';
+import 'workbuddy_desktop_flutter.dart';
+import 'workbuddy_vault.dart';
+import 'workbuddy_vault_flutter.dart';
+import 'native_minimax_accounts.dart';
 import 'dart:async';
 import 'rewards/reward_accounts.dart';
 import 'rewards/reward_accounts_panel.dart';
@@ -84,8 +100,26 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  late final _zcode = createNativeZcodeActivityAccounts();
+  late final _qoderOwners = {
+    for (final region in QoderRegion.values)
+      region: createQoderDeviceAccounts(region: region),
+  };
+  late final _minimaxOwners = {
+    for (final region in ['cn', 'global'])
+      region: openNativeMiniMaxAccounts(region: region),
+  };
   final _models = ModelService(
     store: NativeAccountDocumentStore('ModelService'),
+  );
+  late final _workbuddyStore = WorkBuddyVaultFlutter();
+  late final _workbuddyVault = WorkBuddyVault(_workbuddyStore);
+  late final WorkBuddyAccounts _workbuddy = WorkBuddyAccounts(
+    create: createWorkBuddyMemoryOwner,
+    onAccountReady: (id) => _workbuddyAutomatic.setEnabled(id, true),
+  );
+  late final WorkBuddyAutomatic _workbuddyAutomatic = WorkBuddyAutomatic(
+    _workbuddy,
   );
   final _registry = AccountWorkspaceRegistry();
   final _codex = CodexAccounts();
@@ -100,26 +134,39 @@ class _AccountPageState extends State<_AccountPage> {
     transportFor: (provider) => _rewardHttp[provider.id]!,
   );
   bool get _rewardsEnabled => defaultTargetPlatform == TargetPlatform.macOS;
+  bool get _modelsEnabled => defaultTargetPlatform == TargetPlatform.macOS;
   late final Map<ManagedApp, Widget> _pages = {
     for (final entry in <ManagedApp, Widget>{
-      ManagedApp.zcode: const ZcodeAccountsPanel(),
-      ManagedApp.qoderCn: const QoderDeviceAccountsPanel(
-        region: QoderRegion.cn,
+      ManagedApp.zcode: ZcodeAccountsPanel(
+        owner: nativeAccountsSupported ? _zcode : null,
       ),
-      ManagedApp.qoder: const QoderDeviceAccountsPanel(
+      ManagedApp.qoderCn: QoderDeviceAccountsPanel(
+        region: QoderRegion.cn,
+        owner: nativeAccountsSupported ? _qoderOwners[QoderRegion.cn] : null,
+      ),
+      ManagedApp.qoder: QoderDeviceAccountsPanel(
         region: QoderRegion.global,
+        owner: nativeAccountsSupported
+            ? _qoderOwners[QoderRegion.global]
+            : null,
       ),
       ManagedApp.minimaxCn: MiniMaxAccountsPanel(
         region: 'cn',
-        onOwnerReady: (owner) =>
-            _models.register(MiniMaxModelProvider(owner, 'cn')),
+        owner: nativeAccountsSupported ? _minimaxOwners['cn'] : null,
       ),
       ManagedApp.minimax: MiniMaxAccountsPanel(
         region: 'global',
-        onOwnerReady: (owner) =>
-            _models.register(MiniMaxModelProvider(owner, 'global')),
+        owner: nativeAccountsSupported ? _minimaxOwners['global'] : null,
       ),
-      ManagedApp.workbuddy: const WorkBuddyAccountsPanel(savedAccounts: true),
+      ManagedApp.workbuddy:
+          widget.identityValidationOnly || !nativeAccountsSupported
+          ? const WorkBuddyAccountsPanel(savedAccounts: true)
+          : WorkBuddyAccountsPanel(
+              savedAccounts: true,
+              owner: _workbuddy,
+              vault: _workbuddyVault,
+              automatic: _workbuddyAutomatic,
+            ),
       ManagedApp.traeCn: const TraeAccountsPanel(),
       ManagedApp.codex: CodexAccountsPanel(owner: _codex),
       for (final provider in rewardProviders)
@@ -150,13 +197,48 @@ class _AccountPageState extends State<_AccountPage> {
     super.initState();
     if (!widget.identityValidationOnly) unawaited(_updates.load());
     if (!widget.identityValidationOnly) unawaited(_codex.start());
-    if (!widget.identityValidationOnly && _rewardsEnabled) {
-      unawaited(_rewards.start().catchError((_) {}));
+    if (!widget.identityValidationOnly && nativeAccountsSupported) {
+      unawaited(_startAccountServices());
     }
-    if (!widget.identityValidationOnly &&
-        defaultTargetPlatform == TargetPlatform.macOS) {
-      unawaited(_models.load().catchError((Object _) {}));
+  }
+
+  Future<void> _startAccountServices() async {
+    if (_rewardsEnabled) {
+      try {
+        await _rewards.start();
+      } catch (_) {}
     }
+    if (!mounted) return;
+    for (final owner in _minimaxOwners.values) {
+      owner.startAutomatic();
+    }
+    for (final owner in _qoderOwners.values) {
+      owner.startAutomatic();
+    }
+    _zcode.startAutomatic();
+    await _workbuddy.restoreSaved(_workbuddyVault, _workbuddyStore.savedKeys);
+    if (!mounted || !_modelsEnabled) return;
+    for (final entry in _minimaxOwners.entries) {
+      _models.register(MiniMaxModelProvider(entry.value, entry.key));
+    }
+    _models.register(LoomyModelProvider(_rewards));
+    _models.register(
+      WorkBuddyModelProvider(
+        _workbuddy,
+        clientVersion: WorkBuddyDesktopFlutter.clientVersion,
+      ),
+    );
+    _models.register(QoderModelProvider(_qoderOwners[QoderRegion.cn]!));
+    final prompt =
+        jsonDecode(
+              await rootBundle.loadString(
+                'assets/protocols/zcode_start_prompt.json',
+              ),
+            )
+            as Map<String, dynamic>;
+    if (!mounted) return;
+    _models.register(ZcodeModelProvider(_zcode, prompt: prompt));
+    await _models.load().catchError((Object _) {});
   }
 
   @override
@@ -168,6 +250,18 @@ class _AccountPageState extends State<_AccountPage> {
       http.close();
     }
     unawaited(_models.dispose());
+    if (!widget.identityValidationOnly && nativeAccountsSupported) {
+      _zcode.dispose();
+      for (final owner in _qoderOwners.values) {
+        owner.dispose();
+      }
+      _workbuddyAutomatic.close();
+      _workbuddy.close();
+      _workbuddyVault.close();
+      for (final owner in _minimaxOwners.values) {
+        owner.dispose();
+      }
+    }
     _registry.dispose();
     super.dispose();
   }
@@ -186,7 +280,7 @@ class _AccountPageState extends State<_AccountPage> {
         sections: widget.identityValidationOnly
             ? const {}
             : {
-                if (defaultTargetPlatform == TargetPlatform.macOS)
+                if (_modelsEnabled)
                   WorkspaceSection.models: ModelServicesPage(service: _models),
                 WorkspaceSection.settings: WorkspaceSettingsPage(
                   preferences: widget.preferences,

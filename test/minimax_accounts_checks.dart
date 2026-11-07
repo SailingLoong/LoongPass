@@ -721,6 +721,7 @@ Future<void> main() async {
       region,
       token,
       current,
+      registration,
     ) async {
       expect(
         region == 'cn' && token == 'synthetic-access',
@@ -740,8 +741,20 @@ Future<void> main() async {
   await check('inference reuses persisted refresh before dispatch', (d) async {
     final h = FakeHttp(), s = service(d, h);
     final a = await authorized(s);
+    final registrationBefore = (await s.list()).single.registrationId;
+    bool Function()? retired;
     time += 550000;
-    await s.withInferenceAuthorization(a.id, (region, token, current) async {
+    await s.withInferenceAuthorization(a.id, (
+      region,
+      token,
+      current,
+      registration,
+    ) async {
+      retired = current;
+      expect(
+        registration == registrationBefore,
+        'refresh changed registration',
+      );
       final row = (documents[d.path]!.data['accounts'] as Map).values.single;
       expect(
         token == 'synthetic-new' && row['accessToken'] == token,
@@ -752,6 +765,7 @@ Future<void> main() async {
         'inference bypassed refresh owner',
       );
     });
+    expect(retired != null && !retired!(), 'lease survived scope');
     s.dispose();
   });
   stdout.writeln('RESULT $passed passed, $failed failed');
