@@ -495,7 +495,7 @@ class WorkBuddyAccounts {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot)) return;
     _retire(slot);
-    _message = '已移除本次内存账号；领取记录保留，未知结果不会自动补发。';
+    _message = '已移除本次内存账号；领取记录保留，未知结果不会补发。';
   }
 
   void _retire(WorkBuddyAccountSession slot) {

@@ -158,7 +158,7 @@ import FlutterMacOS
                 ["auth.openai.com", "chatgpt.com"].contains(parts.host ?? ""),
                 parts.user == nil, parts.password == nil, parts.port == nil || parts.port == 443,
                 let url = parts.url, NSWorkspace.shared.open(url) else { throw CodexRuntimeFailure.loginFailed }
-            message = "请在浏览器中完成 Codex 官方授权；完成后会自动保存账号。"
+            message = "请在浏览器中完成 Codex 官方授权；完成后会保存账号。"
             guard try await child.waitForLogin(id) else { throw CodexRuntimeFailure.loginFailed }
             try Task.checkCancellation()
             guard let bytes = try CodexAuthFile(root: directory).read(), let accounts else { throw CodexRuntimeFailure.loginFailed }

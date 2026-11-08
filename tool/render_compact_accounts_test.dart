@@ -68,7 +68,7 @@ void main() {
                   CreditExpiry(DateTime(2026, 11, 13 + n), 300),
                 ],
               ),
-              status: n == 5 ? '领取结果待核对' : '自动领取已开启',
+              status: n == 5 ? '领取结果待核对' : '辅助领取已开启',
               needsAttention: n == 5,
               receipt: ClaimReceipt(
                 amount: 100,

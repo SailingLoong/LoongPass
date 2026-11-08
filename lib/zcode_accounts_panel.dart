@@ -118,8 +118,8 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     'noOffer' => '服务端当前没有可领取活动。',
     'discoveryIncomplete' => '部分活动信息暂不可用，尚不能确认是否有其他可领取奖励。',
     'pending' => '领取结果待核对；只查询回执，不会重复发送。',
-    'verificationRequired' => '官方验证尚未完成，自动领取已暂停。点击“核对并领取活动”继续验证。',
-    'activationRequired' => '活动要求先使用官方 ZCode 客户端，自动领取已暂停。',
+    'verificationRequired' => '官方验证尚未完成，辅助领取已暂停。点击“核对并领取活动”继续验证。',
+    'activationRequired' => '活动要求先使用官方 ZCode 客户端，辅助领取已暂停。',
     'ineligible' => '服务端确认本次不符合活动领取条件。',
     'authorization_required' => '授权已失效，请通过官网重新授权此账号。',
     _ => '等待检查活动与额度。',
@@ -185,7 +185,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('自动领取活动'),
+            title: const Text('辅助领取活动'),
             value: a.automatic,
             onChanged: _busy
                 ? null
@@ -239,7 +239,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
         title: 'ZCode',
         accountCount: _accounts.length,
         helpText:
-            'ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。' +
+            'ZCode · 智谱 BigModel。保存多个账号，辅助领取官方开放的活动奖励；运行期间按计划检查。活动以服务端资格为准。' +
             ' 授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。',
         actions: [
           FilledButton(

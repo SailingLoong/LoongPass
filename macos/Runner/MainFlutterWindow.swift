@@ -22,7 +22,7 @@ class MainFlutterWindow: NSWindow {
     catch {
       let alert = NSAlert()
       alert.messageText = "无法打开 LoongPass 账号数据"
-      alert.informativeText = "请退出其他 LoongPass 版本，并允许系统请求的原账号目录访问。若新旧目录都有数据，请保留两处数据并联系维护者；应用不会自动合并或覆盖账号。"
+      alert.informativeText = "请退出其他 LoongPass 版本，并允许系统请求的原账号目录访问。若新旧目录都有数据，请保留两处数据并联系维护者；应用不会自行合并或覆盖账号。"
       alert.runModal()
       NSApp.terminate(nil); return
     }

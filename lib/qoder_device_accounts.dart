@@ -234,7 +234,7 @@ class QoderDeviceAccounts {
         if (uid != null) {
           _pollTimer?.cancel();
           _pollTimer = null;
-          message = '账号已验证并保存，自动签到已开启。';
+          message = '账号已验证并保存，辅助签到已开启。';
           startAutomatic();
         }
       } on QoderAccountError catch (e) {

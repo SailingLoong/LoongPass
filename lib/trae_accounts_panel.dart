@@ -103,7 +103,7 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
       'url': url.toString(),
     });
     _owner!.followAuthorization();
-    if (mounted) setState(() => _message = '请在 TRAE CN 官网完成授权，正在自动等待结果。');
+    if (mounted) setState(() => _message = '请在 TRAE CN 官网完成授权，正在等待授权结果。');
   });
   String _outcome(TraeAccount a) => switch (a.outcome) {
     'claimed' =>
@@ -155,7 +155,7 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('自动签到'),
+                  const Text('辅助签到'),
                   Switch(
                     value: a.automatic,
                     onChanged: _busy
@@ -184,7 +184,7 @@ class _TraeAccountsPanelState extends State<TraeAccountsPanel> {
         title: 'TRAE CN',
         accountCount: _accounts.length,
         helpText:
-            'TRAE CN 账号保存、自动签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。' +
+            'TRAE CN 账号保存、辅助签到与积分到期。仅接入已确认有签到奖励的国内版。授权以明文保存在本机私有目录。' +
             ' 启动约 30 秒后检查，之后每 15 分钟；关闭应用后停止。',
         actions: [
           FilledButton(

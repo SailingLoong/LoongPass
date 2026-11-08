@@ -72,11 +72,11 @@ class AppUpdateCard extends StatelessWidget {
         const Text('更新会保留本机账号和设置。'),
         SwitchListTile.adaptive(
           contentPadding: EdgeInsets.zero,
-          title: const Text('自动检查并下载更新'),
+          title: const Text('辅助检查并下载更新'),
           subtitle: Text(
             updates.installOnQuit
-                ? '校验通过后在退出时安装，也可以主动安装并重启。'
-                : '自动下载并校验更新后打开安装程序。',
+                ? '按计划检查并下载，校验通过后在退出时安装，也可以主动安装并重启。'
+                : '按计划检查、下载并校验更新后打开安装程序。',
           ),
           value: updates.automaticUpdates,
           onChanged: updates.available ? updates.setAutomaticUpdates : null,

@@ -309,7 +309,7 @@ class MiniMaxAccounts {
       _loginTimer = null;
       login.cancel();
       _login = null;
-      loginMessage = '账号已验证并保存，自动签到已开启。';
+      loginMessage = '账号已验证并保存，辅助签到已开启。';
     } on MiniMaxOAuthFailure catch (e) {
       if (!login.active) {
         _loginTimer?.cancel();

@@ -126,7 +126,7 @@ class _RewardAccountsPanelState extends State<RewardAccountsPanel> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('自动领取'),
+                const Text('辅助领取'),
                 Switch(
                   value: account.automatic,
                   onChanged: owner.busy

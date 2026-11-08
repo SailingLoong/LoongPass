@@ -215,7 +215,7 @@ class TraeAccounts {
             'owner': 'officialClient',
           });
           _pendingImport = null;
-          message = '已核实并保存 TRAE CN 当前账号，自动签到已开启。';
+          message = '已核实并保存 TRAE CN 当前账号，辅助签到已开启。';
           startAutomatic();
         } on TraeFailure catch (error) {
           if ({
@@ -312,7 +312,7 @@ class TraeAccounts {
       'owner': 'loongpass',
     });
     cancelAuthorization();
-    message = '账号已验证并保存，自动签到已开启。';
+    message = '账号已验证并保存，辅助签到已开启。';
     startAutomatic();
   });
   void cancelAuthorization() {

@@ -224,7 +224,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 9),
                         child: Tooltip(
-                          message: '账号保存在本机；自动任务仅在运行期间执行',
+                          message: '账号保存在本机；辅助任务仅在运行期间执行',
                           child: compact
                               ? const Icon(Icons.computer_outlined, size: 15)
                               : Text(

@@ -349,7 +349,7 @@ class ZcodeActivityAccounts {
       login.flow = d['flow_id'];
       login.expires = min(d['expires_at'] * 1000 as int, now() + 600000);
       login.interval = d['poll_interval_sec'];
-      message = '请在智谱官方页面完成授权，完成后会自动保存。';
+      message = '请在智谱官方页面完成授权，完成后会保存。';
       return url;
     } catch (_) {
       if (identical(_login, login)) _login = null;
@@ -487,7 +487,7 @@ class ZcodeActivityAccounts {
       _poll?.cancel();
     }
     if (!_closed) _authorizationChanges.add(null);
-    message = '账号已保存；自动检查活动已开启。';
+    message = '账号已保存；辅助检查活动已开启。';
     startAutomatic();
   });
   bool cancelAuthorization() {

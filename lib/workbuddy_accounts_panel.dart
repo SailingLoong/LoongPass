@@ -106,7 +106,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
     try {
       await action();
     } catch (_) {
-      if (mounted) setState(() => _message = '操作未完成；没有自动重试，请核对该账号的记录。');
+      if (mounted) setState(() => _message = '操作未完成；没有在后台重试，请核对该账号的记录。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -140,10 +140,10 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
         title: const Text('添加 WorkBuddy 授权账号'),
         content: Text(
           widget.savedAccounts
-              ? '前往 WorkBuddy 官网授权。验证身份后，授权将以明文保存在本机应用私有目录。应用启动时恢复账号，运行期间自动签到；结果未知时停止，不重复发送。'
+              ? '前往 WorkBuddy 官网授权。验证身份后，授权将以明文保存在本机应用私有目录。应用启动时恢复账号，运行期间辅助签到；结果未知时停止，不重复发送。'
               : widget.identityValidationOnly
-              ? '只验证当前两个 WorkBuddy 账号的身份。仅向已核官网进行授权和账号资料请求；凭据只保留在本次内存中。不会保存凭据、查询额度、签到或开启自动化。退出即清空本次会话；本机清空不等于官网撤权。'
-              : '为每个账号单独前往官方网页授权。凭据仅保留在本次内存中；不含凭据的领取记录保存在本机。不会切换桌面账号，也不会自动签到。退出后需重新授权，原领取记录继续防止重复发送。取消或退出只停止本机使用，不撤销官网已接受的授权。',
+              ? '只验证当前两个 WorkBuddy 账号的身份。仅向已核官网进行授权和账号资料请求；凭据只保留在本次内存中。不会保存凭据、查询额度、签到或开启辅助任务。退出即清空本次会话；本机清空不等于官网撤权。'
+              : '为每个账号单独前往官方网页授权。凭据仅保留在本次内存中；不含凭据的领取记录保存在本机。不会切换桌面账号，也不安排签到任务。退出后需重新授权，原领取记录继续防止重复发送。取消或退出只停止本机使用，不撤销官网已接受的授权。',
         ),
         actions: [
           TextButton(
@@ -216,8 +216,8 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
         title: const Text('移除本次内存账号'),
         content: Text(
           widget.savedAccounts
-              ? '结束当前会话并停止自动签到，保留本机授权文件和签到记录。下次启动会自动恢复并检查签到。'
-              : '仅移除此授权会话，不退出官方客户端、不删除账号数据或领取记录。可能已经发送的请求无法撤回；未知结果不会自动补发。',
+              ? '结束当前会话并停止辅助签到，保留本机授权文件和签到记录。下次启动会恢复并检查签到。'
+              : '仅移除此授权会话，不退出官方客户端、不删除账号数据或领取记录。可能已经发送的请求无法撤回；未知结果不会补发。',
         ),
         actions: [
           TextButton(
@@ -247,9 +247,9 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
         final allowed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('开启本次会话自动签到'),
+            title: const Text('开启本次会话辅助签到'),
             content: const Text(
-              '仅为当前选中的授权账号开启。共享会话定时器启动 30 秒后首查，此后每 15 分钟检查；新增账号随下一轮检查；服务端状态可签到时才发送一次。今日成功后等待下一天，结果未知时停止，不补发。关闭开关、移除账号或退出面板会话即停止；不保存凭据或自动化选项，重启后不会恢复。已经发送的请求无法撤回。',
+              '仅为当前选中的授权账号开启。共享会话定时器启动 30 秒后首查，此后每 15 分钟检查；新增账号随下一轮检查；服务端状态可签到时才发送一次。今日成功后等待下一天，结果未知时停止，不补发。关闭开关、移除账号或退出面板会话即停止；不保存凭据或辅助选项，重启后不会恢复。已经发送的请求无法撤回。',
             ),
             actions: [
               TextButton(
@@ -266,7 +266,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
         if (allowed == true &&
             mounted &&
             !(_automatic?.setEnabled(account.id, true) ?? false)) {
-          _message = '当前账号不能开启自动签到，请核对授权状态与已有领取记录。';
+          _message = '当前账号不能开启辅助签到，请核对授权状态与已有领取记录。';
         }
       }),
     );
@@ -284,7 +284,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
   String _result(WorkBuddyResult result) => switch (result.state) {
     WorkBuddyState.claimed => '已核实本次到账 ${result.credited} 额度。',
     WorkBuddyState.alreadyClaimed => '服务端显示已签到，本次没有重复领取。',
-    WorkBuddyState.needsVerification => '账号需要重新核验；不会自动重试签到。',
+    WorkBuddyState.needsVerification => '账号需要重新核验；不会在后台重试签到。',
     WorkBuddyState.unavailable => '当前活动不满足领取条件。',
     _ => '本次结果未知，未确认到账，不重复领取；已存在的领取记录会保留。',
   };
@@ -322,8 +322,8 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
               if (widget.savedAccounts)
                 Text(
                   _automatic?.enabled(selected.id) ?? false
-                      ? '自动签到已开启：30 秒后首查，之后每 15 分钟检查；今日已签到时等待下一天。退出应用即停止。'
-                      : '自动签到已暂停，请核对授权状态与签到记录。',
+                      ? '辅助签到已开启：30 秒后首查，之后每 15 分钟检查；今日已签到时等待下一天。退出应用即停止。'
+                      : '辅助签到已暂停，请核对授权状态与签到记录。',
                 ),
               Wrap(
                 spacing: 12,
@@ -375,7 +375,7 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
                 SwitchListTile.adaptive(
                   key: const Key('workbuddy-automatic'),
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('本次会话自动签到'),
+                  title: const Text('本次会话辅助签到'),
                   subtitle: const Text(
                     '共享会话定时器启动 30 秒后首查，之后每 15 分钟检查；新增账号随下一轮。关闭或退出即停止，未知结果不重发。重启后需重新授权和选择。',
                   ),
@@ -427,10 +427,10 @@ class _WorkBuddyAccountsPanelState extends State<WorkBuddyAccountsPanel> {
           title: 'WorkBuddy',
           accountCount: _accounts.accounts.length,
           helpText: widget.savedAccounts
-              ? 'WorkBuddy 多账号保存与自动签到。启动时恢复账号，应用运行期间自动检查。授权以明文保存在本机应用私有目录。'
+              ? 'WorkBuddy 多账号保存与辅助签到。启动时恢复账号，应用运行期间按计划检查。授权以明文保存在本机应用私有目录。'
               : widget.identityValidationOnly
-              ? 'WorkBuddy 临时双账号身份验证 · 凭据仅留在内存，退出即清空。此模式不提供签到、额度、自动化或持久保存。'
-              : 'WorkBuddy 多账号独立授权与签到接线预览。自动默认关闭，可逐账号选择本次会话自动检查与签到；不切换桌面账号，凭据仅保留在本次内存中。',
+              ? 'WorkBuddy 临时双账号身份验证 · 凭据仅留在内存，退出即清空。此模式不提供签到、额度、辅助任务或持久保存。'
+              : 'WorkBuddy 多账号独立授权与签到接线预览。辅助签到默认关闭，可逐账号选择本次会话辅助检查与签到；不切换桌面账号，凭据仅保留在本次内存中。',
           actions: [
             FilledButton(
               key: const Key('workbuddy-login'),

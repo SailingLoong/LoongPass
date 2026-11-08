@@ -175,7 +175,7 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                       'unsupported_client_version' => '请更新该来源的官方客户端后重试。',
                       'port_unavailable' => '本机服务端口被占用，请关闭占用程序后重试。',
                       'save_failed' => '连接设置未保存，请重试。',
-                      'invalid_settings' => '连接设置无法读取，服务未自动启动。',
+                      'invalid_settings' => '连接设置无法读取，服务未随应用启动。',
                       _ => '连接不可用，请核对账号后重试。',
                     }),
                   ),
@@ -445,7 +445,7 @@ class WorkspaceSettingsPage extends StatelessWidget {
                 Text('运行与数据', style: TextStyle(fontWeight: FontWeight.w600)),
                 SizedBox(height: 8),
                 Text(
-                  '授权以明文保存在本机应用私有目录。自动签到与活动领取只在 LoongPass 运行期间执行；开关在各账号详情中设置。',
+                  '授权以明文保存在本机应用私有目录。辅助签到与活动领取只在 LoongPass 运行期间执行；开关在各账号详情中设置。',
                 ),
                 SizedBox(height: 8),
                 Text('界面偏好单独保存，不包含账号凭据、余额或领取记录。'),

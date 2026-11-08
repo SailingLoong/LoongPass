@@ -1,6 +1,6 @@
 # WorkBuddy 界面与账号隔离
 
-正常入口使用 `WorkBuddyAccountsPanel(savedAccounts: true)`，由 `WorkBuddyAccounts` 管理多个独立账号。授权、恢复及自动签到契约分别维护在 `WORKBUDDY-AUTH593.md`、`WORKBUDDY-RESTORE.md` 和 `WORKBUDDY-AUTOMATIC.md`。真实验收见 `VALIDATION.md`。
+正常入口使用 `WorkBuddyAccountsPanel(savedAccounts: true)`，由 `WorkBuddyAccounts` 管理多个独立账号。授权、恢复及辅助签到契约分别维护在 `WORKBUDDY-AUTH593.md`、`WORKBUDDY-RESTORE.md` 和 `WORKBUDDY-AUTOMATIC.md`。真实验收见 `VALIDATION.md`。
 
 每次授权保留独立的状态、有效期、凭据代次和请求准入。只有 Profile 核实的域名与 UID 进入账号列表。页面选中状态只决定当前展示对象，请求及迟到结果始终绑定原账号。所有签到进入 `WorkBuddyClaimCore`，由持久化日志判重并核对官方回执与余额增量。
 
