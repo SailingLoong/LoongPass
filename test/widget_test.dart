@@ -43,6 +43,7 @@ void main() {
       'minimax',
       'workbuddy',
       'traeCn',
+      'codex',
     ]) {
       expect(find.byKey(ValueKey('app-$app')), findsOneWidget);
       await tester.tap(find.byKey(ValueKey('app-$app')));
@@ -81,7 +82,7 @@ void main() {
       } else {
         expect(find.text('LoongPass'), findsOneWidget);
       }
-      expect(find.byTooltip('账号保存在本机；自动任务仅在运行期间执行'), findsOneWidget);
+      expect(find.byTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
       for (final app in [
         'zcode',
         'qoderCn',
@@ -90,6 +91,7 @@ void main() {
         'minimax',
         'workbuddy',
         'traeCn',
+        'codex',
       ]) {
         await tester.tap(find.byKey(ValueKey('app-$app')));
         await tester.pumpAndSettle();

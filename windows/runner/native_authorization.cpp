@@ -503,7 +503,7 @@ std::string CaptchaPage(const Json& configuration) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://*.alicdn.com; style-src 'unsafe-inline' https://*.alicdn.com; font-src data:; img-src data: blob: https://*.alicdn.com https://*.aliyuncs.com; connect-src https://*.alicdn.com https://*.aliyuncs.com; frame-src https://*.alicdn.com https://*.aliyuncs.com; worker-src blob:; base-uri 'none'; form-action 'none'">
 <style>body{font:16px 'Segoe UI',sans-serif;padding:28px;color:#202124;background:#f7f8fa}button{font:inherit;border:0;border-radius:8px;padding:12px 20px;margin:8px 8px 8px 0;cursor:pointer}p{line-height:1.6}</style></head>
-<body><h2>ZCode 活动验证</h2><p id="status">正在自动完成官方安全验证…</p>
+<body><h2>ZCode 活动验证</h2><p id="status">正在辅助完成官方安全验证…</p>
 <div id="captcha"></div><button id="verify" hidden>继续验证</button><button id="cancel">取消</button>
 <script>
 const config=)HTML" + configuration.dump() + R"HTML(,status=document.getElementById('status');
@@ -512,7 +512,7 @@ const post=body=>window.chrome.webview.postMessage(body);
 const finish=body=>{if(submitted)return;submitted=true;clearTimeout(startTimer);clearTimeout(fallbackTimer);post(body);};
 const interactive=()=>{
   if(submitted||shown)return;shown=true;clearTimeout(fallbackTimer);
-  status.textContent='请继续完成下方官方验证。通过后会自动核对并领取。';
+  status.textContent='请继续完成下方官方验证。通过后会核对并领取。';
   document.getElementById('verify').hidden=false;post({type:'interactive'});
 };
 document.getElementById('cancel').onclick=()=>finish({type:'cancel'});

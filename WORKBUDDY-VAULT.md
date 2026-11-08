@@ -6,6 +6,6 @@
 
 `WorkBuddyVaultStore` 是现有读写契约。原生后端提供读取、版本比较写入和保存记录列表。Dart 账号 owner 负责授权、身份验证及保存后的绑定，界面通过状态通知更新。
 
-应用启动时恢复所有保存的账号并重新核验官网身份；失败时可使用现有“恢复已保存账号”按钮重试。自动签到行为见 [WORKBUDDY-AUTOMATIC.md](WORKBUDDY-AUTOMATIC.md)。授权文件与非凭据签到记录分开保存。
+应用启动时恢复所有保存的账号并重新核验官网身份；失败时可使用现有“恢复已保存账号”按钮重试。辅助签到行为见 [WORKBUDDY-AUTOMATIC.md](WORKBUDDY-AUTOMATIC.md)。授权文件与非凭据签到记录分开保存。
 
 `tool/workbuddy_file_store_checks.swift` 使用临时目录和合成凭据验证明文文件、权限、比较写入、重新打开与凭据移除。真实账号授权、身份显示、重启恢复及签到以实际应用验收为准。

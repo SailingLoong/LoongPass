@@ -72,19 +72,19 @@ void main() {
       final updates = await render(tester);
       addTearDown(updates.dispose);
       expect(find.byType(SwitchListTile), findsNWidgets(2));
-      expect(find.text('自动检查并下载更新'), findsOneWidget);
+      expect(find.text('辅助检查并下载更新'), findsOneWidget);
       expect(find.text('接收 Beta 版更新'), findsOneWidget);
-      await tester.tap(find.text('自动检查并下载更新'));
+      await tester.tap(find.text('辅助检查并下载更新'));
       await tester.pumpAndSettle();
-      expect(enabled(tester, '自动检查并下载更新'), isTrue);
+      expect(enabled(tester, '辅助检查并下载更新'), isTrue);
       expect(enabled(tester, '接收 Beta 版更新'), isFalse);
       expect(calls.last.method, 'setAutomaticUpdates');
       expect(calls.last.arguments, true);
-      await tester.tap(find.text('自动检查并下载更新'));
+      await tester.tap(find.text('辅助检查并下载更新'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('接收 Beta 版更新'));
       await tester.pumpAndSettle();
-      expect(enabled(tester, '自动检查并下载更新'), isFalse);
+      expect(enabled(tester, '辅助检查并下载更新'), isFalse);
       expect(enabled(tester, '接收 Beta 版更新'), isTrue);
       expect(calls.last.method, 'setReceiveBetaUpdates');
       expect(calls.last.arguments, true);
@@ -95,7 +95,7 @@ void main() {
     'save failure keeps native preferences and reload restores them',
     (tester) async {
       final updates = await render(tester);
-      await tester.tap(find.text('自动检查并下载更新'));
+      await tester.tap(find.text('辅助检查并下载更新'));
       await tester.pumpAndSettle();
       failSave = true;
       await tester.tap(find.text('接收 Beta 版更新'));
@@ -106,7 +106,7 @@ void main() {
       updates.dispose();
       final restored = await render(tester);
       addTearDown(restored.dispose);
-      expect(enabled(tester, '自动检查并下载更新'), isTrue);
+      expect(enabled(tester, '辅助检查并下载更新'), isTrue);
       expect(enabled(tester, '接收 Beta 版更新'), isFalse);
     },
   );

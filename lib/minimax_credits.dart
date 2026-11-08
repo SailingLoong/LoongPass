@@ -6,6 +6,28 @@ class MiniMaxCreditsError implements Exception {
   String toString() => 'MiniMax credit details unavailable';
 }
 
+({int totalCount, List<Map> rows}) parseMiniMaxCreditPage(
+  Map<String, dynamic> page,
+) {
+  final count = page['total_count'];
+  if (count is! int || count < 0 || count > 10000)
+    throw const MiniMaxCreditsError();
+  var verified = false;
+  for (final entry in [('base_resp', 'status_code'), ('statusInfo', 'code')]) {
+    if (!page.containsKey(entry.$1)) continue;
+    final status = page[entry.$1];
+    if (status is! Map || status[entry.$2] != 0)
+      throw const MiniMaxCreditsError();
+    verified = true;
+  }
+  final details = page['details'];
+  if (!page.containsKey('details') && count == 0 && verified)
+    return (totalCount: 0, rows: const []);
+  if (details is! List || details.any((row) => row is! Map))
+    throw const MiniMaxCreditsError();
+  return (totalCount: count, rows: details.cast<Map>());
+}
+
 CreditSummary normalizeMiniMaxCredits(
   List<Map<String, dynamic>> pages, {
   required DateTime now,
@@ -14,22 +36,22 @@ CreditSummary normalizeMiniMaxCredits(
   int? count;
   final rows = <Map>[];
   for (final page in pages) {
-    final expected = page['total_count'], details = page['details'];
-    if (expected is! int ||
-        expected < 0 ||
-        expected > 10000 ||
-        details is! List ||
-        details.any((r) => r is! Map) ||
-        count != null && count != expected)
+    final parsed = parseMiniMaxCreditPage(page);
+    if (count != null && count != parsed.totalCount)
       throw const MiniMaxCreditsError();
-    count = expected;
-    rows.addAll(details.cast<Map>());
+    count = parsed.totalCount;
+    rows.addAll(parsed.rows);
   }
   if (rows.length != count) throw const MiniMaxCreditsError();
   var total = 0.0;
   final batches = <int, double>{};
   for (final row in rows) {
-    final rawRemain = row['remaining_amount'];
+    var rawRemain = row['remaining_amount'];
+    if (rawRemain is String && rawRemain.contains(',')) {
+      if (!RegExp(r'^\d{1,3}(?:,\d{3})+(?:\.\d+)?$').hasMatch(rawRemain.trim()))
+        throw const MiniMaxCreditsError();
+      rawRemain = rawRemain.replaceAll(',', '');
+    }
     final remain = rawRemain is num
         ? rawRemain
         : rawRemain is String

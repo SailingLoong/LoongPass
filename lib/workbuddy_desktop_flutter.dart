@@ -5,6 +5,18 @@ import 'workbuddy_desktop_session.dart';
 class WorkBuddyDesktopFlutter {
   static const _channel = MethodChannel('com.sailingloong.loongpass/files');
 
+  static Future<String> clientVersion() async {
+    try {
+      final version = await _channel.invokeMethod<String>(
+        'workBuddyClientVersion',
+      );
+      if (version == null) throw StateError('unavailable');
+      return version;
+    } catch (_) {
+      throw StateError('WorkBuddy client version unavailable');
+    }
+  }
+
   static Future<String> activate(WorkBuddyDesktopSession session) async {
     try {
       final result = await _channel.invokeMethod<String>(

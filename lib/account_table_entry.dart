@@ -81,7 +81,7 @@ List<CreditExpiry> upcomingCreditBatches(CreditSummary? credits) {
 
 String accountPoints(num value) => value == value.roundToDouble()
     ? value.toStringAsFixed(0)
-    : value.toString();
+    : num.parse(value.toStringAsPrecision(15)).toString();
 String creditBalance(CreditSummary? summary) => summary == null
     ? '尚未查询'
     : summary.totalRemaining == null
