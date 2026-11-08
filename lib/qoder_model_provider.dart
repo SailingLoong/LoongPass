@@ -30,6 +30,9 @@ class QoderModelProvider extends ModelProvider {
   @override
   Set<ModelProtocol> get protocols => {ModelProtocol.chat};
   @override
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) =>
+      validateQoderContent(body);
+  @override
   Stream<void> get changes => owner.authorizationChanges;
   @override
   Future<List<ModelAccount>> accounts() async => [

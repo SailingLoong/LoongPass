@@ -145,14 +145,30 @@ List<Map<String, dynamic>> qoderModels(Map<String, dynamic> listing) {
 }
 
 String _text(Object? content) {
+  if (content == null) return '';
   if (content is String) return content;
-  if (content is List)
-    return content
-        .whereType<Map>()
-        .where((b) => b['type'] == 'text')
-        .map((b) => b['text'] ?? '')
-        .join('');
-  return '';
+  if (content is! List ||
+      content.any(
+        (b) => b is! Map || b['type'] != 'text' || b['text'] is! String,
+      )) {
+    throw const ModelServiceFailure('unsupported_content');
+  }
+  return content.map((b) => b['text']).join();
+}
+
+/// COSY currently represents these locations as strings. Other content must
+/// be refused before selecting this adapter, rather than reduced to text.
+void validateQoderContent(Map<String, dynamic> body) {
+  final messages = body['messages'];
+  if (messages is! List) throw const ModelServiceFailure('invalid_request');
+  for (final message in messages) {
+    if (message is! Map) throw const ModelServiceFailure('invalid_request');
+    if ({'system', 'developer', 'tool'}.contains(message['role']) ||
+        message['role'] == 'assistant' &&
+            message['tool_calls'] is List &&
+            (message['tool_calls'] as List).isNotEmpty)
+      _text(message['content']);
+  }
 }
 
 List<Map<String, dynamic>> _blocks(Object? content) {
@@ -171,6 +187,7 @@ Map<String, dynamic> qoderRequest(
   Map<String, dynamic> chat,
   Map<String, dynamic> model,
 ) {
+  validateQoderContent(chat);
   final input = (chat['messages'] as List)
       .whereType<Map<String, dynamic>>()
       .toList();

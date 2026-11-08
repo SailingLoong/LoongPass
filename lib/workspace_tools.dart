@@ -230,12 +230,33 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                               ),
                             ),
                       icon: const Icon(Icons.copy_outlined, size: 17),
-                      label: const Text('复制 Magpie 配置命令'),
+                      label: const Text('首次接入 Magpie'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('update-pooled-connection'),
+                      onPressed:
+                          locked || service.pooledMagpieUpdateCommand == null
+                          ? null
+                          : () => _run(
+                              () => _copy(
+                                service.pooledMagpieUpdateCommand!,
+                                '更新命令已复制，请在终端执行以更新原 LoongPass 来源。',
+                              ),
+                            ),
+                      icon: const Icon(Icons.sync_outlined, size: 17),
+                      label: const Text('更新 Magpie 配置'),
                     ),
                     TextButton(
                       onPressed: locked || service.bindings.isEmpty
                           ? null
-                          : () => _run(service.rotatePooledKey),
+                          : () => _run(() async {
+                              await service.rotatePooledKey();
+                              if (mounted)
+                                setState(
+                                  () => _message =
+                                      '统一密钥已重置，请复制并执行「更新 Magpie 配置」命令。',
+                                );
+                            }),
                       child: const Text('重置统一接入密钥'),
                     ),
                   ],

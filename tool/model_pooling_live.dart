@@ -71,6 +71,9 @@ class _ObservedProvider extends ModelProvider {
   Future<ModelCatalog> discoverModels(String accountId) =>
       source.discoverModels(accountId);
   @override
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) =>
+      source.validateRequest(protocol, body);
+  @override
   Future<void> dispatch(
     String accountId,
     String registrationId,

@@ -25,9 +25,9 @@ Codex 官方多账号管理是独立的账号切换需求，不属于奖励渠�
 
 macOS 主线提供本机 Anthropic Messages/Chat 服务和官方 Magpie 接入链接。MiniMax CN、Loomy、WorkBuddy CN、Qoder CN、ZCode BigModel 赠送模型已完成七个真实账号的 Claude Code 文本、流式及工具闭环，详情与覆盖边界见 `docs/verification/2026-11-07-model-pooling.md`；早期单账号基线见 `docs/verification/2026-11-07-magpie-connection.md`。Windows/Intel 真机与各来源其他模型不由该结果推导。官方余额观测与逐请求账单归因分别报告。
 
-账号模块继续拥有授权、刷新、身份与额度事实；模型适配器持有同一账号租约完成请求。连接设置只保存使用意图和每个账号的本地调用密钥，普通令牌轮换保留 key，显式撤销或账号重新注册不恢复旧权限。Magpie 负责客户端协议转换及多个独立请求的账号轮换；首次导入后须追加同来源其他账号 key，并启用 rotate、errors=pass、patience=off。Claude Code 还须关闭其重试与非流式 fallback，具体原生设置见验证记录，不能把网关单次发送当成任意客户端不会重发的保证。
+账号模块继续拥有授权、刷新、身份与额度事实；模型适配器持有同一账号租约完成请求。Magpie 指定模型，LoongPass 负责在提供该模型的已连接平台及账号间选路，同一 session 优先复用原账号；新会话分散到可用账号。统一入口使用独立的持久化本地调用密钥，旧账号 key 保持原权限。普通令牌轮换保留 key，显式撤销、移除或账号重新注册不恢复旧权限。统一接入通过 Magpie 原生 CLI 设置会话 header 模板、errors=pass、patience=off；导入链接不能携带该模板，不能宣称普通导入链接已完成会话配置。Claude Code 还须关闭其重试与非流式 fallback。失败或结果未知的已发送请求不重发，后续独立请求可换路。
 
-同类来源通过 `ModelProvider` 接入既有账号 owner。动态模型目录及原生协议事实由适配器提供，读取目录与界面展示不触发刷新或领取；启动、账号变化及明确用户操作负责刷新。ZCode 首批仅用该保存账号已生效的 Start Plan 赠送权益，耗尽或拒绝不转付费计划。
+同类来源通过 `ModelProvider` 接入既有账号 owner。动态目录、明确的 canonicalId 和原生协议事实由适配器提供；不在路由层维护模型系列名单，不把无法证明身份的 Auto/Fast 等档位跨来源合并。读取目录与界面展示不触发刷新、连接账号或领取；启动、账号变化及明确用户操作负责这些动作。统一 Messages 入口在选路后集中衔接原生 Chat/同协议响应，保持系统提示词、工具与历史；跨协议不能表达的内容和实际删改历史的上下文策略明确拒绝。ZCode 仅用已生效的 Start Plan 赠送权益，耗尽或拒绝不转付费计划。统一模型路由及当前真实覆盖见 `docs/verification/2026-11-08-model-routing.md`。
 
 ## 当前版本的工程与验收要求
 

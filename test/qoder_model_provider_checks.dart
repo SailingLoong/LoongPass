@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import '../lib/qoder_device_accounts.dart';
 import '../lib/qoder_model_provider.dart';
 import '../lib/model_provider.dart';
+import '../lib/model_messages.dart';
 import '../lib/model_http.dart';
 import 'qoder_cn_checks.dart' show Native, Transport;
 
@@ -168,6 +169,61 @@ Future<void> main() async {
       (await source.discoverModels('account-a')).models.single.canonicalId ==
           null,
       'generic lane claimed an underlying model',
+    );
+    final picture = messagesToChat({
+      'model': 'canonical-model',
+      'max_tokens': 64,
+      'messages': [
+        {
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'tool_use',
+              'id': 'shot',
+              'name': 'screenshot',
+              'input': {},
+            },
+          ],
+        },
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': 'shot',
+              'content': [
+                {
+                  'type': 'image',
+                  'source': {
+                    'type': 'base64',
+                    'media_type': 'image/png',
+                    'data': 'synthetic',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }, 'live-model');
+    final beforePicture = wire.calls.length;
+    var pictureRejected = false;
+    try {
+      await source.dispatch(
+        'account-a',
+        catalog.registrationId,
+        ModelProtocol.chat,
+        picture,
+        (_) async {},
+        isCurrent: () => true,
+        cancelled: Completer<void>().future,
+      );
+    } on ModelServiceFailure catch (e) {
+      pictureRejected = e.code == 'unsupported_content';
+    }
+    check(
+      pictureRejected && wire.calls.length == beforePicture,
+      'Qoder silently discarded an image tool result or sent it upstream',
     );
     final body = <String, dynamic>{
       'model': 'live-model',

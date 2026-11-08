@@ -61,15 +61,18 @@ class ModelService {
 
   /// Import links cannot carry custom headers. The native CLI can set the
   /// conversation template and failure policy in the same explicit action.
-  String? get pooledMagpieCommand {
+  String? get pooledMagpieCommand => _pooledMagpieCommand(update: false);
+  String? get pooledMagpieUpdateCommand => _pooledMagpieCommand(update: true);
+
+  String? _pooledMagpieCommand({required bool update}) {
     if (!running || pooledModels.isEmpty || pooledKey == null) return null;
     String quote(String value) => "'${value.replaceAll("'", "'\\''")}'";
     return [
       'magpie',
       'provider',
-      'add',
-      'LoongPass',
-      'id=loongpass',
+      update ? 'set' : 'add',
+      update ? 'loongpass' : 'LoongPass',
+      if (!update) 'id=loongpass',
       'anthropic=$endpoint',
       'key=$pooledKey',
       'models=${pooledModels.map((m) => m.id).join(',')}',

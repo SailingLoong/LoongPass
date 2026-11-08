@@ -16,6 +16,14 @@ class Source extends ModelProvider {
   final registrations = {'account': 'registration'};
   final calls = <Map<String, dynamic>>[];
   int status = 200, discoveries = 0;
+  bool rejectMedia = false, extraModel = false;
+  @override
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) {
+    if (rejectMedia && jsonEncode(body).contains('image_url')) {
+      throw const ModelServiceFailure('unsupported_content');
+    }
+  }
+
   @override
   String get name => id;
   @override
@@ -37,6 +45,12 @@ class Source extends ModelProvider {
           protocol: protocol,
           tools: true,
         ),
+        if (extraModel)
+          const ModelDefinition(
+            'qwen3.8-flash',
+            canonicalId: 'qwen3.8-flash',
+            protocol: ModelProtocol.chat,
+          ),
       ],
     );
   }
@@ -123,6 +137,13 @@ Future<void> main() async {
     final b = await service.addAccount(providerId: 'two', accountId: 'account');
     await service.start();
     final command = service.pooledMagpieCommand!;
+    final update = service.pooledMagpieUpdateCommand!;
+    check(
+      command.contains("'add' 'LoongPass' 'id=loongpass'") &&
+          update.contains("'set' 'loongpass'") &&
+          !update.contains('id=loongpass'),
+      'native update can create a second provider',
+    );
     check(
       command.contains(
         r'header.X-LoongPass-Session=${sessionId}:${subagentId}',
@@ -183,6 +204,53 @@ Future<void> main() async {
       ],
       'max_tokens': 16,
     };
+    one.rejectMedia = true;
+    final imageReply = await call(
+      '/v1/messages',
+      poolKey,
+      session: 'image-session',
+      body: {
+        ...body,
+        'messages': [
+          {
+            'role': 'assistant',
+            'content': [
+              {
+                'type': 'tool_use',
+                'id': 'image-call',
+                'name': 'screenshot',
+                'input': {},
+              },
+            ],
+          },
+          {
+            'role': 'user',
+            'content': [
+              {
+                'type': 'tool_result',
+                'tool_use_id': 'image-call',
+                'content': [
+                  {
+                    'type': 'image',
+                    'source': {
+                      'type': 'base64',
+                      'media_type': 'image/png',
+                      'data': 'synthetic',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    );
+    check(
+      imageReply.$1 == 200 && one.calls.isEmpty && two.calls.length == 1,
+      'request was routed to an adapter that would lose its image',
+    );
+    one.rejectMedia = false;
+    two.calls.clear();
     check(
       (await call('/v1/messages', poolKey, session: 's1', body: body)).$1 ==
           200,
@@ -235,8 +303,20 @@ Future<void> main() async {
       ..register(two);
     await service.load();
     check(service.pooledKey == poolKey, 'pooled key changed on restart');
+    await service.setEnabled(a.id, true);
+    one.extraModel = true;
+    await service.refreshModels(a.id);
+    check(
+      service.pooledMagpieUpdateCommand!.contains('qwen3.8-flash'),
+      'native update omitted the changed model catalog',
+    );
     await service.rotatePooledKey();
     check(service.pooledKey != poolKey, 'pooled key cannot be revoked');
+    check(
+      service.pooledMagpieUpdateCommand!.contains(service.pooledKey!) &&
+          !service.pooledMagpieUpdateCommand!.contains(poolKey),
+      'native update still contains the revoked grant',
+    );
     check(
       (await call('/v1/models', poolKey)).$1 == 401,
       'rotated pooled grant still accepted',

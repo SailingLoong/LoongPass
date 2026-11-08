@@ -87,9 +87,11 @@ extension _ModelServiceHttp on ModelService {
         ))
           continue;
         try {
-          wires[candidate.id] = candidate.model.protocol == ModelProtocol.chat
+          final wire = candidate.model.protocol == ModelProtocol.chat
               ? messagesToChat(body, candidate.model.id)
               : {...body, 'model': candidate.model.id};
+          source.validateRequest(candidate.model.protocol, wire);
+          wires[candidate.id] = wire;
           ready.add(candidate);
         } on ModelServiceFailure catch (e) {
           unsupported = e;

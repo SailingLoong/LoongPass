@@ -75,6 +75,9 @@ abstract class ModelProvider {
   Future<List<ModelAccount>> accounts();
   Stream<void> get changes => const Stream.empty();
   Future<ModelCatalog> discoverModels(String accountId);
+
+  /// Pure capability/shape checks before route selection; no I/O or refresh.
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) {}
   Future<void> dispatch(
     String accountId,
     String registrationId,
