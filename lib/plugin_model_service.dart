@@ -276,7 +276,16 @@ class PluginModelService extends ChangeNotifier {
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map;
       final model = account.models
-          .where((m) => '${account.provider}/${m['id']}' == body['model'])
+          .where(
+            (m) =>
+                // Magpie's native Go boundary sends api.id to its host, while
+                // OpenCode can retain the catalog id. Both name this account's
+                // declared model; the SDK and URL disambiguate native aliases.
+                (m['apiId'] == body['model'] ||
+                    '${account.provider}/${m['id']}' == body['model']) &&
+                m['npm'] == body['npm'] &&
+                _allowedURL(m['url'], body['url']),
+          )
           .firstOrNull;
       if (model == null ||
           body['method'] != 'POST' ||
@@ -341,7 +350,7 @@ class PluginModelService extends ChangeNotifier {
       fetch = accounts.runtime.fetch({
         'provider': account.provider,
         'account': account.key,
-        'model': model['id'],
+        'model': model['apiId'],
         'npm': model['npm'],
         'url': body['url'],
         'method': 'POST',

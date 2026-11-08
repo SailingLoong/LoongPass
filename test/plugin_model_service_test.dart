@@ -22,6 +22,7 @@ void main() {
         {
           'spec': 'fixture',
           'target': File('test/fixtures/native_plugin.mjs').absolute.path,
+          'options': {'apiId': 'fixture-wire'},
         },
       ],
     );
@@ -86,7 +87,8 @@ void main() {
       expect(jsonDecode(catalog.$3)['account']['id'], 'fixture#a');
       expect(catalog.$3, isNot(contains('native-a')));
       Map<String, dynamic> envelope(String path) => {
-        'model': 'fixture/fixture-model',
+        'model': 'fixture-wire',
+        'npm': '@ai-sdk/openai-compatible',
         'url': 'https://fixture.invalid/v1/$path',
         'method': 'POST',
         'headers': {
@@ -94,7 +96,7 @@ void main() {
           'x-api-key': 'local-secret',
         },
         'body': base64Encode(
-          utf8.encode('{"model":"fixture-model","messages":[]}'),
+          utf8.encode('{"model":"fixture-wire","messages":[]}'),
         ),
         'session': 'native-session',
       };
@@ -137,7 +139,7 @@ void main() {
         expect(rows.single['models'].single['id'], 'fixture/fixture-model');
         final through = bridge.fetch({
           'provider': 'loongpass',
-          'model': 'fixture/fixture-model',
+          'model': 'fixture-wire',
           'npm': '@ai-sdk/openai-compatible',
           'url': 'https://fixture.invalid/v1/chat/completions',
           'method': 'POST',
@@ -166,6 +168,14 @@ void main() {
           body: {...envelope('x'), 'url': 'https://other.invalid/steal'},
         )).$1,
         400,
+      );
+      expect(
+        (await request(
+          '/plugin/fetch',
+          body: {...envelope('chat/completions'), 'npm': '@ai-sdk/anthropic'},
+        )).$1,
+        400,
+        reason: 'An API id cannot select an undeclared SDK',
       );
       expect((await request('/plugin/catalog', token: 'invalid')).$1, 401);
       await accounts.authorizationSaved('fixture#a');

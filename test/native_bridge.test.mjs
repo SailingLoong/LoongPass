@@ -156,8 +156,8 @@ test('usage reads only its account snapshot and propagates cancellation', async 
 test('chat header hook marks only LoongPass requests with native model id and session', async () => {
   const hooks = await LoongPassPlugin({})
   const output = { headers: { existing: 'kept' } }
-  await hooks['chat.headers']({ model: { id: 'workbuddy/claude-native', providerID: 'loongpass' }, sessionID: 'session-1' }, output)
-  expect(output.headers).toEqual({ existing: 'kept', 'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-session': 'session-1' })
+  await hooks['chat.headers']({ model: { id: 'workbuddy/claude-native', providerID: 'loongpass', api: { npm: '@ai-sdk/anthropic' } }, sessionID: 'session-1' }, output)
+  expect(output.headers).toEqual({ existing: 'kept', 'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-npm': '@ai-sdk/anthropic', 'x-loongpass-session': 'session-1' })
   const other = { headers: {} }
   await hooks['chat.headers']({ model: { id: 'other', providerID: 'other' }, sessionID: 'wrong' }, other)
   expect(other.headers).toEqual({})
@@ -171,7 +171,7 @@ test('fetch envelopes exact request bytes and all native context before host hea
   const bytes = new Uint8Array([0, 255, 239, 187, 191, 128, 10])
   const request = new Request('https://native.invalid/anthropic/messages?beta=true', {
     method: 'POST', body: bytes, headers: {
-      'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-session': 'session-native',
+      'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-npm': '@ai-sdk/anthropic', 'x-loongpass-session': 'session-native',
       'x-magpie-work-dir': '/synthetic/project', 'x-magpie-work-git': 'branch',
       'x-magpie-fallback': '1', 'x-magpie-session': 'native-session', 'x-magpie-subagent': 'worker',
       'x-magpie-new-context': 'kept', 'x-api-key': 'loongpass', 'x-goog-api-key': 'loongpass', authorization: 'Bearer loongpass',
@@ -185,7 +185,7 @@ test('fetch envelopes exact request bytes and all native context before host hea
     expect(init.redirect).toBe('error')
     expect(Object.fromEntries(new Headers(init.headers))).toEqual({ authorization: 'Bearer rotated-local-grant', 'content-type': 'application/json' })
     const body = JSON.parse(init.body)
-    expect(body).toEqual({ model: 'workbuddy/claude-native', url: request.url, method: 'POST', session: 'session-native', body: 'AP/vu7+ACg==', headers: {
+    expect(body).toEqual({ model: 'workbuddy/claude-native', npm: '@ai-sdk/anthropic', url: request.url, method: 'POST', session: 'session-native', body: 'AP/vu7+ACg==', headers: {
       'x-magpie-work-dir': '/synthetic/project', 'x-magpie-work-git': 'branch', 'x-magpie-fallback': '1',
       'x-magpie-session': 'native-session', 'x-magpie-subagent': 'worker', 'x-magpie-new-context': 'kept',
       'content-type': 'application/octet-stream', 'anthropic-version': '2023-06-01', 'x-override': 'new',
@@ -215,7 +215,7 @@ test('abort during body capture cancels the source and never sends a local reque
   const ctl = new AbortController()
   let cancelled = false
   const request = new Request('https://native.invalid/v1', { method: 'POST', signal: ctl.signal,
-    headers: { 'x-loongpass-model': 'qoder-cn/chat' }, body: new ReadableStream({ cancel() { cancelled = true } }),
+    headers: { 'x-loongpass-model': 'qoder-cn/chat', 'x-loongpass-npm': '@ai-sdk/openai-compatible' }, body: new ReadableStream({ cancel() { cancelled = true } }),
   })
   await withFetch(() => { throw new Error('must not dispatch cancelled body') }, async () => {
     const waiting = loader.fetch(request)
@@ -234,7 +234,7 @@ test('response streams without waiting for completion and abort reaches the loca
     init.signal.addEventListener('abort', () => controller.error(init.signal.reason), { once: true })
   } }), { headers: { 'content-type': 'text/event-stream' } }), async () => {
     const response = await loader.fetch('https://native.invalid/v1/chat/completions', { method: 'POST', signal: ctl.signal,
-      headers: { 'x-loongpass-model': 'qoder-cn/chat' }, body: '{"stream":true}',
+      headers: { 'x-loongpass-model': 'qoder-cn/chat', 'x-loongpass-npm': '@ai-sdk/openai-compatible' }, body: '{"stream":true}',
     })
     const reader = response.body.getReader()
     expect(new TextDecoder().decode((await reader.read()).value)).toBe('data: first\n\n')
@@ -252,7 +252,7 @@ test('upstream stream failure is preserved without replay or a fabricated succes
     sends++
     return new Response(new ReadableStream({ start(c) { c.error(new Error('broken-native-stream')) } }), { status: 200 })
   }, async () => {
-    const response = await loader.fetch('https://native.invalid/messages', { method: 'POST', headers: { 'x-loongpass-model': 'workbuddy/claude-native' }, body: '{}' })
+    const response = await loader.fetch('https://native.invalid/messages', { method: 'POST', headers: { 'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-npm': '@ai-sdk/anthropic' }, body: '{}' })
     await expect(response.text()).rejects.toThrow('broken-native-stream')
     expect(sends).toBe(1)
   })
@@ -324,14 +324,14 @@ test('pinned native host loads the package, deduplicates grant identities and ro
     expect(row.maxConcurrency).toBe(0)
     expect(row.maxAccounts).toBe(0)
     expect(row.checkin).toBe(false)
-    const fetched = await rpc('fetch', { provider: 'loongpass', account: a, model: 'workbuddy/claude-native', npm: anthropic.npm,
+    const fetched = await rpc('fetch', { provider: 'loongpass', account: a, model: 'claude-api', npm: anthropic.npm,
       url: 'https://native.invalid/anthropic/messages', method: 'POST', body: Buffer.from('{"model":"claude-api"}').toString('base64'),
       session: 'host-session', headers: { 'x-magpie-work-dir': '/fixture/project', 'x-magpie-fallback': '1' },
     })
     expect(fetched.events.find(e => e.event === 'head').status).toBe(201)
     const body = JSON.parse(Buffer.concat(fetched.events.filter(e => e.event === 'chunk').map(e => Buffer.from(e.data, 'base64'))).toString())
     expect(body.localAuthorization).toBe('Bearer synthetic-rotated')
-    expect(body.envelope).toEqual({ model: 'workbuddy/claude-native', url: 'https://native.invalid/anthropic/messages', method: 'POST',
+    expect(body.envelope).toEqual({ model: 'claude-api', npm: '@ai-sdk/anthropic', url: 'https://native.invalid/anthropic/messages', method: 'POST',
       headers: { 'x-magpie-work-dir': '/fixture/project', 'x-magpie-fallback': '1' }, body: 'eyJtb2RlbCI6ImNsYXVkZS1hcGkifQ==', session: 'host-session' })
   } finally {
     for (const call of pending.values()) clearTimeout(call.timer)

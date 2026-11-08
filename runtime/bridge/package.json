@@ -1,6 +1,6 @@
 {
   "name": "@loongpass/magpie-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LoongPass account grants and native model snapshots for Magpie",
   "type": "module",
   "main": "./index.mjs",

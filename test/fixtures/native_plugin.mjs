@@ -54,7 +54,7 @@ export const FixturePlugin = async (_, options = {}) => ({
   provider: {
     id: options.provider ?? 'fixture',
     models: async () => ({
-      'fixture-model': {id: 'fixture-model', name: 'Fixture', api: {npm: '@ai-sdk/openai-compatible'}},
+      'fixture-model': {id: 'fixture-model', name: 'Fixture', api: {npm: '@ai-sdk/openai-compatible', id: options.apiId ?? 'fixture-model'}},
     }),
   },
   "chat.headers": async (input, output) => { output.headers['x-fixture-session'] = input.sessionID; },

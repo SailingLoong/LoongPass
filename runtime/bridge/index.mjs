@@ -1,6 +1,7 @@
 const ID = 'loongpass'
 const DEFAULT_ENDPOINT = 'http://127.0.0.1:3426'
 const MODEL_HEADER = 'x-loongpass-model'
+const NPM_HEADER = 'x-loongpass-npm'
 const SESSION_HEADER = 'x-loongpass-session'
 // The pinned Magpie host's sdkHeaders uses these three authentication headers.
 const SDK_AUTH_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key']
@@ -113,8 +114,10 @@ export const LoongPassPlugin = async () => ({
           signal?.throwIfAborted()
           const model = headers.get(MODEL_HEADER)
           if (!model) throw new Error('LoongPass request has no native model marker')
+          const npm = headers.get(NPM_HEADER)
+          if (!npm) throw new Error('LoongPass request has no native SDK marker')
           const session = headers.get(SESSION_HEADER) ?? ''
-          for (const name of [MODEL_HEADER, SESSION_HEADER, ...SDK_AUTH_HEADERS]) headers.delete(name)
+          for (const name of [MODEL_HEADER, NPM_HEADER, SESSION_HEADER, ...SDK_AUTH_HEADERS]) headers.delete(name)
           const { endpoint, key } = credentials(await getAuth())
           const body = await bodyOf(init.body === undefined ? original?.body : init.body, signal)
           // Capture all x-magpie-* context in JSON before the native host's
@@ -122,7 +125,7 @@ export const LoongPassPlugin = async () => ({
           // travels in an HTTP auth header, and redirects are never followed.
           return fetch(`${endpoint}/plugin/fetch`, {
             method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-            body: JSON.stringify({ model, url: original?.url ?? String(input), method: init.method ?? original?.method ?? 'GET',
+            body: JSON.stringify({ model, npm, url: original?.url ?? String(input), method: init.method ?? original?.method ?? 'GET',
               headers: Object.fromEntries(headers), body, session }),
             signal, redirect: 'error',
           })
@@ -151,6 +154,7 @@ export const LoongPassPlugin = async () => ({
   'chat.headers'(input, output) {
     if (input.model?.providerID !== ID && input.provider?.info?.id !== ID) return
     output.headers[MODEL_HEADER] = input.model.id
+    output.headers[NPM_HEADER] = input.model.api.npm
     output.headers[SESSION_HEADER] = input.sessionID ?? ''
   },
 })
