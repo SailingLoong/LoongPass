@@ -82,7 +82,9 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              const Text('每个账号保留独立连接与可用模型。模型目录来自该账号的官方配置，余额以平台查询为准。'),
+              const Text(
+                '将已保存账号加入模型池。LoongPass 按所选模型选取可用平台与账号，同一会话优先复用原账号。目录和余额以平台查询为准。',
+              ),
               const SizedBox(height: 16),
               if (service == null)
                 const Text('本地模型服务当前在 macOS 提供。')
@@ -130,6 +132,20 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    FilledButton(
+                      onPressed: locked
+                          ? null
+                          : () => _run(() async {
+                              final result = await service
+                                  .connectSavedAccounts();
+                              if (mounted)
+                                setState(() {
+                                  _message =
+                                      '已连接 ${result.connected} 个账号，${result.unavailable} 项暂不可用。';
+                                });
+                            }),
+                      child: const Text('连接全部已保存账号'),
+                    ),
                     FilledButton(
                       onPressed:
                           locked || _providerId == null || _accountId == null
@@ -188,6 +204,81 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
             ],
           ),
         ),
+        if (service != null)
+          WorkspaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('统一模型入口', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                const Text(
+                  '在 Magpie 中选择模型，LoongPass 自动选路。配置命令会同时设置会话传递；失败请求直接返回，后续请求可换到同模型的其他账号。',
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      key: const ValueKey('copy-pooled-connection'),
+                      onPressed: locked || service.pooledMagpieCommand == null
+                          ? null
+                          : () => _run(
+                              () => _copy(
+                                service.pooledMagpieCommand!,
+                                '统一接入命令已复制，请在终端执行后在 Magpie 中选择 LoongPass 的模型。',
+                              ),
+                            ),
+                      icon: const Icon(Icons.copy_outlined, size: 17),
+                      label: const Text('首次接入 Magpie'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const ValueKey('update-pooled-connection'),
+                      onPressed:
+                          locked || service.pooledMagpieUpdateCommand == null
+                          ? null
+                          : () => _run(
+                              () => _copy(
+                                service.pooledMagpieUpdateCommand!,
+                                '更新命令已复制，请在终端执行以更新原 LoongPass 来源。',
+                              ),
+                            ),
+                      icon: const Icon(Icons.sync_outlined, size: 17),
+                      label: const Text('更新 Magpie 配置'),
+                    ),
+                    TextButton(
+                      onPressed: locked || service.bindings.isEmpty
+                          ? null
+                          : () => _run(() async {
+                              await service.rotatePooledKey();
+                              if (mounted)
+                                setState(
+                                  () => _message =
+                                      '统一密钥已重置，请复制并执行「更新 Magpie 配置」命令。',
+                                );
+                            }),
+                      child: const Text('重置统一接入密钥'),
+                    ),
+                  ],
+                ),
+                if (service.pooledModels.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      for (final model in service.pooledModels)
+                        Chip(
+                          label: Text(
+                            '${model.id} · ${model.platformCount} 平台 / ${model.accountCount} 账号',
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
         if (service != null)
           for (final binding in service.bindings)
             WorkspaceCard(
@@ -294,7 +385,7 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
             ),
         const WorkspaceCard(
           child: Text(
-            '首次导入某个来源后，将同一来源的其他账号密钥加入 Magpie 的同一服务。启用账号轮换，并设置错误直接返回、关闭等待重试。使用 Claude Code 时，启动前设置 CLAUDE_CODE_MAX_RETRIES=0 和 CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1，并关闭模型 fallback，避免客户端自行重发失败或中断的请求。请使用支持这些选项的新版 Magpie。连接仅监听本机，启动设置会随 LoongPass 恢复。',
+            '推荐使用统一模型入口。下方各账号的接入链接用于指定来源和账号。使用 Claude Code 时，启动前设置 CLAUDE_CODE_MAX_RETRIES=0 和 CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1，并关闭模型 fallback，避免客户端自行重发失败或中断的请求。请使用支持这些选项的新版 Magpie。连接仅监听本机，启动设置会随 LoongPass 恢复。',
           ),
         ),
       ],

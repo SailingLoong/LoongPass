@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import '../lib/qoder_device_accounts.dart';
 import '../lib/qoder_model_provider.dart';
 import '../lib/model_provider.dart';
+import '../lib/model_messages.dart';
 import '../lib/model_http.dart';
 import 'qoder_cn_checks.dart' show Native, Transport;
 
@@ -37,6 +38,7 @@ String frame(Object value, {int status = 200}) =>
 
 class Wire implements ModelTransport {
   final calls = <(Uri, Map<String, String>, Object?)>[];
+  String displayName = 'Live';
   String answer =
       frame({
         'choices': [
@@ -102,7 +104,7 @@ class Wire implements ModelTransport {
                   {
                     'key': 'live-model',
                     'source': 'system',
-                    'display_name': 'Live',
+                    'display_name': displayName,
                     'enable': true,
                     'max_input_tokens': 131072,
                     'max_output_tokens': 8192,
@@ -154,6 +156,74 @@ Future<void> main() async {
       catalog.models.single.id == 'live-model' &&
           catalog.models.single.contextWindow == 131072,
       'entitlement or absolute limit wrong',
+    );
+    wire.displayName = 'Kimi-K3.1-Pro';
+    final named = await source.discoverModels('account-a');
+    check(
+      named.models.single.canonicalId == 'Kimi-K3.1-Pro' &&
+          named.models.single.id == 'live-model',
+      'official model identity not separated from opaque platform key',
+    );
+    wire.displayName = 'Fast';
+    check(
+      (await source.discoverModels('account-a')).models.single.canonicalId ==
+          null,
+      'generic lane claimed an underlying model',
+    );
+    final picture = messagesToChat({
+      'model': 'canonical-model',
+      'max_tokens': 64,
+      'messages': [
+        {
+          'role': 'assistant',
+          'content': [
+            {
+              'type': 'tool_use',
+              'id': 'shot',
+              'name': 'screenshot',
+              'input': {},
+            },
+          ],
+        },
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'tool_result',
+              'tool_use_id': 'shot',
+              'content': [
+                {
+                  'type': 'image',
+                  'source': {
+                    'type': 'base64',
+                    'media_type': 'image/png',
+                    'data': 'synthetic',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }, 'live-model');
+    final beforePicture = wire.calls.length;
+    var pictureRejected = false;
+    try {
+      await source.dispatch(
+        'account-a',
+        catalog.registrationId,
+        ModelProtocol.chat,
+        picture,
+        (_) async {},
+        isCurrent: () => true,
+        cancelled: Completer<void>().future,
+      );
+    } on ModelServiceFailure catch (e) {
+      pictureRejected = e.code == 'unsupported_content';
+    }
+    check(
+      pictureRejected && wire.calls.length == beforePicture,
+      'Qoder silently discarded an image tool result or sent it upstream',
     );
     final body = <String, dynamic>{
       'model': 'live-model',

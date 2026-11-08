@@ -51,7 +51,7 @@ class HeldTransport extends fixture.Wire {
   }
 }
 
-Future<void> main() async {
+Future<void> run({required bool pooled, bool rotate = false}) async {
   final now = DateTime.utc(2026, 11, 7),
       server = Server('A'),
       saved = VaultStore();
@@ -93,13 +93,21 @@ Future<void> main() async {
     await service.start();
     await service.settled;
     final request = await client.postUrl(
-      service.endpoint!.resolve('/providers/workbuddy-cn/messages/v1/messages'),
+      service.endpoint!.resolve(
+        pooled
+            ? '/v1/messages'
+            : '/providers/workbuddy-cn/messages/v1/messages',
+      ),
     );
-    request.headers.set('x-api-key', binding.key);
+    request.headers.set('x-api-key', pooled ? service.pooledKey! : binding.key);
     request.write(jsonEncode({'model': 'claude-live', 'messages': []}));
     final pending = request.close();
     await entered.future;
-    await owner.revokeStored(owner.accounts.single.id);
+    if (rotate) {
+      await service.rotatePooledKey();
+    } else {
+      await owner.revokeStored(owner.accounts.single.id);
+    }
     var promptly = false;
     try {
       final response = await pending.timeout(const Duration(seconds: 2));
@@ -110,9 +118,6 @@ Future<void> main() async {
       promptly && sends == 1,
       'owner removal left an upstream header wait active or resent',
     );
-    print(
-      'PASS owner removal cancels real held HTTP transport before headers, exactly one send',
-    );
   } finally {
     await service.dispose();
     client.close(force: true);
@@ -120,4 +125,13 @@ Future<void> main() async {
     vault.close();
     await upstream.close(force: true);
   }
+}
+
+Future<void> main() async {
+  await run(pooled: false);
+  await run(pooled: true);
+  await run(pooled: true, rotate: true);
+  print(
+    'PASS scoped/pooled owner revocation and pooled key rotation cancel held HTTP, single send',
+  );
 }

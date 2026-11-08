@@ -97,15 +97,19 @@ TRAE 的余额净增与发放金额分开标明，Qoder 套餐与附加额度分
 
 ## Magpie 模型服务（macOS）
 
-macOS 可将已保存的 MiniMax 账号作为本机 Magpie 的模型来源。
+macOS 提供统一模型入口：在 Magpie 中选择模型，LoongPass 从提供该模型的已连接平台与账号中选路，同一会话优先复用原账号。
 
-1. 在「模型服务」中选择来源、已保存账号和官方客户端配置中的模型 ID，点击「保存并启动」。
-2. 点击「复制 Magpie 接入链接」，在 Magpie 中导入。
-3. 在 Magpie 中为客户端选择 LoongPass 的模型，保持 LoongPass 运行。
+1. 在「模型服务」中点击「连接全部已保存账号」，或选择来源与账号逐个添加。没有可用模型或赠送资格的账号会跳过。
+2. 启动本地服务，点击「首次接入 Magpie」复制命令，在终端执行一次。该命令会添加一个 LoongPass 来源，并设置会话传递和错误直接返回。
+3. 在 Magpie 中为客户端选择 `loongpass/模型 ID`，保持 LoongPass 运行。新增目录条目后可用 Magpie 原生 `provider refresh loongpass` 刷新。
 
-服务监听 `127.0.0.1:3426`，使用独立的本地调用密钥。平台令牌由原账号模块管理并发送给官方接口，Magpie 配置保存的是本地连接密钥。连接的账号、模型及启用意图跨重启恢复；停止操作在停用设置保存后关闭服务，保存失败可重试。
+已有 LoongPass 来源时，使用「更新 Magpie 配置」。它通过 Magpie 原生 `provider set loongpass` 更新原来源的目录、地址与密钥；重置统一密钥后也使用该更新入口。
 
-已通过 Claude Code 实测 MiniMax CN 的 `MiniMax-M3.1-Flash` 文本、流式及工具往返。本次连接固定使用一个账号和模型，国际版真实调用、其他平台推理与多账号调度分别推进。源码运行验收及积分核对范围见 [Magpie 连接验收](docs/verification/2026-11-07-magpie-connection.md)。
+服务监听 `127.0.0.1:3426`，统一入口使用独立的本地调用密钥。平台令牌由原账号模块管理，Magpie 保存本地调用密钥。连接、密钥及启用意图跨重启恢复；可以重置统一密钥或撤销单个账号。原有账号接入链接保留原有权限，不自动获得整个模型池的权限。
+
+统一目录采用平台适配器核实的模型身份。版本、日期和变体保留；Auto、Fast 等无法确认底层模型的档位按来源单独展示。同模型可以来自多个平台：例如 Qwen 3.8 Flash 来自 Loomy 和 Qoder，GLM 5.3 Flash 来自 Loomy、Qoder 和 ZCode。Kimi K3.1 Pro 采用 Qoder 官方目录的版本名称，实际调用仍使用该平台的原生模型代号。
+
+会话亲和性优先保持原账号；账号不可用时，后续请求可选其他可用账号。已经发送且结果未知的请求不会自动重发。Claude Code 启动前同时设置 `CLAUDE_CODE_MAX_RETRIES=0`、`CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK=1` 并关闭模型 fallback，避免客户端自行重发。实际模型、客户端与平台覆盖见 [统一模型路由验收](docs/verification/2026-11-08-model-routing.md)。
 
 ## 从源码构建
 

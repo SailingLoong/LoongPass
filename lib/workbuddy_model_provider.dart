@@ -108,6 +108,7 @@ class WorkBuddyModelProvider extends ModelProvider {
             models.add(
               ModelDefinition(
                 id,
+                canonicalId: id == 'auto' ? null : id,
                 protocol: id.toLowerCase().startsWith('claude-')
                     ? ModelProtocol.messages
                     : ModelProtocol.chat,

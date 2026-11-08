@@ -71,6 +71,9 @@ class _ObservedProvider extends ModelProvider {
   Future<ModelCatalog> discoverModels(String accountId) =>
       source.discoverModels(accountId);
   @override
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) =>
+      source.validateRequest(protocol, body);
+  @override
   Future<void> dispatch(
     String accountId,
     String registrationId,
@@ -84,6 +87,7 @@ class _ObservedProvider extends ModelProvider {
       'source': id,
       'alias': aliases[accountId],
       'protocol': protocol.name,
+      'model': body['model'],
     };
     calls.add(row);
     try {
@@ -333,6 +337,8 @@ Future<void> main() async {
   const reportPath = String.fromEnvironment('MODEL_POOLING_REPORT');
   const clientScript = String.fromEnvironment('MODEL_POOLING_CLAUDE_SCRIPT');
   const onlySource = String.fromEnvironment('MODEL_POOLING_SOURCE');
+  const pooled = bool.fromEnvironment('MODEL_POOLING_POOLED');
+  const modelSelection = String.fromEnvironment('MODEL_POOLING_MODELS');
   const infer = bool.fromEnvironment(
     'MODEL_POOLING_INFERENCE',
     defaultValue: false,
@@ -432,7 +438,11 @@ Future<void> main() async {
         continue;
       }
       var index = 0;
-      final take = !extraAccountSelected && accounts.length > 1 ? 2 : 1;
+      final take = pooled
+          ? 8
+          : !extraAccountSelected && accounts.length > 1
+          ? 2
+          : 1;
       var configured = 0;
       final nativeBindings = <Map<String, dynamic>>[];
       for (final account in accounts.take(8)) {
@@ -455,6 +465,9 @@ Future<void> main() async {
           if (configured == 2) extraAccountSelected = true;
           result['catalog'] = 'passed';
           result['model_count'] = binding.models.length;
+          result['native_models'] = [
+            for (final m in binding.models) m.toJson(source.id),
+          ];
           result['caller_key_fingerprint'] = sha256
               .convert(utf8.encode(binding.key))
               .toString()
@@ -522,7 +535,7 @@ Future<void> main() async {
             return {'status': 'unknown'};
           }
 
-          if (clientScript.isNotEmpty) {
+          if (clientScript.isNotEmpty || pooled) {
             result['before'] = await balance();
             afterClient.add(() async {
               result['after'] = await balance();
@@ -677,7 +690,7 @@ Future<void> main() async {
           result['status'] = 'unavailable_or_incomplete';
         }
       }
-      if (nativeBindings.isNotEmpty)
+      if (!pooled && nativeBindings.isNotEmpty)
         clientSources.add({
           'id': source.id,
           'protocols': source.protocols.map((p) => p.name).toList(),
@@ -688,12 +701,36 @@ Future<void> main() async {
         flush: true,
       );
     }
+    if (pooled) {
+      report['routed_catalog'] = [
+        for (final m in service.pooledModels) m.toJson(),
+      ];
+      final requested = modelSelection
+          .split(',')
+          .where((m) => m.isNotEmpty)
+          .toSet();
+      report['missing_requested_models'] = requested
+          .difference(service.pooledModels.map((m) => m.id).toSet())
+          .toList();
+      for (final model in service.pooledModels.where(
+        (m) => requested.contains(m.id),
+      )) {
+        clientSources.add({
+          'id': model.id.replaceAll(RegExp(r'[^a-z0-9-]'), '-'),
+          'protocols': ['messages'],
+          'bindings': [
+            {'key': service.pooledKey, 'model': model.id},
+          ],
+        });
+      }
+    }
     if (clientScript.isNotEmpty && clientSources.isNotEmpty) {
       final process = await Process.start('python3', ['-I', clientScript]);
       process.stdin.write(
         jsonEncode({
           'origin': service.endpoint.toString(),
           'sources': clientSources,
+          'unified': pooled,
         }),
       );
       await process.stdin.close();
