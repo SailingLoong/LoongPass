@@ -35,6 +35,9 @@ def main():
     flutter = os.environ.get("FLUTTER_BIN") or shutil.which("flutter")
     if not flutter:
         raise ValueError("Flutter SDK is unavailable")
+    # Windows bootstrap runs pub on stdout on the first invocation, even with
+    # --machine. Complete initialization before requesting the JSON document.
+    subprocess.run([flutter, "--version"], stdout=sys.stderr, check=True)
     metadata = json.loads(subprocess.check_output([flutter, "--version", "--machine"], text=True))
     verify_toolchain(metadata)
     if len(sys.argv) > 1:
