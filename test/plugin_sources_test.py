@@ -4,6 +4,8 @@ import shutil
 import tempfile
 import unittest
 import json
+import os
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('plugin_sources', ROOT / 'tool/plugin_sources.py')
@@ -12,6 +14,14 @@ spec.loader.exec_module(sources)
 
 
 class SourceIntegrity(unittest.TestCase):
+    def test_git_line_ending_preferences_do_not_change_provenance(self):
+        with patch.dict(os.environ, {
+            'GIT_CONFIG_COUNT': '1',
+            'GIT_CONFIG_KEY_0': 'core.autocrlf',
+            'GIT_CONFIG_VALUE_0': 'true',
+        }):
+            sources.verify(ROOT)
+
     def test_patch_must_recover_the_pinned_original(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

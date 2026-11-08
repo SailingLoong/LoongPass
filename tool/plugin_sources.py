@@ -30,7 +30,7 @@ def verify(root):
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(runtime / entry['target'], path)
         for patch in reversed(manifest.get('patches', [])):
-            result = subprocess.run(['git', 'apply', '--reverse', str(runtime / patch)],
+            result = subprocess.run(['git', '-c', 'core.autocrlf=false', 'apply', '--reverse', str(runtime / patch)],
                                     cwd=stage, capture_output=True)
             if result.returncode:
                 raise ValueError('Upstream patch cannot be reversed: ' + patch)
@@ -79,7 +79,7 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
         for patch in manifest.get('patches', []):
-            subprocess.run(['git', 'apply', str(root / 'runtime' / patch)], cwd=root, check=True)
+            subprocess.run(['git', '-c', 'core.autocrlf=false', 'apply', str(root / 'runtime' / patch)], cwd=root, check=True)
     manifest = verify(root)
     print('Verified', len(manifest['files']), 'pinned files and', len(manifest['packages']), 'complete packages')
 
