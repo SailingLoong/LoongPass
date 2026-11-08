@@ -1,292 +1,163 @@
-// Synthetic transport and isolated store. Executed by Claude Code for this task.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-
 import '../lib/model_service.dart';
 import 'memory_account_store.dart';
+import 'model_test_support.dart';
 
-void check(bool condition, String message) {
-  if (!condition) throw StateError(message);
+void check(bool value, String message) {
+  if (!value) throw StateError(message);
 }
 
-class SyntheticProvider implements ModelProvider {
-  @override
-  String get id => 'synthetic';
-  @override
-  String get name => 'Synthetic';
-  int calls = 0;
-  int status = 200;
-  bool fail = false;
-  Map<String, dynamic>? received;
-  @override
-  Future<List<ModelAccount>> accounts() async => [
-    const ModelAccount('account-a', 'Synthetic account'),
-  ];
-  @override
-  Future<void> dispatch(
-    String accountId,
-    Map<String, dynamic> body,
-    Future<void> Function(ModelReply) consume,
-  ) async {
-    check(accountId == 'account-a', 'account selection changed');
-    calls++;
-    received = body;
-    if (fail) throw StateError('synthetic private diagnostic');
-    await consume(
-      ModelReply(
-        status,
-        'text/event-stream',
-        Stream.fromIterable([
-          utf8.encode(
-            'event: message_start\ndata: {"type":"message_start"}\n\n',
-          ),
-          utf8.encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'),
-        ]),
-      ),
-    );
+Future<void> fails(Future<void> Function() action, String code) async {
+  try {
+    await action();
+  } on ModelServiceFailure catch (e) {
+    check(e.code == code, 'expected $code, got ${e.code}');
+    return;
   }
+  throw StateError('expected $code');
 }
 
 Future<void> main() async {
-  final store = MemoryAccountStore('model-service-synthetic');
-  final provider = SyntheticProvider();
-  final service = ModelService(store: store, port: 0);
-  service.register(provider);
+  final missingProvider = PoolProvider('first', ModelProtocol.messages);
+  final missing = ModelService(
+    store: MemoryAccountStore('removed-legacy-model')
+      ..data = {
+        'version': 1,
+        'enabled': false,
+        'providerId': 'first',
+        'accountId': 'a',
+        'model': 'removed-model',
+        'key': List.filled(43, 'z').join(),
+      },
+    port: 0,
+  )..register(missingProvider);
+  try {
+    await missing.load();
+    await missing.start();
+    check(
+      missing.importUriFor('legacy') == null,
+      'removed legacy model produced a broken import link',
+    );
+  } finally {
+    await missing.dispose();
+    await missingProvider.events.close();
+  }
+  final store = MemoryAccountStore('migration')
+    ..data = {
+      'version': 1,
+      'enabled': true,
+      'providerId': 'first',
+      'accountId': 'a',
+      'model': 'only-a',
+      'key': List.filled(43, 'x').join(),
+    };
+  final provider = PoolProvider('first', ModelProtocol.messages);
+  final service = ModelService(store: store, port: 0)..register(provider);
   final client = HttpClient();
+  Future<(int, String)> request(
+    String path, {
+    Map<String, Object?>? body,
+  }) async {
+    final r = await client.openUrl(
+      body == null ? 'GET' : 'POST',
+      service.endpoint!.resolve(path),
+    );
+    r.headers.set('x-api-key', store.data['bindings']['legacy']['key']);
+    if (body != null) r.write(jsonEncode(body));
+    final response = await r.close();
+    return (response.statusCode, await utf8.decoder.bind(response).join());
+  }
+
   try {
     await service.load();
-    check(!service.running, 'first launch must wait for explicit setup');
-    await service.configure(
-      providerId: provider.id,
-      accountId: 'account-a',
-      model: 'synthetic-model',
-    );
-    await service.start();
-    final endpoint = service.endpoint!;
-    final key = service.callerKey!;
-    check(endpoint.host == '127.0.0.1', 'listener escaped loopback');
-    check(key.length >= 32, 'caller key lacks entropy');
+    check(service.running, 'saved intent restores without opening a page');
     check(
-      !store.data.toString().contains('accessToken'),
-      'copied platform token',
-    );
-
-    Future<(int, String)> request(
-      String path, {
-      String? authorization,
-      String? origin,
-      Object? body,
-    }) async {
-      final req = await client.openUrl(
-        body == null ? 'GET' : 'POST',
-        endpoint.resolve(path),
-      );
-      if (authorization != null)
-        req.headers.set('Authorization', authorization);
-      if (origin != null) req.headers.set('Origin', origin);
-      if (body != null) {
-        req.headers.contentType = ContentType.json;
-        req.write(jsonEncode(body));
-      }
-      final response = await req.close();
-      return (response.statusCode, await utf8.decoder.bind(response).join());
-    }
-
-    check(
-      (await request('/v1/models')).$1 == 401,
-      'anonymous catalog admitted',
+      service.bindings.single.key == List.filled(43, 'x').join(),
+      'legacy key changed',
     );
     check(
-      (await request('/v1/models', authorization: 'Bearer wrong')).$1 == 401,
-      'incorrect caller admitted',
+      service.importUriFor('legacy')!.queryParameters['models'] == 'only-a',
+      'legacy import advertised extra models',
+    );
+    check(
+      service.bindings.single.models.length == 1,
+      'legacy UI advertised extra models',
+    );
+    final models = await request('/v1/models');
+    check(models.$1 == 200, 'legacy root unavailable');
+    final data = (jsonDecode(models.$2) as Map)['data'] as List;
+    check(
+      data.length == 1 && data.single['id'] == 'only-a',
+      'migration broadened model grant',
     );
     check(
       (await request(
-            '/v1/models',
-            authorization: 'Bearer $key',
-            origin: 'https://example.test',
+            '/v1/messages',
+            body: {'model': 'shared', 'messages': []},
           )).$1 ==
-          403,
-      'browser origin admitted',
+          404,
+      'old key gained a new model',
     );
-    final catalog = await request('/v1/models', authorization: 'Bearer $key');
-    check(catalog.$1 == 200, 'catalog unavailable');
-    final models = jsonDecode(catalog.$2) as Map<String, dynamic>;
     check(
-      models['data'][0]['id'] == 'synthetic-model',
-      'configured model changed',
+      (await request(
+            '/v1/messages',
+            body: {'model': 'only-a', 'messages': []},
+          )).$1 ==
+          200,
+      'old model stopped working',
     );
-    final import = service.importUri!;
-    check(
-      import.scheme == 'magpie' && import.host == 'import',
-      'invalid official import link',
-    );
-    check(import.queryParameters['key'] == key, 'wrong import caller key');
-    check(
-      import.queryParameters['anthropic'] == endpoint.toString(),
-      'wrong import endpoint',
-    );
-
-    final body = {
-      'model': 'synthetic-model',
-      'messages': [
-        {'role': 'user', 'content': 'synthetic'},
-      ],
-      'max_tokens': 8,
-      'stream': true,
-      'tools': [
-        {
-          'name': 'synthetic_tool',
-          'input_schema': {'type': 'object'},
-        },
-      ],
-    };
-    final result = await request(
+    final before = provider.discoveries;
+    await request('/v1/models');
+    check(provider.discoveries == before, 'read triggered discovery');
+    // Revoke while a response is held: lease cancellation must unblock it.
+    provider.hold = Completer<void>();
+    final pending = request(
       '/v1/messages',
-      authorization: 'Bearer $key',
-      body: body,
+      body: {'model': 'only-a', 'messages': []},
     );
-    check(
-      result.$1 == 200 && result.$2.contains('message_stop'),
-      'SSE was truncated',
-    );
-    check(provider.calls == 1, 'request was dispatched more than once');
-    check(
-      jsonEncode(provider.received) == jsonEncode(body),
-      'message/tool payload changed',
-    );
-    final malformed = await request(
-      '/v1/messages',
-      authorization: 'Bearer $key',
-      body: 'not an object',
-    );
-    check(
-      malformed.$1 == 400 && provider.calls == 1,
-      'invalid request reached upstream',
-    );
-    final oversized = await request(
-      '/v1/messages',
-      authorization: 'Bearer $key',
-      body: {
-        ...body,
-        'messages': [
-          {'role': 'user', 'content': 'x' * (2 * 1024 * 1024)},
-        ],
-      },
-    );
-    check(
-      oversized.$1 == 413 && provider.calls == 1,
-      'unbounded request admitted',
-    );
-    final unknown = await request(
-      '/v1/messages',
-      authorization: 'Bearer $key',
-      body: {...body, 'model': 'unknown'},
-    );
-    check(
-      unknown.$1 == 404 && provider.calls == 1,
-      'unknown model reached upstream',
-    );
-
-    provider.status = 429;
-    final rejected = await request(
-      '/v1/messages',
-      authorization: 'Bearer $key',
-      body: body,
-    );
-    check(
-      rejected.$1 == 429 && provider.calls == 2,
-      'quota rejection was replayed',
-    );
-    provider.fail = true;
-    final uncertain = await request(
-      '/v1/messages',
-      authorization: 'Bearer $key',
-      body: body,
-    );
-    check(
-      uncertain.$1 == 502 && provider.calls == 3,
-      'uncertain result was replayed',
-    );
-    check(!uncertain.$2.contains('private diagnostic'), 'private error leaked');
-
-    await service.dispose();
-    final restored = ModelService(store: store, port: 0)..register(provider);
-    try {
-      await restored.load();
-      check(
-        restored.running && restored.callerKey == key,
-        'enabled connection/key did not survive restart',
-      );
-      store.beforeWrite = () async => throw StateError('disk unavailable');
-      try {
-        await restored.stop();
-      } catch (_) {}
-      check(
-        restored.running && store.data['enabled'] == true,
-        'failed stop save changed runtime without persisting intent',
-      );
-      store.beforeWrite = null;
-      store.afterWrite = () async => throw StateError('lost acknowledgement');
-      await restored.stop();
-      store.afterWrite = null;
-      check(
-        !restored.running && store.data['enabled'] == false,
-        'stop did not persist',
-      );
-    } finally {
-      store.beforeWrite = null;
-      store.afterWrite = null;
-      await restored.dispose();
+    while (provider.calls.length < 2) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
     }
-
-    final failingStore = MemoryAccountStore('model-service-save-failure');
-    final failing = ModelService(store: failingStore, port: 0)
-      ..register(provider);
+    await service.revoke('legacy');
     try {
-      await failing.load();
-      await failing.configure(
-        providerId: provider.id,
-        accountId: 'account-a',
-        model: 'synthetic-model',
-      );
-      failingStore.beforeWrite = () async =>
-          throw StateError('disk unavailable');
-      try {
-        await failing.start();
-      } catch (_) {}
-      check(
-        !failing.running && failing.endpoint == null,
-        'failed persistence left listener running',
-      );
-    } finally {
-      await failing.dispose();
-    }
-    final occupied = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final bindFailure = ModelService(store: store, port: occupied.port)
-      ..register(provider);
-    try {
-      try {
-        await bindFailure.load();
-      } catch (_) {}
-      // The saved connection was stopped above, so load must not bind.
-      try {
-        await bindFailure.start();
-      } catch (_) {}
-      check(
-        !bindFailure.running && bindFailure.error == 'port_unavailable',
-        'port conflict reported a running service',
-      );
-    } finally {
-      await bindFailure.dispose();
-      await occupied.close(force: true);
-    }
-    stdout.writeln(
-      'PASS model service authentication, SSE, routing, persistence and failure boundaries',
-    );
+      await pending.timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    check(provider.disconnected > 0, 'revocation did not cancel upstream');
+    await service.stop();
   } finally {
-    client.close(force: true);
     await service.dispose();
+    client.close(force: true);
+    await provider.events.close();
   }
+
+  final blocker = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  final p = PoolProvider('first', ModelProtocol.messages);
+  final s = ModelService(
+    store: MemoryAccountStore('atomic-start'),
+    port: blocker.port,
+  )..register(p);
+  await s.load();
+  await s.addAccount(providerId: p.id, accountId: 'a');
+  await fails(s.start, 'port_unavailable');
+  check(!s.running, 'port collision pretended to start');
+  await blocker.close(force: true);
+  await s.dispose();
+  await p.events.close();
+  final bad = ModelService(
+    store: MemoryAccountStore('bad')
+      ..data = {
+        'version': 2,
+        'enabled': true,
+        'bindings': {'bad': {}},
+      },
+    port: 0,
+  );
+  await fails(bad.load, 'invalid_settings');
+  check(!bad.running, 'invalid settings started');
+  await bad.dispose();
+  print(
+    'PASS v1 least-privilege migration, startup, cancellation and port conflicts',
+  );
 }

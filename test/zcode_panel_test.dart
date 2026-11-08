@@ -164,7 +164,7 @@ void main() {
     },
   );
   testWidgets(
-    'restores activity accounts without consuming a reward during render',
+    'restores and queries credits without consuming a reward during startup',
     (tester) async {
       final store = MemoryAccountStore('panel');
       final http = fixture.FakeZcode();
@@ -190,7 +190,7 @@ void main() {
       expect(find.textContaining('签到'), findsNothing);
       expect(find.textContaining('Z.AI'), findsNothing);
       expect(http.claims, 0);
-      expect(http.balanceCalls, 0);
+      expect(http.balanceCalls, 1);
       await tester.tap(
         find.byKey(ValueKey('account-${(await owner.accounts()).first.id}')),
       );

@@ -60,6 +60,18 @@ void main() {
       expect(restored.accountsFor('one').single.receipt!.amount, 100);
     },
   );
+  test(
+    'startup refreshes saved credits immediately without sending a reward',
+    () async {
+      final previous = await signedIn();
+      await previous.setAutomatic('one', first.identity, false);
+      previous.dispose();
+      final restored = open();
+      await restored.start();
+      expect(restored.accountsFor('one').single.credits!.totalRemaining, 125.5);
+      expect(first.claims, 0);
+    },
+  );
 
   test(
     'lost receipt is not replayed after restart or same-account reauthorization',

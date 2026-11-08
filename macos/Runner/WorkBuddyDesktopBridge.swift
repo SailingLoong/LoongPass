@@ -29,7 +29,7 @@ import Darwin
                 guard ProcessInfo.processInfo.systemUptime < deadline else { result("expired"); return }
                 guard try self.installedClient().path == bundle.path else { throw WorkBuddyDesktopTransaction.Failure.sourceChanged }
                 let transaction = WorkBuddyDesktopTransaction(root: root, journal: journal) {
-                    guard try WorkBuddyProcesses.writers(in: bundle).isEmpty else { throw WorkBuddyDesktopTransaction.Failure.busy }
+                    guard try DesktopClientProcesses.writers(in: bundle).isEmpty else { throw WorkBuddyDesktopTransaction.Failure.busy }
                 }
                 try transaction.apply(session)
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -40,6 +40,8 @@ import Darwin
                     }
                 }
                 result(opened ? "opened" : "applied")
+            } catch DesktopClientProcesses.Failure.busy {
+                result("busy")
             } catch WorkBuddyDesktopTransaction.Failure.busy {
                 result("busy")
             } catch WorkBuddyDesktopTransaction.Failure.recoveryRequired {
@@ -89,7 +91,7 @@ import Darwin
         }
         let deadline = ProcessInfo.processInfo.systemUptime + 12
         while true {
-            if try WorkBuddyProcesses.writers(in: bundle).isEmpty { return }
+            if try DesktopClientProcesses.writers(in: bundle).isEmpty { return }
             guard ProcessInfo.processInfo.systemUptime < deadline else { throw WorkBuddyDesktopTransaction.Failure.busy }
             try await Task.sleep(nanoseconds: 200_000_000)
         }

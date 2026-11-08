@@ -21,6 +21,8 @@ class Exchange implements WorkBuddyExchange {
    if(r.method!='GET'||r.headers.containsKey('X-User-Id'))throw StateError('profile request');
    return {'code':0,'data':{'uid':wrongUid??uid,'type':'personal','domain':'www.workbuddy.cn'}};
   }
+  if(r.uri.path.endsWith('get-user-resource-summary'))return {'code':0,'data':{'Packages':[{'CapacityRemain':42.5}]}};
+  if(r.uri.path.contains('get-user-resource-'))return {'code':0,'data':{'Accounts':[],'TotalCount':0}};
   if(r.uri.path.endsWith('daily-checkin')){posts++;throw StateError('never claim in restore test');}
   status++;return {'code':0,'data':{'active':true,'today_checked_in':false}};
  }
@@ -85,6 +87,7 @@ Future<void> main()async{
  final attempts=Attempts()..row=WorkBuddyAttempt(revision:0,subject:WorkBuddySubject('www.workbuddy.cn','A','old-owner'),day:'2026-11-05',before:10);
  final coreRoster=WorkBuddyAccounts(create:()=>WorkBuddyAccountFlow(exchange:exchange,ownerGeneration:'restored-new',isOwnerCurrent:()=>true,store:attempts,now:()=>DateTime.utc(2026,11,5),readCompleteBalance:(s)async=>(subject:s,totalRemaining:10.0)));
  final ca=await coreRoster.restore(WorkBuddyVault(addStore,now:()=>DateTime.utc(2026,11,5)),keyA);
+ check(coreRoster.accounts.single.totalRemaining==10,'restoration queries current balance without a claim');
  await coreRoster.claim(ca!);await coreRoster.claim(ca);
  check(exchange.posts==0&&attempts.row!.revision==0,'restored unknown claim intent never resets or repeats POST');
  coreRoster.close();restored.close();noExpiry.close();

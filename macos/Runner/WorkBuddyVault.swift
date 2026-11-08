@@ -154,7 +154,8 @@ final class WorkBuddyVault {
         guard integer(row["schema"])==1,integer(row["revision"]) != nil,let state=row["state"] as? String else{throw Failure.invalid}
         if state=="revoked" { guard Set(row.keys)==Set(["schema","revision","state"]) else{throw Failure.invalid};return }
         guard state=="active"||state=="rotationPending",
-              Set(row.keys).isSubset(of:Set(["schema","revision","state","domain","endpoint","uid","accessToken","refreshToken","expiresAt"])) else{throw Failure.invalid}
+              Set(row.keys).isSubset(of:Set(["schema","revision","state","domain","endpoint","uid","accessToken","refreshToken","expiresAt","registrationId"])) else{throw Failure.invalid}
+        if let registration = row["registrationId"] { guard let value = registration as? String, value.count == 32, value.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { throw Failure.invalid } }
         for name in ["domain","endpoint"] {guard let v=row[name] as? String,["www.workbuddy.cn","www.codebuddy.cn"].contains(v) else{throw Failure.invalid}}
         for name in ["uid","accessToken","refreshToken"] {
             if name=="refreshToken" && row[name]==nil{continue}

@@ -12,9 +12,11 @@ class QoderDeviceAccountsPanel extends StatefulWidget {
     super.key,
     this.region = QoderRegion.cn,
     this.create,
+    this.owner,
   });
   final QoderRegion region;
   final QoderDeviceAccounts Function()? create;
+  final QoderDeviceAccounts? owner;
   @override
   State<QoderDeviceAccountsPanel> createState() =>
       _QoderDeviceAccountsPanelState();
@@ -26,7 +28,8 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   List<QoderSavedAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available => widget.create != null || nativeAccountsSupported;
+  bool get _available =>
+      widget.owner != null || widget.create != null || nativeAccountsSupported;
   @override
   void initState() {
     super.initState();
@@ -35,11 +38,12 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
 
   Future<void> _restore() => _run(() async {
     final owner = _owner ??=
+        widget.owner ??
         widget.create?.call() ??
         createQoderDeviceAccounts(region: widget.region);
     owner.onChanged = _reload;
     await _reload();
-    owner.startAutomatic();
+    if (widget.owner == null) owner.startAutomatic();
   });
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -80,7 +84,7 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
       'region': widget.region.name,
     });
     _owner!.followAuthorization();
-    setState(() => _message = '请在官网完成授权，正在自动等待结果。');
+    setState(() => _message = '请在官网完成授权，正在等待授权结果。');
   });
   Future<void> _cancel() => _run(() async {
     final result = await _owner!.cancelLogin();
@@ -103,7 +107,8 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   };
   @override
   void dispose() {
-    _owner?.dispose();
+    _owner?.onChanged = null;
+    if (widget.owner == null) _owner?.dispose();
     super.dispose();
   }
 
@@ -141,7 +146,7 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('自动签到'),
+                  const Text('辅助签到'),
                   Switch(
                     value: a.automatic,
                     onChanged: _busy
@@ -182,8 +187,8 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
         title: widget.region.label,
         accountCount: _accounts.length,
         helpText:
-            '${widget.region.label} 多账号保存与自动签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。' +
-            ' 自动检查：启动约 30 秒后，之后每 15 分钟；关闭应用后停止。',
+            '${widget.region.label} 多账号保存与辅助签到。授权后明文保存在本机私有目录，启动时恢复账号；国内外账号相互独立。' +
+            ' 检查计划：启动约 30 秒后，之后每 15 分钟；关闭应用后停止。',
         actions: [
           FilledButton(
             key: const Key('qoder-login'),

@@ -12,11 +12,11 @@ class MiniMaxAccountsPanel extends StatefulWidget {
     super.key,
     this.region = 'cn',
     this.open,
-    this.onOwnerReady,
+    this.owner,
   });
   final String region;
   final Future<MiniMaxAccounts> Function()? open;
-  final void Function(MiniMaxAccounts)? onOwnerReady;
+  final MiniMaxAccounts? owner;
   @override
   State<MiniMaxAccountsPanel> createState() => _MiniMaxAccountsPanelState();
 }
@@ -24,10 +24,12 @@ class MiniMaxAccountsPanel extends StatefulWidget {
 class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   static const _channel = MethodChannel('com.sailingloong.loongpass/files');
   MiniMaxAccounts? _service;
+  StreamSubscription<void>? _subscription;
   List<MiniMaxAccount> _accounts = [];
   bool _busy = false;
   String? _message;
-  bool get _available => widget.open != null || nativeAccountsSupported;
+  bool get _available =>
+      widget.owner != null || widget.open != null || nativeAccountsSupported;
   String get _name => widget.region == 'cn' ? 'MiniMax CN' : 'MiniMax';
   @override
   void initState() {
@@ -36,20 +38,22 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   }
 
   Future<void> _restore() => _run(() async {
-    final service = widget.open != null
-        ? await widget.open!()
-        : await openNativeMiniMaxAccounts(
-            region: widget.region,
-            onAutomaticFinished: _refresh,
-          );
+    final service =
+        widget.owner ??
+        (widget.open != null
+            ? await widget.open!()
+            : await openNativeMiniMaxAccounts(
+                region: widget.region,
+                onAutomaticFinished: _refresh,
+              ));
     if (!mounted) {
-      service.dispose();
+      if (widget.owner == null) service.dispose();
       return;
     }
     _service = service;
-    widget.onOwnerReady?.call(service);
+    _subscription = service.changes.listen((_) => unawaited(_refresh()));
     await _refresh();
-    service.startAutomatic();
+    if (widget.owner == null) service.startAutomatic();
   });
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -102,7 +106,8 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
   };
   @override
   void dispose() {
-    _service?.dispose();
+    unawaited(_subscription?.cancel());
+    if (widget.owner == null) _service?.dispose();
     super.dispose();
   }
 
@@ -146,7 +151,7 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('自动签到'),
+                  const Text('辅助签到'),
                   Switch(
                     value: a.automatic,
                     onChanged: _busy
@@ -174,8 +179,8 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
         title: _name,
         accountCount: _accounts.length,
         helpText:
-            '$_name 多账号保存与自动签到。授权后在本机私有目录明文保存；应用启动时恢复，运行期间自动检查。' +
-            ' 自动检查：启动后约 30 秒，之后每 15 分钟；关闭应用后停止。',
+            '$_name 多账号保存与辅助签到。授权后在本机私有目录明文保存；应用启动时恢复，运行期间按计划检查。' +
+            ' 检查计划：启动后约 30 秒，之后每 15 分钟；关闭应用后停止。',
         actions: [
           FilledButton(
             key: const Key('minimax-login'),
@@ -203,7 +208,7 @@ class _MiniMaxAccountsPanelState extends State<MiniMaxAccountsPanel> {
         ],
       ),
       if (_service?.loginPending ?? false) ...[
-        const Text('请在官方网页完成登录，LoongPass 会自动读取授权结果。'),
+        const Text('请在官方网页完成登录，LoongPass 会接收授权结果。'),
         if (_service?.loginCode case final String code) Text('官网验证码：$code'),
       ],
       if (!_available) const Text('账号授权目前仅支持 macOS。'),

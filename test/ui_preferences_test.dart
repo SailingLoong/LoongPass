@@ -27,8 +27,8 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
-        'lobsterai',
         'loomy',
+        'codex',
       ]);
       expect(restored.isFavorite('qoderCn/same-id'), isTrue);
       expect(restored.isFavorite('qoder/same-id'), isFalse);
@@ -43,7 +43,7 @@ void main() {
     () async {
       final preferences = UiPreferences(
         read: () async => jsonEncode({
-          'appOrder': ['qoder', 'old-app', 'qoder', null, 'zcode'],
+          'appOrder': ['qoder', 'lobsterai', 'qoder', null, 'zcode'],
           'pageSizes': {'qoder': 999},
           'theme': 'invalid',
         }),
@@ -57,8 +57,8 @@ void main() {
         'minimax',
         'workbuddy',
         'traeCn',
-        'lobsterai',
         'loomy',
+        'codex',
       ]);
       expect(preferences.pageSize('qoder'), 10);
       expect(preferences.themeMode, ThemeMode.system);
@@ -96,8 +96,8 @@ void main() {
         'minimaxCn',
         'minimax',
         'traeCn',
-        'lobsterai',
         'loomy',
+        'codex',
       ]);
       fail = true;
       preferences.setCollapsed(true);

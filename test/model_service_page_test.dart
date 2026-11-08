@@ -1,26 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import '../lib/model_service.dart';
 import '../lib/workspace_tools.dart';
 import 'memory_account_store.dart';
-import 'model_service_checks.dart' show SyntheticProvider;
+import 'model_test_support.dart';
 
 void main() {
   testWidgets(
-    'saved selection starts, exports and stops the real local provider',
+    'multiple account connections expose catalogs and copy distinct grants',
     (tester) async {
-      final service = ModelService(
-        store: MemoryAccountStore('page-synthetic'),
-        port: 0,
-      )..register(SyntheticProvider());
-      await service.load();
-      await service.configure(
-        providerId: 'synthetic',
-        accountId: 'account-a',
-        model: 'synthetic-model',
-      );
+      tester.view.physicalSize = const Size(1200, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final provider = PoolProvider('synthetic', ModelProtocol.messages);
+      late ModelService service;
+      late ModelBinding a, b;
+      await tester.runAsync(() async {
+        service = ModelService(store: MemoryAccountStore('page'), port: 0)
+          ..register(provider);
+        await service.load();
+        a = await service.addAccount(providerId: provider.id, accountId: 'a');
+        b = await service.addAccount(providerId: provider.id, accountId: 'b');
+      });
       String? copied;
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
@@ -37,50 +40,49 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Synthetic account'), findsOneWidget);
-        expect(
-          find.widgetWithText(TextField, 'synthetic-model'),
-          findsOneWidget,
-        );
-        await tester.enterText(find.byType(TextField), '');
-        service.register(SyntheticProvider());
+        expect(find.text('only-a'), findsOneWidget);
+        expect(find.text('only-b'), findsOneWidget);
+        expect(find.byType(TextField), findsNothing);
+        final before = provider.discoveries;
+        await tester.runAsync(() async {
+          await tester.tap(find.text('启动本地服务'));
+          while (service.busy) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+          }
+        });
         await tester.pumpAndSettle();
-        expect(
-          tester.widget<TextField>(find.byType(TextField)).controller!.text,
-          '',
-        );
-        await tester.enterText(find.byType(TextField), 'synthetic-model');
-
-        Future<void> tapAndWait(String label, bool running) async {
-          await tester.runAsync(() async {
-            await tester.tap(find.text(label));
-            final limit = DateTime.now().add(const Duration(seconds: 5));
-            while (service.busy || service.running != running) {
-              if (DateTime.now().isAfter(limit))
-                throw StateError('service command did not finish');
-              await Future<void>.delayed(const Duration(milliseconds: 5));
-            }
-          });
-          await tester.pumpAndSettle();
-        }
-
-        await tapAndWait('保存并启动', true);
-        expect(find.text('本地服务运行中'), findsOneWidget);
-        await tester.tap(find.text('复制 Magpie 接入链接'));
+        expect(service.running, isTrue);
+        final copy = find.byKey(ValueKey('copy-${a.id}'));
+        await tester.ensureVisible(copy);
+        await tester.tap(copy);
         await tester.pumpAndSettle();
-        final link = Uri.parse(copied!);
-        expect(link.queryParameters['models'], 'synthetic-model');
-        expect(link.queryParameters['anthropic'], service.endpoint.toString());
-        expect(link.queryParameters['key'], service.callerKey);
-        await tapAndWait('停止本地服务', false);
-        expect(find.text('尚未启动'), findsOneWidget);
+        expect(Uri.parse(copied!).queryParameters['key'], a.key);
+        expect(Uri.parse(copied!).queryParameters['models'], 'shared,only-a');
+        expect(a.key, isNot(b.key));
+        expect(
+          provider.discoveries,
+          before,
+          reason: 'render/start/copy must not trigger discovery',
+        );
+        await tester.ensureVisible(find.text('停止本地服务'));
+        await tester.runAsync(() async {
+          await tester.tap(find.text('停止本地服务'));
+          while (service.busy) {
+            await Future<void>.delayed(const Duration(milliseconds: 5));
+          }
+        });
+        await tester.pumpAndSettle();
+        expect(service.running, isFalse);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
           SystemChannels.platform,
           null,
         );
-        await service.dispose();
+        await tester.runAsync(service.dispose);
+        await tester.runAsync(() async {
+          await provider.events.close();
+        });
       }
     },
   );

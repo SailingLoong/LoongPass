@@ -130,6 +130,34 @@ Future<void> main() async {
     now: () => instant,
   );
   await check(
+    'disabled or unavailable rewards do not suppress credits',
+    () async {
+      final store = MemoryAccountStore('credit-read'), http = FakeTrae();
+      final first = owner(store, http);
+      await first.importCurrent(context());
+      first.dispose();
+      final restored = owner(store, http);
+      try {
+        await restored.setAutomatic('a', false);
+        await restored.automaticTick();
+        expect(
+          restored.credits('a')?.totalRemaining == 4700,
+          'disabled reward policy suppressed balance',
+        );
+        await restored.setAutomatic('a', true);
+        http.enabled = false;
+        http.balances['a'] = 4600;
+        await restored.automaticTick();
+        expect(
+          restored.credits('a')?.totalRemaining == 4600 && http.claims == 0,
+          'unavailable reward suppressed current balance',
+        );
+      } finally {
+        restored.dispose();
+      }
+    },
+  );
+  await check(
     'current authorization verifies, saves privately, restores, auto claims once',
     () async {
       final store = MemoryAccountStore('trae'),

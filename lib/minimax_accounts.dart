@@ -94,12 +94,14 @@ class MiniMaxVerifiedImport {
 
 class MiniMaxAccount {
   final String id, status, uid, region, label;
+  final String? registrationId;
   final bool automatic;
   final num? points;
   final ClaimReceipt? latestClaim;
   final int expiresAtMs;
   MiniMaxAccount._(Map<String, dynamic> a)
     : id = a['id'],
+      registrationId = a['registrationId'],
       status = a['status'],
       uid = a['uid'],
       region = a['region'],
@@ -190,6 +192,7 @@ class MiniMaxAccountStore {
       'previousSuccessfulOperation',
       'sourceGeneration',
       'sourceFingerprint',
+      'registrationId',
     };
     for (final e in (doc['accounts'] as Map<String, dynamic>).entries) {
       final a = e.value;
@@ -199,6 +202,8 @@ class MiniMaxAccountStore {
           !['cn', 'global'].contains(a['region']) ||
           a['uid'] is! String ||
           a['label'] is! String ||
+          a['registrationId'] != null &&
+              !_validText(a['registrationId'], 128) ||
           a['generation'] is! int ||
           a['expiresAtMs'] is! int ||
           !_validText(a['accessToken'], 16384) ||
@@ -251,6 +256,8 @@ class MiniMaxAccounts {
   final FutureOr<void> Function()? onAutomaticFinished;
   static final _busy = <String>{};
   bool _closed = false, _ticking = false;
+  final _changes = StreamController<void>.broadcast();
+  Stream<void> get changes => _changes.stream;
   MiniMaxOAuth? _login;
   Timer? _loginTimer;
   bool _savingLogin = false;
@@ -302,7 +309,7 @@ class MiniMaxAccounts {
       _loginTimer = null;
       login.cancel();
       _login = null;
-      loginMessage = '账号已验证并保存，自动签到已开启。';
+      loginMessage = '账号已验证并保存，辅助签到已开启。';
     } on MiniMaxOAuthFailure catch (e) {
       if (!login.active) {
         _loginTimer?.cancel();
@@ -315,7 +322,10 @@ class MiniMaxAccounts {
     } finally {
       _savingLogin = false;
       try {
-        if (!_closed) await onAutomaticFinished?.call();
+        if (!_closed) {
+          _changes.add(null);
+          await onAutomaticFinished?.call();
+        }
       } catch (_) {
         // A display refresh cannot undo the saved authorization.
       }
@@ -451,6 +461,7 @@ class MiniMaxAccounts {
           'label': value.label,
           'region': c.region,
           'generation': generation,
+          'registrationId': old?['registrationId'] ?? _nonce(),
           'expiresAtMs': c.expiresAtMs,
           'accessToken': c._accessToken,
           'refreshToken': c._refreshToken,
@@ -469,6 +480,7 @@ class MiniMaxAccounts {
       }, write: true);
       _rotations.remove(value.id);
       _verified[value.id] = (await _account(value.id))['generation'];
+      _changes.add(null);
       return saved;
     } finally {
       _busy.remove(_ownerKey(value.id));
@@ -561,19 +573,39 @@ class MiniMaxAccounts {
   /// Keep the lease until the caller has consumed or cancelled the response.
   Future<T> withInferenceAuthorization<T>(
     String id,
-    Future<T> Function(String region, String token, bool Function() isCurrent)
-    use,
-  ) async {
+    Future<T> Function(
+      String region,
+      String token,
+      bool Function() isCurrent,
+      String registrationId,
+    )
+    use, {
+    String? expectedRegistrationId,
+  }) async {
     _alive();
     if (!_busy.add(_ownerKey(id))) throw const MiniMaxAccountError('Busy');
+    var active = true;
     try {
-      final account = await _authorized(id);
+      var account = await _authorized(id);
+      if (account['registrationId'] == null) {
+        account = await store._access((rows) async {
+          final current = _match(rows, id, account);
+          current['registrationId'] = _nonce();
+          return Map<String, dynamic>.from(current);
+        }, write: true);
+      }
+      final registration = account['registrationId'] as String;
+      if (expectedRegistrationId != null &&
+          expectedRegistrationId != registration)
+        throw const MiniMaxAccountError('SourceChanged');
       return await use(
         account['region'],
         account['accessToken'],
-        () => !_closed && account['expiresAtMs'] > nowMs(),
+        () => active && !_closed && account['expiresAtMs'] > nowMs(),
+        registration,
       );
     } finally {
+      active = false;
       _busy.remove(_ownerKey(id));
     }
   }
@@ -597,16 +629,14 @@ class MiniMaxAccounts {
         );
         _alive();
         final body = response.body;
-        if (response.status != 200 ||
-            body == null ||
-            body['details'] is! List ||
-            body['total_count'] is! int)
+        if (response.status != 200 || body == null)
           throw const MiniMaxAccountError('InvalidResponse');
-        final rows = body['details'] as List;
-        received += rows.length;
+        final pageDetails = parseMiniMaxCreditPage(body);
+        received += pageDetails.rows.length;
         pages.add(body);
-        if (received >= body['total_count']) break;
-        if (rows.isEmpty) throw const MiniMaxAccountError('InvalidResponse');
+        if (received >= pageDetails.totalCount) break;
+        if (pageDetails.rows.isEmpty)
+          throw const MiniMaxAccountError('InvalidResponse');
       }
       await store._access((a) async {
         _match(a, id, account);
@@ -773,7 +803,6 @@ class MiniMaxAccounts {
         if (a.automatic) {
           try {
             await _claim(a.id, true);
-            await refreshCredits(a.id);
           } on MiniMaxAccountError catch (e) {
             if (e.code == 'NeedsLogin') {
               try {
@@ -784,10 +813,18 @@ class MiniMaxAccounts {
             }
           }
         }
+        try {
+          await refreshCredits(a.id);
+        } catch (_) {
+          // Credits are independent of automatic rewards and their outcome.
+        }
       }
     } finally {
       try {
-        if (!_closed) await onAutomaticFinished?.call();
+        if (!_closed) {
+          _changes.add(null);
+          await onAutomaticFinished?.call();
+        }
       } catch (_) {
         /* UI refresh must not change the claim outcome. */
       } finally {
@@ -801,6 +838,7 @@ class MiniMaxAccounts {
   void startAutomatic() {
     _alive();
     if (_timer != null || _startupTimer != null) return;
+    unawaited(_refreshAllCredits());
     _startupTimer = Timer(const Duration(seconds: 30), () {
       _startupTimer = null;
       if (!_closed) unawaited(automaticTick().catchError((_) {}));
@@ -810,8 +848,29 @@ class MiniMaxAccounts {
     });
   }
 
+  Future<void> _refreshAllCredits() async {
+    try {
+      for (final account in await list()) {
+        if (_closed) break;
+        try {
+          await refreshCredits(account.id);
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Storage and authorization errors remain owned by the account service.
+    } finally {
+      if (!_closed) {
+        try {
+          await onAutomaticFinished?.call();
+        } catch (_) {}
+      }
+    }
+  }
+
   void dispose() {
+    if (_closed) return;
     _closed = true;
+    unawaited(_changes.close());
     cancelAuthorization();
     _startupTimer?.cancel();
     _timer?.cancel();

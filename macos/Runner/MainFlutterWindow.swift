@@ -8,6 +8,7 @@ class MainFlutterWindow: NSWindow {
   private let zcodeCaptcha = ZcodeCaptchaWindow()
   private let qoderFileStore = QoderFileStore()
   private let workBuddyDesktop = WorkBuddyDesktopBridge()
+  private var codexAccounts: CodexBridge? { (NSApp.delegate as? AppDelegate)?.codexAccounts }
   private var selectedURL: URL?
   private var pickerOpen = false
   private var backupRoot: URL?
@@ -21,7 +22,7 @@ class MainFlutterWindow: NSWindow {
     catch {
       let alert = NSAlert()
       alert.messageText = "无法打开 LoongPass 账号数据"
-      alert.informativeText = "请退出其他 LoongPass 版本，并允许系统请求的原账号目录访问。若新旧目录都有数据，请保留两处数据并联系维护者；应用不会自动合并或覆盖账号。"
+      alert.informativeText = "请退出其他 LoongPass 版本，并允许系统请求的原账号目录访问。若新旧目录都有数据，请保留两处数据并联系维护者；应用不会自行合并或覆盖账号。"
       alert.runModal()
       NSApp.terminate(nil); return
     }
@@ -44,6 +45,7 @@ class MainFlutterWindow: NSWindow {
     self.title = "LoongPass"
     RegisterGeneratedPlugins(registry: flutterViewController)
     appUpdater.register(with: flutterViewController.engine.binaryMessenger)
+    codexAccounts?.start()
 
     // Register only: no production owner, discovery, configuration or launch.
     zcodeSwitchBridge.register(with: flutterViewController.engine.binaryMessenger, window: self)
@@ -58,9 +60,18 @@ class MainFlutterWindow: NSWindow {
       }
       if AccountDocumentBridge.handle(call: call, result: result) { return }
       if self.workBuddyDesktop.handle(call, result: result) { return }
+      if self.codexAccounts?.handle(call, result: result) == true { return }
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
+      case "workBuddyClientVersion":
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.tencent.workbuddy.mac"),
+              let bundle = Bundle(url: url),
+              let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+              version.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$", options: .regularExpression) != nil else {
+          result(FlutterError(code: "client_version_unavailable", message: nil, details: nil)); return
+        }
+        result(version)
       case "verifyZcodeClaim":
         do {
           guard let args = call.arguments as? [String: Any] else { throw ZcodeCaptchaWindow.Failure.unavailable }

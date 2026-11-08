@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'account_document_store.dart';
+import 'account_registration.dart';
 import 'claim_receipt.dart';
 import 'source_digest.dart';
 import 'zcode_api.dart';
@@ -11,11 +12,13 @@ import 'zcode_rewards.dart';
 class ZcodeActivityAccount {
   final String id, uid, family, label, status, deviceSuffix;
   final bool automatic;
+  final String? registrationId;
   final int? checkedAt;
   final ClaimReceipt? latestClaim;
   final List<ZcodeBucket> buckets;
   ZcodeActivityAccount(Map<String, dynamic> a)
     : id = a['id'],
+      registrationId = a['registrationId'],
       uid = a['uid'],
       family = a['family'],
       label = a['label'],
@@ -69,6 +72,24 @@ class _Login {
   );
 }
 
+/// One ephemeral authorization owned by the saved-account transaction.
+class ZcodeInferenceAuthorization {
+  final String token, registrationId;
+  final Map<String, String> context;
+  final bool Function() isCurrent;
+  final Future<Map<String, dynamic>> Function() balance, clientConfig;
+  ZcodeInferenceAuthorization._(
+    this.token,
+    this.registrationId,
+    this.context,
+    this.isCurrent,
+    this.balance,
+    this.clientConfig,
+  );
+  @override
+  String toString() => 'ZcodeInferenceAuthorization(redacted)';
+}
+
 /// Sole owner of saved identities, authorization recovery, durable activity
 /// attempts and scheduling. Presentation reads never trigger network work.
 class ZcodeActivityAccounts {
@@ -76,6 +97,8 @@ class ZcodeActivityAccounts {
   final ZcodeApi api;
   final int Function() now;
   final Future<String?> Function(ZcodeCaptchaConfig)? requestVerification;
+  final _authorizationChanges = StreamController<void>.broadcast();
+  Stream<void> get authorizationChanges => _authorizationChanges.stream;
   FutureOr<void> Function()? onChanged;
   static final _writers = <String>{};
   bool _closed = false;
@@ -137,6 +160,7 @@ class ZcodeActivityAccounts {
             !zcodeText(a['label']) ||
             !zcodeText(a['token'], 16384) ||
             a['automatic'] is! bool ||
+            a['registrationId'] != null && !zcodeText(a['registrationId']) ||
             a['claims'] is! Map<String, dynamic> ||
             a['buckets'] is! List ||
             !_statuses.contains(a['status']))
@@ -196,10 +220,9 @@ class ZcodeActivityAccounts {
     'authorization_required',
     'discoveryIncomplete',
   };
-  static String _id(String family, String uid) =>
-      sourceSha256(utf8.encode('$family\u0000$uid'))
-          .map((v) => v.toRadixString(16).padLeft(2, '0'))
-          .join();
+  static String _id(String family, String uid) => sourceSha256(
+    utf8.encode('$family\u0000$uid'),
+  ).map((v) => v.toRadixString(16).padLeft(2, '0')).join();
   Future<List<ZcodeActivityAccount>> accounts() async => [
     for (final a in ((await _read()).data['accounts'] as Map).values)
       ZcodeActivityAccount(a),
@@ -326,7 +349,7 @@ class ZcodeActivityAccounts {
       login.flow = d['flow_id'];
       login.expires = min(d['expires_at'] * 1000 as int, now() + 600000);
       login.interval = d['poll_interval_sec'];
-      message = '请在智谱官方页面完成授权，完成后会自动保存。';
+      message = '请在智谱官方页面完成授权，完成后会保存。';
       return url;
     } catch (_) {
       if (identical(_login, login)) _login = null;
@@ -432,6 +455,9 @@ class ZcodeActivityAccounts {
       ...ready,
       'family': login.family,
       'context': login.context,
+      'registrationId': deviceChanged
+          ? newAccountRegistrationId()
+          : old?['registrationId'] ?? newAccountRegistrationId(),
       'automatic': old?['automatic'] ?? true,
       'status': deviceChanged || old?['status'] == 'authorization_required'
           ? 'unavailable'
@@ -460,7 +486,8 @@ class ZcodeActivityAccounts {
       _login = null;
       _poll?.cancel();
     }
-    message = '账号已保存；自动检查活动已开启。';
+    if (!_closed) _authorizationChanges.add(null);
+    message = '账号已保存；辅助检查活动已开启。';
     startAutomatic();
   });
   bool cancelAuthorization() {
@@ -496,6 +523,60 @@ class ZcodeActivityAccounts {
     a['checkedAt'] = b.checkedAt;
   }
 
+  Future<T> withInferenceAuthorization<T>(
+    String id,
+    Future<T> Function(ZcodeInferenceAuthorization) use, {
+    String? expectedRegistrationId,
+  }) => _exclusive(() async {
+    final doc = await _read();
+    final a = (doc.data['accounts'] as Map)[id];
+    if (a is! Map<String, dynamic> || a['family'] != 'bigmodel')
+      throw const ZcodeFailure('account_missing');
+    if (a['registrationId'] == null) {
+      a['registrationId'] = newAccountRegistrationId();
+      await _write(doc);
+    }
+    if (expectedRegistrationId != null &&
+        a['registrationId'] != expectedRegistrationId)
+      throw const ZcodeFailure('binding_changed');
+    var active = true;
+    bool current() => active && !_closed;
+    Future<Map<String, dynamic>> read(String path) => api.request(
+      path,
+      a['token'],
+      zcodeContext(Map<String, dynamic>.from(a['context'])),
+      isCurrent: current,
+    );
+    try {
+      return await use(
+        ZcodeInferenceAuthorization._(
+          a['token'],
+          a['registrationId'],
+          Map.unmodifiable(
+            zcodeContext(Map<String, dynamic>.from(a['context'])),
+          ),
+          current,
+          () async {
+            final response = await read(ZcodeApi.balancePath);
+            final parsed = ZcodeBalance.parse(response, now());
+            final latest = await _read();
+            final current = (latest.data['accounts'] as Map)[id];
+            if (current is! Map<String, dynamic> ||
+                current['registrationId'] != a['registrationId'] ||
+                current['token'] != a['token'])
+              throw const ZcodeFailure('binding_changed');
+            _observe(current, parsed);
+            await _write(latest);
+            return response;
+          },
+          () => read(ZcodeApi.configPath),
+        ),
+      );
+    } finally {
+      active = false;
+    }
+  });
+
   static void _confirmed(Map<String, dynamic> c, Map<String, dynamic> plan) {
     c['state'] = 'claimed';
     c['instance'] = plan['user_plan_id'];
@@ -515,6 +596,28 @@ class ZcodeActivityAccounts {
   }
 
   Future<void> inspect(String id) => _exclusive(() => _run(id, submit: false));
+  Future<void> _refreshCredits(String id) async {
+    final doc = await _read();
+    final account = (doc.data['accounts'] as Map)[id] as Map<String, dynamic>?;
+    if (account == null) throw const ZcodeFailure('account_missing');
+    _observe(account, await _balance(account));
+    await _write(doc);
+  }
+
+  Future<void> _refreshAllCredits() async {
+    if (_closed || _writers.contains(store.identity) || loginPending) return;
+    await _exclusive(() async {
+      for (final account in await accounts()) {
+        if (_closed) break;
+        try {
+          await _refreshCredits(account.id);
+        } on ZcodeFailure catch (e) {
+          if (e.code == 'storage_unavailable') rethrow;
+        }
+      }
+    });
+  }
+
   Future<void> claim(
     String id, {
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
@@ -742,9 +845,12 @@ class ZcodeActivityAccounts {
     await _exclusive(() async {
       for (final a in await accounts()) {
         if (_closed) break;
-        if (!a.automatic) continue;
         try {
-          await _run(a.id, submit: true, automatic: true);
+          if (a.automatic) {
+            await _run(a.id, submit: true, automatic: true);
+          } else {
+            await _refreshCredits(a.id);
+          }
         } on ZcodeFailure catch (e) {
           if (e.code == 'storage_unavailable') rethrow;
         }
@@ -755,6 +861,7 @@ class ZcodeActivityAccounts {
   void startAutomatic() {
     _alive();
     if (_timer != null) return;
+    unawaited(_refreshAllCredits().catchError((_) {}));
     Future<void> run() async {
       try {
         await tick();
@@ -769,7 +876,9 @@ class ZcodeActivityAccounts {
   }
 
   void dispose() {
+    if (_closed) return;
     _closed = true;
+    unawaited(_authorizationChanges.close());
     _login = null;
     _poll?.cancel();
     _startup?.cancel();

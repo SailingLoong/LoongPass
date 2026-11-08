@@ -215,7 +215,7 @@ class TraeAccounts {
             'owner': 'officialClient',
           });
           _pendingImport = null;
-          message = '已核实并保存 TRAE CN 当前账号，自动签到已开启。';
+          message = '已核实并保存 TRAE CN 当前账号，辅助签到已开启。';
           startAutomatic();
         } on TraeFailure catch (error) {
           if ({
@@ -254,6 +254,11 @@ class TraeAccounts {
     doc.data['context'] = context;
     doc.data['accounts'][uid] = a;
     await _write(doc);
+    try {
+      _credits[uid] = await _readCredits(a);
+    } catch (_) {
+      // A credit lookup cannot undo a verified, saved authorization.
+    }
     _verified[uid] = a['generation'];
     _rotations.remove(uid);
   }
@@ -307,7 +312,7 @@ class TraeAccounts {
       'owner': 'loongpass',
     });
     cancelAuthorization();
-    message = '账号已验证并保存，自动签到已开启。';
+    message = '账号已验证并保存，辅助签到已开启。';
     startAutomatic();
   });
   void cancelAuthorization() {
@@ -538,6 +543,7 @@ class TraeAccounts {
   });
   void startAutomatic() {
     if (_closed || _automatic != null) return;
+    if (!_busy) unawaited(_refreshAllCredits());
     _startup = Timer(
       const Duration(seconds: 30),
       () => unawaited(automaticTick()),
@@ -554,17 +560,38 @@ class TraeAccounts {
     try {
       for (final a in await accounts()) {
         if (_closed) break;
-        if (!a.automatic) continue;
+        if (a.automatic) {
+          try {
+            await claim(a.uid);
+          } on TraeFailure catch (e) {
+            message = 'TRAE CN 检查未完成（${e.code}）。';
+          }
+        }
         try {
-          await claim(a.uid);
-        } on TraeFailure catch (e) {
-          message = 'TRAE CN 检查未完成（${e.code}）。';
+          await refreshCredits(a.uid);
+        } catch (_) {
+          message = 'TRAE CN 余额查询未完成。';
         }
       }
     } catch (_) {
       message = 'TRAE CN 本机记录暂时无法读取。';
     } finally {
       _ticking = false;
+      await _notify();
+    }
+  }
+
+  Future<void> _refreshAllCredits() async {
+    try {
+      for (final account in await accounts()) {
+        if (_closed) break;
+        try {
+          await refreshCredits(account.uid);
+        } catch (_) {}
+      }
+    } catch (_) {
+      message = 'TRAE CN 本机记录暂时无法读取。';
+    } finally {
       await _notify();
     }
   }

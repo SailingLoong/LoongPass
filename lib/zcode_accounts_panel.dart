@@ -5,13 +5,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'native_account_document_store.dart';
+import 'native_zcode_activity.dart';
 import 'zcode_activity_accounts.dart';
 import 'zcode_api.dart';
 
 class ZcodeAccountsPanel extends StatefulWidget {
-  const ZcodeAccountsPanel({super.key, this.create});
+  const ZcodeAccountsPanel({super.key, this.create, this.owner});
   final ZcodeActivityAccounts Function()? create;
+  final ZcodeActivityAccounts? owner;
   @override
   State<ZcodeAccountsPanel> createState() => _ZcodeAccountsPanelState();
 }
@@ -26,20 +27,20 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   @override
   void initState() {
     super.initState();
-    if (widget.create != null || nativeAccountsSupported) unawaited(_restore());
+    if (widget.owner != null ||
+        widget.create != null ||
+        nativeAccountsSupported)
+      unawaited(_restore());
   }
 
   Future<void> _restore() => _run(() async {
     _owner ??=
+        widget.owner ??
         widget.create?.call() ??
-        ZcodeActivityAccounts(
-          store: NativeAccountDocumentStore('ZCode'),
-          api: ZcodeApi(ZcodeHttp()),
-          requestVerification: _verify,
-        );
+        createNativeZcodeActivityAccounts();
     _owner!.onChanged = _reload;
     await _reload();
-    _owner!.startAutomatic();
+    if (widget.owner == null) _owner!.startAutomatic();
   });
   Future<void> _reload() async {
     final values = await _owner!.accounts();
@@ -107,16 +108,8 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     }
     await _reload();
   });
-  Future<String?> _verify(ZcodeCaptchaConfig config) async {
-    try {
-      return await _channel.invokeMethod<String>(
-        'verifyZcodeClaim',
-        config.values,
-      );
-    } catch (_) {
-      throw const ZcodeFailure('verification_unavailable');
-    }
-  }
+  Future<String?> _verify(ZcodeCaptchaConfig config) =>
+      verifyNativeZcodeClaim(config);
 
   String _status(String status) => switch (status) {
     'claimable' => '当前有可领取活动，尚未领取。',
@@ -125,8 +118,8 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
     'noOffer' => '服务端当前没有可领取活动。',
     'discoveryIncomplete' => '部分活动信息暂不可用，尚不能确认是否有其他可领取奖励。',
     'pending' => '领取结果待核对；只查询回执，不会重复发送。',
-    'verificationRequired' => '官方验证尚未完成，自动领取已暂停。点击“核对并领取活动”继续验证。',
-    'activationRequired' => '活动要求先使用官方 ZCode 客户端，自动领取已暂停。',
+    'verificationRequired' => '官方验证尚未完成，辅助领取已暂停。点击“核对并领取活动”继续验证。',
+    'activationRequired' => '活动要求先使用官方 ZCode 客户端，辅助领取已暂停。',
     'ineligible' => '服务端确认本次不符合活动领取条件。',
     'authorization_required' => '授权已失效，请通过官网重新授权此账号。',
     _ => '等待检查活动与额度。',
@@ -136,7 +129,8 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
   ).toLocal().toString().split('.').first;
   @override
   void dispose() {
-    _owner?.dispose();
+    _owner?.onChanged = null;
+    if (widget.owner == null) _owner?.dispose();
     super.dispose();
   }
 
@@ -191,7 +185,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('自动领取活动'),
+            title: const Text('辅助领取活动'),
             value: a.automatic,
             onChanged: _busy
                 ? null
@@ -245,7 +239,7 @@ class _ZcodeAccountsPanelState extends State<ZcodeAccountsPanel> {
         title: 'ZCode',
         accountCount: _accounts.length,
         helpText:
-            'ZCode · 智谱 BigModel。保存多个账号，自动检查并领取官方开放的活动奖励。活动以服务端资格为准。' +
+            'ZCode · 智谱 BigModel。保存多个账号，辅助领取官方开放的活动奖励；运行期间按计划检查。活动以服务端资格为准。' +
             ' 授权以明文保存在本机私有目录。运行期间每 10 分钟检查活动，退出应用即停止。',
         actions: [
           FilledButton(

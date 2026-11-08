@@ -64,17 +64,29 @@ class LoomyProvider implements RewardProvider {
     RewardTransport http,
     RewardSession session,
   ) async {
-    final data = _data(
+    final payload = _data(
       await http.send(
         'GET',
-        _business('/points/records', {
+        _business('/api/v2/points/records', {
           'pageNo': '1',
           'pageSize': '1',
-          'recordType': 'all',
+          'direction': 'debit',
+          'granularity': 'chat',
         }),
         headers: _auth(session),
       ),
     );
+    final data = Map<String, dynamic>.from(
+      payload['data'] is Map ? payload['data'] as Map : payload,
+    );
+    if (data.containsKey('dailyRemainingPoints')) {
+      final remaining = _number(data['dailyRemainingPoints']);
+      if (remaining == null ||
+          data.containsKey('dailyBalance') &&
+              _number(data['dailyBalance']) != remaining)
+        throw const RewardFailure('invalid_response');
+      data['dailyBalance'] = remaining;
+    }
     if (_number(data['balance']) == null &&
         _number(data['dailyBalance']) == null) {
       throw const RewardFailure('invalid_response');
@@ -155,7 +167,7 @@ class LoomyProvider implements RewardProvider {
     final data = _data(
       await http.send(
         'POST',
-        _business('/points/first-login'),
+        _business('/api/v1/points/first-login'),
         headers: _auth(session),
         body: <String, dynamic>{},
       ),
@@ -180,7 +192,7 @@ class LoomyProvider implements RewardProvider {
 }
 
 Uri _business(String path, [Map<String, String>? query]) =>
-    Uri.https('loomyad.xunfei.cn', '/api/v1$path', query);
+    Uri.https('loomyad.xunfei.cn', path, query);
 Map<String, dynamic>? _map(Object? value) {
   if (value is! Map || value.keys.any((key) => key is! String)) return null;
   return Map<String, dynamic>.from(value);
@@ -204,7 +216,7 @@ Map<String, dynamic> _data(RewardReply reply) {
   final businessResponse = reply.status == 200 || reply.status == 400;
   if (reply.status == 401 ||
       reply.status == 403 ||
-      businessResponse && code == '100002') {
+      businessResponse && {'100002', '020002'}.contains(code)) {
     throw const RewardRejected('login_required');
   }
   // 100001 is the source-defined business parameter rejection.

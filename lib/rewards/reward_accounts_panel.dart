@@ -126,7 +126,7 @@ class _RewardAccountsPanelState extends State<RewardAccountsPanel> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('自动领取'),
+                const Text('辅助领取'),
                 Switch(
                   value: account.automatic,
                   onChanged: owner.busy
@@ -147,6 +147,7 @@ class _RewardAccountsPanelState extends State<RewardAccountsPanel> {
             ),
           ],
         ),
+        const Text('开启后，应用运行期间按计划检查并领取；退出应用后停止。'),
       ],
     ),
   );

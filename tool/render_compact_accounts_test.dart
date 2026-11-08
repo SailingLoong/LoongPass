@@ -68,7 +68,7 @@ void main() {
                   CreditExpiry(DateTime(2026, 11, 13 + n), 300),
                 ],
               ),
-              status: n == 5 ? '领取结果待核对' : '自动领取已开启',
+              status: n == 5 ? '领取结果待核对' : '辅助领取已开启',
               needsAttention: n == 5,
               receipt: ClaimReceipt(
                 amount: 100,
@@ -146,6 +146,15 @@ void main() {
             ),
           ),
         );
+        await tester.pumpAndSettle();
+        await tester.runAsync(() async {
+          final context = tester.element(find.byKey(workspace));
+          await Future.wait([
+            precacheImage(const AssetImage('assets/branding/loongpass.png'), context),
+            for (final app in ManagedApp.values)
+              precacheImage(AssetImage(app.iconAsset), context),
+          ]);
+        });
         await tester.pumpAndSettle();
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer(location: Offset.zero);

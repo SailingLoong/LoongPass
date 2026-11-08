@@ -19,12 +19,15 @@ class WorkBuddyAccountSession {
   WorkBuddyVault? _vault;
   String? _vaultKey;
   WorkBuddyAccountSession._(this.id, this._flow);
+  String? get stableId => _verified ? _vaultKey : null;
+  String? get registrationId => _verified ? _flow.registrationId : null;
   String? get uid => _verified ? _flow.uid : null;
   String? get domain => _verified ? _flow.domain : null;
   bool get loginPending => _flow.loginPending;
   bool get busy => _saving || _flow.busy;
   bool get canClaim => _verified && _flow.canClaim;
   bool get claimOwnerAvailable => _flow.claimOwnerAvailable;
+  bool get supportsCreditQueries => !_flow.identityValidationOnly;
   String? get message => _flow.message;
   WorkBuddyState? get status => _flow.status;
   WorkBuddyResult? get result => _flow.result;
@@ -41,17 +44,34 @@ class WorkBuddyAccounts {
   final FutureOr<WorkBuddyAccountFlow> Function() create;
   final void Function()? onChanged;
   final void Function(String id)? onAccountReady;
+  final _changes = StreamController<void>.broadcast();
+  Stream<void> get changes => _changes.stream;
+  void _notify() {
+    if (_closed) return;
+    _changes.add(null);
+    try {
+      onChanged?.call();
+    } catch (_) {}
+  }
+
+  final _authorizationChanges = StreamController<void>.broadcast();
+  Stream<void> get authorizationChanges => _authorizationChanges.stream;
   final _sessions = <String, WorkBuddyAccountSession>{};
   final _identities = <String, String>{};
   bool _closed = false, _claiming = false, _restoring = false;
   int _sequence = 0, _epoch = 0;
+  bool _refreshingCredits = false;
   String? _selected, _message;
   WorkBuddyAccounts({
     required this.create,
     this.onChanged,
     this.onAccountReady,
   });
-  void _ready(String id) {
+  Future<void> _ready(String id) async {
+    await refreshBalance(id);
+    if (_closed || _sessions[id]?.uid == null) return;
+    _authorizationChanges.add(null);
+    _notify();
     try {
       onAccountReady?.call(id);
     } catch (_) {
@@ -156,7 +176,8 @@ class WorkBuddyAccounts {
       _identities[identity] = owner.id;
       _selected = owner.id;
       _message = null;
-      _ready(owner.id);
+      await _ready(owner.id);
+      if (!_owns(owner)) return null;
       return owner.id;
     } catch (_) {
       if (slot != null && _owns(slot)) _retire(slot);
@@ -232,7 +253,7 @@ class WorkBuddyAccounts {
       } finally {
         if (!_closed) {
           try {
-            onChanged?.call();
+            _notify();
           } catch (_) {
             /* Rendering does not own authorization. */
           }
@@ -316,7 +337,7 @@ class WorkBuddyAccounts {
       return null;
     } finally {
       slot._saving = false;
-      if (_owns(slot) && slot._verified) _ready(id);
+      if (_owns(slot) && slot._verified) await _ready(id);
     }
   }
 
@@ -365,15 +386,67 @@ class WorkBuddyAccounts {
   Future<void> refreshStatus(String id, {bool Function()? admission}) async {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot) || slot.uid == null) return;
-    await slot._flow.refreshStatus(
-      admission: () => _owns(slot) && (admission?.call() ?? true),
-    );
+    try {
+      await slot._flow.refreshStatus(
+        admission: () => _owns(slot) && (admission?.call() ?? true),
+      );
+    } finally {
+      _notify();
+    }
   }
 
   Future<void> refreshBalance(String id) async {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot) || slot.uid == null) return;
-    await slot._flow.refreshBalance();
+    try {
+      await slot._flow.refreshBalance();
+    } finally {
+      _notify();
+    }
+  }
+
+  Future<T> withInferenceAuthorization<T>(
+    String stableId,
+    String registrationId,
+    Future<T> Function(
+      String domain,
+      String uid,
+      String token,
+      bool Function() isCurrent,
+    )
+    use,
+  ) async {
+    final matches = accounts.where(
+      (s) => s.stableId == stableId && s.registrationId == registrationId,
+    );
+    if (matches.isEmpty) throw const WorkBuddyFailure('AccountUnavailable');
+    final slot = matches.single;
+    return slot._flow.withInferenceAuthorization(
+      use,
+      admission: () => _owns(slot) && slot.registrationId == registrationId,
+    );
+  }
+
+  Future<void> refreshCredits() async {
+    if (_closed || _refreshingCredits) return;
+    _refreshingCredits = true;
+    try {
+      for (final account in accounts) {
+        if (_closed) break;
+        try {
+          await refreshBalance(account.id);
+        } catch (_) {
+          // A failed account never blocks the other saved accounts.
+        }
+        if (!_closed) {
+          try {
+            onChanged?.call();
+          } catch (_) {}
+        }
+      }
+    } finally {
+      _refreshingCredits = false;
+    }
   }
 
   Future<String> activateDesktop(
@@ -393,6 +466,7 @@ class WorkBuddyAccounts {
       return await slot._flow.activateDesktop(activate);
     } finally {
       _claiming = false;
+      _notify();
     }
   }
 
@@ -413,6 +487,7 @@ class WorkBuddyAccounts {
       );
     } finally {
       _claiming = false;
+      _notify();
     }
   }
 
@@ -420,7 +495,7 @@ class WorkBuddyAccounts {
     final slot = _sessions[id];
     if (slot == null || !_owns(slot)) return;
     _retire(slot);
-    _message = '已移除本次内存账号；领取记录保留，未知结果不会自动补发。';
+    _message = '已移除本次内存账号；领取记录保留，未知结果不会补发。';
   }
 
   void _retire(WorkBuddyAccountSession slot) {
@@ -429,6 +504,8 @@ class WorkBuddyAccounts {
     _sessions.remove(slot.id);
     _identities.removeWhere((_, id) => id == slot.id);
     slot._flow.close();
+    if (!_closed) _authorizationChanges.add(null);
+    _notify();
     if (_selected == slot.id)
       _selected = accounts.isEmpty ? null : accounts.first.id;
   }
@@ -438,6 +515,8 @@ class WorkBuddyAccounts {
   void close() {
     if (_closed) return;
     _closed = true;
+    unawaited(_authorizationChanges.close());
+    unawaited(_changes.close());
     _epoch++;
     for (final slot in _sessions.values) {
       slot._authorizationTimer?.cancel();
