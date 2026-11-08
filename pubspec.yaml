@@ -17,4 +17,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/app_icons/
+    - assets/branding/loongpass.png
     - assets/protocols/zcode_start_prompt.json

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>LoongPass</title>
+  <rect width="64" height="64" rx="14" fill="#2658d9"/>
+  <g fill="#fff">
+    <rect x="10" y="10" width="20" height="20" rx="4.5"/>
+    <rect x="34" y="10" width="20" height="20" rx="4.5"/>
+    <rect x="10" y="34" width="20" height="20" rx="4.5"/>
+  </g>
+  <path d="m36.5 44.5 6 6 11-12" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

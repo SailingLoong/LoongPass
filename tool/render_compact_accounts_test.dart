@@ -150,6 +150,7 @@ void main() {
         await tester.runAsync(() async {
           final context = tester.element(find.byKey(workspace));
           await Future.wait([
+            precacheImage(const AssetImage('assets/branding/loongpass.png'), context),
             for (final app in ManagedApp.values)
               precacheImage(AssetImage(app.iconAsset), context),
           ]);

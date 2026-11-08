@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/branding/loongpass.png" alt="LoongPass" width="80" height="80">
+
 # LoongPass
 
 ### 把 AI 账号、免费奖励与积分到期放在一起

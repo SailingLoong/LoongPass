@@ -67,6 +67,13 @@ class AppWorkspaceState extends State<AppWorkspace> {
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 760 || _preferences.collapsed;
           final colors = Theme.of(context).colorScheme;
+          final brandIcon = Image.asset(
+            'assets/branding/loongpass.png',
+            width: 28,
+            height: 28,
+            excludeFromSemantics: true,
+            filterQuality: FilterQuality.high,
+          );
           final sections = {
             WorkspaceSection.models: const ModelServicesPage(),
             WorkspaceSection.settings: WorkspaceSettingsPage(
@@ -103,7 +110,9 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 borderRadius: BorderRadius.circular(5),
               ),
             ),
-            icon: const Icon(Icons.view_sidebar_outlined, size: 19),
+            icon: compact
+                ? brandIcon
+                : const Icon(Icons.view_sidebar_outlined, size: 19),
           );
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -121,6 +130,10 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: Row(
                             children: [
+                              if (!compact) ...[
+                                brandIcon,
+                                const SizedBox(width: 8),
+                              ],
                               if (!compact)
                                 Expanded(
                                   child: Text(

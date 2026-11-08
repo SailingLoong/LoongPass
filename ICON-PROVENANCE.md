@@ -2,17 +2,15 @@
 
 ## LoongPass application icon
 
-macOS icons are byte-identical to the official installed flutter_template_images 5.0.0 macOS template used by Flutter 3.47.9. Flutter BSD notice is retained in THIRD_PARTY_NOTICES.md.
+The LoongPass mark uses three application tiles and a check on a blue rounded
+square. Its only design source is `assets/branding/loongpass.svg`, based on the
+Logo concept created for this project on 2026-11-08.
 
-{
-  "app_icon_16.png": true,
-  "app_icon_1024.png": true,
-  "app_icon_256.png": true,
-  "app_icon_64.png": true,
-  "app_icon_512.png": true,
-  "app_icon_128.png": true,
-  "app_icon_32.png": true
-}
+`tool/generate_branding.py` exports the sidebar/README PNG, every macOS AppIcon
+size and the Windows ICO from that SVG. The macOS exports add only transparent
+canvas padding. The website mirrors the same SVG and PNG for its header,
+footer, favicon and sharing preview; it has no separate drawing. See
+`assets/branding/README.md` for generation and consistency checks.
 
 ## Supported application icons
 
