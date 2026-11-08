@@ -380,6 +380,8 @@ class ModelService {
     final ids = <String>{};
     for (final model in catalog.models) {
       if (!_text(model.id) ||
+          model.canonicalId != null &&
+              (!_text(model.canonicalId) || model.canonicalId!.contains(',')) ||
           model.id.contains(',') ||
           !_text(model.name) ||
           !ids.add(model.id) ||
@@ -393,7 +395,39 @@ class ModelService {
   Future<ModelBinding> addAccount({
     required String providerId,
     required String accountId,
-  }) => _command(() async {
+  }) => _command(() => _addAccount(providerId, accountId));
+
+  /// An explicit data-layer command; viewing the page/catalog never enrolls
+  /// accounts or refreshes their credentials. One ineligible account does not
+  /// prevent the other saved accounts from joining the model pool.
+  Future<({int connected, int unavailable})> connectSavedAccounts() =>
+      _command(() async {
+        var connected = 0, unavailable = 0;
+        for (final provider in providers.toList()) {
+          List<ModelAccount> saved;
+          try {
+            saved = await provider.accounts();
+          } catch (_) {
+            unavailable++;
+            continue;
+          }
+          for (final account in saved) {
+            try {
+              await _addAccount(provider.id, account.id);
+              connected++;
+            } on ModelServiceFailure catch (failure) {
+              if (failure.code == 'save_failed' || failure.code == 'closed')
+                rethrow;
+              unavailable++;
+            } catch (_) {
+              unavailable++;
+            }
+          }
+        }
+        return (connected: connected, unavailable: unavailable);
+      });
+
+  Future<ModelBinding> _addAccount(String providerId, String accountId) async {
     final provider = _provider(providerId);
     if (!(await provider.accounts()).any((a) => a.id == accountId)) {
       throw const ModelServiceFailure('account_required');
@@ -445,7 +479,7 @@ class ModelService {
     _catalogErrors.remove(id);
     _queriedAt[id] = DateTime.now().toUtc();
     return bindings.firstWhere((v) => v.id == id);
-  });
+  }
 
   Future<void> _refreshOne(String id) async {
     final row = _rows[id];

@@ -9,7 +9,12 @@ ModelTarget target(String binding, String provider, String model) =>
     ModelTarget(
       bindingId: binding,
       providerId: provider,
-      model: ModelDefinition(model, protocol: ModelProtocol.chat, tools: true),
+      model: ModelDefinition(
+        model,
+        protocol: ModelProtocol.chat,
+        tools: true,
+        canonicalId: model == 'auto' ? null : model,
+      ),
     );
 
 void main() {
@@ -28,10 +33,49 @@ void main() {
   check(groups.length == 6, 'model versions or source aliases conflated');
   final shared = groups.singleWhere((m) => m.id == 'glm-5.3-flash');
   check(shared.targets.length == 2, 'same model did not pool across sources');
+  check(
+    shared.platformCount == 2 && shared.accountCount == 2,
+    'source counts are not owned by the routed model',
+  );
   check(groups.any((m) => m.id == 'first/auto'), 'source alias not namespaced');
   check(
     groups.any((m) => m.id == 'deepseek-v4-flash-0731'),
     'dated model lost',
+  );
+  final future = groupModelTargets([
+    target('future-a', 'first', 'new-family-12.3'),
+    target('future-b', 'second', 'New-Family-12.3'),
+    const ModelTarget(
+      bindingId: 'opaque-a',
+      providerId: 'first',
+      model: ModelDefinition('lane-42', protocol: ModelProtocol.chat),
+    ),
+    const ModelTarget(
+      bindingId: 'opaque-b',
+      providerId: 'second',
+      model: ModelDefinition('lane-42', protocol: ModelProtocol.chat),
+    ),
+  ]);
+  check(
+    future.length == 3 &&
+        future.singleWhere((m) => m.id == 'new-family-12.3').targets.length ==
+            2,
+    'router guessed identity or requires a model-family allowlist',
+  );
+  final versioned = groupModelTargets([
+    const ModelTarget(
+      bindingId: 'kimi',
+      providerId: 'qoder-cn',
+      model: ModelDefinition(
+        'kmodel_latest',
+        canonicalId: 'Kimi-K3.1-Pro',
+        protocol: ModelProtocol.chat,
+      ),
+    ),
+  ]).single;
+  check(
+    versioned.toJson()['name'] == 'Kimi-K3.1-Pro',
+    'public catalog displayed an opaque routing handle as the model name',
   );
 
   var now = DateTime.utc(2026, 11, 8);

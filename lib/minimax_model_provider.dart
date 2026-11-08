@@ -66,6 +66,7 @@ class MiniMaxModelProvider extends ModelProvider {
           models.add(
             ModelDefinition(
               entry.key,
+              canonicalId: entry.key,
               protocol: ModelProtocol.messages,
               name: value['name'] is String ? value['name'] : null,
               contextWindow: limit is Map ? positive(limit['context']) : null,

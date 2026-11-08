@@ -19,6 +19,14 @@ class QoderModelProvider extends ModelProvider {
   String get id => 'qoder-cn';
   @override
   String get name => 'Qoder CN';
+  // COSY keys (qfmodel, kmodel_latest, ...) are routing handles. Only a
+  // versioned public display name establishes which actual model they serve.
+  static String? _canonicalId(Object? name) =>
+      name is String &&
+          RegExp(r'^[A-Za-z][A-Za-z0-9. _-]*$').hasMatch(name) &&
+          RegExp(r'[0-9]').hasMatch(name)
+      ? name
+      : null;
   @override
   Set<ModelProtocol> get protocols => {ModelProtocol.chat};
   @override
@@ -59,6 +67,7 @@ class QoderModelProvider extends ModelProvider {
             for (final m in models)
               ModelDefinition(
                 m['key'],
+                canonicalId: _canonicalId(m['display_name']),
                 protocol: ModelProtocol.chat,
                 name: m['display_name'] is String ? m['display_name'] : null,
                 contextWindow: positive(m['max_input_tokens']),

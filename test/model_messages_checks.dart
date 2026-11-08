@@ -82,6 +82,53 @@ Future<void> main() async {
     'forced tool lost',
   );
   check(wire['stop'][0] == 'END', 'stop sequence lost');
+  final nativeClient = messagesToChat({
+    ...body,
+    'thinking': {'type': 'adaptive', 'display': 'omitted'},
+    'output_config': {'effort': 'high'},
+    'context_management': {
+      'edits': [
+        {'type': 'clear_thinking_20251015', 'keep': 'all'},
+      ],
+    },
+  }, 'GLM-5.3-Flash');
+  check(
+    nativeClient['reasoning_effort'] == 'high' &&
+        jsonEncode(nativeClient['messages']) == jsonEncode(wire['messages']),
+    'native Claude Code effort or preserve-all history changed',
+  );
+  final continued = messagesToChat({
+    ...body,
+    'messages': [
+      {
+        'role': 'assistant',
+        'content': [
+          {'type': 'thinking', 'thinking': 'Prior reasoning', 'signature': ''},
+          {
+            'type': 'tool_use',
+            'id': 'call-kept',
+            'name': 'echo',
+            'input': {'marker': 'kept'},
+          },
+        ],
+      },
+      {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'tool_result',
+            'tool_use_id': 'call-kept',
+            'content': 'kept',
+          },
+        ],
+      },
+    ],
+  }, 'GLM-5.3-Flash');
+  check(
+    continued['messages'][1]['reasoning_content'] == 'Prior reasoning' &&
+        continued['messages'][2]['tool_call_id'] == 'call-kept',
+    'empty native thinking signature rejected or tool pair changed',
+  );
   var rejected = false;
   try {
     messagesToChat({
@@ -146,6 +193,7 @@ Future<void> main() async {
         {
           'index': 0,
           'delta': {'reasoning_content': 'Thought'},
+          'finish_reason': '',
         },
       ],
     },

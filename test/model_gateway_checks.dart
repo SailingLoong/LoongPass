@@ -33,6 +33,7 @@ class Source extends ModelProvider {
       models: [
         ModelDefinition(
           id == 'one' ? 'GLM-5.3-Flash' : 'glm-5.3-flash',
+          canonicalId: 'GLM-5.3-Flash',
           protocol: protocol,
           tools: true,
         ),
@@ -84,16 +85,40 @@ class Source extends ModelProvider {
   }
 }
 
+class Ineligible extends Source {
+  Ineligible() : super('ineligible', ModelProtocol.messages);
+  @override
+  Future<ModelCatalog> discoverModels(String accountId) async =>
+      throw const ModelServiceFailure('gift_unavailable');
+}
+
 Future<void> main() async {
   final store = MemoryAccountStore('unified'),
       one = Source('one', ModelProtocol.chat),
       two = Source('two', ModelProtocol.messages);
   var service = ModelService(store: store, port: 0)
     ..register(one)
-    ..register(two);
+    ..register(two)
+    ..register(Ineligible());
   final client = HttpClient();
   try {
     await service.load();
+    store.beforeWrite = () async => throw StateError('synthetic disk failure');
+    var saveFailed = false;
+    try {
+      await service.connectSavedAccounts();
+    } on ModelServiceFailure catch (e) {
+      saveFailed = e.code == 'save_failed';
+    }
+    check(saveFailed, 'bulk enrollment hid a persistent storage failure');
+    store.beforeWrite = null;
+    final all = await service.connectSavedAccounts();
+    check(
+      all.connected == 2 &&
+          all.unavailable == 1 &&
+          service.bindings.length == 2,
+      'bulk connection did not isolate an ineligible account',
+    );
     final a = await service.addAccount(providerId: 'one', accountId: 'account');
     final b = await service.addAccount(providerId: 'two', accountId: 'account');
     await service.start();

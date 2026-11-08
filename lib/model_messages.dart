@@ -66,11 +66,43 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
     'tool_choice',
     'metadata',
     'thinking',
+    'output_config',
+    'context_management',
   };
-  if (body.keys.any((k) => !allowed.contains(k)) ||
-      body['thinking'] != null &&
-          (body['thinking'] is! Map ||
-              body['thinking']['type'] != 'disabled')) {
+  if (body.keys.any((k) => !allowed.contains(k))) {
+    throw const ModelServiceFailure('unsupported_request_parameter');
+  }
+  final thinking = body['thinking'], output = body['output_config'];
+  if (thinking != null &&
+          (thinking is! Map ||
+              !{'adaptive', 'disabled'}.contains(thinking['type'])) ||
+      output != null &&
+          (output is! Map ||
+              output.keys.any((k) => k != 'effort') ||
+              !{
+                'low',
+                'medium',
+                'high',
+                'xhigh',
+                'max',
+              }.contains(output['effort']))) {
+    throw const ModelServiceFailure('unsupported_request_parameter');
+  }
+  // Claude Code asks to keep every thinking block. This context-edit policy is
+  // a no-op on the full transcript we send. Actual destructive context edits
+  // are refused rather than silently discarding history on another protocol.
+  final context = body['context_management'];
+  if (context != null &&
+      (context is! Map ||
+          context.keys.any((k) => k != 'edits') ||
+          context['edits'] is! List ||
+          (context['edits'] as List).any(
+            (edit) =>
+                edit is! Map ||
+                edit['type'] != 'clear_thinking_20251015' ||
+                edit['keep'] != 'all' ||
+                edit.keys.any((k) => !{'type', 'keep'}.contains(k)),
+          ))) {
     throw const ModelServiceFailure('unsupported_request_parameter');
   }
   final messages = <Map<String, dynamic>>[];
@@ -107,7 +139,7 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
           });
         } else if (block['type'] == 'thinking' &&
             block['thinking'] is String &&
-            block['signature'] == null) {
+            (block['signature'] == null || block['signature'] == '')) {
           reasoning.write(block['thinking']);
         } else if (block['type'] == 'text') {
           text.add(block);
@@ -159,6 +191,12 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
     for (final key in ['temperature', 'top_p'])
       if (body[key] != null) key: body[key],
     if (body['stop_sequences'] != null) 'stop': body['stop_sequences'],
+    if (thinking is Map && thinking['type'] == 'disabled')
+      'reasoning_effort': 'none'
+    else if (output is Map)
+      'reasoning_effort': output['effort']
+    else if (thinking is Map && thinking['type'] == 'adaptive')
+      'reasoning_effort': 'medium',
   };
   if (body['metadata'] case {'user_id': final String user})
     result['user'] = user;
@@ -455,7 +493,7 @@ Stream<List<int>> _chatStream(Stream<List<int>> body, String modelId) async* {
     if (choices.isEmpty) continue;
     final choice = choices.single;
     if (choice is! Map) _invalidReply();
-    if (choice['finish_reason'] != null)
+    if (choice['finish_reason'] != null && choice['finish_reason'] != '')
       reason = _stop(choice['finish_reason']);
     final delta = choice['delta'];
     if (delta is! Map) _invalidReply();

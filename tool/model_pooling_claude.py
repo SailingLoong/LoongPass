@@ -47,17 +47,27 @@ def main():
         process = None
         with tempfile.TemporaryFile() as logs:
             try:
-                for source in config['sources']:
+                installs = config['sources']
+                if config.get('unified'):
+                    installs = [{'id': 'unified', 'protocols': ['messages'],
+                                 'bindings': [config['sources'][0]['bindings'][0]],
+                                 'models': [b['model'] for s in config['sources'] for b in s['bindings']]}]
+                for source in installs:
                     source['native_id'] = 'loongpass-live-' + source['id']
                     args = ['provider', 'add', source['native_id'], 'id=' + source['native_id']]
-                    base = config['origin'] + '/providers/' + source['id']
+                    base = config['origin'] if config.get('unified') else config['origin'] + '/providers/' + source['id']
                     if 'messages' in source['protocols']:
-                        args.append('anthropic=' + base + '/messages')
+                        args.append('anthropic=' + (base if config.get('unified') else base + '/messages'))
                     if 'chat' in source['protocols']:
                         args.append('url=' + base + '/chat/v1')
                     args += ['key=' + source['bindings'][0]['key'], 'routing=rotate', 'errors=pass', 'patience=off']
-                    args.append('models=' + ','.join(dict.fromkeys(b['model'] for b in source['bindings'])))
+                    if config.get('unified'):
+                        args.append('header.X-LoongPass-Session=${sessionId}:${subagentId}')
+                    args.append('models=' + ','.join(source.get('models') or dict.fromkeys(b['model'] for b in source['bindings'])))
                     cli(*args)
+                if config.get('unified'):
+                    for source in config['sources']:
+                        source['native_id'] = installs[0]['native_id']
                 process = subprocess.Popen([binary, 'serve', '--web=' + web.removeprefix('http://')], env=env, stdout=logs, stderr=logs)
                 control = urllib.request.build_opener(urllib.request.ProxyHandler({}), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
                 for _ in range(100):
@@ -86,6 +96,7 @@ def main():
                                      CLAUDE_CONFIG_DIR=str(root / 'claude'), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1', DISABLE_TELEMETRY='1')
                     child_env['CLAUDE_CODE_MAX_RETRIES'] = '0'
                     child_env['CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK'] = '1'
+                    child_env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = '1024'
                     work = root / source['id']
                     work.mkdir(mode=0o700)
                     model = source['native_id'] + '/' + source['bindings'][0]['model']

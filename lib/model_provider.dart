@@ -17,12 +17,17 @@ class ModelAccount {
 /// Public model facts reported by the platform, never credential material.
 class ModelDefinition {
   final String id, name;
+
+  /// Set by the platform adapter only when its catalog identifies the actual
+  /// model. Null keeps an opaque routing lane scoped to its source.
+  final String? canonicalId;
   final ModelProtocol protocol;
   final bool? tools;
   final int? contextWindow, outputLimit;
   const ModelDefinition(
     this.id, {
     required this.protocol,
+    this.canonicalId,
     String? name,
     this.tools,
     this.contextWindow,
@@ -34,6 +39,7 @@ class ModelDefinition {
     'object': 'model',
     'owned_by': owner,
     'name': name,
+    if (canonicalId != null) 'canonical_id': canonicalId,
     'supported_endpoints': [protocol.endpoint],
     'native_endpoints': [protocol.endpoint],
     if (contextWindow != null) 'context_length': contextWindow,

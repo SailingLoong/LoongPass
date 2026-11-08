@@ -150,6 +150,7 @@ class ZcodeModelProvider extends ModelProvider {
       result.add(
         ModelDefinition(
           id,
+          canonicalId: id,
           protocol: ModelProtocol.messages,
           contextWindow: context,
           outputLimit: output,

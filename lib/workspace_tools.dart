@@ -133,6 +133,20 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                   runSpacing: 8,
                   children: [
                     FilledButton(
+                      onPressed: locked
+                          ? null
+                          : () => _run(() async {
+                              final result = await service
+                                  .connectSavedAccounts();
+                              if (mounted)
+                                setState(() {
+                                  _message =
+                                      '已连接 ${result.connected} 个账号，${result.unavailable} 项暂不可用。';
+                                });
+                            }),
+                      child: const Text('连接全部已保存账号'),
+                    ),
+                    FilledButton(
                       onPressed:
                           locked || _providerId == null || _accountId == null
                           ? null
@@ -235,7 +249,7 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                       for (final model in service.pooledModels)
                         Chip(
                           label: Text(
-                            '${model.id} · ${model.targets.map((t) => t.providerId).toSet().length} 平台 / ${model.targets.map((t) => t.bindingId).toSet().length} 账号',
+                            '${model.id} · ${model.platformCount} 平台 / ${model.accountCount} 账号',
                           ),
                         ),
                     ],

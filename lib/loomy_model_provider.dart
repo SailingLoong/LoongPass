@@ -75,6 +75,7 @@ class LoomyModelProvider extends ModelProvider {
             models.add(
               ModelDefinition(
                 row['id'],
+                canonicalId: row['id'] == 'auto' ? null : row['id'],
                 protocol: ModelProtocol.chat,
                 name: row['name'] is String
                     ? row['name']

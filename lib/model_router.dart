@@ -20,6 +20,10 @@ class RoutedModel {
   final List<ModelTarget> targets;
   RoutedModel(this.id, List<ModelTarget> targets)
     : targets = List.unmodifiable(targets);
+  List<String> get providerIds =>
+      targets.map((t) => t.providerId).toSet().toList()..sort();
+  int get platformCount => providerIds.length;
+  int get accountCount => targets.map((t) => t.bindingId).toSet().length;
 
   Map<String, Object?> toJson() {
     int? minimum(int? Function(ModelDefinition) get) {
@@ -32,7 +36,7 @@ class RoutedModel {
       ...ModelDefinition(
         id,
         protocol: ModelProtocol.messages,
-        name: targets.first.model.id,
+        name: targets.first.model.canonicalId ?? targets.first.model.name,
         contextWindow: minimum((m) => m.contextWindow),
         outputLimit: minimum((m) => m.outputLimit),
         tools: targets.any((t) => t.model.tools == true)
@@ -41,8 +45,8 @@ class RoutedModel {
             ? null
             : false,
       ).toJson('loongpass'),
-      'platforms': targets.map((t) => t.providerId).toSet().toList()..sort(),
-      'account_count': targets.map((t) => t.bindingId).toSet().length,
+      'platforms': providerIds,
+      'account_count': accountCount,
     };
   }
 }
@@ -51,11 +55,11 @@ class RoutedModel {
 /// Exact vendor model IDs retain version/date/variant tokens. This deliberately
 /// under-merges undocumented aliases instead of sending a different model.
 String routedModelId(String providerId, ModelDefinition model) {
-  final id = model.id.toLowerCase().replaceAll(RegExp(r'[ _]+'), '-');
-  final named = RegExp(
-    r'^(?:qwen\d|(?:deepseek|glm|kimi|minimax|hy|hunyuan|spark|mimo)[-]?[a-z]?\d)',
-  ).hasMatch(id);
-  return named ? id : '$providerId/$id';
+  final id = (model.canonicalId ?? model.id).toLowerCase().replaceAll(
+    RegExp(r'[ _]+'),
+    '-',
+  );
+  return model.canonicalId == null ? '$providerId/$id' : id;
 }
 
 List<RoutedModel> groupModelTargets(Iterable<ModelTarget> targets) {

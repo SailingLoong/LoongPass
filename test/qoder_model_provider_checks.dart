@@ -37,6 +37,7 @@ String frame(Object value, {int status = 200}) =>
 
 class Wire implements ModelTransport {
   final calls = <(Uri, Map<String, String>, Object?)>[];
+  String displayName = 'Live';
   String answer =
       frame({
         'choices': [
@@ -102,7 +103,7 @@ class Wire implements ModelTransport {
                   {
                     'key': 'live-model',
                     'source': 'system',
-                    'display_name': 'Live',
+                    'display_name': displayName,
                     'enable': true,
                     'max_input_tokens': 131072,
                     'max_output_tokens': 8192,
@@ -154,6 +155,19 @@ Future<void> main() async {
       catalog.models.single.id == 'live-model' &&
           catalog.models.single.contextWindow == 131072,
       'entitlement or absolute limit wrong',
+    );
+    wire.displayName = 'Kimi-K3.1-Pro';
+    final named = await source.discoverModels('account-a');
+    check(
+      named.models.single.canonicalId == 'Kimi-K3.1-Pro' &&
+          named.models.single.id == 'live-model',
+      'official model identity not separated from opaque platform key',
+    );
+    wire.displayName = 'Fast';
+    check(
+      (await source.discoverModels('account-a')).models.single.canonicalId ==
+          null,
+      'generic lane claimed an underlying model',
     );
     final body = <String, dynamic>{
       'model': 'live-model',
