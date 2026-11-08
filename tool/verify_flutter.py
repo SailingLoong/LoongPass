@@ -17,21 +17,29 @@ def version(value):
     return tuple(map(int, match.groups()))
 
 
-def verify_toolchain(metadata, root=ROOT):
-    if not isinstance(metadata, dict) or metadata.get("channel") != "stable":
-        raise ValueError("Release builds require stable Flutter SDK evidence")
+def required_versions(root):
     pubspec = (root / "pubspec.yaml").read_text()
     flutter = re.search(r"(?m)^  flutter: ['\"]?(\d+\.\d+\.\d+)['\"]?\s*$", pubspec)
     dart = re.search(r"(?m)^  sdk: ['\"]>=(\d+\.\d+\.\d+) <(\d+\.\d+\.\d+)['\"]\s*$", pubspec)
     if not flutter or not dart:
         raise ValueError("pubspec must declare an exact Flutter version and bounded Dart SDK requirement")
-    if version(metadata.get("frameworkVersion")) < version(flutter[1]):
-        raise ValueError("Flutter SDK is below the required " + flutter[1])
-    if not version(dart[1]) <= version(metadata.get("dartSdkVersion")) < version(dart[2]):
-        raise ValueError("Dart SDK does not satisfy the required >=" + dart[1] + " <" + dart[2])
+    return flutter[1], dart[1], dart[2]
+
+
+def verify_toolchain(metadata, root=ROOT):
+    if not isinstance(metadata, dict) or metadata.get("channel") != "stable":
+        raise ValueError("Release builds require stable Flutter SDK evidence")
+    flutter, minimum_dart, maximum_dart = required_versions(root)
+    if version(metadata.get("frameworkVersion")) < version(flutter):
+        raise ValueError("Flutter SDK is below the required " + flutter)
+    if not version(minimum_dart) <= version(metadata.get("dartSdkVersion")) < version(maximum_dart):
+        raise ValueError("Dart SDK does not satisfy the required >=" + minimum_dart + " <" + maximum_dart)
 
 
 def main():
+    if sys.argv[1:] == ["--required-version"]:
+        print(required_versions(ROOT)[0])
+        return
     flutter = os.environ.get("FLUTTER_BIN") or shutil.which("flutter")
     if not flutter:
         raise ValueError("Flutter SDK is unavailable")
