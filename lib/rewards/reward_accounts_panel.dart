@@ -147,6 +147,7 @@ class _RewardAccountsPanelState extends State<RewardAccountsPanel> {
             ),
           ],
         ),
+        const Text('开启后，应用运行期间按计划检查并领取；退出应用后停止。'),
       ],
     ),
   );
