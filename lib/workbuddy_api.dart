@@ -71,12 +71,23 @@ void _personal(Map m, {bool requiredIdentity = false}) {
 class WorkBuddyAccount {
   final String domain, uid;
   final String _token;
-  final DateTime? expiresAt;
-  WorkBuddyAccount(this.domain, this.uid, this._token, {this.expiresAt}) {
+  final String? refreshToken;
+  final DateTime? expiresAt, refreshExpiresAt;
+  WorkBuddyAccount(
+    this.domain,
+    this.uid,
+    this._token, {
+    this.expiresAt,
+    this.refreshToken,
+    this.refreshExpiresAt,
+  }) {
     if (!['www.workbuddy.cn', 'www.codebuddy.cn'].contains(domain) ||
         !_safe(uid, 256) ||
         !_safe(_token, 16384) ||
-        _token.codeUnits.any((v) => v > 126))
+        _token.codeUnits.any((v) => v > 126) ||
+        refreshToken != null &&
+            (!_safe(refreshToken!, 16384) ||
+                RegExp(r'[^\x21-\x7e]').hasMatch(refreshToken!)))
       _fail('UnsupportedCredential');
   }
   @override
@@ -276,6 +287,7 @@ class WorkBuddyApi {
     bool Function()? gate,
     bool claim = false,
     Map<String, Object?> body = const {},
+    Map<String, String> extraHeaders = const {},
   }) async {
     final host = endpointHost;
     final query = path.endsWith('/auth/state')
@@ -284,6 +296,7 @@ class WorkBuddyApi {
         ? {'state': state}
         : null;
     final headers = <String, String>{'Accept': 'application/json'};
+    headers.addAll(extraHeaders);
     if (path.endsWith('/auth/state') || path.endsWith('/auth/token')) {
       for (final name in [
         'Authorization',
@@ -407,33 +420,16 @@ class WorkBuddyApi {
         if (rawDomain != null && (rawDomain is! String || rawDomain.isEmpty))
           _fail('UnsupportedContext');
         final domain = rawDomain as String? ?? endpointHost;
-        DateTime? tokenDeadline;
-        for (final field in ['expiresAt', 'expiresIn']) {
-          if (!d.containsKey(field)) continue;
-          final value = d[field];
-          if (value is! num ||
-              !value.isFinite ||
-              value <= 0 ||
-              value > (field == 'expiresAt' ? 8640000000000000 : 8640000000000))
-            _fail('InvalidAuthorization');
-          if (field == 'expiresIn' &&
-              value * 1000 > 8640000000000000 - now().millisecondsSinceEpoch)
-            _fail('InvalidAuthorization');
-          final deadline = DateTime.fromMillisecondsSinceEpoch(
-            field == 'expiresAt'
-                ? value.toInt()
-                : now().millisecondsSinceEpoch + (value * 1000).toInt(),
-            isUtc: true,
-          );
-          if (!now().isBefore(deadline)) _fail('ExpiredAuthorization');
-          if (tokenDeadline == null || deadline.isBefore(tokenDeadline))
-            tokenDeadline = deadline;
-        }
+        final tokenDeadline = _expiration(d);
+        if (tokenDeadline != null && !now().isBefore(tokenDeadline))
+          _fail('ExpiredAuthorization');
         _pendingAccount = WorkBuddyAccount(
           domain,
           'authorization-pending',
           secret,
           expiresAt: tokenDeadline,
+          refreshToken: _text(d, ['refreshToken']),
+          refreshExpiresAt: _expiration(d, prefix: 'refresh'),
         );
       }
       final temporary = _pendingAccount!;
@@ -461,6 +457,8 @@ class WorkBuddyApi {
         uid,
         temporary._token,
         expiresAt: temporary.expiresAt,
+        refreshToken: temporary.refreshToken,
+        refreshExpiresAt: temporary.refreshExpiresAt,
       );
       if (!authorized()) _fail('ExpiredAuthorization');
       cancel();
@@ -477,6 +475,8 @@ class WorkBuddyApi {
       account.domain == c.domain &&
       account.uid == c.uid &&
       account._token == c.accessToken &&
+      account.refreshToken == c.refreshToken &&
+      account.refreshExpiresAt == c.refreshExpiresAt &&
       account.expiresAt == c.expiresAt &&
       endpointHost == c.endpoint;
   Future<bool> saveVerifiedAccount(
@@ -497,10 +497,75 @@ class WorkBuddyApi {
         endpoint: endpointHost,
         uid: account.uid,
         accessToken: account._token,
+        refreshToken: account.refreshToken,
+        refreshExpiresAt: account.refreshExpiresAt,
         expiresAt: expires,
       ),
       admission: () => isCurrent() && gate(),
       replaceVerified: true,
+    );
+  }
+
+  DateTime? _expiration(Map data, {String prefix = ''}) {
+    final at = prefix.isEmpty ? 'expiresAt' : '${prefix}ExpiresAt';
+    final seconds = prefix.isEmpty ? 'expiresIn' : '${prefix}ExpiresIn';
+    DateTime? result;
+    for (final key in [at, seconds]) {
+      if (!data.containsKey(key)) continue;
+      final value = data[key];
+      if (value is! num ||
+          !value.isFinite ||
+          value <= 0 ||
+          value > (key == at ? 8640000000000000 : 8640000000000))
+        _fail('InvalidAuthorization');
+      final millis = key == at
+          ? value.toInt()
+          : now().millisecondsSinceEpoch + (value * 1000).toInt();
+      if (millis > 8640000000000000) _fail('InvalidAuthorization');
+      final deadline = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+      if (result == null || deadline.isBefore(result)) result = deadline;
+    }
+    return result;
+  }
+
+  /// One rotating refresh, called only by the existing credential owner after
+  /// its vault durably reserved the rotation. No model request is replayed.
+  Future<WorkBuddyVaultCredential?> renewCredential(
+    WorkBuddyVaultCredential credential, {
+    required bool Function() admission,
+  }) async {
+    if (credential.refreshToken == null || !admission() || !isCurrent())
+      throw const WorkBuddyApiFailure(
+        'ExpiredAuthorization',
+        mayHaveBeenSent: false,
+      );
+    final response = await _send(
+      '/v2/plugin/auth/token/refresh',
+      gate: admission,
+      extraHeaders: {
+        'X-Refresh-Token': credential.refreshToken!,
+        'X-Auth-Refresh-Source': 'plugin',
+        'X-Domain': credential.domain,
+      },
+    );
+    if (!_success(response)) return null;
+    final data = response['data'];
+    if (data is! Map) _fail('InvalidAuthorization');
+    final access = _text(data, ['accessToken']);
+    if (access == null) _fail('InvalidAuthorization');
+    if (data['uid'] != null && data['uid'] != credential.uid)
+      _fail('IdentityMismatch');
+    final domain = _text(data, ['domain']) ?? credential.domain;
+    if (domain != credential.domain) _fail('IdentityMismatch');
+    return WorkBuddyVaultCredential(
+      domain: credential.domain,
+      endpoint: credential.endpoint,
+      uid: credential.uid,
+      accessToken: access,
+      refreshToken: _text(data, ['refreshToken']) ?? credential.refreshToken,
+      expiresAt: _expiration(data) ?? credential.expiresAt,
+      refreshExpiresAt:
+          _expiration(data, prefix: 'refresh') ?? credential.refreshExpiresAt,
     );
   }
 

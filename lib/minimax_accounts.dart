@@ -185,11 +185,15 @@ class MiniMaxAccountStore {
       'refreshToken',
       'identityVerified',
       'authorizationInvalid',
+      'accessRejected',
+      'refreshPending',
+      'refusalRecoveryAttempted',
       'automatic',
       'policyRevision',
       'status',
       'operation',
       'previousSuccessfulOperation',
+      'unresolvedOperations',
       'sourceGeneration',
       'sourceFingerprint',
       'registrationId',
@@ -210,6 +214,11 @@ class MiniMaxAccountStore {
           a['refreshToken'] != null && !_validText(a['refreshToken'], 16384) ||
           a['identityVerified'] is! bool ||
           a['authorizationInvalid'] is! bool ||
+          a['accessRejected'] != null && a['accessRejected'] is! bool ||
+          [
+            'refreshPending',
+            'refusalRecoveryAttempted',
+          ].any((key) => a.containsKey(key) && a[key] is! bool) ||
           a['automatic'] is! bool ||
           a['policyRevision'] is! int ||
           ![
@@ -221,7 +230,22 @@ class MiniMaxAccountStore {
             'needsLogin',
           ].contains(a['status']))
         throw const MiniMaxAccountError('StorageUnavailable');
-      for (final op in [a['operation'], a['previousSuccessfulOperation']]) {
+      final unresolved = a['unresolvedOperations'] ?? const [];
+      if (unresolved is! List)
+        throw const MiniMaxAccountError('StorageUnavailable');
+      final archivedIds = <String>{};
+      for (final op in unresolved) {
+        if (op is! Map ||
+            !_unresolved(op) ||
+            op['id'] is! String ||
+            !archivedIds.add(op['id']))
+          throw const MiniMaxAccountError('StorageUnavailable');
+      }
+      for (final op in [
+        a['operation'],
+        a['previousSuccessfulOperation'],
+        ...unresolved,
+      ]) {
         if (op != null &&
             (op is! Map ||
                 op.keys.any(
@@ -233,10 +257,17 @@ class MiniMaxAccountStore {
                     'claimId',
                     'confirmedAtMs',
                     'expiresAtMs',
+                    'serverDay',
+                    'reconciliationDay',
                   ].contains(k),
                 ) ||
                 op['id'] is! String ||
                 op['day'] is! String ||
+                ['serverDay', 'reconciliationDay'].any(
+                  (key) =>
+                      op.containsKey(key) &&
+                      (op[key] is! int || op[key] < 1 || op[key] > 7),
+                ) ||
                 ![
                   'pending',
                   'unknown',
@@ -255,6 +286,7 @@ class MiniMaxAccounts {
   final int Function() nowMs;
   final FutureOr<void> Function()? onAutomaticFinished;
   static final _busy = <String>{};
+  static final _idle = <String, Completer<void>>{};
   bool _closed = false, _ticking = false;
   final _changes = StreamController<void>.broadcast();
   Stream<void> get changes => _changes.stream;
@@ -352,8 +384,14 @@ class MiniMaxAccounts {
   }
 
   String _ownerKey(String id) => '${store.identity}\u0000$id';
-  String _day() => DateTime.fromMillisecondsSinceEpoch(
-    nowMs(),
+  void _release(String id) {
+    final key = _ownerKey(id);
+    _busy.remove(key);
+    _idle.remove(key)?.complete();
+  }
+
+  String _day([int? at]) => DateTime.fromMillisecondsSinceEpoch(
+    at ?? nowMs(),
     isUtc: true,
   ).toIso8601String().substring(0, 10);
   Future<MiniMaxReply> _send(
@@ -380,6 +418,36 @@ class MiniMaxAccounts {
       _alive();
       throw const MiniMaxAccountError('NetworkUnavailable');
     }
+  }
+
+  Future<MiniMaxReply> _sendForAccount(
+    MiniMaxEndpoint endpoint,
+    Map<String, dynamic> account, [
+    bool Function()? admission,
+  ]) async {
+    final reply = await _send(
+      endpoint,
+      account['accessToken'],
+      account['region'],
+      account['uid'],
+      admission,
+    );
+    await _noteUnauthorized(account, reply);
+    return reply;
+  }
+
+  Future<void> _noteUnauthorized(
+    Map<String, dynamic> account,
+    MiniMaxReply reply,
+  ) async {
+    _alive();
+    // Native account gateways can refuse a token while inference still works.
+    // HTTP 403 is not proof of token revocation and must not force renewal.
+    if (reply.status != 401) return;
+    final id = account['id'] as String;
+    _pendingRejections[id] = (account['registrationId'], account['generation']);
+    await _persistRejection(id, account);
+    throw const MiniMaxAccountError('NeedsLogin');
   }
 
   Future<MiniMaxVerifiedImport> verifySource(
@@ -467,11 +535,16 @@ class MiniMaxAccounts {
           'refreshToken': c._refreshToken,
           'identityVerified': true,
           'authorizationInvalid': false,
+          'accessRejected': false,
+          'refreshPending': false,
+          'refusalRecoveryAttempted': false,
           'automatic': automatic,
           'policyRevision': (old?['policyRevision'] as int? ?? 0) + 1,
           'status': _unresolved(operation) ? 'unknown' : 'unavailable',
           'operation': operation,
           'previousSuccessfulOperation': old?['previousSuccessfulOperation'],
+          if (old?['unresolvedOperations'] != null)
+            'unresolvedOperations': old!['unresolvedOperations'],
           'sourceGeneration': c.generation,
           'sourceFingerprint': c.fingerprint,
         };
@@ -479,33 +552,109 @@ class MiniMaxAccounts {
         return MiniMaxAccount._(account);
       }, write: true);
       _rotations.remove(value.id);
+      _pendingRejections.remove(value.id);
       _verified[value.id] = (await _account(value.id))['generation'];
       _changes.add(null);
       return saved;
     } finally {
-      _busy.remove(_ownerKey(value.id));
+      _release(value.id);
     }
   }
 
   final _verified = <String, int>{};
   final _rotations = <String, (Map<String, dynamic>, MiniMaxOAuthToken)>{};
+  // Stages a failed publication by existing account identity and generation,
+  // never by retaining another copy of the credential.
+  final _pendingRejections = <String, (String?, int)>{};
+
+  /// Call after the inference lease ends. Completion publishes a refusal for
+  /// this exact registration/token; a late refusal cannot reject a newer login.
+  Future<void> rejectInferenceAuthorization(
+    String id,
+    String registrationId,
+    String token,
+  ) async {
+    _alive();
+    final key = _ownerKey(id);
+    while (!_busy.add(key)) {
+      await (_idle[key] ??= Completer<void>()).future;
+      _alive();
+    }
+    try {
+      final account = await _account(id);
+      if (account['registrationId'] != registrationId ||
+          account['accessToken'] != token)
+        return;
+      _pendingRejections[id] = (registrationId, account['generation']);
+      await _persistRejection(id, account);
+    } finally {
+      _release(id);
+    }
+  }
+
+  Future<Map<String, dynamic>> _persistRejection(
+    String id,
+    Map<String, dynamic> account,
+  ) async {
+    final pending = _pendingRejections[id];
+    if (pending == null) return account;
+    if (account['registrationId'] != pending.$1 ||
+        account['generation'] != pending.$2) {
+      _pendingRejections.remove(id);
+      return account;
+    }
+    if (account['accessRejected'] != true) {
+      account = await store._access((rows) async {
+        final current = _match(rows, id, account);
+        if (current['registrationId'] != pending.$1)
+          throw const MiniMaxAccountError('SourceChanged');
+        current['accessRejected'] = true;
+        return Map<String, dynamic>.from(current);
+      }, write: true);
+    }
+    _pendingRejections.remove(id);
+    return account;
+  }
+
   Future<Map<String, dynamic>> _authorized(String id) async {
     var account = await _account(id);
+    account = await _persistRejection(id, account);
     if (account['authorizationInvalid'] == true)
       throw const MiniMaxAccountError('NeedsLogin');
     var pending = _rotations[id];
-    if (pending != null &&
-        account['generation'] == pending.$1['generation'] + 1 &&
-        account['accessToken'] == pending.$2.accessToken &&
-        account['refreshToken'] == pending.$2.refreshToken) {
-      // A write may have committed before its acknowledgement was lost.
+    if (pending != null && !_sameAuthorization(account, pending.$1)) {
+      // A lost save acknowledgement may already have published this rotation,
+      // or another registration won the CAS. The persisted owner is authority.
       _rotations.remove(id);
       pending = null;
     }
+    // A rotating grant was reserved before transmission, but no replacement is
+    // known in this process. Restart must never spend that grant a second time.
+    if (pending == null && account['refreshPending'] == true)
+      throw const MiniMaxAccountError('NeedsLogin');
+    final forceRefresh = account['accessRejected'] == true;
+    final ordinaryRenewal = account['expiresAtMs'] <= nowMs() + 60000;
     final refresh = account['refreshToken'];
     if (pending == null &&
-        account['expiresAtMs'] <= nowMs() + 60000 &&
+        forceRefresh &&
+        (refresh is! String ||
+            !ordinaryRenewal && account['refusalRecoveryAttempted'] == true))
+      throw const MiniMaxAccountError('NeedsLogin');
+    if (pending == null &&
+        (forceRefresh || ordinaryRenewal) &&
         refresh is String) {
+      account = await store._access((rows) async {
+        _alive();
+        final current = _match(rows, id, account);
+        if (current['refreshPending'] == true)
+          throw const MiniMaxAccountError('NeedsLogin');
+        // This row already owns the credential: reserve without another copy.
+        // A forced recovery is allowed once until ordinary expiry renewal.
+        current['refreshPending'] = true;
+        current['refusalRecoveryAttempted'] = forceRefresh && !ordinaryRenewal;
+        return Map<String, dynamic>.from(current);
+      }, write: true);
+      _alive();
       try {
         final next = await MiniMaxOAuth.refresh(
           http: http,
@@ -520,12 +669,14 @@ class MiniMaxAccounts {
           await store._access((rows) async {
             final current = _match(rows, id, account);
             current['authorizationInvalid'] = true;
+            current['refreshPending'] = false;
             current['status'] = 'needsLogin';
           }, write: true);
           throw const MiniMaxAccountError('NeedsLogin');
         }
-        if (account['expiresAtMs'] <= nowMs())
-          throw const MiniMaxAccountError('NetworkUnavailable');
+        // A timeout, gateway failure or malformed success may have spent the
+        // single-use grant. Keep its reservation, including while access lives.
+        throw const MiniMaxAccountError('NetworkUnavailable');
       }
     }
     if (pending != null) {
@@ -539,19 +690,19 @@ class MiniMaxAccounts {
         current['expiresAtMs'] = rotation.$2.expiresAtMs;
         current['generation'] = (current['generation'] as int) + 1;
         current['identityVerified'] = false;
+        current['accessRejected'] = false;
+        current['refreshPending'] = false;
         return Map<String, dynamic>.from(current);
       }, write: true);
       _rotations.remove(id);
+      _pendingRejections.remove(id);
     }
+    _alive();
     if (account['expiresAtMs'] <= nowMs())
       throw const MiniMaxAccountError('NeedsLogin');
     if (_verified[id] != account['generation']) {
       final profile = _profile(
-        await _send(
-          MiniMaxEndpoint.profile,
-          account['accessToken'],
-          account['region'],
-        ),
+        await _sendForAccount(MiniMaxEndpoint.profile, account),
       );
       if (profile.$1 != account['uid'])
         throw const MiniMaxAccountError('IdentityMismatch');
@@ -606,7 +757,7 @@ class MiniMaxAccounts {
       );
     } finally {
       active = false;
-      _busy.remove(_ownerKey(id));
+      _release(id);
     }
   }
 
@@ -628,6 +779,7 @@ class MiniMaxAccounts {
           isCurrent: () => !_closed && account['expiresAtMs'] > nowMs(),
         );
         _alive();
+        await _noteUnauthorized(account, response);
         final body = response.body;
         if (response.status != 200 || body == null)
           throw const MiniMaxAccountError('InvalidResponse');
@@ -648,7 +800,7 @@ class MiniMaxAccounts {
         now: DateTime.fromMillisecondsSinceEpoch(nowMs(), isUtc: true),
       );
     } finally {
-      _busy.remove(_ownerKey(id));
+      _release(id);
     }
   }
 
@@ -679,7 +831,7 @@ class MiniMaxAccounts {
         return MiniMaxAccount._(row);
       }, write: true);
     } finally {
-      _busy.remove(_ownerKey(id));
+      _release(id);
     }
   }
 
@@ -692,23 +844,12 @@ class MiniMaxAccounts {
       _alive();
       if (automatic && account['automatic'] != true)
         return MiniMaxAccount._(account);
-      if (_unresolved(account['operation']) ||
-          (account['operation'] as Map?)?['day'] == _day())
-        return MiniMaxAccount._(account);
       account = await _authorized(id);
-      final token = account['accessToken'] as String;
       final statusDay = _day();
-      final status = _panel(
-        _data(
-          await _send(
-            MiniMaxEndpoint.status,
-            token,
-            account['region'],
-            account['uid'],
-          ),
-        ),
-        automatic: automatic,
+      final panel = _panel(
+        _data(await _sendForAccount(MiniMaxEndpoint.status, account)),
       );
+      final status = panel.status, serverDay = panel.serverDay;
       if ((account['expiresAtMs'] as int) <= nowMs())
         throw const MiniMaxAccountError('NeedsLogin');
       if (statusDay != _day()) throw const MiniMaxAccountError('StatusExpired');
@@ -720,18 +861,49 @@ class MiniMaxAccounts {
             (current['automatic'] != true ||
                 current['policyRevision'] != account['policyRevision']))
           throw const MiniMaxAccountError('AutomaticDisabled');
-        if (_unresolved(current['operation']) ||
-            (current['operation'] as Map?)?['day'] == _day())
-          return false;
         current['status'] = status;
-        if (status != 'claimable') return false;
-        if ((current['operation'] as Map?)?['state'] == 'claimed') {
-          current['previousSuccessfulOperation'] = current['operation'];
+        final previous = current['operation'] as Map?;
+        if (_unresolved(previous)) {
+          // A POST may straddle a server-day boundary. Its preflight marker
+          // cannot settle that uncertainty; anchor only a later status read.
+          final anchor = previous!['reconciliationDay'];
+          if (anchor == null && serverDay != null)
+            previous['reconciliationDay'] = serverDay;
+          if (anchor == null || serverDay == null || anchor == serverDay) {
+            current['status'] = status == 'alreadyClaimed'
+                ? 'alreadyClaimed'
+                : 'unknown';
+            return false;
+          }
+        }
+        if (status != 'claimable' || serverDay == null) return false;
+        // The seven server slots recur. A completed slot is a duplicate only
+        // on the same confirmation date; uncertainty uses its stricter anchor.
+        if (previous != null &&
+            !_unresolved(previous) &&
+            (previous['serverDay'] == null ||
+                previous['serverDay'] == serverDay) &&
+            (previous['confirmedAtMs'] is int
+                    ? _day(previous['confirmedAtMs'])
+                    : previous['day']) ==
+                _day()) {
+          current['status'] = previous['state'];
+          return false;
+        }
+        if (_unresolved(previous)) {
+          final history =
+              current.putIfAbsent('unresolvedOperations', () => <dynamic>[])
+                  as List;
+          if (!history.any((op) => op['id'] == previous!['id']))
+            history.add(Map<String, dynamic>.from(previous!));
+        } else if (previous?['state'] == 'claimed') {
+          current['previousSuccessfulOperation'] = previous;
         }
         current['operation'] = {
           'id': opId,
           'day': _day(),
           'state': 'pending',
+          'serverDay': serverDay,
           'points': null,
           'claimId': null,
         };
@@ -755,14 +927,12 @@ class MiniMaxAccounts {
       if ((account['expiresAtMs'] as int) <= nowMs())
         throw const MiniMaxAccountError('NeedsLogin');
       if (statusDay != _day()) throw const MiniMaxAccountError('StatusExpired');
-      (String, num, String, int)? receipt;
+      (String, num?, String?, int?)? receipt;
       try {
         receipt = _receipt(
-          await _send(
+          await _sendForAccount(
             MiniMaxEndpoint.claim,
-            token,
-            account['region'],
-            account['uid'],
+            account,
             () =>
                 (account['expiresAtMs'] as int) > nowMs() &&
                 statusDay == _day(),
@@ -789,7 +959,7 @@ class MiniMaxAccounts {
         return MiniMaxAccount._(current);
       }, write: true);
     } finally {
-      _busy.remove(_ownerKey(id));
+      _release(id);
     }
   }
 
@@ -870,6 +1040,7 @@ class MiniMaxAccounts {
   void dispose() {
     if (_closed) return;
     _closed = true;
+    _pendingRejections.clear();
     unawaited(_changes.close());
     cancelAuthorization();
     _startupTimer?.cancel();
@@ -885,22 +1056,24 @@ String _nonce() => List.generate(
 ).join();
 bool _unresolved(Object? op) =>
     op is Map && ['pending', 'unknown'].contains(op['state']);
+bool _sameAuthorization(Map current, Map expected) =>
+    current['generation'] == expected['generation'] &&
+    current['registrationId'] == expected['registrationId'] &&
+    current['accessToken'] == expected['accessToken'] &&
+    current['refreshToken'] == expected['refreshToken'];
 Map<String, dynamic> _match(
   Map<String, dynamic> accounts,
   String id,
   Map<String, dynamic> expected,
 ) {
   final c = accounts[id];
-  if (c is! Map<String, dynamic> ||
-      c['generation'] != expected['generation'] ||
-      c['accessToken'] != expected['accessToken'])
+  if (c is! Map<String, dynamic> || !_sameAuthorization(c, expected))
     throw const MiniMaxAccountError('SourceChanged');
   return c;
 }
 
 (String, String) _profile(MiniMaxReply r) {
-  if (r.status == 401 || r.status == 403)
-    throw const MiniMaxAccountError('NeedsLogin');
+  if (r.status == 401) throw const MiniMaxAccountError('NeedsLogin');
   final b = r.body;
   if (r.status < 200 || r.status >= 300 || b == null)
     throw const MiniMaxAccountError('InvalidResponse');
@@ -932,8 +1105,7 @@ Map<String, dynamic> _match(
 }
 
 Map _data(MiniMaxReply r) {
-  if (r.status == 401 || r.status == 403)
-    throw const MiniMaxAccountError('NeedsLogin');
+  if (r.status == 401) throw const MiniMaxAccountError('NeedsLogin');
   final b = r.body;
   if (r.status < 200 ||
       r.status >= 300 ||
@@ -947,25 +1119,24 @@ Map _data(MiniMaxReply r) {
 }
 
 bool _finite(Object? n) => n is num && n.isFinite && n >= 0;
-String _panel(Map p, {bool automatic = false}) {
+({String status, int? serverDay}) _panel(Map p) {
   final scene = p['scene'], days = p['days'];
-  if (scene is! int ||
-      scene < 0 ||
-      scene > 4 ||
+  if (p.containsKey('scene') && (scene is! int || scene < 0 || scene > 4) ||
       days is! List ||
       days.length != 7)
     throw const MiniMaxAccountError('InvalidResponse');
   final numbers = <int>{};
   var claimable = 0, today = 0;
   bool todayClaimed = false, todayClaimable = false;
+  int? serverDay;
   for (final d in days) {
     if (d is! Map ||
         d['day_no'] is! int ||
         d['day_no'] < 1 ||
         d['day_no'] > 7 ||
         !numbers.add(d['day_no']) ||
-        !_finite(d['points']) ||
-        (d['bonus_points'] != null && !_finite(d['bonus_points'])) ||
+        d.containsKey('points') && !_finite(d['points']) ||
+        d.containsKey('bonus_points') && !_finite(d['bonus_points']) ||
         d['status'] is! int ||
         d['status'] < 1 ||
         d['status'] > 4 ||
@@ -974,39 +1145,40 @@ String _panel(Map p, {bool automatic = false}) {
     if (d['status'] == 2) claimable++;
     if (d['is_today']) {
       today++;
+      serverDay = d['day_no'];
       todayClaimed = d['status'] == 3;
       todayClaimable = d['status'] == 2;
     }
   }
   if (claimable > 1 || today > 1)
     throw const MiniMaxAccountError('InvalidResponse');
-  return todayClaimed
+  final status = todayClaimed
       ? 'alreadyClaimed'
-      : claimable == 1 && (!automatic || todayClaimable)
+      : todayClaimable
       ? 'claimable'
       : 'unavailable';
+  return (status: status, serverDay: serverDay);
 }
 
-(String, num, String, int) _receipt(MiniMaxReply r) {
+(String, num?, String?, int?) _receipt(MiniMaxReply r) {
   final d = _data(r);
-  if (d['panel'] is! Map) throw const MiniMaxAccountError('InvalidResponse');
-  _panel(d['panel']);
+  if (d.containsKey('panel')) {
+    if (d['panel'] is! Map) throw const MiniMaxAccountError('InvalidResponse');
+    _panel(d['panel']);
+  }
   final id = d['claim_id'], result = d['claim_result'], day = d['day_no'];
-  if (!_validText(id, 1024) ||
-      result is! int ||
+  if (result is! int ||
       !{1, 2}.contains(result) ||
-      day is! int ||
-      day < 1 ||
-      day > 7 ||
-      !_finite(d['points']) ||
-      d['expire_at_ms'] is! num ||
-      !(d['expire_at_ms'] as num).isFinite)
+      d.containsKey('claim_id') && !_validText(id, 1024) ||
+      d.containsKey('day_no') && (day is! int || day < 1 || day > 7) ||
+      d.containsKey('points') && !_finite(d['points']) ||
+      d.containsKey('expire_at_ms') && !_safeInt(d['expire_at_ms']))
     throw const MiniMaxAccountError('InvalidResponse');
   return (
     result == 1 ? 'claimed' : 'alreadyClaimed',
-    d['points'] as num,
-    id as String,
-    (d['expire_at_ms'] as num).toInt(),
+    d['points'] as num?,
+    id as String?,
+    d['expire_at_ms'] as int?,
   );
 }
 

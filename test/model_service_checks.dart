@@ -85,6 +85,17 @@ Future<void> main() async {
       service.bindings.single.models.length == 1,
       'legacy UI advertised extra models',
     );
+    final accountCommand = service.magpieCommandFor('legacy')!;
+    check(
+      accountCommand.contains('errors=pass') &&
+          accountCommand.contains('patience=off') &&
+          accountCommand.contains(
+            r'header.X-LoongPass-Session=${sessionId}:${subagentId}',
+          ) &&
+          accountCommand.contains('models=only-a') &&
+          accountCommand.contains('key=${service.bindings.single.key}'),
+      'single-account Magpie setup lost policy, identity, or grant limits',
+    );
     final models = await request('/v1/models');
     check(models.$1 == 200, 'legacy root unavailable');
     final data = (jsonDecode(models.$2) as Map)['data'] as List;

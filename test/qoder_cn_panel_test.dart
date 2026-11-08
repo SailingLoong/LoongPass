@@ -3,8 +3,32 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loongpass/qoder_device_accounts.dart';
 import 'package:loongpass/qoder_device_panel.dart';
+import 'package:loongpass/qoder_credits.dart';
+import 'package:loongpass/credit_summary.dart';
+import 'package:loongpass/compact_accounts_table.dart';
 
 void main() {
+  testWidgets(
+    'Qoder token pools keep their units in balance and expiry views',
+    (tester) async {
+      final owner = _QuotaOwner();
+      addTearDown(owner.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: QoderDeviceAccountsPanel(owner: owner)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = tester
+          .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
+          .entries
+          .single;
+      expect(row.balance, '套餐 500000 tokens / 附加 855 积分');
+      expect(row.upcomingExpiryText, startsWith('8 tokens · '));
+      expect(row.upcomingExpiryText, isNot(contains('积分')));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   for (final terminal in ['completed', 'unknown']) {
     testWidgets('cancel presents actual native commit outcome $terminal', (
       tester,
@@ -50,6 +74,26 @@ void main() {
     );
     expect(find.text('账号授权目前仅支持 macOS。'), findsOneWidget);
   });
+}
+
+class _QuotaOwner extends QoderDeviceAccounts {
+  _QuotaOwner()
+    : super(native: _NoNative(), transport: _NoNetwork(), nowMs: () => 0);
+  @override
+  Future<List<QoderSavedAccount>> accountViews() async => [
+    const QoderSavedAccount('units', 'Unit account', false, 0, null),
+  ];
+  @override
+  QoderCredits? credits(String uid) => QoderCredits(
+    CreditSummary(null, 0, DateTime.utc(2026, 11, 8), [
+      CreditExpiry(DateTime.utc(2030), 8),
+    ]),
+    500000,
+    855,
+    planUnit: 'tokens',
+    addOnUnit: 'credits',
+    packagesUnit: 'tokens',
+  );
 }
 
 class _TerminalOwner extends QoderDeviceAccounts {

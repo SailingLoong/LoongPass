@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 
 import 'account_document_store.dart';
 import 'model_provider.dart';
@@ -66,16 +67,53 @@ class ModelService {
 
   String? _pooledMagpieCommand({required bool update}) {
     if (!running || pooledModels.isEmpty || pooledKey == null) return null;
+    return _magpieCommand(
+      id: 'loongpass',
+      name: 'LoongPass',
+      key: pooledKey!,
+      models: pooledModels.map((m) => m.id),
+      endpoints: {'anthropic': '$endpoint'},
+      update: update,
+    );
+  }
+
+  String? magpieCommandFor(String bindingId, {bool update = false}) {
+    final uri = importUriFor(bindingId);
+    if (uri == null) return null;
+    final fields = uri.queryParameters;
+    final id =
+        'loongpass-account-${sha256.convert(utf8.encode(bindingId)).toString().substring(0, 20)}';
+    return _magpieCommand(
+      id: id,
+      name: fields['name']!,
+      key: fields['key']!,
+      models: fields['models']!.split(','),
+      endpoints: {
+        if (fields['anthropic'] != null) 'anthropic': fields['anthropic']!,
+        if (fields['chat'] != null) 'url': fields['chat']!,
+      },
+      update: update,
+    );
+  }
+
+  String _magpieCommand({
+    required String id,
+    required String name,
+    required String key,
+    required Iterable<String> models,
+    required Map<String, String> endpoints,
+    required bool update,
+  }) {
     String quote(String value) => "'${value.replaceAll("'", "'\\''")}'";
     return [
       'magpie',
       'provider',
       update ? 'set' : 'add',
-      update ? 'loongpass' : 'LoongPass',
-      if (!update) 'id=loongpass',
-      'anthropic=$endpoint',
-      'key=$pooledKey',
-      'models=${pooledModels.map((m) => m.id).join(',')}',
+      update ? id : name,
+      if (!update) 'id=$id',
+      for (final entry in endpoints.entries) '${entry.key}=${entry.value}',
+      'key=$key',
+      'models=${models.join(',')}',
       r'header.X-LoongPass-Session=${sessionId}:${subagentId}',
       'errors=pass',
       'patience=off',

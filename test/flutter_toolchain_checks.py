@@ -23,6 +23,22 @@ def metadata(flutter, dart, channel="stable"):
 
 
 class FlutterToolchainChecks(unittest.TestCase):
+    def test_ci_reads_pinned_version_without_an_installed_sdk(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pubspec.yaml").write_text(
+                "environment:\n  sdk: '>=3.14.0 <4.0.0'\n  flutter: '3.50.2'\n")
+            output = StringIO()
+            with patch.object(verify_flutter, "ROOT", root), \
+                    patch.object(sys, "argv", ["verify_flutter.py", "--required-version"]), \
+                    patch.object(verify_flutter.subprocess, "run") as run, \
+                    patch.object(verify_flutter.subprocess, "check_output") as check_output, \
+                    redirect_stdout(output):
+                verify_flutter.main()
+            self.assertEqual(output.getvalue(), "3.50.2\n")
+            run.assert_not_called()
+            check_output.assert_not_called()
+
     def test_fresh_windows_sdk_bootstrap_finishes_before_machine_output_is_read(self):
         ready = False
 

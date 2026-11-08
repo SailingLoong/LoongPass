@@ -154,14 +154,19 @@ final class WorkBuddyVault {
         guard integer(row["schema"])==1,integer(row["revision"]) != nil,let state=row["state"] as? String else{throw Failure.invalid}
         if state=="revoked" { guard Set(row.keys)==Set(["schema","revision","state"]) else{throw Failure.invalid};return }
         guard state=="active"||state=="rotationPending",
-              Set(row.keys).isSubset(of:Set(["schema","revision","state","domain","endpoint","uid","accessToken","refreshToken","expiresAt","registrationId"])) else{throw Failure.invalid}
+              Set(row.keys).isSubset(of:Set(["schema","revision","state","domain","endpoint","uid","accessToken","refreshToken","expiresAt","refreshExpiresAt","registrationId","accessRejected","refusalRecoveryAttempted"])) else{throw Failure.invalid}
+        for name in ["accessRejected", "refusalRecoveryAttempted"] {
+            guard let raw = row[name] else { continue }
+            guard let flag = raw as? NSNumber, CFGetTypeID(flag) == CFBooleanGetTypeID() else { throw Failure.invalid }
+        }
         if let registration = row["registrationId"] { guard let value = registration as? String, value.count == 32, value.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { throw Failure.invalid } }
         for name in ["domain","endpoint"] {guard let v=row[name] as? String,["www.workbuddy.cn","www.codebuddy.cn"].contains(v) else{throw Failure.invalid}}
         for name in ["uid","accessToken","refreshToken"] {
             if name=="refreshToken" && row[name]==nil{continue}
             guard let v=row[name] as? String,!v.isEmpty,v.utf8.count<=(name=="uid" ? 512:16384),v.utf8.allSatisfy({(33...126).contains($0)}) else{throw Failure.invalid}
         }
-        if let rawExpiry = row["expiresAt"] {
+        for name in ["expiresAt", "refreshExpiresAt"] {
+            guard let rawExpiry = row[name] else { continue }
             guard let expiry = rawExpiry as? NSNumber, CFGetTypeID(expiry) != CFBooleanGetTypeID(),
                   expiry.doubleValue > 0, expiry.doubleValue <= 8640000000000000,
                   expiry.doubleValue.rounded() == expiry.doubleValue else { throw Failure.invalid }

@@ -82,6 +82,7 @@ class _ObservedProvider extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) async {
     final row = <String, dynamic>{
       'source': id,
@@ -102,6 +103,7 @@ class _ObservedProvider extends ModelProvider {
         },
         isCurrent: isCurrent,
         cancelled: cancelled,
+        context: context,
       );
     } catch (error) {
       row['failure'] = _failure(error);
@@ -179,6 +181,9 @@ class _ObservedModels implements ModelTransport {
           reply.contentType,
           Stream.value(bytes),
           cancel: reply.cancel,
+          errorCode: reply.errorCode,
+          retryAfterSeconds: reply.retryAfterSeconds,
+          credentialRejected: reply.credentialRejected,
         ),
       );
     },
@@ -405,7 +410,7 @@ Future<void> main() async {
       WorkBuddyModelProvider(
         work,
         transport: workModels,
-        clientVersion: WorkBuddyDesktopFlutter.clientVersion,
+        clientInfo: WorkBuddyDesktopFlutter.clientInfo,
       ),
       QoderModelProvider(qoder),
       ZcodeModelProvider(

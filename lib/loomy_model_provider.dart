@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'model_provider.dart';
 import 'model_http.dart';
+import 'loomy_protocol.dart';
 import 'rewards/reward_accounts.dart';
 import 'rewards/reward_provider.dart';
 
@@ -17,6 +18,11 @@ class LoomyModelProvider extends ModelProvider {
   String get name => 'Loomy';
   @override
   Set<ModelProtocol> get protocols => {ModelProtocol.chat};
+  @override
+  void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) {
+    loomyRequest(body);
+  }
+
   @override
   Stream<void> get changes =>
       owner.authorizationChanges.where((p) => p == id).map((_) {});
@@ -85,6 +91,15 @@ class LoomyModelProvider extends ModelProvider {
                 tools: caps is Map && caps['function_calling'] is bool
                     ? caps['function_calling']
                     : null,
+                images: caps is Map && caps['vision'] is bool
+                    ? caps['vision']
+                    : null,
+                reasoning: caps is Map && caps['reasoning'] is bool
+                    ? caps['reasoning']
+                    : null,
+                reasoningEfforts: caps is Map && caps['reasoning'] == true
+                    ? const ['low', 'medium', 'high']
+                    : const [],
                 contextWindow: integer(
                   row['context_window'] ??
                       row['context_length'] ??
@@ -109,6 +124,7 @@ class LoomyModelProvider extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) {
     if (protocol != ModelProtocol.chat)
       throw const ModelServiceFailure('endpoint_not_supported');
@@ -119,10 +135,10 @@ class LoomyModelProvider extends ModelProvider {
         Uri.https('loomyad.xunfei.cn', '/api/v1/chat/completions'),
         method: 'POST',
         headers: {..._headers(session), 'Accept': 'text/event-stream'},
-        body: body,
+        body: loomyRequest(body),
         isCurrent: () => current() && isCurrent(),
         cancelled: cancelled,
-        consume: consume,
+        consume: (reply) async => consume(await loomyFailure(reply)),
       ),
       expectedRegistrationId: registrationId,
     );

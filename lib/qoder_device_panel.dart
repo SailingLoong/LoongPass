@@ -162,11 +162,21 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
           ),
           if (_owner!.credits(a.uid) case final credits?) ...[
             if (credits.planRemaining case final remaining?)
-              Text('套餐剩余：$remaining'),
+              Text('套餐剩余：$remaining ${_unit(credits.planUnit)}'),
             if (credits.addOnRemaining case final remaining?)
-              Text('附加积分剩余：$remaining'),
-            const Text('以下仅为官方返回的专属积分包；与汇总可能重叠，其他积分的到期明细尚未提供。'),
-            CreditSummaryView(summary: credits.packages),
+              Text('附加剩余：$remaining ${_unit(credits.addOnUnit)}'),
+            const Text('以下仅为官方返回的专属额度包；与汇总可能重叠，其他额度的到期明细尚未提供。'),
+            if (credits.packagesUnit == 'credits')
+              CreditSummaryView(summary: credits.packages)
+            else ...[
+              Text(
+                '到期时间未知：${accountPoints(credits.packages.withoutExpiry)} ${_unit(credits.packagesUnit)}',
+              ),
+              for (final batch in credits.packages.expiring)
+                Text(
+                  '${batch.expiresAt.toLocal()} 到期：${accountPoints(batch.remaining)} ${_unit(credits.packagesUnit)}',
+                ),
+            ],
           ],
         ],
       ),
@@ -176,7 +186,34 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
   String _balance(String uid) {
     final c = _owner!.credits(uid);
     if (c == null) return '尚未查询';
-    return '套餐 ${c.planRemaining == null ? '未知' : accountPoints(c.planRemaining!)} / 附加 ${c.addOnRemaining == null ? '未知' : accountPoints(c.addOnRemaining!)} 积分';
+    return '套餐 ${c.planRemaining == null ? '未知' : '${accountPoints(c.planRemaining!)} ${_unit(c.planUnit)}'} / 附加 ${c.addOnRemaining == null ? '未知' : '${accountPoints(c.addOnRemaining!)} ${_unit(c.addOnUnit)}'}';
+  }
+
+  String _unit(String unit) => unit == 'credits' ? '积分' : unit;
+
+  AccountTableEntry _entry(QoderSavedAccount account) {
+    final c = _owner!.credits(account.uid);
+    final points = c?.packagesUnit == 'credits';
+    final next = upcomingCreditBatches(c?.packages).firstOrNull;
+    return AccountTableEntry(
+      id: account.uid,
+      label: account.label,
+      identity: account.uid,
+      balance: _balance(account.uid),
+      credits: points ? c?.packages : null,
+      expiryAt: next?.expiresAt,
+      expiryText: c == null || points
+          ? null
+          : next == null
+          ? '到期信息未知'
+          : '${accountPoints(next.remaining)} ${_unit(c.packagesUnit)} · ${accountDate(next.expiresAt)}',
+      observedAt: c?.packages.observedAt,
+      status: _outcome(account.outcome),
+      receipt: account.latestClaim,
+      needsAttention: account.outcome == 'unknown',
+      notice: _message,
+      details: _details(account),
+    );
   }
 
   @override
@@ -219,23 +256,7 @@ class _QoderDeviceAccountsPanelState extends State<QoderDeviceAccountsPanel> {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(_message!),
         ),
-      CompactAccountsTable(
-        entries: [
-          for (final a in _accounts)
-            AccountTableEntry(
-              id: a.uid,
-              label: a.label,
-              identity: a.uid,
-              balance: _balance(a.uid),
-              credits: _owner!.credits(a.uid)?.packages,
-              status: _outcome(a.outcome),
-              receipt: a.latestClaim,
-              needsAttention: a.outcome == 'unknown',
-              notice: _message,
-              details: _details(a),
-            ),
-        ],
-      ),
+      CompactAccountsTable(entries: [for (final a in _accounts) _entry(a)]),
     ],
   );
 }

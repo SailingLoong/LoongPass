@@ -10,6 +10,7 @@ Future<void> main() async {
   for (final outcome in ['success', 'human', 'unknown', 'closed']) {
     final store = MemoryAccountStore('automatic-verification-$outcome');
     final http = fixture.FakeZcode()
+      ..captchaRequired = true
       ..claimHttp = 400
       ..claimCode = 3007
       ..acceptVerification = true;
@@ -47,11 +48,11 @@ Future<void> main() async {
     await tick;
     fixture.check(
       verifications == 1,
-      'first explicit rejection tries the SDK once',
+      'known-required preflight tries the SDK once',
     );
     fixture.check(
-      http.claims == (['human', 'closed'].contains(outcome) ? 1 : 2),
-      'only a returned proof permits the second claim',
+      http.claims == (['human', 'closed'].contains(outcome) ? 0 : 1),
+      'only a returned proof permits the first claim',
     );
     fixture.check(
       !jsonEncode(store.data).contains('synthetic-single-use-proof'),

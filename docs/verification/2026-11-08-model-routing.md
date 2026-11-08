@@ -4,6 +4,11 @@
 在提供同模型的已连接平台与保存账号间选路，同一 session 优先留在原账号。
 模型目录、账号权限和选路均有明确 owner，不在界面维护另一份模型/账号状态。
 
+本记录中的七模型通过结果来自隔离配置、`--bare`、自定义系统提示词和精简工具集。
+它证明对应生产适配器链路，不证明日常 Claude Code 默认提示词、环境消息或
+ToolSearch 已兼容。随后用户报告的 `unsupported_content` 正是这项覆盖缺口；
+修复及默认客户端的重新验收见 `2026-11-08-upstream-alignment.md`。
+
 ## 真实链路与结果
 
 Claude Code 2.1.308 → 本机 Magpie（核对版本 0.1.3302）→ LoongPass 生产
@@ -54,7 +59,8 @@ GLM-5.3-Flash 的目录来源为 Loomy、Qoder CN、ZCode；本表如实列出�
   已安装 Magpie 的隔离配置实测确认更新后仍只有同一 `loongpass` 来源，旧 key 被
   替换，新模型与会话模板均保存。普通导入链接不支持模板，不能冒充完整统一配置。
 - Magpie 配置 `errors=pass patience=off`；Claude Code 同时关闭普通重试和非流式
-  fallback。一次未知结果不会重发，不把 LoongPass 单次发送等同于所有客户端都不重试。
+  fallback。LoongPass 对一次请求只发送一次；这些设置不能阻止客户端自己的所有
+  恢复重发，后续安装版的 HTTP400 本地探针仍观察到 schema 恢复重发。
 
 ## 协议与独立审查修复
 

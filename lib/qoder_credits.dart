@@ -3,7 +3,15 @@ import 'credit_summary.dart';
 class QoderCredits {
   final CreditSummary packages;
   final double? planRemaining, addOnRemaining;
-  QoderCredits(this.packages, this.planRemaining, this.addOnRemaining);
+  final String planUnit, addOnUnit, packagesUnit;
+  QoderCredits(
+    this.packages,
+    this.planRemaining,
+    this.addOnRemaining, {
+    this.planUnit = 'credits',
+    this.addOnUnit = 'credits',
+    this.packagesUnit = 'credits',
+  });
 }
 
 /// /sash/api/v2/me/usage describes plan/add-on totals and dedicated packages.
@@ -19,26 +27,49 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
     return value.toDouble();
   }
 
+  String unit(Map value) {
+    final raw = value['unit'] ?? 'credits';
+    if (raw is! String ||
+        raw.isEmpty ||
+        raw.length > 64 ||
+        RegExp(r'[\x00-\x1f\x7f]').hasMatch(raw))
+      throw const FormatException('Invalid quota unit');
+    return raw;
+  }
+
   double? quota(Object? value) {
     if (value == null) return null;
     if (value is! Map) throw const FormatException('Invalid quota');
     if (value.containsKey('remaining')) return number(value['remaining']);
-    final total = number(value['total']), used = number(value['used']);
+    final total = number(value['total'] ?? value['cap']),
+        used = number(value['used']);
     return (total - used).clamp(0, total);
   }
 
   final groups = <int, double>{};
   double unknown = 0;
-  final rows = usage['dedicatedResourcePackages'] ?? const [];
+  final rows =
+      usage['dedicatedResourcePackages'] ??
+      usage['dedicated_resource_packages'] ??
+      const [];
+  String? packagesUnit;
+  void includeUnit(Map row) {
+    final rowUnit = unit(row);
+    if (packagesUnit != null && packagesUnit != rowUnit)
+      throw const FormatException('Mixed package units');
+    packagesUnit = rowUnit;
+  }
+
   if (rows is! List || rows.length > 10000)
     throw const FormatException('Invalid packages');
   for (final row in rows) {
     if (row is! Map) throw const FormatException('Invalid package');
     if (row['available'] == false) continue;
-    final remaining = number(row['remaining']);
+    final remaining = quota(row)!;
     if (remaining == 0) continue;
     final raw = row['expires_at'] ?? row['expiresAt'];
     if (raw == null) {
+      includeUnit(row);
       unknown += remaining;
       continue;
     }
@@ -55,13 +86,17 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
     }
     // The official service uses year 9999 for an unspecified renewal/expiry.
     if (expiry >= DateTime.utc(9999).millisecondsSinceEpoch) {
+      includeUnit(row);
       unknown += remaining;
       continue;
     }
     if (expiry <= now.millisecondsSinceEpoch) continue;
+    includeUnit(row);
     groups[expiry] = (groups[expiry] ?? 0) + remaining;
   }
   final dates = groups.keys.toList()..sort();
+  final plan = usage['userQuota'] ?? usage['user_quota'];
+  final addOn = usage['addOnQuota'] ?? usage['add_on_quota'];
   return QoderCredits(
     CreditSummary(null, unknown, now, [
       for (final date in dates)
@@ -70,7 +105,10 @@ QoderCredits normalizeQoderCredits(Map<String, dynamic> body, DateTime now) {
           groups[date]!,
         ),
     ]),
-    quota(usage['userQuota']),
-    quota(usage['addOnQuota']),
+    quota(plan),
+    quota(addOn),
+    planUnit: plan is Map ? unit(plan) : 'credits',
+    addOnUnit: addOn is Map ? unit(addOn) : 'credits',
+    packagesUnit: packagesUnit ?? 'credits',
   );
 }

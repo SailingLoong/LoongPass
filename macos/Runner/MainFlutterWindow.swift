@@ -64,14 +64,9 @@ class MainFlutterWindow: NSWindow {
       if WorkBuddyNativeAccess.rejectIfDisabled(call, result) { return }
       if WorkBuddyVault.handle(call: call, result: result,production:{try self.approvedWorkBuddyVault()}) { return }
       switch call.method {
-      case "workBuddyClientVersion":
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.tencent.workbuddy.mac"),
-              let bundle = Bundle(url: url),
-              let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-              version.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$", options: .regularExpression) != nil else {
-          result(FlutterError(code: "client_version_unavailable", message: nil, details: nil)); return
-        }
-        result(version)
+      case "workBuddyClientInfo":
+        do { result(try self.workBuddyDesktop.clientInfo()) }
+        catch { result(FlutterError(code: "client_info_unavailable", message: nil, details: nil)) }
       case "verifyZcodeClaim":
         do {
           guard let args = call.arguments as? [String: Any] else { throw ZcodeCaptchaWindow.Failure.unavailable }

@@ -4,6 +4,8 @@ import 'dart:math';
 import 'minimax_http.dart';
 import 'source_digest.dart';
 
+const _scope = 'agent.default';
+
 class MiniMaxOAuthFailure implements Exception {
   final String code;
   const MiniMaxOAuthFailure(this.code);
@@ -63,7 +65,7 @@ class MiniMaxOAuth {
           .replaceAll('=', '');
       final reply = await http.oauth('/oauth2/device/code', region, {
         'client_id': 'mcode-public',
-        'scope': 'agent.default',
+        'scope': _scope,
         'audience': 'agent-backend',
         'code_challenge': challenge,
         'code_challenge_method': 'S256',
@@ -192,7 +194,7 @@ class MiniMaxOAuth {
         'grant_type': 'refresh_token',
         'refresh_token': refreshToken,
         'client_id': 'mcode-public',
-        'scope': 'agent.default',
+        'scope': _scope,
         'audience': 'agent-backend',
       });
     } catch (_) {
@@ -213,17 +215,9 @@ class MiniMaxOAuth {
   }) {
     final access = _text(b['access_token']),
         seconds = _positive(b['expires_in']);
-    Object? scope = b['scope'];
-    if (scope == null && access != null) {
-      try {
-        final claims = jsonDecode(
-          utf8.decode(
-            base64Url.decode(base64Url.normalize(access.split('.')[1])),
-          ),
-        );
-        scope = claims['scope'] ?? claims['scp'];
-      } catch (_) {}
-    }
+    // The server may omit an unchanged grant, including for opaque tokens.
+    // Both device authorization and renewal requested this scope explicitly.
+    final scope = b.containsKey('scope') ? b['scope'] : _scope;
     final scopes = scope is String
         ? scope.split(RegExp(r'\s+'))
         : scope is List
@@ -233,7 +227,7 @@ class MiniMaxOAuth {
         seconds == null ||
         seconds > 31536000 ||
         b['token_type'].toString().toLowerCase() != 'bearer' ||
-        !scopes.contains('agent.default'))
+        !scopes.contains(_scope))
       throw const MiniMaxOAuthFailure('invalid_token');
     final refresh = b['refresh_token'] == null
         ? previousRefresh

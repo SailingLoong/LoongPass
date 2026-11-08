@@ -29,9 +29,14 @@ jobs:
       PACKAGE_APP: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read pinned Flutter SDK
+        id: flutter
+        run: |
+          required_flutter=$(python3 tool/verify_flutter.py --required-version)
+          echo "version=$required_flutter" >> "$GITHUB_OUTPUT"
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          flutter-version-file: pubspec.yaml
+          flutter-version: ${{ steps.flutter.outputs.version }}
           channel: stable
           cache: true
       - name: Verify patched release SDK
@@ -98,9 +103,15 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read pinned Flutter SDK
+        id: flutter
+        run: |
+          $version = python tool/verify_flutter.py --required-version
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read pinned Flutter SDK' }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          flutter-version-file: pubspec.yaml
+          flutter-version: ${{ steps.flutter.outputs.version }}
           channel: stable
           cache: true
       - name: Verify patched release SDK

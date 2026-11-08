@@ -56,8 +56,10 @@ void main() {
         await tester.ensureVisible(copy);
         await tester.tap(copy);
         await tester.pumpAndSettle();
-        expect(Uri.parse(copied!).queryParameters['key'], a.key);
-        expect(Uri.parse(copied!).queryParameters['models'], 'shared,only-a');
+        expect(copied, contains('key=${a.key}'));
+        expect(copied, contains('models=shared,only-a'));
+        expect(copied, contains('errors=pass'));
+        expect(copied, contains('patience=off'));
         expect(a.key, isNot(b.key));
         expect(
           provider.discoveries,

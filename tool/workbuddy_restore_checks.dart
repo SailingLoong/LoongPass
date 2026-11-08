@@ -83,7 +83,7 @@ Future<void> main()async{
  final mismatchVault=WorkBuddyVault(Store(),now:()=>DateTime.utc(2026,11,5));
  await mismatchVault.save(a,WorkBuddyVaultCredential(domain:original.domain,endpoint:original.endpoint,uid:original.uid,accessToken:'synthetic-different',expiresAt:original.expiresAt));
  final mismatch=await mismatchVault.restore(a,verify:(c,admitted)async=>true);
- check(!proof.attachRestoredLease(mismatch!),'same identity different token lease refused');proof.close();
+ check(!proof.attachRestoredLease(mismatch!,vault:mismatchVault,key:a),'same identity different token lease refused');proof.close();
  final attempts=Attempts()..row=WorkBuddyAttempt(revision:0,subject:WorkBuddySubject('www.workbuddy.cn','A','old-owner'),day:'2026-11-05',before:10);
  final coreRoster=WorkBuddyAccounts(create:()=>WorkBuddyAccountFlow(exchange:exchange,ownerGeneration:'restored-new',isOwnerCurrent:()=>true,store:attempts,now:()=>DateTime.utc(2026,11,5),readCompleteBalance:(s)async=>(subject:s,totalRemaining:10.0)));
  final ca=await coreRoster.restore(WorkBuddyVault(addStore,now:()=>DateTime.utc(2026,11,5)),keyA);
