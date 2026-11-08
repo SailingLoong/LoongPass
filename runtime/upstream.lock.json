@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "localFiles": ["launcher.mjs"],
+  "sources": {
+    "magpie": {
+      "url": "https://github.com/yetone/magpie",
+      "commit": "2c31815c591c73d426c5e9da7f07a9929bce756d"
+    },
+    "plugins": {
+      "url": "https://github.com/magpie-community/plugins",
+      "commit": "9b41df15075b770e87d428fc2d650c4a14d79b3f"
+    }
+  },
+  "bun": {
+    "version": "1.4.2",
+    "archives": {
+      "bun-darwin-aarch64.zip": "90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f",
+      "bun-darwin-x64.zip": "80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012",
+      "bun-windows-x64-baseline.zip": "78c221c2376f79731ccf4e4af0b3bb46d81fefa3296c5abee09ad8a1b21e68c6",
+      "bun-windows-aarch64.zip": "a7a16b876a305fd1029c66dbd27007b4f6112ae896532f675878731a21e50cfd"
+    }
+  },
+  "packages": [
+    {
+      "name": "workbuddy",
+      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.26",
+      "target": "vendor/plugins/workbuddy"
+    },
+    {
+      "name": "qoder",
+      "spec": "@magpie-community/opencode-qoder-auth@0.2.63",
+      "target": "vendor/plugins/qoder"
+    },
+    {
+      "name": "minimax",
+      "spec": "@magpie-community/opencode-minimax-auth@0.2.3",
+      "target": "vendor/plugins/minimax"
+    },
+    {
+      "name": "loomy",
+      "spec": "@magpie-community/opencode-loomy-auth@0.1.4",
+      "target": "vendor/plugins/loomy"
+    },
+    {
+      "name": "trae",
+      "spec": "@magpie-community/opencode-trae-auth@0.2.32",
+      "target": "vendor/plugins/trae"
+    },
+    {
+      "name": "zcode",
+      "spec": "@magpie-community/opencode-zcode-auth@0.1.57",
+      "target": "vendor/plugins/zcode"
+    }
+  ],
+  "files": [
+    {
+      "source": "magpie",
+      "path": "internal/plugin/host.js",
+      "target": "vendor/magpie/host.js",
+      "sha256": "1c0053cbb85b210a8ed46dde7276aa79acaac7909d5cb565eababb3473e07134"
+    },
+    {
+      "source": "magpie",
+      "path": "LICENSE",
+      "target": "vendor/magpie/LICENSE",
+      "sha256": "79d2c8444715d4bc453ec4f8a0aaf2051a4c1ee5ac08f5bd2e5848aef87c7572"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/workbuddy/README.md",
+      "target": "vendor/plugins/workbuddy/README.md",
+      "sha256": "db289a91bcafc44c454925715a0b6e438189ad49b5624e8963924fe8373e5681"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/workbuddy/index.mjs",
+      "target": "vendor/plugins/workbuddy/index.mjs",
+      "sha256": "44e5610b6bf7cf6dccaed3e71f5a4b7ef12352e14e9d72f110ab7f2900f02ed2"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/workbuddy/opencode.mjs",
+      "target": "vendor/plugins/workbuddy/opencode.mjs",
+      "sha256": "2219195390e62ca907145a12d442a1605f42a9f84320d6a6173167201e29eaa6"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/workbuddy/opencode2.mjs",
+      "target": "vendor/plugins/workbuddy/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/workbuddy/package.json",
+      "target": "vendor/plugins/workbuddy/package.json",
+      "sha256": "594bf7633e1b8f667f4b57278e8f6b03869f7a80e83e764ac7fd29a2722fcf3c"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/workbuddy/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/LICENSE-CLIProxyAPI",
+      "target": "vendor/plugins/qoder/LICENSE-CLIProxyAPI",
+      "sha256": "879792e89cf1bdd6a8d446033ec87e30496f97dcafc4656dc53f641509b346a6"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/README.md",
+      "target": "vendor/plugins/qoder/README.md",
+      "sha256": "3e585c5b9b3fa2ef8541891c330f3fa0b31fb4614484df1b417e8e37a8e9c55c"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/index.mjs",
+      "target": "vendor/plugins/qoder/index.mjs",
+      "sha256": "6af85a4a022c8f8cf9311aab56b270d27cc687f42f80df507c989461cfcc48e5"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/opencode.mjs",
+      "target": "vendor/plugins/qoder/opencode.mjs",
+      "sha256": "00a243700b052028de57ff757acedb083658beeb4eff44fcede5d32270a60b25"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/opencode2.mjs",
+      "target": "vendor/plugins/qoder/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/qoder/package.json",
+      "target": "vendor/plugins/qoder/package.json",
+      "sha256": "8819376dfabdc73678959dba0517205f31e650362bac11c963fda4f9c3be1489"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/qoder/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/README.md",
+      "target": "vendor/plugins/minimax/README.md",
+      "sha256": "43e2f0091e44b0b93326f6120302f9b7b9a77b5c56091d1f09c22ba47ed126ac"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/connector-tools.mjs",
+      "target": "vendor/plugins/minimax/connector-tools.mjs",
+      "sha256": "4ec7a0062450b5f466f19655def638098e7be0abbfc85040a3e4e2d319719d11"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/index.mjs",
+      "target": "vendor/plugins/minimax/index.mjs",
+      "sha256": "bacc7e6cd1aca661583a81fdaba957c91e84bfb2f850f29a4d2c1549d0b145a8"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/magpie.mjs",
+      "target": "vendor/plugins/minimax/magpie.mjs",
+      "sha256": "c157e5647db120cf4da0f4b375a9915d38be2d574da3d976ca263b12341100ce"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/matrix-tools.json",
+      "target": "vendor/plugins/minimax/matrix-tools.json",
+      "sha256": "969113a1da9a21f0e337a2b92ba4ee9afc38f8206a4c8c8991b4378d34333b58"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/opencode.mjs",
+      "target": "vendor/plugins/minimax/opencode.mjs",
+      "sha256": "c9f7d75bb28465213dfb908fc3d721b7739db1c174a3924a6172f80d1d727fbc"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/opencode2.mjs",
+      "target": "vendor/plugins/minimax/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/package.json",
+      "target": "vendor/plugins/minimax/package.json",
+      "sha256": "23983066cc90d54fd59f7d314b97b3ae1115a25ec74d28ed1bfe41c870509e19"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/web-tools.mjs",
+      "target": "vendor/plugins/minimax/web-tools.mjs",
+      "sha256": "552428499b1d96ab71d4e62846280b13c781faac58a526329112439e87892a52"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/minimax/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/loomy/README.md",
+      "target": "vendor/plugins/loomy/README.md",
+      "sha256": "ba9d351a70fbd013b618d864f6de94c90726a8dfb52d84b90e3c043361d7c3c2"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/loomy/index.mjs",
+      "target": "vendor/plugins/loomy/index.mjs",
+      "sha256": "333ace640081487b094e2de30bde577fe96463c043d798357499de82be65f65c"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/loomy/opencode.mjs",
+      "target": "vendor/plugins/loomy/opencode.mjs",
+      "sha256": "d11ee0a7699410bb1d8275b4c2810b6e3dceddf97c5e0784c847b33c0fdb3253"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/loomy/opencode2.mjs",
+      "target": "vendor/plugins/loomy/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/loomy/package.json",
+      "target": "vendor/plugins/loomy/package.json",
+      "sha256": "3ed36984b26622a7cac51ee86eced2c94e8cba357f5fe22d4216b7e820aec802"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/loomy/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/trae/README.md",
+      "target": "vendor/plugins/trae/README.md",
+      "sha256": "38122f7d9ad9c307b45f40dc68b8769785bf334730d70752ca5f21ef1d47a2be"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/trae/index.mjs",
+      "target": "vendor/plugins/trae/index.mjs",
+      "sha256": "60781063c67ec66c1d5d04a30b34c38259605206bd1e4b26e9fb43c1d186b8af"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/trae/opencode.mjs",
+      "target": "vendor/plugins/trae/opencode.mjs",
+      "sha256": "afc7a5187ec252759691d35dfe5abfcfe1ac210ec59d94ffe9f574b55891972c"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/trae/opencode2.mjs",
+      "target": "vendor/plugins/trae/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/trae/package.json",
+      "target": "vendor/plugins/trae/package.json",
+      "sha256": "09b5d51609b66dfc41fcadb307deb02ec9dcf42ade8d72d138840103eb136ce6"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/trae/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/README.md",
+      "target": "vendor/plugins/zcode/README.md",
+      "sha256": "268f142406e9240bd2fc1c87382721aca2dc92842c822f472edbf153d9dd9145"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/index.mjs",
+      "target": "vendor/plugins/zcode/index.mjs",
+      "sha256": "4fa4d8fd8d5c8ce879c5ad840ed1646efc0fda18354a95f5217175d020631cbb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/opencode.mjs",
+      "target": "vendor/plugins/zcode/opencode.mjs",
+      "sha256": "c4649d4330b96a0a128b1b3eab19b5740e86d1640c300348e24e03f3b8e2f193"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/opencode2.mjs",
+      "target": "vendor/plugins/zcode/opencode2.mjs",
+      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/package.json",
+      "target": "vendor/plugins/zcode/package.json",
+      "sha256": "419c96845345142bf9bff5254ef4c8becefffa3e58b6ef1b3955e92573d934b8"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/zcode/prompt.mjs",
+      "target": "vendor/plugins/zcode/prompt.mjs",
+      "sha256": "d0032db8a3560bfba3ecce34ed8513268dc6d3ad9192f50775285da1fc26b527"
+    },
+    {
+      "source": "plugins",
+      "path": "LICENSE",
+      "target": "vendor/plugins/zcode/LICENSE",
+      "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    }
+  ]
+}

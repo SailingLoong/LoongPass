@@ -96,3 +96,7 @@ See MAGPIE-LICENSE.txt. Supplier code does not duplicate this client boundary.
 Qoder's vendor-required RSA/PKCS1 and AES/CBC/PKCS7 use Pointy Castle 4.0.0
 (MIT); see POINTYCASTLE-LICENSE.txt. These primitives implement the vendor wire
 protocol and do not encrypt or create another copy of saved account storage.
+
+## Native Magpie plugin runtime
+
+The application includes unmodified, SHA-256-verified Magpie host source and complete community plugin packages. Exact repositories, commits, package versions and files are recorded in `runtime/upstream.lock.json`. Magpie's license is retained in `runtime/vendor/magpie/LICENSE`; each community package retains its MIT license in its directory. Bun is downloaded from its official release at the pinned version and verified before use; it is not tracked as a binary in this repository.

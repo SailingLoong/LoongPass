@@ -6,6 +6,7 @@ import plistlib
 import subprocess
 import sys
 import tempfile
+from plugin_sources import verify as verify_plugin_sources
 
 root = Path(__file__).resolve().parents[1]
 flutter = os.environ.get("FLUTTER_BIN", "flutter")
@@ -18,6 +19,14 @@ def run(arguments):
 
 for entitlement in (root / "macos/Runner").glob("*.entitlements"):
     assert not plistlib.loads(entitlement.read_bytes()).get("com.apple.security.app-sandbox"), entitlement
+
+verify_plugin_sources(root)
+run([sys.executable, 'test/plugin_sources_test.py'])
+if not os.environ.get('LOONGPASS_BUN'):
+    cache = (Path(os.environ['LOCALAPPDATA']) / 'LoongPass/RuntimeTests'
+             if os.name == 'nt' else Path.home() / '.cache/loongpass-runtime-tests')
+    os.environ['LOONGPASS_BUN'] = subprocess.check_output(
+        [dart, 'tool/prepare_bun.dart', str(cache)], cwd=root, text=True).strip()
 
 run([dart, "analyze", "lib", "test"])
 run([flutter, "test", "--no-pub", "--reporter", "expanded"])

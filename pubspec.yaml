@@ -20,3 +20,12 @@ flutter:
     - assets/app_icons/
     - assets/branding/loongpass.png
     - assets/protocols/zcode_start_prompt.json
+    - runtime/upstream.lock.json
+    - runtime/launcher.mjs
+    - runtime/vendor/magpie/
+    - runtime/vendor/plugins/workbuddy/
+    - runtime/vendor/plugins/qoder/
+    - runtime/vendor/plugins/minimax/
+    - runtime/vendor/plugins/loomy/
+    - runtime/vendor/plugins/trae/
+    - runtime/vendor/plugins/zcode/
