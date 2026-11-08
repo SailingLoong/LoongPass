@@ -32,12 +32,17 @@ class PluginAccountsPanel extends StatefulWidget {
 class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   bool _busy = false;
   String? _message;
+  String? _messageAccount;
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? accountKey,
+  }) async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _message = null;
+      _messageAccount = accountKey;
     });
     try {
       await action();
@@ -75,7 +80,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             ? '已保存新的授权账号，请核对列表中的账号身份。'
             : '账号授权已保存。',
       );
-  });
+  }, accountKey: account?.key);
 
   Future<void> _rebind(PluginAccount account) => _run(() async {
     // Preserve the currently verified device before asking the native owner
@@ -109,7 +114,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
     } finally {
       reservation.release();
     }
-  });
+  }, accountKey: account.key);
 
   Future<void> _refresh() => _run(() async {
     await widget.accounts.refresh();
@@ -132,7 +137,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
     } else {
       await widget.rewards.claim(account.key);
     }
-  });
+  }, accountKey: account.key);
 
   Future<void> _activate(PluginAccount account) => _run(() async {
     final result = await widget.activate!(account.key);
@@ -149,7 +154,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           _ => '客户端切换结果待核对，请检查客户端当前身份。',
         },
       );
-  });
+  }, accountKey: account.key);
 
   Future<void> _remove(PluginAccount account) async {
     final confirmed = await showDialog<bool>(
@@ -170,7 +175,10 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
       ),
     );
     if (confirmed == true && mounted)
-      await _run(() => widget.accounts.remove(account.key));
+      await _run(
+        () => widget.accounts.remove(account.key),
+        accountKey: account.key,
+      );
   }
 
   bool _canClaim(PluginAccount a) =>
@@ -226,7 +234,9 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 ],
               ),
             ),
-          if (usage['error'] != null) const Text('最近一次官方额度查询未完成。'),
+          if (usage['error'] is String &&
+              (usage['error'] as String).trim().isNotEmpty)
+            const Text('最近一次官方额度查询未完成。'),
         ],
         Text(
           a.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(a.queriedAt!)}',
@@ -264,6 +274,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                       () => _canClaim(a)
                           ? widget.rewards.refresh(a.key)
                           : widget.accounts.refresh(),
+                      accountKey: a.key,
                     ),
               child: const Text('刷新额度'),
             ),
@@ -309,8 +320,10 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           value: a.automatic,
           onChanged: _busy || a.uid.isEmpty
               ? null
-              : (value) =>
-                    _run(() => widget.accounts.setAutomatic(a.key, value)),
+              : (value) => _run(
+                  () => widget.accounts.setAutomatic(a.key, value),
+                  accountKey: a.key,
+                ),
         ),
       ],
     );
@@ -363,8 +376,9 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                   details: _details(a),
                   observedAt: a.queriedAt,
                   receipt: _receipt(a),
-                  notice: _message,
+                  notice: _messageAccount == a.key ? _message : null,
                   expiryAt: _expiry(a),
+                  expiryText: _expiryText(a),
                   needsAttention:
                       !a.active ||
                       a.error != null ||
@@ -497,4 +511,23 @@ DateTime? _expiry(PluginAccount a) {
         _date(w['runsOutAt'])!,
   ].where((d) => d.isAfter(now)).toList()..sort();
   return values.firstOrNull;
+}
+
+String? _expiryText(PluginAccount a) {
+  final expiry = _expiry(a);
+  if (expiry == null) return null;
+  // Windows can overlap; preserve their quantities without adding them.
+  final amounts = {
+    for (final b in _buckets(a))
+      if (b.expiresAt != null &&
+          DateTime.fromMillisecondsSinceEpoch(b.expiresAt! * 1000)
+              .isAtSameMomentAs(expiry) &&
+          b.remaining != 0)
+        '${_number(b.remaining)} ${b.unit}',
+    for (final w in _windows(a))
+      if (_date(w['runsOutAt'])?.isAtSameMomentAs(expiry) == true &&
+          w['runsOut'] != 0)
+        '${_number(w['runsOut'])} ${_unit(w)}',
+  };
+  return '${amounts.join(' / ')} · ${creditTime(expiry)} 到期';
 }

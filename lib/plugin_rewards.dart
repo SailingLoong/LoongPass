@@ -601,6 +601,8 @@ Map<String, dynamic> _legacyReward(Object? value) {
       'source': 'legacy',
       'legacyPaths': [path],
       'until': until.toIso8601String(),
+      if (date is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date))
+        'day': date,
       if (credit is num && credit.isFinite && credit >= 0) 'credit': credit,
       if (credit is num && credit.isFinite && credit >= 0) 'unit': 'credits',
     });

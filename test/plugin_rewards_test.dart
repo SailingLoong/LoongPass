@@ -671,6 +671,7 @@ void main() {
     await h.rewards.claim(h.key);
     expect(h.hooks, isEmpty);
     expect(h.reward['credit'], 12.5);
+    expect(h.reward['day'], '2026-11-08');
     h.now = DateTime.utc(2026, 11, 8, 16);
     await h.rewards.claim(h.key);
     expect(h.hooks, hasLength(1));

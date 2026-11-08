@@ -99,6 +99,7 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   final Map<String, Map<String, dynamic>> providers;
   List<PluginAccount> _rows;
   int refreshes = 0;
+  bool failAutomatic = false;
   String? saved;
   @override
   String? error;
@@ -125,6 +126,7 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
 
   @override
   Future<void> setAutomatic(String key, bool enabled) async {
+    if (failAutomatic) throw StateError('Synthetic save failure');
     _rows.singleWhere((a) => a.key == key).facts['automatic'] = enabled;
     notifyListeners();
   }
@@ -146,6 +148,7 @@ class _Rewards implements PluginRewards {
   @override
   final PluginZcodeRewards zcode;
   int claims = 0, refreshes = 0;
+  bool failRefresh = false;
   @override
   Future<void> claim(String key, {bool automatic = false}) async {
     claims++;
@@ -154,6 +157,7 @@ class _Rewards implements PluginRewards {
   @override
   Future<void> refresh(String key) async {
     refreshes++;
+    if (failRefresh) throw StateError('Synthetic refresh failure');
   }
 
   @override
@@ -253,6 +257,9 @@ void main() {
   testWidgets(
     'details keep native amounts exact, isolate gifts, and only refresh pending claims',
     (tester) async {
+      final expiry =
+          DateTime.now().add(const Duration(days: 2)).millisecondsSinceEpoch ~/
+          1000;
       final runtime = _Runtime();
       final accounts = _Accounts(
         runtime,
@@ -279,13 +286,14 @@ void main() {
                     'label': 'Gift tokens',
                     'unit': 'tokens',
                     'remaining': 12345678.0,
-                    'expiresAt': 1893903600,
+                    'expiresAt': expiry,
                   },
                 ],
               },
             },
             usage: {
               'plan': 'GLM Coding Lite',
+              'error': '',
               'windows': [
                 {
                   'name': 'Coding credits',
@@ -294,6 +302,11 @@ void main() {
                   'balance': 0.875,
                   'unit': 'credits',
                   'display': '100k / 100k',
+                  'runsOut': 0.875,
+                  'runsOutAt': DateTime.fromMillisecondsSinceEpoch(
+                    expiry * 1000,
+                    isUtc: true,
+                  ).toIso8601String(),
                 },
               ],
             },
@@ -317,6 +330,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.textContaining(
+          RegExp(r'^12345678 tokens / 0\.875 credits ·.*到期$'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('verified-user'), findsWidgets);
@@ -327,6 +346,7 @@ void main() {
       expect(find.textContaining('12345678 tokens'), findsWidgets);
       expect(find.textContaining('Start Plan'), findsWidgets);
       expect(find.textContaining('GLM Coding Lite'), findsWidgets);
+      expect(find.text('最近一次官方额度查询未完成。'), findsNothing);
       expect(accounts.refreshes, 0);
       expect(rewards.refreshes, 0);
       expect(runtime.calls, isEmpty);
@@ -336,6 +356,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(rewards.refreshes, 1);
       expect(rewards.claims, 0);
+      rewards.failRefresh = true;
+      await tester.ensureVisible(find.text('刷新额度'));
+      await tester.tap(find.text('刷新额度'));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('操作未完成'),
+        ),
+        findsOneWidget,
+      );
+      accounts.failAutomatic = true;
+      await tester.ensureVisible(find.byType(Switch));
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('操作未完成'),
+        ),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox());
       accounts.dispose();
     },
@@ -604,6 +646,32 @@ void main() {
       expect(find.textContaining('请打开 WorkBuddy 核对当前身份'), findsWidgets);
       expect(find.textContaining('切换成功'), findsNothing);
       final browser = accounts.accounts.single;
+      accounts._rows = [
+        browser,
+        PluginAccount(
+          key: 'workbuddy#two',
+          facts: {
+            ...browser.facts,
+            'label': 'Other account',
+            'uid': 'other-user',
+            'registrationId': 'two',
+          },
+          active: true,
+          models: const [],
+        ),
+      ];
+      accounts.notifyListeners();
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('account-workbuddy#two')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('请打开 WorkBuddy 核对当前身份'),
+        ),
+        findsNothing,
+      );
       accounts._rows = [
         PluginAccount(
           key: browser.key,
