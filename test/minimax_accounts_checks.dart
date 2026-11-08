@@ -284,7 +284,13 @@ Future<void> main() async {
     s.dispose();
     time = 86500000;
     final next = service(d, h);
-    expect((await next.claim(a.id)).status == 'unknown', 'pending lost');
+    await reject(() => next.claim(a.id), 'NeedsLogin');
+    expect(
+      (await next.list()).single.status == 'unknown' &&
+          documents[d.path]!.data['accounts'][a.id]['operation']['state'] ==
+              'unknown',
+      'expired authorization erased uncertain history',
+    );
     expect(
       h.calls.where((v) => v == MiniMaxEndpoint.claim).length == 1,
       'retry unknown',
@@ -407,7 +413,12 @@ Future<void> main() async {
     final s = service(d, h);
     final a = await imported(s);
     expect((await s.claim(a.id)).status == 'unknown', '401 blind success');
-    await s.claim(a.id);
+    await reject(() => s.claim(a.id), 'NeedsLogin');
+    expect(
+      documents[d.path]!.data['accounts'][a.id]['operation']['state'] ==
+          'unknown',
+      'refused nonrenewable authorization erased uncertain history',
+    );
     expect(
       h.calls.where((v) => v == MiniMaxEndpoint.claim).length == 1,
       '401 replay',
@@ -501,7 +512,7 @@ Future<void> main() async {
     s.dispose();
   });
   await check('malformed receipt is unknown rather than success', (d) async {
-    final h = FakeHttp()..receipt = response({'claim_result': 1, 'points': 10});
+    final h = FakeHttp()..receipt = response({'claim_result': 9, 'points': 10});
     final s = service(d, h);
     final a = await imported(s);
     expect(
@@ -669,17 +680,18 @@ Future<void> main() async {
       restored.dispose();
     },
   );
-  await check('temporary refresh failure retains still-valid access', (
+  await check('unknown refresh failure never reuses the rotating grant', (
     d,
   ) async {
     final h = FakeHttp(), s = service(d, h);
     final a = await authorized(s);
     time += 550000;
     h.refreshed = const MiniMaxReply(503, null);
-    await s.claim(a.id);
+    await reject(() => s.claim(a.id), 'NetworkUnavailable');
+    await reject(() => s.claim(a.id), 'NeedsLogin');
     expect(
-      h.refreshCalls == 1 && h.calls.contains(MiniMaxEndpoint.claim),
-      'valid access discarded',
+      h.refreshCalls == 1 && !h.calls.contains(MiniMaxEndpoint.claim),
+      'unknown refresh reused a possibly spent grant',
     );
     s.dispose();
   });
@@ -703,7 +715,9 @@ Future<void> main() async {
     final a = await authorized(s);
     time += 600001;
     documents[d.path]!.afterWrite = () async {
-      throw StateError('lost ack');
+      final row = (documents[d.path]!.data['accounts'] as Map).values.single;
+      if (row['accessToken'] == 'synthetic-new')
+        throw StateError('lost rotation ack');
     };
     await reject(() => s.claim(a.id), 'StorageUnavailable');
     documents[d.path]!.afterWrite = null;

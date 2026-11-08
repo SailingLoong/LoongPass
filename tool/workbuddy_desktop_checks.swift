@@ -23,6 +23,12 @@ import Darwin
         let product: [String: Any] = ["authentication": ["id": "workbuddy-desktop",
             "type": "account-scoped-external-link", "attributes": ["platform": "workbuddy"]]]
         try WorkBuddyDesktopTransaction.validateProduct(JSONSerialization.data(withJSONObject: product))
+        var foreignProduct = product
+        foreignProduct["applicationName"] = "foreign-client"
+        do {
+            try WorkBuddyDesktopTransaction.validateProduct(JSONSerialization.data(withJSONObject: foreignProduct))
+            preconditionFailure("Foreign client product accepted")
+        } catch WorkBuddyDesktopTransaction.Failure.unsafeFile {}
         let flat: [String: Any] = ["authentication": ["id": "workbuddy-desktop",
             "type": "account-scoped-external-link", "platform": "workbuddy"]]
         do {

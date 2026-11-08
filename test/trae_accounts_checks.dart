@@ -111,6 +111,26 @@ class FakeTrae implements TraeTransport {
 }
 
 Future<void> main() async {
+  final expiring = normalizeTraeCredits({
+    'user_entitlement_pack_list': [
+      {
+        'entitlement_base_info': {
+          'entitlement_id': 'vendor-expire-alias',
+          'quota': {'credits_limit': 300},
+          'expire_time': 1793900000,
+        },
+        'usage': {'credits_amount': 75},
+      },
+    ],
+  }, DateTime.fromMillisecondsSinceEpoch(instant, isUtc: true));
+  expect(
+    expiring.totalRemaining == 225 &&
+        expiring.withoutExpiry == 0 &&
+        expiring.expiring.single.remaining == 225 &&
+        expiring.expiring.single.expiresAt.millisecondsSinceEpoch ==
+            1793900000000,
+    'TRAE vendor expiry alias or exact remaining credit count was lost',
+  );
   var passed = 0, failed = 0;
   Future<void> check(String name, Future<void> Function() run) async {
     try {

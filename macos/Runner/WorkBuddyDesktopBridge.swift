@@ -53,6 +53,17 @@ import Darwin
         return true
     }
 
+    func clientInfo() throws -> [String: String] {
+        let url = try installedClient()
+        guard let version = Bundle(url: url)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+            throw WorkBuddyDesktopTransaction.Failure.unsafeFile
+        }
+        let cli = url.appendingPathComponent("Contents/Resources/app.asar.unpacked/cli")
+        return try WorkBuddyDesktopTransaction.clientInfo(appVersion: version,
+            product: Data(contentsOf: cli.appendingPathComponent("product.json")),
+            package: Data(contentsOf: cli.appendingPathComponent("package.json")))
+    }
+
     private func installedClient() throws -> URL {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
             Bundle(url: url)?.bundleIdentifier == bundleID else { throw WorkBuddyDesktopTransaction.Failure.unsafeFile }

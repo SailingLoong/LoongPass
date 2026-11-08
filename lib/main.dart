@@ -225,7 +225,7 @@ class _AccountPageState extends State<_AccountPage> {
     _models.register(
       WorkBuddyModelProvider(
         _workbuddy,
-        clientVersion: WorkBuddyDesktopFlutter.clientVersion,
+        clientInfo: WorkBuddyDesktopFlutter.clientInfo,
       ),
     );
     _models.register(QoderModelProvider(_qoderOwners[QoderRegion.cn]!));

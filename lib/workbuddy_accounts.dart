@@ -156,13 +156,18 @@ class WorkBuddyAccounts {
       final owner = slot;
       final lease = await vault.restore(
         key,
+        renew: (credential, admitted) => flow.renewCredential(
+          credential,
+          admission: () => _owns(owner) && admitted(),
+        ),
         verify: (credential, admitted) => flow.restoreCredential(
           credential,
           admission: () => _owns(owner) && admitted(),
         ),
       );
       if (!_owns(owner)) return null;
-      if (lease == null || !flow.attachRestoredLease(lease)) {
+      if (lease == null ||
+          !flow.attachRestoredLease(lease, vault: vault, key: key)) {
         _retire(owner);
         return null;
       }
@@ -403,6 +408,24 @@ class WorkBuddyAccounts {
     } finally {
       _notify();
     }
+  }
+
+  Future<void> rejectInferenceAuthorization(
+    String stableId,
+    String registrationId,
+    String expectedToken,
+  ) async {
+    final slot = accounts
+        .where(
+          (s) => s.stableId == stableId && s.registrationId == registrationId,
+        )
+        .firstOrNull;
+    if (slot == null || !_owns(slot)) return;
+    await slot._flow.rejectInferenceAuthorization(
+      expectedToken,
+      registrationId,
+      admission: () => _owns(slot) && slot.registrationId == registrationId,
+    );
   }
 
   Future<T> withInferenceAuthorization<T>(

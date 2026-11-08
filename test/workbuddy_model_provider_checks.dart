@@ -29,7 +29,7 @@ class Wire implements ModelTransport {
     calls.add((uri, headers, body));
     check(uri.host == 'copilot.tencent.com', 'login host reused for inference');
     check(
-      headers['User-Agent'] == 'WorkBuddy/6.0.1 LoongPass' &&
+      headers['User-Agent'] == 'WorkBuddy/6.0.1 WorkBuddy/6.0.1 CLI/3.1.7' &&
           headers['X-IDE-Version'] == '6.0.1' &&
           headers['X-Requested-With'] == 'XMLHttpRequest',
       'runtime compatibility headers absent',
@@ -40,7 +40,7 @@ class Wire implements ModelTransport {
             'data': {
               'agents': [
                 {
-                  'name': 'craft',
+                  'name': 'cli',
                   'models': ['claude-live', 'chat-live'],
                 },
               ],
@@ -100,7 +100,11 @@ Future<void> main() async {
     var source = WorkBuddyModelProvider(
       owner,
       transport: wire,
-      clientVersion: () async => '6.0.1',
+      clientInfo: () async => WorkBuddyClientInfo.fromNative({
+        'appVersion': '6.0.1',
+        'cliVersion': '3.1.7',
+        'applicationName': 'WorkBuddy',
+      }),
     );
     final accounts = await source.accounts();
     check(
@@ -144,7 +148,19 @@ Future<void> main() async {
         isCurrent: () => true,
         cancelled: Completer<void>().future,
       );
-      check(identical(wire.calls.last.$3, body), 'request was rewritten');
+      if (protocol == ModelProtocol.messages) {
+        check(
+          identical(wire.calls.last.$3, body),
+          'native Messages was rewritten',
+        );
+      } else {
+        final sent = wire.calls.last.$3 as Map;
+        check(
+          sent['messages'].last['content'] == body['messages'][0]['content'] &&
+              body['messages'].length == 1,
+          'Chat adaptation changed original content or mutated caller',
+        );
+      }
       check(
         wire.calls.last.$1.path ==
             (protocol == ModelProtocol.messages
@@ -168,7 +184,11 @@ Future<void> main() async {
     source = WorkBuddyModelProvider(
       owner,
       transport: wire,
-      clientVersion: () async => '6.0.1',
+      clientInfo: () async => WorkBuddyClientInfo.fromNative({
+        'appVersion': '6.0.1',
+        'cliVersion': '3.1.7',
+        'applicationName': 'WorkBuddy',
+      }),
     );
     final restored = (await source.accounts()).firstWhere(
       (x) => x.id == first.id,

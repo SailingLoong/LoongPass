@@ -90,6 +90,9 @@ class WorkBuddyAccountFlow {
   late WorkBuddyApi _api;
   late final WorkBuddyExchange _exchange;
   WorkBuddyVaultLease? _vaultLease;
+  WorkBuddyVault? _vault;
+  String? _vaultKey, _registrationId;
+  bool _authorizationUnavailable = false;
   bool Function()? _restoreAdmission;
   bool _restorePending = false;
   WorkBuddyVaultCredential? _restoredCredential;
@@ -110,7 +113,7 @@ class WorkBuddyAccountFlow {
 
   bool Function()? _operationAdmission;
   bool get _live {
-    if (_closed || !isOwnerCurrent()) return false;
+    if (_closed || _authorizationUnavailable || !isOwnerCurrent()) return false;
     try {
       return (_restoreAdmission?.call() ?? true) &&
           (_vaultLease?.current ?? true);
@@ -158,7 +161,123 @@ class WorkBuddyAccountFlow {
   WorkBuddyState? get status => _status;
   WorkBuddyResult? get result => _result;
   double? get totalRemaining => _totalRemaining;
-  String? get registrationId => _vaultLease?.registrationId;
+  String? get registrationId => _closed ? null : _registrationId;
+
+  Future<void> rejectInferenceAuthorization(
+    String expectedToken,
+    String registration, {
+    required bool Function() admission,
+  }) async {
+    final vault = _vault, key = _vaultKey;
+    final credential = _vaultLease?.credential ?? _restoredCredential;
+    if (_closed ||
+        !isOwnerCurrent() ||
+        !admission() ||
+        vault == null ||
+        key == null ||
+        credential == null ||
+        credential.accessToken != expectedToken ||
+        _registrationId != registration)
+      return;
+    _authorizationUnavailable = true;
+    _vaultLease = null;
+    _restoreAdmission = null;
+    _restoredCredential = credential.withStatus(
+      accessRejected: true,
+      refusalRecoveryAttempted: credential.refusalRecoveryAttempted,
+    );
+    await vault.rejectAccessToken(
+      key,
+      expectedToken: expectedToken,
+      registrationId: registration,
+    );
+  }
+
+  Future<WorkBuddyVaultCredential?> renewCredential(
+    WorkBuddyVaultCredential credential, {
+    required bool Function() admission,
+  }) => WorkBuddyApi(
+    _exchange,
+    isCurrent: () => !_closed && isOwnerCurrent() && admission(),
+    now: now,
+    endpointHost: credential.endpoint,
+  ).renewCredential(credential, admission: admission);
+
+  Future<void> _renewSavedAuthorization({
+    required bool Function() admission,
+  }) async {
+    final vault = _vault, key = _vaultKey;
+    final credential = _vaultLease?.credential ?? _restoredCredential;
+    if (vault == null ||
+        key == null ||
+        credential == null ||
+        !_authorizationUnavailable && !credential.needsRenewal(now()))
+      return;
+    if (_closed || _busy || !isOwnerCurrent() || !admission())
+      throw const WorkBuddyApiFailure(
+        'AccountUnavailable',
+        mayHaveBeenSent: false,
+      );
+    _busy = true;
+    _authorizationUnavailable = true;
+    _vaultLease = null;
+    _restoreAdmission = null;
+    bool admitted() => !_closed && isOwnerCurrent() && admission();
+    WorkBuddyAccount? verified;
+    try {
+      final lease = await vault.restore(
+        key,
+        renew: (c, current) =>
+            renewCredential(c, admission: () => admitted() && current()),
+        verify: (c, current) async {
+          if (!admitted() || !current()) return false;
+          final account = WorkBuddyAccount(
+            c.domain,
+            c.uid,
+            c.accessToken,
+            expiresAt: c.expiresAt,
+            refreshToken: c.refreshToken,
+            refreshExpiresAt: c.refreshExpiresAt,
+          );
+          final next = WorkBuddyApi(
+            _exchange,
+            isCurrent: () => admitted() && current(),
+            now: now,
+            endpointHost: c.endpoint,
+          );
+          await next.verifyStoredAccount(
+            account,
+            gate: () => admitted() && current(),
+          );
+          verified = account;
+          return admitted() && current();
+        },
+      );
+      if (lease == null ||
+          verified == null ||
+          !admitted() ||
+          lease.registrationId != _registrationId)
+        throw const WorkBuddyApiFailure(
+          'AuthorizationTemporarilyUnavailable',
+          mayHaveBeenSent: false,
+        );
+      _restoredCredential = lease.credential;
+      _api = WorkBuddyApi(
+        _exchange,
+        isCurrent: () => _networkAdmitted,
+        now: now,
+        endpointHost: lease.credential.endpoint,
+      );
+      _vaultLease = lease;
+      _restoreAdmission = () => admitted() && lease.current;
+      _api.prepareAdmission = lease.checkCurrent;
+      _authorizationUnavailable = false;
+      _bind(verified!, subject: _subject);
+    } finally {
+      if (!_closed) _busy = false;
+    }
+  }
+
   Future<T> withInferenceAuthorization<T>(
     Future<T> Function(
       String domain,
@@ -169,6 +288,7 @@ class WorkBuddyAccountFlow {
     use, {
     required bool Function() admission,
   }) async {
+    await _renewSavedAuthorization(admission: admission);
     final account = _account;
     if (identityValidationOnly ||
         !authorized ||
@@ -223,6 +343,9 @@ class WorkBuddyAccountFlow {
 
   Future<void> refreshBalance() async {
     if (identityValidationOnly) return;
+    await _renewSavedAuthorization(
+      admission: () => !_closed && isOwnerCurrent(),
+    );
     final subject = _subject, reader = _balanceReader;
     if (!_live || _busy || subject == null || reader == null) return;
     final epoch = _epoch;
@@ -265,6 +388,8 @@ class WorkBuddyAccountFlow {
         c.uid,
         c.accessToken,
         expiresAt: c.expiresAt,
+        refreshToken: c.refreshToken,
+        refreshExpiresAt: c.refreshExpiresAt,
       );
       _api = WorkBuddyApi(
         _exchange,
@@ -290,7 +415,11 @@ class WorkBuddyAccountFlow {
     }
   }
 
-  bool attachRestoredLease(WorkBuddyVaultLease lease) {
+  bool attachRestoredLease(
+    WorkBuddyVaultLease lease, {
+    required WorkBuddyVault vault,
+    required String key,
+  }) {
     if (identityValidationOnly) return false;
     final verified = _restoredCredential, c = lease.credential;
     if (!_live ||
@@ -302,9 +431,13 @@ class WorkBuddyAccountFlow {
         verified.accessToken != c.accessToken ||
         verified.refreshToken != c.refreshToken ||
         verified.expiresAt != c.expiresAt ||
+        verified.refreshExpiresAt != c.refreshExpiresAt ||
         !_restorePending)
       return false;
     _vaultLease = lease;
+    _vault = vault;
+    _vaultKey = key;
+    _registrationId = lease.registrationId;
     _api.prepareAdmission = () => lease.checkCurrent();
     _restorePending = false;
     _message = '身份已核实，授权已保存在本机。';
@@ -335,7 +468,8 @@ class WorkBuddyAccountFlow {
           return true;
         },
       );
-      return lease != null && attachRestoredLease(lease);
+      return lease != null &&
+          attachRestoredLease(lease, vault: vault, key: key);
     } finally {
       if (!_closed) _busy = false;
     }
@@ -382,9 +516,9 @@ class WorkBuddyAccountFlow {
     return (subject: requested, totalRemaining: credits?.totalRemaining);
   }
 
-  void _bind(WorkBuddyAccount account) {
-    _authorization++;
-    final subject = WorkBuddySubject(
+  void _bind(WorkBuddyAccount account, {WorkBuddySubject? subject}) {
+    if (subject == null) _authorization++;
+    subject ??= WorkBuddySubject(
       account.domain,
       account.uid,
       '$ownerGeneration:$_authorization',
@@ -499,6 +633,9 @@ class WorkBuddyAccountFlow {
   /// clear a persisted intent or turn a displayed unknown result into success.
   Future<void> refreshStatus({bool Function()? admission}) async {
     if (identityValidationOnly) return;
+    await _renewSavedAuthorization(
+      admission: admission ?? () => !_closed && isOwnerCurrent(),
+    );
     final account = _account;
     if (!_live || _busy || account == null) return;
     if (admission != null) {
@@ -552,6 +689,9 @@ class WorkBuddyAccountFlow {
   }
 
   Future<void> claim({bool Function()? admission}) async {
+    await _renewSavedAuthorization(
+      admission: admission ?? () => !_closed && isOwnerCurrent(),
+    );
     final core = _core, subject = _subject;
     if (!canClaim || core == null || subject == null) return;
     if (admission != null) {

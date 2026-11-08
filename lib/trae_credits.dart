@@ -26,7 +26,11 @@ CreditSummary normalizeTraeCredits(Map<String, dynamic> body, DateTime now) {
     final used = (usage as Map?)?['credits_amount'] ?? 0;
     if (used is! num || !used.isFinite || used < 0)
       throw const FormatException('Invalid usage');
-    final raw = row['expire_time'] ?? base['end_time'];
+    final raw =
+        row['expire_time'] ??
+        base['end_time'] ??
+        base['expire_time'] ??
+        row['end_time'];
     int? expiry;
     if (raw != null) {
       if (raw is! num || !raw.isFinite || raw < 0 || raw > 253402300799)

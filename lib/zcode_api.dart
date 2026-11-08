@@ -230,7 +230,9 @@ class ZcodeCaptchaConfig {
   factory ZcodeCaptchaConfig.parse(Map<String, dynamic> reply) {
     final configs = zcodeData(reply)['configs'];
     final c = configs is Map ? configs['captcha'] : null;
-    if (c is! Map || c['enabled'] != true)
+    if (c is! Map ||
+        c['enabled'] == false ||
+        c.containsKey('enabled') && c['enabled'] is! bool)
       throw const ZcodeFailure('verification_unavailable');
     final values = <String, String>{};
     for (final key in ['region', 'prefix', 'sceneId']) {

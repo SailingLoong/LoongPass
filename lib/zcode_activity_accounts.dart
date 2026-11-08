@@ -206,6 +206,7 @@ class ZcodeActivityAccounts {
     'verificationRequired',
     'activationRequired',
     'ineligible',
+    'throttled',
   };
   static const _statuses = {
     'unavailable',
@@ -578,6 +579,7 @@ class ZcodeActivityAccounts {
   });
 
   static void _confirmed(Map<String, dynamic> c, Map<String, dynamic> plan) {
+    if (!zcodeText(plan['user_plan_id'])) return;
     c['state'] = 'claimed';
     c['instance'] = plan['user_plan_id'];
     c['endsAt'] = plan['ends_at'];
@@ -585,6 +587,7 @@ class ZcodeActivityAccounts {
 
   static String? _rejection(Map c) {
     final http = c['httpStatus'], code = c['serviceCode'];
+    if (http == 429 || code == 3002) return 'throttled';
     if ((http == 200 || http == 400) && code == 3007)
       return 'verificationRequired';
     if (http != 200) return null;
@@ -593,6 +596,32 @@ class ZcodeActivityAccounts {
       1001 || 1002 || 1003 || 1005 || 3001 => 'ineligible',
       _ => null,
     };
+  }
+
+  void _recordRejection(Map<String, dynamic> claim) {
+    final state = _rejection(claim);
+    if (state == null) return;
+    claim['state'] = state;
+    if (state == 'throttled') {
+      final submitted = claim['submittedAt'];
+      claim['retryAt'] ??=
+          (submitted is int ? submitted : now()) +
+          const Duration(minutes: 30).inMilliseconds;
+    }
+  }
+
+  static ZcodeCaptchaConfig? _claimVerificationConfig(
+    Map<String, dynamic> reply,
+  ) {
+    final configs = zcodeData(reply)['configs'];
+    if (configs is! Map) throw const ZcodeFailure('verification_unavailable');
+    final captcha = configs['captcha'];
+    if (captcha == null) return null;
+    if (captcha is! Map ||
+        captcha.containsKey('enabled') && captcha['enabled'] is! bool)
+      throw const ZcodeFailure('verification_unavailable');
+    if (captcha['enabled'] == false) return null;
+    return ZcodeCaptchaConfig.parse(reply);
   }
 
   Future<void> inspect(String id) => _exclusive(() => _run(id, submit: false));
@@ -640,8 +669,17 @@ class ZcodeActivityAccounts {
       // Earlier candidates persisted numeric rejection evidence as uncertain.
       // Only a definite rejection may leave pending without a balance receipt.
       for (final c in claims.values) {
-        if (c['state'] == 'pending' && _rejection(c) != null)
-          c['state'] = _rejection(c);
+        if (c['state'] == 'pending') _recordRejection(c);
+      }
+      if (claims.values.any(
+        (c) =>
+            c['state'] == 'throttled' &&
+            c['retryAt'] is int &&
+            c['retryAt'] > now(),
+      )) {
+        a['status'] = 'unavailable';
+        await _write(doc);
+        return;
       }
       var balance = await _balance(a);
       _observe(a, balance);
@@ -730,23 +768,36 @@ class ZcodeActivityAccounts {
         includeHistory: false,
       ).contains(zcodeDeviceId(a['context']['deviceMid'])))
         throw const ZcodeFailure('device_in_use');
-      // An unverified attempt and at most one fresh human-verified attempt.
+      var verificationConfig = _claimVerificationConfig(
+        await _request(ZcodeApi.configPath, a),
+      );
+      // Preflight known requirements before the first POST. A changed server
+      // requirement may allow one fresh verified attempt after a definite 3007.
       for (var attempt = 0; attempt < 2; attempt++) {
         ZcodeVerification? verification;
-        if (claims[selected.id]?['state'] == 'verificationRequired') {
+        if (verificationConfig != null) {
+          if (claims[selected.id]?['state'] != 'verificationRequired') {
+            claims[selected.id] = {
+              'state': 'verificationRequired',
+              'previous': [
+                for (final plan in balance.plans)
+                  if (zcodeText(plan['user_plan_id'])) plan['user_plan_id'],
+              ],
+            };
+          }
           a!['status'] = 'verificationRequired';
           await _write(doc);
           doc = await _read();
           a = (doc.data['accounts'] as Map)[id];
           claims = a!['claims'];
           if (verify == null) return;
-          final config = ZcodeCaptchaConfig.parse(
-            await _request(ZcodeApi.configPath, a),
-          );
-          final proof = await verify(config);
+          final proof = await verify(verificationConfig);
           _alive();
           if (proof == null) return;
-          verification = ZcodeVerification(proof, config.values['region']!);
+          verification = ZcodeVerification(
+            proof,
+            verificationConfig.values['region']!,
+          );
           // The official client may have granted the plan during human interaction.
           balance = await _balance(a);
           _observe(a, balance);
@@ -759,7 +810,10 @@ class ZcodeActivityAccounts {
         }
         final c = <String, dynamic>{
           'state': 'pending',
-          'previous': [for (final p in balance.plans) p['user_plan_id']],
+          'previous': [
+            for (final p in balance.plans)
+              if (zcodeText(p['user_plan_id'])) p['user_plan_id'],
+          ],
           'submittedAt': now(),
         };
         claims[selected.id] = c;
@@ -790,7 +844,7 @@ class ZcodeActivityAccounts {
             a['status'] = 'authorization_required';
           }
         }
-        current['state'] = _rejection(current) ?? current['state'];
+        _recordRejection(current);
         try {
           balance = await _balance(a);
           _observe(a, balance);
@@ -805,12 +859,18 @@ class ZcodeActivityAccounts {
           /* Keep the durable outcome and original observation. */
         }
         if (a['status'] != 'authorization_required')
-          a['status'] = current['state'];
+          a['status'] = current['state'] == 'throttled'
+              ? 'unavailable'
+              : current['state'];
         await _write(doc);
         if (current['state'] != 'verificationRequired' ||
             verify == null ||
             verification != null)
           return;
+        verificationConfig = _claimVerificationConfig(
+          await _request(ZcodeApi.configPath, a),
+        );
+        if (verificationConfig == null) return;
         doc = await _read();
         a = (doc.data['accounts'] as Map)[id];
         claims = a!['claims'];

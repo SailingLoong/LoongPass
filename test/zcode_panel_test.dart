@@ -108,7 +108,7 @@ void main() {
     },
   );
   testWidgets(
-    'manual verification receives public config and cancellation preserves rejection',
+    'manual preflight verification cancellation sends no claim',
     (tester) async {
       const channel = MethodChannel('com.sailingloong.loongpass/files');
       var completeVerification = false, prompts = 0;
@@ -128,6 +128,7 @@ void main() {
             .setMockMethodCallHandler(channel, null),
       );
       final http = fixture.FakeZcode()
+        ..captchaRequired = true
         ..claimCode = 3007
         ..claimHttp = 400
         ..acceptVerification = true;
@@ -153,13 +154,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('官方验证尚未完成'), findsOneWidget);
       expect(prompts, 1);
-      expect(http.claims, 1);
+      expect(http.claims, 0);
       completeVerification = true;
       await tester.tap(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
       expect(find.text('已核对官方活动权益到账。'), findsOneWidget);
       expect(prompts, 2);
-      expect(http.claims, 2);
+      expect(http.claims, 1);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

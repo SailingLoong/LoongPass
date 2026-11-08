@@ -15,7 +15,7 @@ enum QoderRegion {
     'Qoder CN',
     'qoder.cn',
     'openapi.qoder.com.cn',
-    '732aef47-9cf2-46a2-95fe-4cebb5d0d1fa',
+    'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb',
   ),
   global(
     'Qoder',
@@ -215,6 +215,7 @@ class QoderDeviceAccounts {
   bool _closed = false, _ticking = false;
   Timer? _pollTimer, _startupTimer, _automaticTimer;
   final _verified = <String, String>{};
+  final _blockedAuthorizations = <String, String>{};
   String? message;
   bool get loginPending => _grant != null;
   Future<void> _notify() async {
@@ -417,6 +418,14 @@ class QoderDeviceAccounts {
             a['registrationId'] != null &&
                 !_text(a['registrationId'], max: 128))
           throw 0;
+        for (final name in [
+          'authorizationInvalid',
+          'accessRejected',
+          'refusalRecoveryAttempted',
+          'refreshPending',
+        ]) {
+          if (a.containsKey(name) && a[name] is! bool) throw 0;
+        }
       }
       for (final v in (data['claims'] as Map).values) {
         if (v is! Map ||
@@ -662,11 +671,54 @@ class QoderDeviceAccounts {
   }
 
   final _rotations = <String, (String, Map<String, dynamic>)>{};
+
+  /// Persist only a definite refusal of the exact token/local grant dispatched.
+  /// A replacement saved since that request began is never invalidated.
+  Future<void> rejectInferenceAuthorization(
+    String uid,
+    String registration,
+    String expectedToken,
+  ) async {
+    if (_closed) return;
+    bool same(Map? a) =>
+        a != null &&
+        a['token'] == expectedToken &&
+        a['registrationId'] == registration;
+    String? generation;
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final store = await _read();
+        final a = store.data['accounts'][uid] as Map<String, dynamic>?;
+        if (_closed || !same(a)) return;
+        generation = a!['generation'];
+        if (a['accessRejected'] == true) return;
+        a['accessRejected'] = true;
+        if (a['refusalRecoveryAttempted'] == true ||
+            a['refreshToken'] == '' ||
+            a['refreshExpiresAt'] is int && a['refreshExpiresAt'] <= _now())
+          a['authorizationInvalid'] = true;
+        try {
+          await _save(store);
+          return;
+        } on QoderAccountError {
+          final saved = (await _read()).data['accounts'][uid] as Map?;
+          if (!same(saved) || saved!['accessRejected'] == true) return;
+        }
+      }
+      throw const QoderAccountError('storage_unavailable');
+    } catch (_) {
+      if (generation != null) _blockedAuthorizations[uid] = generation;
+      rethrow;
+    }
+  }
+
   Future<Map<String, dynamic>> _authorized(_Store s, String uid) async {
     var a = s.data['accounts'][uid] as Map<String, dynamic>?;
     if (a == null) throw const QoderAccountError('identity_required');
     if (a['authorizationInvalid'] == true)
       throw const QoderAccountError('identity_expired');
+    if (_blockedAuthorizations[uid] == a['generation'])
+      throw const QoderAccountError('authorization_temporarily_unavailable');
     var pending = _rotations[uid];
     if (pending != null &&
         a['generation'] == pending.$2['generation'] &&
@@ -674,32 +726,56 @@ class QoderDeviceAccounts {
       _rotations.remove(uid);
       pending = null;
     }
-    if (pending == null &&
-        a['expiresAt'] < _now() + 300000 &&
-        a['refreshToken'] != '') {
-      if (a['refreshExpiresAt'] is int && a['refreshExpiresAt'] <= _now())
-        throw const QoderAccountError('identity_expired');
-      QoderResponse? response;
-      try {
-        response = await _http.send(
+    if (pending != null && a['generation'] != pending.$1) {
+      // Another owner saved a different grant while this refresh completed.
+      // Its CAS winner is authoritative; never overwrite it with our result.
+      _rotations.remove(uid);
+      pending = null;
+    }
+    if (pending == null && a['refreshPending'] == true)
+      throw const QoderAccountError('authorization_temporarily_unavailable');
+    final forced = a['accessRejected'] == true;
+    if (pending == null && (forced || a['expiresAt'] < _now() + 300000)) {
+      if (forced && a['refusalRecoveryAttempted'] == true ||
+          a['refreshToken'] == '' ||
+          a['refreshExpiresAt'] is int && a['refreshExpiresAt'] <= _now()) {
+        if (forced || a['expiresAt'] <= _now())
+          throw const QoderAccountError('identity_expired');
+      } else {
+        // Reservation is durable before the one refresh transmission. A lost
+        // reply leaves this pending across restart; the grant is never replayed.
+        a = {
+          ...a,
+          'refreshPending': true,
+          if (forced) 'refusalRecoveryAttempted': true,
+        };
+        s.data['accounts'][uid] = a;
+        await _save(s);
+        if (_closed) throw const QoderAccountError('closed');
+        final response = await _http.send(
           'POST',
           _url('/api/v1/deviceToken/refresh'),
           null,
           {'refresh_token': a['refreshToken']},
+          isCurrent: () => !_closed,
         );
-      } catch (_) {
-        if (a['expiresAt'] <= _now())
-          throw const QoderAccountError(
-            'authorization_temporarily_unavailable',
-          );
-      }
-      if (response != null) {
-        if ({400, 401, 403}.contains(response.status)) {
+        if ({401, 403}.contains(response.status)) {
+          a.remove('refreshPending');
           a['authorizationInvalid'] = true;
           await _save(s);
           throw const QoderAccountError('identity_expired');
         }
         if (response.status != 200) {
+          if (response.status != 400)
+            throw const QoderAccountError(
+              'authorization_temporarily_unavailable',
+            );
+          // A definite temporary400 issued no replacement. A still-valid,
+          // unrefused old access token remains usable; a refused one does not.
+          a.remove('refreshPending');
+          if (forced) a['authorizationInvalid'] = true;
+          await _save(s);
+          if (forced) throw const QoderAccountError('identity_expired');
           if (a['expiresAt'] <= _now())
             throw const QoderAccountError(
               'authorization_temporarily_unavailable',
@@ -724,6 +800,9 @@ class QoderDeviceAccounts {
             a['generation'] as String,
             {
               ...a,
+              'refreshPending': false,
+              'accessRejected': false,
+              'refusalRecoveryAttempted': forced,
               'token': token,
               'refreshToken': b['refresh_token'],
               'expiresAt': expiry,
@@ -747,6 +826,8 @@ class QoderDeviceAccounts {
       _rotations.remove(uid);
     }
     if (_closed) throw const QoderAccountError('closed');
+    if (a['accessRejected'] == true || a['refreshPending'] == true)
+      throw const QoderAccountError('identity_expired');
     if (_now() < 0 || a['expiresAt'] <= _now())
       throw const QoderAccountError('identity_expired');
     if (_verified[uid] != a['generation']) {
@@ -787,6 +868,10 @@ class QoderDeviceAccounts {
     var active = true;
     try {
       final store = await _read();
+      if (expectedRegistrationId != null &&
+          store.data['accounts'][uid]?['registrationId'] !=
+              expectedRegistrationId)
+        throw const QoderAccountError('source_changed');
       final account = await _authorized(store, uid);
       if (account['registrationId'] == null) {
         account['registrationId'] = newAccountRegistrationId();

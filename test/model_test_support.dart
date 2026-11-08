@@ -55,6 +55,7 @@ class PoolProvider extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) async {
     _ensure(
       registrations[accountId] == registrationId,

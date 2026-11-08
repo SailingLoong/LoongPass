@@ -81,12 +81,17 @@ WebView2 documentation is available from https://learn.microsoft.com/microsoft-e
 ## Native model adapters
 
 The MiniMax, Loomy, WorkBuddy, Qoder CN and ZCode protocol adapters reference or
-adapt magpie-community/plugins at a313a003066803f7236eb077fb6d490e7e46ff37
+adapt magpie-community/plugins, updated against
+5db645541a79db17558f7a245e88efbd74b7c56d
 (MIT, copyright 2026 magpie-community contributors). See
 MODEL-ADAPTERS-LICENSE.txt. Qoder's COSY envelope, body codec and vendor stream
 contract additionally derive from CLIProxyAPI; its original notices are retained
 verbatim in QODER-CLIPROXYAPI-LICENSE.txt. Account ownership and local model-service
 routing are LoongPass's implementation.
+
+Shared Messages/Chat tool-loading and protocol semantics reference yetone/magpie
+at 8f6298fb5e54e1e90b973856e5fb853ad553931a (MIT, copyright 2026 yetone).
+See MAGPIE-LICENSE.txt. Supplier code does not duplicate this client boundary.
 
 Qoder's vendor-required RSA/PKCS1 and AES/CBC/PKCS7 use Pointy Castle 4.0.0
 (MIT); see POINTYCASTLE-LICENSE.txt. These primitives implement the vendor wire

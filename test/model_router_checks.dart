@@ -18,6 +18,23 @@ ModelTarget target(String binding, String provider, String model) =>
     );
 
 void main() {
+  const capable = ModelDefinition(
+    'exact-model',
+    protocol: ModelProtocol.chat,
+    images: true,
+    reasoning: true,
+    alwaysThinks: true,
+    reasoningEfforts: ['low', 'high'],
+    defaultReasoningEffort: 'high',
+  );
+  final facts = capable.toJson('source');
+  check(
+    (facts['modalities'] as Map)['input'].join(',') == 'text,image' &&
+        (facts['supported_reasoning_levels'] as List).join(',') == 'low,high' &&
+        facts['supports_thinking_type'] == 'only' &&
+        (facts['think_efforts'] as Map)['default_effort'] == 'high',
+    'model capabilities must use the fields Magpie actually consumes',
+  );
   final a = target('a', 'loomy', 'GLM-5.3-Flash');
   final b = target('b', 'zcode-bigmodel', 'glm-5.3-flash');
   final c = target('c', 'loomy', 'GLM-5.3');

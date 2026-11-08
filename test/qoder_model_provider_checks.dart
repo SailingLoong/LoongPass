@@ -109,6 +109,7 @@ class Wire implements ModelTransport {
                     'max_input_tokens': 131072,
                     'max_output_tokens': 8192,
                     'format': 'openai',
+                    'is_vl': true,
                   },
                   {'key': 'disabled', 'enable': false},
                   {'key': 'auto', 'enable': true},
@@ -207,23 +208,61 @@ Future<void> main() async {
       ],
     }, 'live-model');
     final beforePicture = wire.calls.length;
-    var pictureRejected = false;
+    await source.dispatch(
+      'account-a',
+      catalog.registrationId,
+      ModelProtocol.chat,
+      picture,
+      (reply) => reply.body.drain<void>(),
+      isCurrent: () => true,
+      cancelled: Completer<void>().future,
+    );
+    final pictureMessages =
+        jsonDecode(decodeWire(wire.calls.last.$3 as String))['messages']
+            as List;
+    final imageTurn = pictureMessages.last;
+    check(
+      wire.calls.length == beforePicture + 1 &&
+          imageTurn['role'] == 'user' &&
+          jsonEncode(imageTurn).contains('data:image/png;base64,synthetic') &&
+          jsonEncode(imageTurn).contains('shot') &&
+          pictureMessages.any(
+            (m) => m['role'] == 'tool' && m['tool_call_id'] == 'shot',
+          ),
+      'Qoder lost the attributed tool image or paired result',
+    );
+    final beforeUnsupported = wire.calls.length;
+    var rejectedToolImage = false;
     try {
       await source.dispatch(
         'account-a',
         catalog.registrationId,
         ModelProtocol.chat,
-        picture,
+        {
+          'model': 'live-model',
+          'messages': [
+            {
+              'role': 'tool',
+              'tool_call_id': 'shot',
+              'content': [
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': 'data:image/png;base64,synthetic'},
+                },
+              ],
+            },
+          ],
+        },
         (_) async {},
         isCurrent: () => true,
         cancelled: Completer<void>().future,
       );
     } on ModelServiceFailure catch (e) {
-      pictureRejected = e.code == 'unsupported_content';
+      rejectedToolImage = e.code == 'unsupported_content';
     }
     check(
-      pictureRejected && wire.calls.length == beforePicture,
-      'Qoder silently discarded an image tool result or sent it upstream',
+      rejectedToolImage && wire.calls.length == beforeUnsupported,
+      'Qoder sent an unrepresentable image directly in a tool result',
     );
     final body = <String, dynamic>{
       'model': 'live-model',

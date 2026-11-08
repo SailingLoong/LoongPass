@@ -135,7 +135,10 @@ Future<void> main() async {
       cancelled: Completer<void>().future,
     );
     check(text.contains('你好') && text.contains('[DONE]'), 'SSE changed');
-    check(identical(wire.calls.last.$3, body), 'tools or Chinese rewritten');
+    check(
+      jsonEncode(wire.calls.last.$3) == jsonEncode(body),
+      'tools or Chinese rewritten',
+    );
     check(
       wire.calls.last.$2['Content-Type'] == 'application/json;charset=utf-8',
       'UTF-8 missing',

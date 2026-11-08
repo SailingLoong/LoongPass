@@ -16,14 +16,18 @@ abstract interface class WorkBuddyVaultStore {
 class WorkBuddyVaultCredential {
   final String domain, endpoint, uid, accessToken;
   final String? refreshToken;
-  final DateTime? expiresAt;
+  final DateTime? expiresAt, refreshExpiresAt;
+  final bool accessRejected, refusalRecoveryAttempted;
   WorkBuddyVaultCredential({
     required this.domain,
     required this.endpoint,
     required this.uid,
     required this.accessToken,
     this.refreshToken,
+    this.refreshExpiresAt,
     required this.expiresAt,
+    this.accessRejected = false,
+    this.refusalRecoveryAttempted = false,
   });
   Map<String, Object?> _encode() => {
     'domain': domain,
@@ -32,6 +36,10 @@ class WorkBuddyVaultCredential {
     'accessToken': accessToken,
     if (refreshToken != null) 'refreshToken': refreshToken,
     if (expiresAt != null) 'expiresAt': expiresAt!.millisecondsSinceEpoch,
+    if (refreshExpiresAt != null)
+      'refreshExpiresAt': refreshExpiresAt!.millisecondsSinceEpoch,
+    if (accessRejected) 'accessRejected': true,
+    if (refusalRecoveryAttempted) 'refusalRecoveryAttempted': true,
   };
   static WorkBuddyVaultCredential decode(Map<String, Object?> m) {
     String field(String name, int max) {
@@ -52,6 +60,16 @@ class WorkBuddyVaultCredential {
     if (m.containsKey('expiresAt') &&
         (expiry is! int || expiry <= 0 || expiry > 8640000000000000))
       throw const FormatException('Invalid expiry');
+    final refreshExpiry = m['refreshExpiresAt'];
+    if (m.containsKey('refreshExpiresAt') &&
+        (refreshExpiry is! int ||
+            refreshExpiry <= 0 ||
+            refreshExpiry > 8640000000000000))
+      throw const FormatException('Invalid refresh expiry');
+    for (final name in ['accessRejected', 'refusalRecoveryAttempted']) {
+      if (m.containsKey(name) && m[name] is! bool)
+        throw const FormatException('Invalid authorization status');
+    }
     return WorkBuddyVaultCredential(
       domain: domain,
       endpoint: endpoint,
@@ -63,10 +81,40 @@ class WorkBuddyVaultCredential {
       expiresAt: expiry == null
           ? null
           : DateTime.fromMillisecondsSinceEpoch(expiry as int, isUtc: true),
+      refreshExpiresAt: refreshExpiry == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(
+              refreshExpiry as int,
+              isUtc: true,
+            ),
+      accessRejected: m['accessRejected'] == true,
+      refusalRecoveryAttempted: m['refusalRecoveryAttempted'] == true,
     );
   }
 
   bool hasExpired(DateTime at) => expiresAt != null && !at.isBefore(expiresAt!);
+  bool isUsable(DateTime at) => !accessRejected && !hasExpired(at);
+  WorkBuddyVaultCredential withStatus({
+    required bool accessRejected,
+    required bool refusalRecoveryAttempted,
+  }) => WorkBuddyVaultCredential(
+    domain: domain,
+    endpoint: endpoint,
+    uid: uid,
+    accessToken: accessToken,
+    refreshToken: refreshToken,
+    expiresAt: expiresAt,
+    refreshExpiresAt: refreshExpiresAt,
+    accessRejected: accessRejected,
+    refusalRecoveryAttempted: refusalRecoveryAttempted,
+  );
+  bool needsRenewal(DateTime at) =>
+      refreshToken != null &&
+      (refreshExpiresAt == null || at.isBefore(refreshExpiresAt!)) &&
+      (!accessRejected || !refusalRecoveryAttempted) &&
+      (accessRejected ||
+          expiresAt != null &&
+              !at.add(const Duration(minutes: 1)).isBefore(expiresAt!));
   @override
   String toString() => 'WorkBuddyVaultCredential(redacted)';
 }
@@ -145,6 +193,9 @@ class WorkBuddyVault {
       'accessToken',
       'refreshToken',
       'expiresAt',
+      'refreshExpiresAt',
+      'accessRejected',
+      'refusalRecoveryAttempted',
       'registrationId',
     };
     if (row['registrationId'] != null &&
@@ -234,8 +285,13 @@ class WorkBuddyVault {
     String key, {
     required Future<bool> Function(WorkBuddyVaultCredential, bool Function())
     verify,
+    Future<WorkBuddyVaultCredential?> Function(
+      WorkBuddyVaultCredential,
+      bool Function(),
+    )?
+    renew,
   }) async {
-    final epoch = _retire(key);
+    var epoch = _retire(key);
     if (!_current(key, epoch)) return null;
     try {
       var row = await store.read(key);
@@ -258,8 +314,50 @@ class WorkBuddyVault {
           return null;
         row = migrated;
       }
-      final credential = WorkBuddyVaultCredential.decode(row);
-      bool admitted() => _current(key, epoch) && !credential.hasExpired(now());
+      var credential = WorkBuddyVaultCredential.decode(row);
+      if (renew != null && credential.needsRenewal(now())) {
+        final original = credential.accessRejected
+            ? credential.withStatus(
+                accessRejected: true,
+                refusalRecoveryAttempted: true,
+              )
+            : credential;
+        final ticket = await beginRotation(key);
+        if (ticket == null) return null;
+        epoch = _epochs[key]!;
+        bool renewing() => _current(key, epoch);
+        if (!renewing()) return null;
+        // The durable pending record is in place before the single refresh POST.
+        var next = await renew(original, renewing);
+        if (next != null && original.accessRejected)
+          next = next.withStatus(
+            accessRejected: false,
+            refusalRecoveryAttempted: true,
+          );
+        if (!renewing()) return null;
+        if (next == null) {
+          // A definite negative response spent no replacement: keep the prior
+          // grant, including a token still usable until its genuine expiry.
+          if (!await store.compareExchange(
+            key,
+            ticket._revision,
+            _record(
+              ticket._revision + 1,
+              'active',
+              original,
+              row['registrationId'] as String,
+            ),
+          ))
+            return null;
+        } else if (!await completeRotation(ticket, next)) {
+          return null;
+        }
+        row = await store.read(key);
+        if (row == null || row['state'] != 'active' || !renewing()) return null;
+        _validate(row);
+        credential = WorkBuddyVaultCredential.decode(row);
+      }
+      bool admitted() => _current(key, epoch) && credential.isUsable(now());
       if (!admitted() || !await verify(credential, admitted) || !admitted())
         return null;
       // Revocation/rotation may have happened during asynchronous verification.
@@ -268,7 +366,7 @@ class WorkBuddyVault {
           after['revision'] != row['revision'] ||
           after['state'] != 'active' ||
           !_current(key, epoch) ||
-          credential.hasExpired(now()))
+          !credential.isUsable(now()))
         return null;
       final leaseRevision = row['revision'];
       return WorkBuddyVaultLease._(
@@ -298,6 +396,62 @@ class WorkBuddyVault {
     }
   }
 
+  /// Observe a definite refusal of exactly the dispatched access token. A late
+  /// response cannot alter a replacement token or a different local grant.
+  Future<void> rejectAccessToken(
+    String key, {
+    required String expectedToken,
+    required String registrationId,
+  }) async {
+    bool same(Map<String, Object?>? row) =>
+        row != null &&
+        row['state'] == 'active' &&
+        row['accessToken'] == expectedToken &&
+        row['registrationId'] == registrationId;
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final row = await store.read(key);
+        if (_closed || _blocked.contains(key) || !same(row)) return;
+        _validate(row!);
+        if (row['accessRejected'] == true) {
+          _retire(key);
+          return;
+        }
+        final credential = WorkBuddyVaultCredential.decode(row).withStatus(
+          accessRejected: true,
+          refusalRecoveryAttempted: row['refusalRecoveryAttempted'] == true,
+        );
+        if (await store.compareExchange(
+          key,
+          row['revision'] as int,
+          _record(
+            (row['revision'] as int) + 1,
+            'active',
+            credential,
+            registrationId,
+          ),
+        )) {
+          _retire(key);
+          return;
+        }
+      }
+      throw StateError('Authorization status save unresolved');
+    } catch (_) {
+      // A native write may commit before its acknowledgement is lost.
+      try {
+        final saved = await store.read(key);
+        if (same(saved) && saved!['accessRejected'] == true) {
+          _retire(key);
+          return;
+        }
+        if (saved != null && !same(saved)) return;
+      } catch (_) {}
+      _retire(key);
+      _blocked.add(key);
+      rethrow;
+    }
+  }
+
   Future<WorkBuddyRotationTicket?> beginRotation(String key) async {
     final epoch = _retire(key);
     if (!_current(key, epoch)) return null;
@@ -305,8 +459,10 @@ class WorkBuddyVault {
     if (row == null) return null;
     _validate(row);
     if (row['state'] != 'active' || !_current(key, epoch)) return null;
-    final c = WorkBuddyVaultCredential.decode(row);
+    var c = WorkBuddyVaultCredential.decode(row);
     if (c.refreshToken == null) return null;
+    if (c.accessRejected)
+      c = c.withStatus(accessRejected: true, refusalRecoveryAttempted: true);
     final revision = (row['revision'] as int) + 1;
     // Durable uncertainty marker MUST precede any future refresh transmission.
     if (!await store.compareExchange(
@@ -333,7 +489,7 @@ class WorkBuddyVault {
         _blocked.contains(ticket._key))
       return false;
     WorkBuddyVaultCredential.decode(replacement._encode());
-    if (replacement.hasExpired(now())) return false;
+    if (!replacement.isUsable(now())) return false;
     final row = await store.read(ticket._key);
     if (row == null) return false;
     _validate(row);

@@ -39,6 +39,7 @@ class FakeZcode implements ZcodeTransport {
   int claimCode = 0;
   int claimHttp = 200;
   bool acceptVerification = false;
+  bool captchaRequired = false;
   final received = <ZcodeRequest>[];
   final balances = <String, List<Map<String, dynamic>>>{};
   @override
@@ -85,7 +86,7 @@ class FakeZcode implements ZcodeTransport {
         envelope({
           'configs': {
             'captcha': {
-              'enabled': true,
+              'enabled': captchaRequired,
               'region': 'cn',
               'prefix': 'synthetic',
               'sceneId': 'scene',
@@ -349,6 +350,7 @@ Future<void> main() async {
   restoredCaptcha.dispose();
 
   final verifiedHttp = FakeZcode()
+    ..captchaRequired = true
     ..claimCode = 3007
     ..claimHttp = 400
     ..acceptVerification = true;
@@ -370,9 +372,9 @@ Future<void> main() async {
   );
   check(
     prompts == 1 &&
-        verifiedHttp.claims == 2 &&
+        verifiedHttp.claims == 1 &&
         (await verified.accounts()).single.status == 'claimed',
-    'one manual verification can resolve a definite rejection with official receipt',
+    'one manual preflight verification receives the official receipt',
   );
   final proofRequest = verifiedHttp.received.lastWhere(
     (r) => r.verification != null,
@@ -391,6 +393,7 @@ Future<void> main() async {
   verified.dispose();
 
   final cancelledHttp = FakeZcode()
+    ..captchaRequired = true
     ..claimCode = 3007
     ..claimHttp = 400;
   final cancelled = await account(
@@ -401,13 +404,14 @@ Future<void> main() async {
   await cancelled.claim(cancelledId, verify: (_) async => null);
   await cancelled.tick();
   check(
-    cancelledHttp.claims == 1 &&
+    cancelledHttp.claims == 0 &&
         (await cancelled.accounts()).single.status == 'verificationRequired',
     'cancelled challenge and automatic timer cannot resubmit the claim',
   );
   cancelled.dispose();
 
   final uncertainHttp = FakeZcode()
+    ..captchaRequired = true
     ..claimCode = 3007
     ..claimHttp = 400
     ..acceptVerification = true;
@@ -435,7 +439,7 @@ Future<void> main() async {
   );
   await uncertainOwner.tick();
   check(
-    uncertainHttp.claims == 2 &&
+    uncertainHttp.claims == 1 &&
         uncertainPrompts == 1 &&
         (await uncertainOwner.accounts()).single.status == 'pending',
     'lost verified POST remains read-only across manual and automatic checks',
@@ -443,6 +447,7 @@ Future<void> main() async {
   uncertainOwner.dispose();
 
   final repeatedHttp = FakeZcode()
+    ..captchaRequired = true
     ..claimCode = 3007
     ..claimHttp = 400;
   final repeated = await account(
@@ -458,7 +463,7 @@ Future<void> main() async {
     },
   );
   check(
-    repeatedHttp.claims == 2 &&
+    repeatedHttp.claims == 1 &&
         repeatedPrompts == 1 &&
         (await repeated.accounts()).single.status == 'verificationRequired',
     'a second captcha rejection does not loop or reuse a proof',

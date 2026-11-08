@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import '../lib/model_messages.dart';
 import '../lib/model_provider.dart';
 import '../lib/model_sse.dart';
@@ -82,6 +83,37 @@ Future<void> main() async {
     'forced tool lost',
   );
   check(wire['stop'][0] == 'END', 'stop sequence lost');
+  // Normal Claude Code sessions carry environment updates as system messages
+  // inside the transcript, alongside the request's top-level system prompt.
+  final withEnvironment = <String, dynamic>{
+    ...body,
+    'messages': [
+      {'role': 'user', 'content': 'hello'},
+      {
+        'role': 'system',
+        'content': [
+          {'type': 'text', 'text': '# Environment\nPlatform: darwin'},
+        ],
+      },
+      {'role': 'assistant', 'content': 'Hello.'},
+      {'role': 'system', 'content': 'Updated environment.'},
+      ...body['messages'] as List,
+    ],
+  };
+  final environmentOriginal = jsonEncode(withEnvironment);
+  final environmentWire = messagesToChat(withEnvironment, 'deepseek-v4-flash');
+  check(
+    jsonEncode((environmentWire['messages'] as List).take(5).toList()) ==
+            jsonEncode([
+              {'role': 'system', 'content': 'Keep this exact system prompt.'},
+              {'role': 'user', 'content': 'hello'},
+              {'role': 'system', 'content': '# Environment\nPlatform: darwin'},
+              {'role': 'assistant', 'content': 'Hello.'},
+              {'role': 'system', 'content': 'Updated environment.'},
+            ]) &&
+        jsonEncode(withEnvironment) == environmentOriginal,
+    'inline system updates must retain their role, content and transcript order',
+  );
   final nativeClient = messagesToChat({
     ...body,
     'thinking': {'type': 'adaptive', 'display': 'omitted'},
@@ -129,6 +161,96 @@ Future<void> main() async {
         continued['messages'][2]['tool_call_id'] == 'call-kept',
     'empty native thinking signature rejected or tool pair changed',
   );
+  final loaded = messagesToChat({
+    ...body,
+    'tools': [
+      ...(body['tools'] as List),
+      {
+        'name': 'DeferredToolPlaceholder',
+        'input_schema': {'type': 'object'},
+        'defer_loading': true,
+      },
+    ],
+    'messages': [
+      {'role': 'user', 'content': 'Load echo.'},
+      {
+        'role': 'assistant',
+        'content': [
+          {
+            'type': 'tool_use',
+            'id': 'search-1',
+            'name': 'ToolSearch',
+            'input': {},
+          },
+        ],
+      },
+      {
+        'role': 'user',
+        'content': [
+          {
+            'type': 'tool_result',
+            'tool_use_id': 'search-1',
+            'content': [
+              {'type': 'tool_reference', 'tool_name': 'echo'},
+            ],
+          },
+        ],
+      },
+    ],
+  }, 'm');
+  check(
+    loaded['messages'][3]['role'] == 'tool' &&
+        loaded['messages'][3]['tool_call_id'] == 'search-1' &&
+        loaded['messages'][3]['content'] ==
+            'Tool echo is loaded and can be called now.' &&
+        (loaded['tools'] as List).length == 1,
+    'deferred tool load must retain the named result without offering its placeholder',
+  );
+  final title = messagesToChat({
+    ...body,
+    'output_config': {'effort': 'high'},
+  }, 'm');
+  check(
+    !title.containsKey('reasoning_effort'),
+    'effort without requested thinking must not enable reasoning',
+  );
+  for (final entry in {
+    4096: 'low',
+    12000: 'medium',
+    24000: 'high',
+    32000: 'xhigh',
+  }.entries) {
+    final budget = messagesToChat({
+      ...body,
+      'max_tokens': 65536,
+      'thinking': {'type': 'enabled', 'budget_tokens': entry.key},
+    }, 'm');
+    check(
+      budget['reasoning_effort'] == entry.value,
+      'standard Claude thinking budget did not preserve its effort',
+    );
+  }
+  final structured = messagesToChat({
+    ...body,
+    'output_config': {
+      'format': {
+        'type': 'json_schema',
+        'schema': {
+          'type': 'object',
+          'properties': {
+            'answer': {'type': 'string'},
+          },
+        },
+      },
+    },
+  }, 'm');
+  check(
+    structured['response_format']['type'] == 'json_schema' &&
+        structured['response_format']['json_schema']['schema']['properties']['answer']['type'] ==
+            'string' &&
+        !structured.containsKey('reasoning_effort'),
+    'structured output schema or reasoning intent changed',
+  );
   var rejected = false;
   try {
     messagesToChat({
@@ -171,6 +293,21 @@ Future<void> main() async {
     },
   };
   final whole = messagesFromChat(raw, 'glm-5.3-flash');
+  final cacheWrite = messagesFromChat({
+    ...raw,
+    'usage': {
+      'prompt_tokens': 100,
+      'completion_tokens': 9,
+      'prompt_tokens_details': {'cached_tokens': 20, 'cache_write_tokens': 30},
+    },
+  }, 'm')['usage'];
+  check(
+    cacheWrite['input_tokens'] == 50 &&
+        cacheWrite['cache_read_input_tokens'] == 20 &&
+        cacheWrite['cache_creation_input_tokens'] == 30 &&
+        cacheWrite['output_tokens'] == 9,
+    'uncached input and cache-write token counts must retain their absolute values',
+  );
   check(
     whole['model'] == 'glm-5.3-flash' && whole['stop_reason'] == 'tool_use',
     'response model or finish lost',

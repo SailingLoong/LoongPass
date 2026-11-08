@@ -352,16 +352,36 @@ class _ModelServicesPageState extends State<ModelServicesPage> {
                       ),
                       OutlinedButton.icon(
                         key: ValueKey('copy-${binding.id}'),
-                        onPressed: service.importUriFor(binding.id) == null
+                        onPressed: service.magpieCommandFor(binding.id) == null
                             ? null
                             : () => _run(
                                 () => _copy(
-                                  service.importUriFor(binding.id).toString(),
-                                  '接入链接已复制。首次导入此来源时使用此链接。',
+                                  service.magpieCommandFor(binding.id)!,
+                                  '账号接入命令已复制，请在终端执行。',
                                 ),
                               ),
                         icon: const Icon(Icons.copy_outlined, size: 17),
-                        label: const Text('复制 Magpie 接入链接'),
+                        label: const Text('复制账号接入命令'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed:
+                            service.magpieCommandFor(
+                                  binding.id,
+                                  update: true,
+                                ) ==
+                                null
+                            ? null
+                            : () => _run(
+                                () => _copy(
+                                  service.magpieCommandFor(
+                                    binding.id,
+                                    update: true,
+                                  )!,
+                                  '账号更新命令已复制，请在终端执行。',
+                                ),
+                              ),
+                        icon: const Icon(Icons.sync_outlined, size: 17),
+                        label: const Text('更新账号配置'),
                       ),
                       TextButton(
                         onPressed: () => _run(

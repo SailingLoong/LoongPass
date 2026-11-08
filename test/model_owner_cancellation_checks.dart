@@ -75,7 +75,11 @@ Future<void> run({required bool pooled, bool rotate = false}) async {
   });
   final source = WorkBuddyModelProvider(
     owner,
-    clientVersion: () async => '6.0.1',
+    clientInfo: () async => WorkBuddyClientInfo.fromNative({
+      'appVersion': '6.0.1',
+      'cliVersion': '3.1.7',
+      'applicationName': 'WorkBuddy',
+    }),
     transport: HeldTransport(Uri.parse('http://127.0.0.1:${upstream.port}')),
   );
   final service = ModelService(store: MemoryAccountStore('held-local'), port: 0)

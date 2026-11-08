@@ -26,6 +26,10 @@ def port():
 
 def main():
     config = json.load(sys.stdin)
+    modes = config.get('modes', ['text', 'stream', 'tool', 'normal', 'normal_tool'])
+    if not isinstance(modes, list) or not modes or any(
+            mode not in ('text', 'stream', 'tool', 'normal', 'normal_tool') for mode in modes):
+        raise RuntimeError('invalid_acceptance_modes')
     results = []
     binary = '/Applications/magpie.app/Contents/MacOS/magpie'
     with tempfile.TemporaryDirectory(prefix='loongpass-claude-pool-') as scratch:
@@ -61,8 +65,7 @@ def main():
                     if 'chat' in source['protocols']:
                         args.append('url=' + base + '/chat/v1')
                     args += ['key=' + source['bindings'][0]['key'], 'routing=rotate', 'errors=pass', 'patience=off']
-                    if config.get('unified'):
-                        args.append('header.X-LoongPass-Session=${sessionId}:${subagentId}')
+                    args.append('header.X-LoongPass-Session=${sessionId}:${subagentId}')
                     args.append('models=' + ','.join(source.get('models') or dict.fromkeys(b['model'] for b in source['bindings'])))
                     cli(*args)
                 if config.get('unified'):
@@ -104,14 +107,25 @@ def main():
                                  '--setting-sources', '', '--strict-mcp-config', '--tools', '', '--max-turns', '4',
                                  '--system-prompt', 'You are a protocol acceptance assistant. Follow the requested marker or echo tool exactly.']
                     result = {'source': source['id']}
-                    for mode in ('text', 'stream', 'tool'):
-                        call_file = work / 'echo-calls.jsonl'
+                    for mode in modes:
+                        call_file = work / f'echo-{mode}-calls.jsonl'
                         args = base_args[:]
-                        if mode == 'tool':
+                        if mode in ('normal', 'normal_tool'):
+                            # Keep Claude Code's default prompt, environment
+                            # messages and built-in tools in a separate probe.
+                            args.remove('--bare')
+                            for option in ('--system-prompt', '--tools'):
+                                position = args.index(option)
+                                del args[position:position + 2]
+                            args += ['--permission-mode', 'dontAsk']
+                        if mode in ('tool', 'normal_tool'):
                             mcp = {'mcpServers': {'loongpass_echo': {'command': sys.executable,
                                    'args': ['-I', str(Path(__file__).with_name('model_pooling_echo.py')), str(call_file)]}}}
-                            args += ['--mcp-config', json.dumps(mcp), '--allowedTools', 'mcp__loongpass_echo__echo_marker',
-                                     '--output-format', 'json', 'Use mcp__loongpass_echo__echo_marker exactly once with marker LOONGPASS_CLAUDE_TOOL. After it returns, reply with its returned marker exactly.']
+                            prompt = 'Use mcp__loongpass_echo__echo_marker exactly once with marker LOONGPASS_CLAUDE_TOOL. After it returns, reply with its returned marker exactly.'
+                            if mode == 'normal_tool':
+                                prompt = 'First use ToolSearch to load mcp__loongpass_echo__echo_marker. ' + prompt
+                            args += ['--mcp-config', json.dumps(mcp), '--allowedTools', 'ToolSearch,mcp__loongpass_echo__echo_marker',
+                                     '--output-format', 'json', prompt]
                             marker = 'LOONGPASS_CLAUDE_TOOL'
                         else:
                             marker = 'LOONGPASS_CLAUDE_' + mode.upper()
@@ -120,16 +134,19 @@ def main():
                                 args += ['--verbose', '--include-partial-messages']
                             args += ['Reply with exactly ' + marker + '.']
                         try:
-                            r = subprocess.run(args, env=child_env, cwd=work, capture_output=True, text=True, timeout=150)
+                            probe_env = child_env.copy()
+                            if mode == 'normal_tool':
+                                probe_env['ENABLE_TOOL_SEARCH'] = 'true'
+                            r = subprocess.run(args, env=probe_env, cwd=work, capture_output=True, text=True, timeout=150)
                             objects = [json.loads(line) for line in r.stdout.splitlines() if line.strip().startswith('{')]
                             final = next((x for x in reversed(objects) if x.get('type') == 'result'), {})
                             ok = r.returncode == 0 and not final.get('is_error') and marker in str(final.get('result', ''))
                             if mode == 'stream':
                                 result['partial_events'] = sum(x.get('type') == 'stream_event' for x in objects)
                                 ok = ok and result['partial_events'] > 0
-                            if mode == 'tool':
+                            if mode in ('tool', 'normal_tool'):
                                 calls = call_file.read_text().splitlines() if call_file.exists() else []
-                                result['echo_calls'] = len(calls)
+                                result['normal_tool_echo_calls' if mode == 'normal_tool' else 'echo_calls'] = len(calls)
                                 ok = ok and len(calls) == 1
                             result[mode] = 'passed' if ok else 'failed'
                             if not ok:
@@ -146,7 +163,7 @@ def main():
                         except (ValueError, OSError):
                             result[mode] = 'client_failed'
                         if result.get(mode) != 'passed':
-                            for later in ('text', 'stream', 'tool'):
+                            for later in modes:
                                 result.setdefault(later, 'not_run_after_failure')
                             break
                     results.append(result)

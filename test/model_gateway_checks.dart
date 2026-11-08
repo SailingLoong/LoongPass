@@ -15,8 +15,11 @@ class Source extends ModelProvider {
   final ModelProtocol protocol;
   final registrations = {'account': 'registration'};
   final calls = <Map<String, dynamic>>[];
+  final contexts = <ModelRequestContext?>[];
   int status = 200, discoveries = 0;
   bool rejectMedia = false, extraModel = false;
+  bool forcedThinking = false;
+  bool? canReason;
   @override
   void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) {
     if (rejectMedia && jsonEncode(body).contains('image_url')) {
@@ -44,6 +47,9 @@ class Source extends ModelProvider {
           canonicalId: 'GLM-5.3-Flash',
           protocol: protocol,
           tools: true,
+          images: id != 'one',
+          alwaysThinks: forcedThinking,
+          reasoning: canReason,
         ),
         if (extraModel)
           const ModelDefinition(
@@ -64,9 +70,11 @@ class Source extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) async {
     check(isCurrent(), 'stale route');
     calls.add(body);
+    contexts.add(context);
     final response = protocol == ModelProtocol.chat
         ? {
             'id': 'chat',
@@ -94,6 +102,8 @@ class Source extends ModelProvider {
         status,
         'application/json',
         Stream.value(utf8.encode(jsonEncode(response))),
+        errorCode: status == 429 ? 'quota_exhausted' : null,
+        retryAfterSeconds: status == 429 ? 37 : null,
       ),
     );
   }
@@ -155,6 +165,7 @@ Future<void> main() async {
       'Magpie can replay failed requests',
     );
     final poolKey = service.pooledKey!;
+    String? retryAfter;
     Future<(int, Map<String, dynamic>)> call(
       String path,
       String key, {
@@ -167,11 +178,13 @@ Future<void> main() async {
       );
       req.headers.set('x-api-key', key);
       if (session != null) req.headers.set('x-loongpass-session', session);
+      if (body != null) req.headers.set('anthropic-beta', 'tools-2025-01-01');
       if (body != null) {
         req.headers.contentType = ContentType.json;
         req.write(jsonEncode(body));
       }
       final res = await req.close();
+      retryAfter = res.headers.value('retry-after');
       return (
         res.statusCode,
         jsonDecode(await utf8.decoder.bind(res).join()) as Map<String, dynamic>,
@@ -204,7 +217,7 @@ Future<void> main() async {
       ],
       'max_tokens': 16,
     };
-    one.rejectMedia = true;
+    one.rejectMedia = false;
     final imageReply = await call(
       '/v1/messages',
       poolKey,
@@ -251,6 +264,106 @@ Future<void> main() async {
     );
     one.rejectMedia = false;
     two.calls.clear();
+    two.contexts.clear();
+    one.forcedThinking = true;
+    await service.refreshModels(a.id);
+    for (final type in ['disabled', 'between_tools']) {
+      final reply = await call(
+        '/v1/messages',
+        poolKey,
+        body: {
+          ...body,
+          'thinking': {'type': type},
+        },
+      );
+      check(
+        reply.$1 == 200 && one.calls.isEmpty,
+        'explicit thinking off selected a source that always thinks',
+      );
+    }
+    for (final effort in ['none', 'off']) {
+      final reply = await call(
+        '/providers/one/chat/v1/chat/completions',
+        a.key,
+        body: {...body, 'model': 'GLM-5.3-Flash', 'reasoning_effort': effort},
+      );
+      check(
+        reply.$1 == 400 && one.calls.isEmpty,
+        'direct source accepted explicit off for mandatory thinking',
+      );
+    }
+    two.forcedThinking = true;
+    await service.refreshModels(b.id);
+    final refused = await call(
+      '/v1/messages',
+      poolKey,
+      body: {
+        ...body,
+        'thinking': {'type': 'disabled'},
+      },
+    );
+    check(
+      refused.$1 == 400 && one.calls.isEmpty && two.calls.length == 2,
+      'all forced-on sources must fail before any dispatch',
+    );
+    one.forcedThinking = two.forcedThinking = false;
+    one.canReason = false;
+    two.canReason = true;
+    await service.refreshModels(a.id);
+    await service.refreshModels(b.id);
+    two.calls.clear();
+    two.contexts.clear();
+    for (final thinking in [
+      {'type': 'enabled', 'budget_tokens': 2048},
+      {'type': 'adaptive'},
+    ]) {
+      final reply = await call(
+        '/v1/messages',
+        poolKey,
+        body: {...body, 'thinking': thinking},
+      );
+      check(
+        reply.$1 == 200 && one.calls.isEmpty,
+        'explicit thinking on selected a non-reasoning source',
+      );
+    }
+    for (final field in [
+      {'reasoning_effort': 'high'},
+      {
+        'reasoning': {'effort': 'medium'},
+      },
+    ]) {
+      final reply = await call(
+        '/providers/one/chat/v1/chat/completions',
+        a.key,
+        body: {...body, 'model': 'GLM-5.3-Flash', ...field},
+      );
+      check(
+        reply.$1 == 400 && one.calls.isEmpty,
+        'direct non-reasoning source accepted explicit thinking on',
+      );
+    }
+    two.canReason = false;
+    await service.refreshModels(b.id);
+    final noThinking = await call(
+      '/v1/messages',
+      poolKey,
+      body: {
+        ...body,
+        'output_config': {'effort': 'high'},
+      },
+    );
+    check(
+      noThinking.$1 == 200,
+      'effort-only helper request incorrectly required reasoning',
+    );
+    one.canReason = two.canReason = null;
+    await service.refreshModels(a.id);
+    await service.refreshModels(b.id);
+    one.calls.clear();
+    one.contexts.clear();
+    two.calls.clear();
+    two.contexts.clear();
     check(
       (await call('/v1/messages', poolKey, session: 's1', body: body)).$1 ==
           200,
@@ -258,11 +371,25 @@ Future<void> main() async {
     );
     final selected = one.calls.isNotEmpty ? one : two;
     final other = identical(selected, one) ? two : one;
+    check(
+      selected.contexts.last != null,
+      'shared boundary dropped client context',
+    );
+    final firstContext = selected.contexts.last!;
+    check(
+      firstContext.anthropicBeta == 'tools-2025-01-01',
+      'semantic client options did not reach the adapter',
+    );
     for (var i = 0; i < 3; i++)
       await call('/v1/messages', poolKey, session: 's1', body: body);
     check(
       selected.calls.length == 4 && other.calls.isEmpty,
       'session moved between sources',
+    );
+    check(
+      selected.contexts.every((c) => c?.sessionId == firstContext.sessionId) &&
+          selected.contexts.map((c) => c!.requestId).toSet().length == 4,
+      'shared boundary conflated requests or changed the vendor session',
     );
     check(
       (await call('/v1/messages', poolKey, session: 's2', body: body)).$1 ==
@@ -280,6 +407,10 @@ Future<void> main() async {
     check(
       failed.$1 == 429 && other.calls.length == 1,
       'failed request silently replayed',
+    );
+    check(
+      failed.$2['error']['message'] == 'quota_exhausted' && retryAfter == '37',
+      'normalized supplier failure and retry timing were hidden',
     );
     check(
       (await call('/v1/messages', poolKey, session: 's1', body: body)).$1 ==

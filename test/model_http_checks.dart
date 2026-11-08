@@ -35,8 +35,20 @@ Future<void> main() async {
         await r.response.close();
       case '/hold':
         if (!accepted.isCompleted) accepted.complete();
+      case '/rejected-token':
+      case '/bare-unauthorized':
+      case '/forbidden-token':
+      case '/other-auth-error':
+        r.response.statusCode = r.uri.path == '/forbidden-token' ? 403 : 401;
+        if (r.uri.path != '/bare-unauthorized')
+          r.response.headers.set(
+            'www-authenticate',
+            'Bearer error="${r.uri.path == '/other-auth-error' ? 'insufficient_scope' : 'invalid_token'}"',
+          );
+        await r.response.close();
       default:
         r.response.statusCode = 502;
+        r.response.headers.set('retry-after', '37');
         await r.response.close();
     }
   });
@@ -105,15 +117,36 @@ Future<void> main() async {
     }
     check(failed, 'cancel before headers did not abort');
     final count = calls;
+    for (final path in [
+      '/rejected-token',
+      '/bare-unauthorized',
+      '/forbidden-token',
+      '/other-auth-error',
+    ]) {
+      await transport.exchange(
+        root.resolve(path),
+        isCurrent: () => true,
+        consume: (r) async {
+          check(
+            r.credentialRejected == (path == '/rejected-token'),
+            'credential refusal evidence was invented or dropped',
+          );
+          await r.body.drain<void>();
+        },
+      );
+    }
+    check(calls == count + 4, 'credential failure was retried');
+    final errorCount = calls;
     await transport.exchange(
       root.resolve('/error'),
       isCurrent: () => true,
       consume: (r) async {
         check(r.status == 502, 'status lost');
+        check(r.retryAfterSeconds == 37, 'upstream retry timing lost');
         await r.body.drain<void>();
       },
     );
-    check(calls == count + 1, 'transport retried');
+    check(calls == errorCount + 1, 'transport retried');
     print(
       'PASS model HTTP single-send, redirect, bounds and cancellation before headers',
     );

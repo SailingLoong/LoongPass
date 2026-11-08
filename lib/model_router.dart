@@ -32,6 +32,22 @@ class RoutedModel {
       return values.cast<int>().reduce((a, b) => a < b ? a : b);
     }
 
+    bool? available(bool? Function(ModelDefinition) get) {
+      final values = targets.map((t) => get(t.model));
+      return values.any((v) => v == true)
+          ? true
+          : values.any((v) => v == null)
+          ? null
+          : false;
+    }
+
+    final efforts = targets.first.model.reasoningEfforts
+        .where(
+          (e) => targets.every((t) => t.model.reasoningEfforts.contains(e)),
+        )
+        .toList();
+    final defaultEffort = targets.first.model.defaultReasoningEffort;
+
     return {
       ...ModelDefinition(
         id,
@@ -39,6 +55,17 @@ class RoutedModel {
         name: targets.first.model.canonicalId ?? targets.first.model.name,
         contextWindow: minimum((m) => m.contextWindow),
         outputLimit: minimum((m) => m.outputLimit),
+        images: available((m) => m.images),
+        reasoning: available((m) => m.reasoning),
+        alwaysThinks: targets.every((t) => t.model.alwaysThinks == true),
+        reasoningEfforts: efforts,
+        defaultReasoningEffort:
+            defaultEffort != null &&
+                targets.every(
+                  (t) => t.model.defaultReasoningEffort == defaultEffort,
+                )
+            ? defaultEffort
+            : null,
         tools: targets.any((t) => t.model.tools == true)
             ? true
             : targets.any((t) => t.model.tools == null)
@@ -118,7 +145,13 @@ class ModelRouter {
     return selected;
   }
 
-  void failed(ModelTarget target) {
-    _cooldowns[target.id] = now().add(const Duration(minutes: 1));
+  void failed(ModelTarget target, {int? retryAfterSeconds}) {
+    _cooldowns[target.id] = now().add(
+      Duration(
+        seconds: retryAfterSeconds != null && retryAfterSeconds >= 0
+            ? retryAfterSeconds
+            : 60,
+      ),
+    );
   }
 }

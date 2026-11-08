@@ -5,13 +5,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
-import 'account_registration.dart';
 import 'model_provider.dart';
 import 'model_http.dart';
 import 'model_sse.dart';
 import 'zcode_api.dart';
 import 'zcode_activity_accounts.dart';
+import 'zcode_rewards.dart';
+import 'zcode_tool_search.dart';
 
 class ZcodeModelProvider extends ModelProvider {
   final ZcodeActivityAccounts owner;
@@ -37,59 +37,6 @@ class ZcodeModelProvider extends ModelProvider {
       if (a.family == 'bigmodel')
         ModelAccount(a.id, a.label, registrationId: a.registrationId),
   ];
-  static num? _number(Object? value) {
-    final n = value is num ? value : num.tryParse('$value');
-    return n != null && n.isFinite && n >= 0 ? n : null;
-  }
-
-  static Set<String> _entitled(Map<String, dynamic> raw) {
-    final b = zcodeData(raw);
-    final now = _number(b['server_time']);
-    if (now == null || b['plans'] is! List || b['balances'] is! List)
-      throw const ModelServiceFailure('invalid_entitlement');
-    final plans = (b['plans'] as List)
-        .whereType<Map>()
-        .where(
-          (p) =>
-              p['status'] == 'active' &&
-              (_number(p['starts_at']) == null ||
-                  _number(p['starts_at'])! <= now) &&
-              (_number(p['ends_at']) == null || _number(p['ends_at'])! > now),
-        )
-        .toList();
-    final out = <String>{};
-    for (final bucket in b['balances']) {
-      if (bucket is! Map) continue;
-      if (!plans.any(
-        (p) => p['user_plan_id'] != null && bucket['user_plan_id'] != null
-            ? p['user_plan_id'] == bucket['user_plan_id']
-            : p['plan_id'] == bucket['plan_id'],
-      ))
-        continue;
-      if (_number(bucket['expires_at']) != null &&
-          _number(bucket['expires_at'])! <= now)
-        continue;
-      final left = _number(bucket['remaining_units']);
-      final used = _number(bucket['used_units']),
-          total = _number(bucket['total_units']);
-      if (left == null && (used == null || total == null) ||
-          left != null && left <= 0 ||
-          left == null && used! >= total!)
-        continue;
-      if (bucket['capabilities'] is! List) continue;
-      for (final capability in bucket['capabilities']) {
-        if (capability is! String) continue;
-        final c = capability.startsWith('model:')
-            ? capability.substring(6)
-            : capability.contains(':')
-            ? ''
-            : capability;
-        if (c.trim().isNotEmpty) out.add(c.trim().toLowerCase());
-      }
-    }
-    return out;
-  }
-
   static List<ModelDefinition> _catalog(
     Map<String, dynamic> config,
     Set<String> allowed,
@@ -125,6 +72,8 @@ class ZcodeModelProvider extends ModelProvider {
       if (off.contains(key)) continue;
       final id = canonical[key] ?? key;
       int? context, output;
+      bool? images, reasoning, alwaysThinks;
+      List<String> efforts = const [];
       if (rules is Map && rules['modelRules'] is List)
         for (final r in rules['modelRules']) {
           if (r is! Map || r['modelMatch'] is! String || r['config'] is! Map)
@@ -146,6 +95,25 @@ class ZcodeModelProvider extends ModelProvider {
           final max = limit is Map ? limit['max'] : null;
           if (cw is int && cw > 0) context = cw;
           if (max is int && max > 0) output = max;
+          final input = properties is Map ? properties['inputFormat'] : null;
+          if (input is Map && input['supportsImage'] is bool)
+            images = input['supportsImage'];
+          final levels = options is Map ? options['reasoningLevel'] : null;
+          if (levels is Map &&
+              levels['values'] is List &&
+              (levels['values'] as List).isNotEmpty) {
+            efforts = List.unmodifiable({
+              for (final level in levels['values'])
+                if (level is String && level.isNotEmpty)
+                  switch (level) {
+                    'disabled' => 'none',
+                    'enabled' => 'high',
+                    _ => level,
+                  },
+            });
+            reasoning = efforts.any((level) => level != 'none');
+            alwaysThinks = reasoning && !efforts.contains('none');
+          }
         }
       result.add(
         ModelDefinition(
@@ -155,6 +123,10 @@ class ZcodeModelProvider extends ModelProvider {
           contextWindow: context,
           outputLimit: output,
           tools: true,
+          images: images,
+          reasoning: reasoning,
+          alwaysThinks: alwaysThinks,
+          reasoningEfforts: efforts,
         ),
       );
     }
@@ -165,7 +137,10 @@ class ZcodeModelProvider extends ModelProvider {
   Future<ModelCatalog> discoverModels(
     String accountId,
   ) => owner.withInferenceAuthorization(accountId, (lease) async {
-    final entitled = _entitled(await lease.balance());
+    final entitled = ZcodeBalance.parse(
+      await lease.balance(),
+      owner.now(),
+    ).entitledModels;
     if (entitled.isEmpty) throw const ModelServiceFailure('gift_unavailable');
     final configs = zcodeData(await lease.clientConfig())['configs'];
     final url = configs is Map ? configs['builtin_provider_config_json'] : null;
@@ -224,7 +199,11 @@ class ZcodeModelProvider extends ModelProvider {
     final dynamicText = [
       prompt['dynamicBehavior'],
       if (skill) prompt['sessionGuidance'],
-      '${prompt['environment']['heading']}\n${prompt['environment']['invokedLine']}\n - ${prompt['environment']['platformLabel']}: ${lease.context['platform']}\n - ${prompt['environment']['osVersionLabel']}: ${Platform.operatingSystemVersion}',
+      '${prompt['environment']['heading']}\n${prompt['environment']['invokedLine']}\n - ${prompt['environment']['platformLabel']}: ${Platform.isMacOS
+          ? 'darwin'
+          : Platform.isWindows
+          ? 'win32'
+          : Platform.operatingSystem}\n - ${prompt['environment']['osVersionLabel']}: ${Platform.operatingSystemVersion}',
       (prompt['poweredBy'] as String)
           .replaceAll('{provider}', 'bigmodel-api')
           .replaceAll('{model}', body['model']),
@@ -297,6 +276,7 @@ class ZcodeModelProvider extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) async {
     final saved = _models[accountId];
     final model = saved?.$2.where((m) => m.id == body['model']).firstOrNull;
@@ -305,20 +285,20 @@ class ZcodeModelProvider extends ModelProvider {
         model == null)
       throw const ModelServiceFailure('model_not_available');
     await owner.withInferenceAuthorization(accountId, (lease) async {
-      final allowed = _entitled(await lease.balance());
+      final allowed = ZcodeBalance.parse(
+        await lease.balance(),
+        owner.now(),
+      ).entitledModels;
       if (!allowed.contains(model.id.toLowerCase()))
         throw const ModelServiceFailure('gift_exhausted');
-      final first = (body['messages'] as List)
-          .whereType<Map>()
-          .where((m) => m['role'] == 'user')
-          .firstOrNull;
-      final session = sha256
-          .convert(
-            utf8.encode(jsonEncode([accountId, first?['content'] ?? ''])),
-          )
-          .toString()
-          .substring(0, 32);
-      final request = _request(body, lease, session);
+      final requestContext =
+          context ??
+          ModelRequestContext.fromRequest(
+            body,
+            scope: '$id\u0000$accountId\u0000$registrationId',
+          );
+      final search = ZcodeToolSearch.fromRequest(body);
+      final request = _request(search.body, lease, requestContext.sessionId);
       final ctx = lease.context;
       await transport.exchange(
         Uri.https('zcode.z.ai', '/api/v1/zcode-plan/anthropic/v1/messages'),
@@ -340,23 +320,27 @@ class ZcodeModelProvider extends ModelProvider {
           'X-OS-Category': ctx['platform']!.startsWith('darwin')
               ? 'macos'
               : 'windows',
+          'X-OS-Version': Platform.operatingSystemVersion,
           'X-Device-Mid': ctx['deviceMid']!,
-          'x-session-id': session,
-          'x-request-id': newAccountRegistrationId(),
+          'x-session-id': requestContext.sessionId,
+          'x-query-id': requestContext.turnId,
+          'x-request-id': requestContext.requestId,
           'x-zcode-session-type': 'main',
-          'x-zcode-trace-id': newAccountRegistrationId(),
+          'x-zcode-trace-id': requestContext.requestId,
           'x-zcode-query-source': 'main_turn',
         },
         isCurrent: () => lease.isCurrent() && isCurrent(),
         cancelled: cancelled,
-        consume: (r) => _consume(r, consume),
+        consume: (r) => _consume(r, consume, search),
       );
     }, expectedRegistrationId: registrationId);
   }
 
   static int? _businessError(Object? data) {
     if (data is! Map) return 502;
-    final code = '${data['code'] ?? data['error']?['code'] ?? ''}';
+    final error = data['error'];
+    final code =
+        '${data['code'] ?? (error is Map ? error['code'] : null) ?? ''}';
     if ({'1005', '1113'}.contains(code)) return 429;
     if ({'401', '403'}.contains(code)) return 401;
     if (data['error'] != null ||
@@ -369,6 +353,7 @@ class ZcodeModelProvider extends ModelProvider {
   static Future<void> _consume(
     ModelReply upstream,
     Future<void> Function(ModelReply) consume,
+    ZcodeToolSearch search,
   ) async {
     if (upstream.status != 200) {
       await consume(upstream);
@@ -390,12 +375,20 @@ class ZcodeModelProvider extends ModelProvider {
       final status =
           _businessError(data) ??
           (data is Map && data['type'] == 'message' ? 200 : 502);
+      final output =
+          status == 200 && data is Map<String, dynamic> && search.restore(data)
+          ? utf8.encode(jsonEncode(data))
+          : bytes;
       await consume(
         ModelReply(
           status,
           'application/json',
-          Stream.value(bytes),
+          Stream.value(output),
           cancel: upstream.cancel,
+          errorCode:
+              upstream.errorCode ?? (status == 429 ? 'quota_exhausted' : null),
+          retryAfterSeconds: upstream.retryAfterSeconds,
+          credentialRejected: upstream.credentialRejected,
         ),
       );
       return;
@@ -421,6 +414,11 @@ class ZcodeModelProvider extends ModelProvider {
               'application/json',
               const Stream.empty(),
               cancel: upstream.cancel,
+              errorCode:
+                  upstream.errorCode ??
+                  (error == 429 ? 'quota_exhausted' : null),
+              retryAfterSeconds: upstream.retryAfterSeconds,
+              credentialRejected: upstream.credentialRejected,
             ),
           );
           return;
@@ -440,14 +438,24 @@ class ZcodeModelProvider extends ModelProvider {
           final value = valueOf(event);
           if (_businessError(value) != null)
             throw const ModelServiceFailure('upstream_stream_incomplete');
-          yield event.encode();
+          yield search.restore(value)
+              ? ModelSseEvent(event.event, jsonEncode(value)).encode()
+              : event.encode();
           if (value['type'] == 'message_stop') return;
         } while (await iterator.moveNext());
         throw const ModelServiceFailure('upstream_stream_incomplete');
       }
 
       await consume(
-        ModelReply(200, 'text/event-stream', replay(), cancel: upstream.cancel),
+        ModelReply(
+          200,
+          'text/event-stream',
+          replay(),
+          cancel: upstream.cancel,
+          errorCode: upstream.errorCode,
+          retryAfterSeconds: upstream.retryAfterSeconds,
+          credentialRejected: upstream.credentialRejected,
+        ),
       );
     } finally {
       await iterator.cancel();

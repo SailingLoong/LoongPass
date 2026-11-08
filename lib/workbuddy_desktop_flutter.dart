@@ -1,19 +1,17 @@
 import 'package:flutter/services.dart';
 
 import 'workbuddy_desktop_session.dart';
+import 'workbuddy_client_info.dart';
 
 class WorkBuddyDesktopFlutter {
   static const _channel = MethodChannel('com.sailingloong.loongpass/files');
 
-  static Future<String> clientVersion() async {
+  static Future<WorkBuddyClientInfo> clientInfo() async {
     try {
-      final version = await _channel.invokeMethod<String>(
-        'workBuddyClientVersion',
-      );
-      if (version == null) throw StateError('unavailable');
-      return version;
+      final info = await _channel.invokeMethod<Object>('workBuddyClientInfo');
+      return WorkBuddyClientInfo.fromNative(info);
     } catch (_) {
-      throw StateError('WorkBuddy client version unavailable');
+      throw StateError('WorkBuddy client info unavailable');
     }
   }
 

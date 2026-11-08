@@ -539,7 +539,7 @@ Future<void> main() async {
     final q = client(n, t, now: () => now);
     await login(q);
     now += 3600001;
-    t.refreshStatus = 400;
+    t.refreshStatus = 401;
     await rejects(() => q.claim('account-a'), 'identity_expired');
     await rejects(() => q.claim('account-a'), 'identity_expired');
     expect(

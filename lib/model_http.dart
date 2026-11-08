@@ -84,12 +84,35 @@ class ModelHttp implements ModelTransport {
             return chunk;
           }),
           cancel: cancel,
+          credentialRejected:
+              response.statusCode == 401 &&
+              (response.headers[HttpHeaders.wwwAuthenticateHeader]?.any(
+                    (value) => value.toLowerCase().contains('invalid_token'),
+                  ) ??
+                  false),
+          retryAfterSeconds: _retryAfter(
+            response.headers.value(HttpHeaders.retryAfterHeader),
+          ),
         ),
       );
     } finally {
       finished = true;
       client.close(force: true);
     }
+  }
+}
+
+int? _retryAfter(String? value) {
+  if (value == null) return null;
+  final seconds = int.tryParse(value);
+  if (seconds != null) return seconds >= 0 ? seconds : null;
+  try {
+    final milliseconds = HttpDate.parse(
+      value,
+    ).difference(DateTime.now().toUtc()).inMilliseconds;
+    return milliseconds <= 0 ? 0 : (milliseconds / 1000).ceil();
+  } catch (_) {
+    return null;
   }
 }
 

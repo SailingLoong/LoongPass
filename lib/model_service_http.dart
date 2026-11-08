@@ -1,6 +1,25 @@
 part of 'model_service.dart';
 
 extension _ModelServiceHttp on ModelService {
+  ModelRequestContext _clientContext(
+    HttpRequest request,
+    Map<String, dynamic> body,
+    String key,
+  ) {
+    final session = request.headers.value('x-loongpass-session');
+    if (session != null &&
+        (session.length > 512 ||
+            session.runes.any((r) => r < 32 || r == 127))) {
+      throw const ModelServiceFailure('invalid_session');
+    }
+    return ModelRequestContext.fromRequest(
+      body,
+      session: session,
+      scope: key,
+      anthropicBeta: request.headers.value('anthropic-beta'),
+    );
+  }
+
   Future<void> _handlePooled(HttpRequest request, String key) async {
     final response = request.response;
     var committed = false, dispatched = false;
@@ -54,13 +73,7 @@ extension _ModelServiceHttp on ModelService {
         await _error(response, 404, 'model_not_available');
         return;
       }
-      final session = request.headers.value('x-loongpass-session');
-      if (session != null &&
-          (session.length > 512 ||
-              session.runes.any((r) => r < 32 || r == 127))) {
-        await _error(response, 400, 'invalid_session');
-        return;
-      }
+      final requestContext = _clientContext(request, body, key);
       final wires = <String, Map<String, dynamic>>{};
       final ready = <ModelTarget>[];
       ModelServiceFailure? unsupported;
@@ -90,6 +103,7 @@ extension _ModelServiceHttp on ModelService {
           final wire = candidate.model.protocol == ModelProtocol.chat
               ? messagesToChat(body, candidate.model.id)
               : {...body, 'model': candidate.model.id};
+          candidate.model.validateInput(wire);
           source.validateRequest(candidate.model.protocol, wire);
           wires[candidate.id] = wire;
           ready.add(candidate);
@@ -108,9 +122,7 @@ extension _ModelServiceHttp on ModelService {
       target = _router.select(
         model.id,
         ready,
-        session: session == null || session.isEmpty || session == ':'
-            ? null
-            : '$key\u0000$session',
+        session: requestContext.hasSession ? requestContext.sessionId : null,
       );
       final selected = target;
       final row = Map<String, dynamic>.from(_rows[selected.bindingId]);
@@ -156,11 +168,15 @@ extension _ModelServiceHttp on ModelService {
           if (reply.status < 200 || reply.status >= 300) {
             if ({401, 403, 404, 408, 409, 429}.contains(reply.status) ||
                 reply.status >= 500)
-              _router.failed(selected);
+              _router.failed(
+                selected,
+                retryAfterSeconds: reply.retryAfterSeconds,
+              );
             await _error(
               response,
               reply.status >= 400 && reply.status <= 599 ? reply.status : 502,
-              'upstream_rejected',
+              reply.errorCode ?? 'upstream_rejected',
+              retryAfterSeconds: reply.retryAfterSeconds,
             );
             return;
           }
@@ -196,6 +212,9 @@ extension _ModelServiceHttp on ModelService {
         },
         isCurrent: current,
         cancelled: cancellation.future,
+        context: requestContext.forAccount(
+          '${selected.providerId}/${row['accountId']}/$registration',
+        ),
       );
     } catch (failure) {
       if (dispatched && target != null && signal?.isCompleted != true)
@@ -212,7 +231,11 @@ extension _ModelServiceHttp on ModelService {
               : 'request_incomplete';
           await _error(
             response,
-            code == 'model_temporarily_unavailable' ? 503 : 502,
+            code == 'invalid_session'
+                ? 400
+                : code == 'model_temporarily_unavailable'
+                ? 503
+                : 502,
             code,
           );
         }
@@ -226,10 +249,18 @@ extension _ModelServiceHttp on ModelService {
     }
   }
 
-  Future<void> _error(HttpResponse response, int status, String code) async {
+  Future<void> _error(
+    HttpResponse response,
+    int status,
+    String code, {
+    int? retryAfterSeconds,
+  }) async {
     response.statusCode = status;
     response.headers.contentType = ContentType.json;
     response.headers.set('x-should-retry', 'false');
+    if (retryAfterSeconds != null && retryAfterSeconds >= 0) {
+      response.headers.set('retry-after', '$retryAfterSeconds');
+    }
     response.write(
       jsonEncode({
         'type': 'error',
@@ -366,6 +397,15 @@ extension _ModelServiceHttp on ModelService {
         await _error(response, 404, 'model_not_available');
         return;
       }
+      final ModelRequestContext requestContext;
+      try {
+        models.firstWhere((m) => m.id == body['model']).validateInput(body);
+        provider.validateRequest(protocol, body);
+        requestContext = _clientContext(request, body, key);
+      } on ModelServiceFailure catch (failure) {
+        await _error(response, 400, failure.code);
+        return;
+      }
       final signal = cancellation = Completer<void>();
       _active[signal] = id;
       void cancel() {
@@ -408,7 +448,8 @@ extension _ModelServiceHttp on ModelService {
             await _error(
               response,
               reply.status >= 400 && reply.status <= 599 ? reply.status : 502,
-              'upstream_rejected',
+              reply.errorCode ?? 'upstream_rejected',
+              retryAfterSeconds: reply.retryAfterSeconds,
             );
             return;
           }
@@ -432,6 +473,9 @@ extension _ModelServiceHttp on ModelService {
         },
         isCurrent: current,
         cancelled: signal.future,
+        context: requestContext.forAccount(
+          '$providerId/$accountId/$registration',
+        ),
       );
     } catch (_) {
       lastStatus = 502;

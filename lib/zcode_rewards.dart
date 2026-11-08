@@ -93,7 +93,14 @@ class ZcodeBalance {
   final int serverTime, checkedAt;
   final List<Map<String, dynamic>> plans;
   final List<ZcodeBucket> buckets;
-  ZcodeBalance._(this.serverTime, this.checkedAt, this.plans, this.buckets);
+  final Set<String> entitledModels;
+  ZcodeBalance._(
+    this.serverTime,
+    this.checkedAt,
+    this.plans,
+    this.buckets,
+    Set<String> entitledModels,
+  ) : entitledModels = Set.unmodifiable(entitledModels);
   factory ZcodeBalance.parse(Map<String, dynamic> body, int nowMs) {
     final data = zcodeData(body), raw = zcodeData(body)['plans'];
     if (raw is! List || raw.length > 1024)
@@ -105,8 +112,8 @@ class ZcodeBalance {
     for (final p in raw) {
       if (p is! Map<String, dynamic> ||
           !zcodeText(p['plan_id']) ||
-          !zcodeText(p['user_plan_id']) ||
-          !ids.add(p['user_plan_id']) ||
+          p.containsKey('user_plan_id') &&
+              (!zcodeText(p['user_plan_id']) || !ids.add(p['user_plan_id'])) ||
           !zcodeText(p['status'])) {
         throw const ZcodeFailure('invalid_response');
       }
@@ -120,15 +127,15 @@ class ZcodeBalance {
       plans.add(normalized);
     }
     final buckets = <ZcodeBucket>[];
+    final entitledModels = <String>{};
     final rawBuckets = data['balances'];
     if (rawBuckets != null && rawBuckets is! List)
       throw const ZcodeFailure('invalid_response');
     for (final b in (rawBuckets as List? ?? [])) {
-      if (b is! Map) throw const ZcodeFailure('invalid_response');
-      final matches = plans.where(
-        (p) => p['user_plan_id'] == b['user_plan_id'],
-      );
-      final plan = matches.isEmpty ? null : matches.first;
+      if (b is! Map ||
+          b.containsKey('user_plan_id') && !zcodeText(b['user_plan_id']))
+        throw const ZcodeFailure('invalid_response');
+      final plan = _planForBucket(plans, b);
       final expires = _seconds(b['expires_at']);
       // A bucket is usable only when tied to an observed active entitlement.
       if (plan == null ||
@@ -153,13 +160,51 @@ class ZcodeBalance {
           end,
         ),
       );
+      final remaining = _amount(b['remaining_units']);
+      final used = _amount(b['used_units']), total = _amount(b['total_units']);
+      final available = remaining != null
+          ? remaining > 0
+          : b['remaining_units'] == null &&
+                used != null &&
+                total != null &&
+                used < total;
+      if (available && b['capabilities'] is List) {
+        for (final capability in b['capabilities']) {
+          if (capability is! String) continue;
+          final name = capability.trim();
+          final model = name.startsWith('model:')
+              ? name.substring(6).trim()
+              : name.contains(':')
+              ? ''
+              : name;
+          if (model.isNotEmpty) entitledModels.add(model.toLowerCase());
+        }
+      }
     }
     buckets.sort(
       (a, b) =>
           (a.expiresAt ?? 253402300799).compareTo(b.expiresAt ?? 253402300799),
     );
-    return ZcodeBalance._(time, nowMs, plans, buckets);
+    return ZcodeBalance._(time, nowMs, plans, buckets, entitledModels);
   }
+
+  static Map<String, dynamic>? _planForBucket(
+    List<Map<String, dynamic>> plans,
+    Map bucket,
+  ) {
+    final instance = bucket['user_plan_id'];
+    if (instance != null) {
+      final exact = plans.where((p) => p['user_plan_id'] == instance);
+      if (exact.length == 1) return exact.single;
+    }
+    // Older balances identify only the plan. A repeated plan id cannot prove
+    // which entitlement owns this bucket; explicit instance ids never disagree.
+    final candidates = plans.where((p) => p['plan_id'] == bucket['plan_id']);
+    if (candidates.length != 1) return null;
+    final plan = candidates.single;
+    return instance != null && plan['user_plan_id'] != null ? null : plan;
+  }
+
   static bool _held(Map<String, dynamic> p, int now) =>
       p['status'] == 'active' &&
       (_seconds(p['ends_at']) == null || _seconds(p['ends_at'])! > now);
@@ -177,6 +222,7 @@ class ZcodeBalance {
   Map<String, dynamic>? receipt(String id, List<dynamic> previous) {
     for (final p in plans) {
       if (p['plan_id'] == id &&
+          zcodeText(p['user_plan_id']) &&
           !previous.contains(p['user_plan_id']) &&
           {'active', 'expired'}.contains(p['status']))
         return p;

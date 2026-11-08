@@ -10,6 +10,7 @@ class QoderModelProvider extends ModelProvider {
   final QoderDeviceAccounts owner;
   final ModelTransport transport;
   final _models = <String, (String, List<Map<String, dynamic>>)>{};
+  final _tasks = <String, ({int began, int used, bool answered})>{};
   QoderModelProvider(this.owner, {ModelTransport? transport})
     : transport = transport ?? ModelHttp() {
     if (owner.region != QoderRegion.cn)
@@ -31,7 +32,7 @@ class QoderModelProvider extends ModelProvider {
   Set<ModelProtocol> get protocols => {ModelProtocol.chat};
   @override
   void validateRequest(ModelProtocol protocol, Map<String, dynamic> body) =>
-      validateQoderContent(body);
+      validateQoderRequest(body);
   @override
   Stream<void> get changes => owner.authorizationChanges;
   @override
@@ -63,21 +64,29 @@ class QoderModelProvider extends ModelProvider {
         if (models.isEmpty)
           throw const ModelServiceFailure('model_discovery_failed');
         _models[accountId] = (registration, models);
-        int? positive(Object? n) => n is int && n > 0 ? n : null;
+        ModelDefinition definition(Map<String, dynamic> model) {
+          final spec = QoderModelSpec(model);
+          return ModelDefinition(
+            model['key'],
+            canonicalId: _canonicalId(model['display_name']),
+            protocol: ModelProtocol.chat,
+            name: model['display_name'] is String
+                ? model['display_name']
+                : null,
+            contextWindow: spec.contextWindow,
+            outputLimit: spec.outputLimit,
+            images: model['is_vl'] == true,
+            reasoning: spec.reasoning,
+            alwaysThinks: spec.alwaysThinks,
+            reasoningEfforts: spec.supportedEfforts,
+            defaultReasoningEffort: spec.defaultEffort,
+            tools: true,
+          );
+        }
+
         return ModelCatalog(
           registrationId: registration,
-          models: [
-            for (final m in models)
-              ModelDefinition(
-                m['key'],
-                canonicalId: _canonicalId(m['display_name']),
-                protocol: ModelProtocol.chat,
-                name: m['display_name'] is String ? m['display_name'] : null,
-                contextWindow: positive(m['max_input_tokens']),
-                outputLimit: positive(m['max_output_tokens']),
-                tools: true,
-              ),
-          ],
+          models: [for (final m in models) definition(m)],
         );
       });
   @override
@@ -89,6 +98,7 @@ class QoderModelProvider extends ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   }) async {
     if (protocol != ModelProtocol.chat)
       throw const ModelServiceFailure('endpoint_not_supported');
@@ -96,7 +106,33 @@ class QoderModelProvider extends ModelProvider {
     final model = saved?.$2.where((m) => m['key'] == body['model']).firstOrNull;
     if (saved?.$1 != registrationId || model == null)
       throw const ModelServiceFailure('model_not_available');
-    final wire = qoderEncodeBody(jsonEncode(qoderRequest(body, model)));
+    final identity =
+        context ??
+        ModelRequestContext.fromRequest(
+          body,
+        ).forAccount('$id/$accountId/$registrationId');
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _tasks.removeWhere((_, task) => now - task.used > 7200000);
+    final taskKey =
+        '$accountId/$registrationId/${identity.sessionId}/${identity.turnId}';
+    final task =
+        _tasks.remove(taskKey) ?? (began: now, used: now, answered: false);
+    _tasks[taskKey] = (began: task.began, used: now, answered: task.answered);
+    while (_tasks.length > 512) {
+      _tasks.remove(_tasks.keys.first);
+    }
+    final wire = qoderEncodeBody(
+      jsonEncode(
+        qoderRequest(
+          body,
+          model,
+          context: identity,
+          taskId: identity.turnId,
+          taskBeganAt: task.began,
+          taskAnswered: task.answered,
+        ),
+      ),
+    );
     final uri = Uri.parse('https://gateway.qoder.com.cn$qoderChatPath');
     await owner.withInferenceAuthorization(
       accountId,
@@ -118,7 +154,28 @@ class QoderModelProvider extends ModelProvider {
         body: wire,
         isCurrent: () => current() && isCurrent(),
         cancelled: cancelled,
-        consume: (reply) => consumeQoderReply(reply, body, consume),
+        consume: (reply) async {
+          var success = false;
+          await consumeQoderReply(
+            reply,
+            body,
+            (converted) async {
+              await consume(converted);
+              success = converted.status == 200;
+            },
+            onCredentialRejected: () => owner.rejectInferenceAuthorization(
+              accountId,
+              registration,
+              token,
+            ),
+          );
+          if (success && _tasks.containsKey(taskKey))
+            _tasks[taskKey] = (
+              began: task.began,
+              used: DateTime.now().millisecondsSinceEpoch,
+              answered: true,
+            );
+        },
       ),
       expectedRegistrationId: registrationId,
     );

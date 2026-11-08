@@ -1,12 +1,15 @@
 import 'dart:convert';
+
 import 'model_provider.dart';
 import 'model_sse.dart';
 
 Never _unsupported() => throw const ModelServiceFailure('unsupported_content');
 Never _invalidReply() =>
     throw const ModelServiceFailure('invalid_upstream_response');
+String _toolLoadedText(String name) =>
+    'Tool $name is loaded and can be called now.';
 
-Object _chatContent(Object? value) {
+Object _chatContent(Object? value, {bool toolResult = false}) {
   if (value is String) return value;
   if (value is! List) _unsupported();
   final parts = <Map<String, dynamic>>[];
@@ -38,6 +41,15 @@ Object _chatContent(Object? value) {
           'type': 'image_url',
           'image_url': {'url': url},
         });
+      case 'tool_reference' when toolResult:
+        final name = block['tool_name'];
+        if (name is! String || name.isEmpty) _unsupported();
+        final previous = parts.isEmpty ? null : parts.last['text'];
+        parts.add({
+          'type': 'text',
+          'text':
+              '${previous is String && previous.isNotEmpty && !previous.endsWith('\n') ? '\n' : ''}${_toolLoadedText(name)}',
+        });
       default:
         _unsupported();
     }
@@ -48,6 +60,161 @@ Object _chatContent(Object? value) {
     return parts.map((p) => p['text']).join();
   }
   return parts;
+}
+
+/// Tool-loading metadata has one shared owner, before protocol conversion.
+/// Current declarations win over historical definitions of the same name.
+// Protocol reference: Magpie 8f6298f, anthropic_shapes.go (MIT). Unlike its
+// metadata stripping, named removal here also retires inline-only definitions.
+({List<Map<String, dynamic>> messages, List<Map<String, dynamic>> tools})
+_chatToolLoading(Map<String, dynamic> body) {
+  final current = <String>{};
+  final known = <String, Map<String, dynamic>>{};
+  final active = <String, Map<String, dynamic>>{};
+  final references = <String>{};
+  String nameOf(Object? value) {
+    if (value is! String || value.isEmpty) _unsupported();
+    return value;
+  }
+
+  ({String name, bool restored}) declare(
+    Object? definition, {
+    bool topLevel = false,
+  }) {
+    final wire = _chatTool(definition);
+    final name = nameOf(wire['function']['name']);
+    final restored = known.containsKey(name) && !active.containsKey(name);
+    if (topLevel) current.add(name);
+    if (topLevel || !current.contains(name)) {
+      known[name] = wire;
+      active[name] = wire;
+    }
+    return (name: name, restored: restored);
+  }
+
+  if (body['tools'] != null) {
+    if (body['tools'] is! List) _unsupported();
+    for (final tool in body['tools']) {
+      if (tool is Map && tool['name'] == 'DeferredToolPlaceholder') continue;
+      declare(tool, topLevel: true);
+    }
+  }
+
+  List<Map<String, dynamic>> content(List blocks, {bool result = false}) {
+    final out = <Map<String, dynamic>>[];
+    for (final block in blocks) {
+      if (block is! Map<String, dynamic>) _unsupported();
+      switch (block['type']) {
+        case 'tool_addition' when !result:
+        case 'tool_removal' when !result:
+          final tool = block['tool'];
+          if (tool is! Map) _unsupported();
+          if (block['type'] == 'tool_addition' &&
+              tool['type'] == 'tool_definition') {
+            final declaration = declare(tool['definition']);
+            if (declaration.restored) {
+              out.add({
+                'type': 'text',
+                'text': _toolLoadedText(declaration.name),
+              });
+            }
+          } else if (tool['type'] == 'tool_reference') {
+            if (tool.keys.any((key) => !{'type', 'name'}.contains(key)))
+              _unsupported();
+            final name = nameOf(tool['name']);
+            if (block['type'] == 'tool_removal') {
+              if (!known.containsKey(name)) _unsupported();
+              if (!current.contains(name)) {
+                active.remove(name);
+                out.add({
+                  'type': 'text',
+                  'text': 'Tool $name is no longer available.',
+                });
+              }
+            } else {
+              references.add(name);
+              if (!current.contains(name) && known.containsKey(name)) {
+                if (!active.containsKey(name)) {
+                  out.add({'type': 'text', 'text': _toolLoadedText(name)});
+                }
+                active[name] = known[name]!;
+              }
+            }
+          } else {
+            _unsupported();
+          }
+        case 'tool_definition':
+          final declaration = declare(block['definition']);
+          if (result) {
+            out.add({'type': 'tool_reference', 'tool_name': declaration.name});
+          } else if (declaration.restored) {
+            out.add({
+              'type': 'text',
+              'text': _toolLoadedText(declaration.name),
+            });
+          }
+        case 'tool_reference':
+          final name = nameOf(block['tool_name']);
+          references.add(name);
+          out.add(
+            result ? block : {'type': 'text', 'text': _toolLoadedText(name)},
+          );
+        case 'tool_result' when !result:
+          final value = block['content'];
+          out.add({
+            ...block,
+            if (value is List) 'content': content(value, result: true),
+          });
+        default:
+          out.add(block);
+      }
+    }
+    return out;
+  }
+
+  if (body['messages'] is! List) _unsupported();
+  final messages = <Map<String, dynamic>>[];
+  for (final message in body['messages']) {
+    if (message is! Map<String, dynamic> ||
+        !{'user', 'assistant', 'system'}.contains(message['role']))
+      _unsupported();
+    final value = message['content'];
+    if (value is! List) {
+      messages.add(message);
+      continue;
+    }
+    final normalized = content(value);
+    if (value.isNotEmpty && normalized.isEmpty) continue;
+    messages.add({...message, 'content': normalized});
+  }
+  if (references.any((name) => !known.containsKey(name))) _unsupported();
+  return (messages: messages, tools: active.values.toList());
+}
+
+({Object text, List<Map<String, dynamic>> images}) _chatToolOutput(
+  Object? value,
+) {
+  if (value is String) return (text: value, images: []);
+  if (value is! List) _unsupported();
+  final text = <Map<String, dynamic>>[], images = <Map<String, dynamic>>[];
+  for (final block in value) {
+    if (block is! Map<String, dynamic>) _unsupported();
+    (block['type'] == 'image' ? images : text).add(block);
+  }
+  var output = _chatContent(text, toolResult: true);
+  if (images.isNotEmpty) {
+    _chatContent(images); // Validate each image before constructing the wire.
+    final note = images.length == 1
+        ? '[The tool returned an image; it follows in the next message.]'
+        : '[The tool returned ${images.length} images; they follow in the next message.]';
+    output = output is String
+        ? (output.isEmpty ? note : '$output\n\n$note')
+        : [
+            ...output as List,
+            {'type': 'text', 'text': '\n\n$note'},
+          ];
+  }
+  return (text: output, images: images);
 }
 
 /// One protocol boundary after routing. No prompts, model versions, tools or
@@ -75,18 +242,57 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
   final thinking = body['thinking'], output = body['output_config'];
   if (thinking != null &&
           (thinking is! Map ||
-              !{'adaptive', 'disabled'}.contains(thinking['type'])) ||
+              !{
+                'adaptive',
+                'disabled',
+                'enabled',
+                'between_tools',
+              }.contains(thinking['type']) ||
+              thinking.keys.any(
+                (k) => !{'type', 'display', 'budget_tokens'}.contains(k),
+              ) ||
+              thinking['type'] == 'enabled' &&
+                  (thinking['budget_tokens'] is! int ||
+                      thinking['budget_tokens'] <= 0)) ||
       output != null &&
           (output is! Map ||
-              output.keys.any((k) => k != 'effort') ||
-              !{
-                'low',
-                'medium',
-                'high',
-                'xhigh',
-                'max',
-              }.contains(output['effort']))) {
+              output.keys.any((k) => !{'effort', 'format'}.contains(k)) ||
+              output.containsKey('effort') &&
+                  !{
+                    'low',
+                    'medium',
+                    'high',
+                    'xhigh',
+                    'max',
+                  }.contains(output['effort']))) {
     throw const ModelServiceFailure('unsupported_request_parameter');
+  }
+  final format = output is Map ? output['format'] : null;
+  if (format != null &&
+      (format is! Map ||
+          format['type'] != 'json_schema' ||
+          format['schema'] is! Map ||
+          format.keys.any((k) => !{'type', 'schema'}.contains(k)))) {
+    throw const ModelServiceFailure('unsupported_request_parameter');
+  }
+  String? effort;
+  if (thinking is Map) {
+    if ({'disabled', 'between_tools'}.contains(thinking['type'])) {
+      effort = 'none';
+    } else if (output is Map && output['effort'] is String) {
+      effort = output['effort'];
+    } else if (thinking['type'] == 'enabled') {
+      final budget = thinking['budget_tokens'] as int;
+      effort = budget <= 4096
+          ? 'low'
+          : budget <= 12000
+          ? 'medium'
+          : budget <= 24000
+          ? 'high'
+          : 'xhigh';
+    } else {
+      effort = 'medium';
+    }
   }
   // Claude Code asks to keep every thinking block. This context-edit policy is
   // a no-op on the full transcript we send. Actual destructive context edits
@@ -105,16 +311,47 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
           ))) {
     throw const ModelServiceFailure('unsupported_request_parameter');
   }
+  final loading = _chatToolLoading(body);
   final messages = <Map<String, dynamic>>[];
+  final images = <Map<String, dynamic>>[];
+  final userParts = <Map>[];
+  final awaitingResults = <String>{};
+  final toolNames = <String, String>{};
+  void userContent(List<Map> parts, {bool force = false}) {
+    userParts.addAll(parts);
+    if (!force && awaitingResults.isNotEmpty) return;
+    if (userParts.isEmpty && images.isEmpty) return;
+    messages.add({
+      'role': 'user',
+      'content': _chatContent([...images, ...userParts]),
+    });
+    images.clear();
+    userParts.clear();
+  }
+
   if (body['system'] != null)
     messages.add({'role': 'system', 'content': _chatContent(body['system'])});
-  if (body['messages'] is! List) _unsupported();
-  for (final message in body['messages']) {
-    if (message is! Map || !{'user', 'assistant'}.contains(message['role']))
-      _unsupported();
+  for (final message in loading.messages) {
+    if (message['role'] != 'user' &&
+        (images.isNotEmpty || userParts.isNotEmpty))
+      userContent([], force: true);
     final content = message['content'];
-    if (content is String) {
-      messages.add({'role': message['role'], 'content': content});
+    // Claude Code also sends per-turn environment updates inside messages.
+    // Chat can represent them directly; keep their role and original position.
+    if (content is String || message['role'] == 'system') {
+      if (message['role'] == 'user' &&
+          (images.isNotEmpty ||
+              userParts.isNotEmpty ||
+              awaitingResults.isNotEmpty)) {
+        userContent([
+          {'type': 'text', 'text': content},
+        ]);
+      } else {
+        messages.add({
+          'role': message['role'],
+          'content': _chatContent(content),
+        });
+      }
       continue;
     }
     if (content is! List) _unsupported();
@@ -126,9 +363,13 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
         if (block is! Map) _unsupported();
         if (block['type'] == 'tool_use') {
           if (block['id'] is! String ||
+              (block['id'] as String).isEmpty ||
               block['name'] is! String ||
+              (block['name'] as String).isEmpty ||
               block['input'] is! Map)
             _unsupported();
+          toolNames[block['id']] = block['name'];
+          awaitingResults.add(block['id']);
           tools.add({
             'id': block['id'],
             'type': 'function',
@@ -155,33 +396,39 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
       });
     } else {
       final parts = <Map>[];
-      void flush() {
-        if (parts.isNotEmpty) {
-          messages.add({'role': 'user', 'content': _chatContent(parts)});
-          parts.clear();
-        }
-      }
-
       for (final block in content) {
         if (block is! Map) _unsupported();
         if (block['type'] == 'tool_result') {
-          flush();
-          if (block['tool_use_id'] is! String) _unsupported();
-          final result = _chatContent(block['content'] ?? '');
+          final id = block['tool_use_id'];
+          if (id is! String || id.isEmpty) _unsupported();
+          final result = _chatToolOutput(block['content'] ?? '');
+          awaitingResults.remove(id);
           messages.add({
             'role': 'tool',
-            'tool_call_id': block['tool_use_id'],
+            'tool_call_id': id,
             'content': block['is_error'] == true
-                ? jsonEncode({'is_error': true, 'content': result})
-                : result,
+                ? jsonEncode({'is_error': true, 'content': result.text})
+                : result.text,
           });
+          if (result.images.isNotEmpty) {
+            final name = toolNames[id];
+            final attribution = name == null
+                ? 'tool call $id'
+                : '$name (tool call $id)';
+            images.addAll([
+              {'type': 'text', 'text': '[From the result of $attribution:]'},
+              ...result.images,
+            ]);
+          }
         } else {
           parts.add(block);
         }
       }
-      flush();
+      // Tool messages must stay together immediately after their tool calls.
+      if (parts.isNotEmpty || userParts.isNotEmpty) userContent(parts);
     }
   }
+  if (images.isNotEmpty || userParts.isNotEmpty) userContent([], force: true);
   final result = <String, dynamic>{
     'model': modelId,
     'messages': messages,
@@ -191,19 +438,17 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
     for (final key in ['temperature', 'top_p'])
       if (body[key] != null) key: body[key],
     if (body['stop_sequences'] != null) 'stop': body['stop_sequences'],
-    if (thinking is Map && thinking['type'] == 'disabled')
-      'reasoning_effort': 'none'
-    else if (output is Map)
-      'reasoning_effort': output['effort']
-    else if (thinking is Map && thinking['type'] == 'adaptive')
-      'reasoning_effort': 'medium',
+    if (effort != null) 'reasoning_effort': effort,
+    if (format is Map)
+      'response_format': {
+        'type': 'json_schema',
+        'json_schema': {'name': 'response', 'schema': format['schema']},
+      },
   };
   if (body['metadata'] case {'user_id': final String user})
     result['user'] = user;
-  if (body['tools'] != null) {
-    if (body['tools'] is! List) _unsupported();
-    result['tools'] = [for (final tool in body['tools']) _chatTool(tool)];
-  }
+  if (body['tools'] != null || loading.tools.isNotEmpty)
+    result['tools'] = loading.tools;
   final choice = body['tool_choice'];
   if (choice != null) {
     if (choice is! Map) _unsupported();
@@ -211,10 +456,15 @@ Map<String, dynamic> messagesToChat(Map<String, dynamic> body, String modelId) {
       'auto' => 'auto',
       'any' => 'required',
       'none' => 'none',
-      'tool' when choice['name'] is String => {
-        'type': 'function',
-        'function': {'name': choice['name']},
-      },
+      'tool'
+          when choice['name'] is String &&
+              loading.tools.any(
+                (tool) => tool['function']['name'] == choice['name'],
+              ) =>
+        {
+          'type': 'function',
+          'function': {'name': choice['name']},
+        },
       _ => _unsupported(),
     };
     if (choice['disable_parallel_tool_use'] is bool) {
@@ -229,6 +479,8 @@ Map<String, dynamic> _chatTool(Object? tool) {
   if (tool is! Map ||
       tool['name'] is! String ||
       tool['input_schema'] is! Map ||
+      tool['description'] != null && tool['description'] is! String ||
+      tool['defer_loading'] != null && tool['defer_loading'] is! bool ||
       tool['type'] != null && tool['type'] != 'custom')
     _unsupported();
   return {
@@ -247,12 +499,24 @@ Map<String, dynamic> _usage(Object? value) {
   int count(Object? n) => n is int && n >= 0 ? n : 0;
   final total = count(raw['prompt_tokens']);
   final details = raw['prompt_tokens_details'];
-  final cached = details is Map ? count(details['cached_tokens']) : 0;
-  if (cached > total) _invalidReply();
+  var cached = details is Map ? count(details['cached_tokens']) : 0;
+  var written = details is Map ? count(details['cache_write_tokens']) : 0;
+  if (cached == 0) cached = count(raw['prompt_cache_hit_tokens']);
+  if (cached == 0) cached = count(raw['cached_tokens']);
+  var whole = true;
+  if (cached == 0 && written == 0) {
+    cached = count(raw['cache_read_input_tokens']);
+    written = count(raw['cache_creation_input_tokens']);
+    // Some Messages relays retain Anthropic's uncached prompt count.
+    whole = total >= cached + written;
+  } else if (cached + written > total) {
+    _invalidReply();
+  }
   return {
-    'input_tokens': total - cached,
+    'input_tokens': whole ? total - cached - written : total,
     'output_tokens': count(raw['completion_tokens']),
     if (cached > 0) 'cache_read_input_tokens': cached,
+    if (written > 0) 'cache_creation_input_tokens': written,
   };
 }
 
@@ -339,6 +603,9 @@ Future<ModelReply> messagesChatReply(
       'text/event-stream',
       _chatStream(reply.body, modelId),
       cancel: reply.cancel,
+      errorCode: reply.errorCode,
+      retryAfterSeconds: reply.retryAfterSeconds,
+      credentialRejected: reply.credentialRejected,
     );
   }
   final bytes = <int>[];
@@ -362,6 +629,9 @@ Future<ModelReply> messagesChatReply(
         ? _wholeStream(message)
         : Stream.value(utf8.encode(jsonEncode(message))),
     cancel: reply.cancel,
+    errorCode: reply.errorCode,
+    retryAfterSeconds: reply.retryAfterSeconds,
+    credentialRejected: reply.credentialRejected,
   );
 }
 
@@ -398,6 +668,9 @@ Future<ModelReply> messagesNativeReply(
           throw const ModelServiceFailure('upstream_response_incomplete');
       })(),
       cancel: reply.cancel,
+      errorCode: reply.errorCode,
+      retryAfterSeconds: reply.retryAfterSeconds,
+      credentialRejected: reply.credentialRejected,
     );
   }
   final bytes = <int>[];
@@ -425,6 +698,9 @@ Future<ModelReply> messagesNativeReply(
         ? _wholeStream(message)
         : Stream.value(utf8.encode(jsonEncode(message))),
     cancel: reply.cancel,
+    errorCode: reply.errorCode,
+    retryAfterSeconds: reply.retryAfterSeconds,
+    credentialRejected: reply.credentialRejected,
   );
 }
 

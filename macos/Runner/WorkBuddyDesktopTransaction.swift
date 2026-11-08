@@ -35,11 +35,26 @@ final class WorkBuddyDesktopTransaction {
     static func validateProduct(_ data: Data) throws {
         guard data.count <= 1_048_576,
             let document = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            document["applicationName"] == nil || document["applicationName"] as? String == "WorkBuddy",
             let authentication = document["authentication"] as? [String: Any],
             authentication["id"] as? String == "workbuddy-desktop",
             authentication["type"] as? String == "account-scoped-external-link",
             let attributes = authentication["attributes"] as? [String: Any],
             attributes["platform"] as? String == "workbuddy" else { throw Failure.unsafeFile }
+    }
+
+    static func clientInfo(appVersion: String, product: Data, package: Data) throws -> [String: String] {
+        try validateProduct(product)
+        guard appVersion.utf8.count <= 64,
+            appVersion.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:\\.[0-9]+)?\\z", options: .regularExpression) != nil,
+            package.count <= 1_048_576,
+            let metadata = try JSONSerialization.jsonObject(with: package) as? [String: Any],
+            metadata["name"] as? String == "@genie/agent-cli",
+            let version = metadata["version"] as? String, version.utf8.count <= 64,
+            version.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?\\z", options: .regularExpression) != nil,
+            let settings = try JSONSerialization.jsonObject(with: product) as? [String: Any],
+            settings["applicationName"] as? String == "WorkBuddy" else { throw Failure.unsafeFile }
+        return ["appVersion": appVersion, "cliVersion": version, "applicationName": "WorkBuddy"]
     }
 
     static func validateSession(_ value: [String: Any]) throws {

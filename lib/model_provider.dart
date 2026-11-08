@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'model_request_context.dart';
+export 'model_request_context.dart';
 
 enum ModelProtocol {
   messages('/messages'),
@@ -22,7 +24,9 @@ class ModelDefinition {
   /// model. Null keeps an opaque routing lane scoped to its source.
   final String? canonicalId;
   final ModelProtocol protocol;
-  final bool? tools;
+  final bool? tools, images, reasoning, alwaysThinks;
+  final List<String> reasoningEfforts;
+  final String? defaultReasoningEffort;
   final int? contextWindow, outputLimit;
   const ModelDefinition(
     this.id, {
@@ -30,6 +34,11 @@ class ModelDefinition {
     this.canonicalId,
     String? name,
     this.tools,
+    this.images,
+    this.reasoning,
+    this.alwaysThinks,
+    this.reasoningEfforts = const [],
+    this.defaultReasoningEffort,
     this.contextWindow,
     this.outputLimit,
   }) : name = name ?? id;
@@ -45,7 +54,52 @@ class ModelDefinition {
     if (contextWindow != null) 'context_length': contextWindow,
     if (outputLimit != null) 'max_output_tokens': outputLimit,
     if (tools != null) 'supports_tool_calls': tools,
+    if (images != null)
+      'modalities': {
+        'input': ['text', if (images == true) 'image'],
+        'output': ['text'],
+      },
+    if (reasoningEfforts.isNotEmpty)
+      'supported_reasoning_levels': reasoningEfforts,
+    if (alwaysThinks == true) 'supports_thinking_type': 'only',
+    if (defaultReasoningEffort != null)
+      'think_efforts': {'default_effort': defaultReasoningEffort},
   };
+
+  /// Validate source capability facts before selecting an account or sending.
+  void validateInput(Map<String, dynamic> body) {
+    final thinking = body['thinking'], reasoning = body['reasoning'];
+    bool off(Object? value) =>
+        value is String && {'none', 'off'}.contains(value.toLowerCase());
+    bool on(Object? value) =>
+        value is String && value.isNotEmpty && !off(value);
+    if (this.reasoning == false &&
+        (thinking is Map &&
+                {'enabled', 'adaptive'}.contains(thinking['type']) ||
+            on(body['reasoning_effort']) ||
+            reasoning is Map && on(reasoning['effort']))) {
+      throw const ModelServiceFailure('unsupported_reasoning_effort');
+    }
+    if (alwaysThinks == true &&
+        (thinking is Map &&
+                {'disabled', 'between_tools'}.contains(thinking['type']) ||
+            off(body['reasoning_effort']) ||
+            reasoning is Map && off(reasoning['effort']))) {
+      throw const ModelServiceFailure('unsupported_reasoning_effort');
+    }
+    if (images != false) return;
+    bool containsImage(Object? value) {
+      if (value is List) return value.any(containsImage);
+      if (value is! Map) return false;
+      if ({'image', 'image_url', 'input_image'}.contains(value['type']))
+        return true;
+      return containsImage(value['content']);
+    }
+
+    if (containsImage(body['messages'])) {
+      throw const ModelServiceFailure('unsupported_content');
+    }
+  }
 }
 
 class ModelCatalog {
@@ -62,7 +116,20 @@ class ModelReply {
   final String contentType;
   final Stream<List<int>> body;
   final void Function()? cancel;
-  const ModelReply(this.status, this.contentType, this.body, {this.cancel});
+  final String? errorCode;
+  final int? retryAfterSeconds;
+
+  /// Explicit HTTP401 invalid_token challenge; no raw header is retained.
+  final bool credentialRejected;
+  const ModelReply(
+    this.status,
+    this.contentType,
+    this.body, {
+    this.cancel,
+    this.errorCode,
+    this.retryAfterSeconds,
+    this.credentialRejected = false,
+  });
 }
 
 /// Credentials stay with each account owner. A registration identifies one
@@ -86,6 +153,7 @@ abstract class ModelProvider {
     Future<void> Function(ModelReply) consume, {
     required bool Function() isCurrent,
     required Future<void> cancelled,
+    ModelRequestContext? context,
   });
 }
 
