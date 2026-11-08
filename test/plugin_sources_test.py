@@ -28,9 +28,9 @@ class SourceIntegrity(unittest.TestCase):
             shutil.copytree(ROOT / 'runtime', root / 'runtime')
             shutil.copy(ROOT / 'pubspec.yaml', root)
             lock = root / 'runtime/upstream.lock.json'
-            manifest = json.loads(lock.read_text())
+            manifest = json.loads(lock.read_text(encoding='utf-8'))
             next(e for e in manifest['files'] if 'upstreamSha256' in e)['upstreamSha256'] = '0' * 64
-            lock.write_text(json.dumps(manifest))
+            lock.write_text(json.dumps(manifest), encoding='utf-8')
             with self.assertRaises(ValueError):
                 sources.verify(root)
 
@@ -40,7 +40,7 @@ class SourceIntegrity(unittest.TestCase):
             shutil.copytree(ROOT / 'runtime', root / 'runtime')
             shutil.copy(ROOT / 'pubspec.yaml', root)
             sources.verify(root)
-            (root / 'runtime/vendor/plugins/workbuddy/index.mjs').write_text('changed')
+            (root / 'runtime/vendor/plugins/workbuddy/index.mjs').write_text('changed', encoding='utf-8')
             with self.assertRaises(ValueError):
                 sources.verify(root)
 
