@@ -1,0 +1,169 @@
+# Native ZCode device-preserving reauthorization and reward request context.
+# Optional public host capabilities; default upstream sign-in behavior is unchanged.
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -1170,8 +1170,9 @@
+   return run
+ }
+ 
+-async function setAuth(key, info) {
++async function setAuth(key, info, expected) {
+   await changeAuth((all) => {
++    if (expected !== undefined && JSON.stringify(all[key]) !== expected) throw new Error("the authorization target changed")
+     all[key] = info
+   })
+   forgetAccount(key)
+@@ -2479,6 +2480,8 @@
+     icon: iconOf(a),
+     usage: typeof a.auth.usage === "function",
+     checkin: typeof a.auth.checkin === "function",
++    reauthorize: typeof a.auth.reauthorize === "function",
++    rewardContext: typeof a.auth.rewardContext === "function",
+     checkinStatus: typeof a.auth.checkinStatus === "function",
+     // its sign-ins are renewed in the background as they come due, so
+     // long before expires (keepSignedIn)
+@@ -2593,17 +2596,18 @@
+ // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
+ // a sign-in the plugin says is another provider's, a new account of
+ // that one). It gives the provider and where the account is kept.
+-async function save(provider, key, result, inputs, apiKey, accountId) {
++async function save(provider, key, result, inputs, apiKey, accountId, expected) {
+   const id = result.provider ?? provider
++  if (expected !== undefined && id !== provider) throw new Error("the authorization provider changed")
+   if (id !== provider) key = freshKey(id)
+   if ("refresh" in result) {
+     const { type: _t, provider: _p, refresh, access, expires, ...extra } = result
+-    await setAuth(key, { type: "oauth", refresh, access, expires, ...extra })
++    await setAuth(key, { type: "oauth", refresh, access, expires, ...extra }, expected)
+   } else if ("key" in result || apiKey) {
+     const md = { ...(inputs && Object.keys(inputs).length ? inputs : {}), ...(result.metadata ?? {}) }
+-    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) })
+-  }
+-  return { provider: id, account: await settle(id, key) }
++    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) }, expected)
++  }
++  return { provider: id, account: expected === undefined ? await settle(id, key) : key }
+ }
+ 
+ // signInKey is where a sign-in goes: the account named, else a new one.
+@@ -2625,17 +2629,24 @@
+ // callback(code, { signal }), authorize(inputs, { signal }); OpenCode
+ // passes none), and whatever the plugin answers after it is dropped,
+ // nothing saved.
+-async function authorize({ provider, method, inputs, account, proxy }, signal) {
+-  const m = authOf(provider).methods[method]
+-  if (!m) throw new Error(`no sign-in method ${method} for ${provider}`)
+-  if (m.type !== "oauth") throw new Error("not an oauth method")
++async function authorize({ provider, method, inputs, account, proxy, context }, signal) {
++  const auth = authOf(provider)
++  const targeted = account && account !== "new" && typeof auth.reauthorize === "function"
++  const m = auth.methods[method]
++  if (!targeted && !m) throw new Error(`no sign-in method ${method} for ${provider}`)
++  if (!targeted && m.type !== "oauth") throw new Error("not an oauth method")
+   const key = signInKey(provider, account)
++  const original = targeted ? authCopy(key) : undefined
++  if (targeted && !original) throw new Error("not signed in")
++  const expected = targeted ? JSON.stringify(original) : undefined
+   // the inputs go only to a method that asks something, as OpenCode's TUI
+   // (/connect) passes them: an object with none is how its CLI (opencode
+   // auth login) calls, and a plugin told so asks its questions on the
+   // terminal, magpie's stdin here (opencode-antigravity-auth waited on its
+   // "Project ID" prompt, the sign-in never starting)
+-  const a = await signingIn(signal, proxy ?? "", provider, key, () => m.authorize(m.prompts?.length ? inputs ?? {} : undefined, { signal }))
++  const a = await signingIn(signal, proxy ?? "", provider, key, () => targeted
++    ? auth.reauthorize(async () => structuredClone(original), structuredClone(context ?? {}), { signal })
++    : m.authorize(m.prompts?.length ? inputs ?? {} : undefined, { signal }))
+   if (signal?.aborted) throw abortedSignIn()
+   // a plugin that can't start the sign-in may say why as an api method's
+   // authorize does ({ type: "failed", error }) rather than throw; with no
+@@ -2645,7 +2656,7 @@
+   if (a?.type === "failed") return failed(a)
+   if (typeof a?.callback !== "function") return { ok: false, error: `${provider}'s sign-in gave nothing to finish it with` }
+   const session = String(nextSession++)
+-  sessions.set(session, { provider, key, a, inputs, proxy: proxy ?? "" })
++  sessions.set(session, { provider, key, a, inputs, expected, proxy: proxy ?? "" })
+   // opened (not OpenCode's) is a page the plugin's own CLI opened already:
+   // Grok Build's `grok login` opens it on macOS and Windows, and magpie's
+   // opening it too showed it twice (andyfmyth on X)
+@@ -2677,7 +2688,7 @@
+   const r = await signingIn(signal, s.proxy, s.provider, s.key, () => (s.a.method === "code" ? s.a.callback(code ?? "", { signal }) : s.a.callback(undefined, { signal })))
+   if (signal?.aborted) throw abortedSignIn()
+   if (!r || r.type !== "success") return failed(r)
+-  return { ok: true, ...(await save(s.provider, s.key, r, undefined)) }
++  return { ok: true, ...(await save(s.provider, s.key, r, undefined, undefined, undefined, s.expected)) }
+ }
+ 
+ async function apiKey({ provider, method, inputs, key, account, accountId, proxy }, signal) {
+@@ -3332,6 +3343,13 @@
+   apiKey,
+   load,
+   usage,
++  async rewardContext({ provider, account }, signal) {
++    const hook = authOf(provider).rewardContext
++    if (typeof hook !== "function") throw new Error(`${provider}'s plugin does not expose reward context`)
++    const key = accountKey(provider, account)
++    if (!readAuth()[key]) throw new Error("not signed in")
++    return inScope(provider, key, () => hook(async () => authCopy(key), { signal }))
++  },
+   checkin,
+   checkinStatus,
+   keepSignedIn,
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -1437,14 +1437,29 @@
+   return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
+ }
+ const accountIdOf = (site, uid) => `${site}:${uid}`
++const deviceID = (value) => typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
++// Target operations consume only the saved native grant. They do not follow
++// another installed client's current account or synthesize a device/identity.
++function savedGrant(auth, expected = {}) {
++  let s
++  try { s = JSON.parse(auth?.refresh) } catch {}
++  const uid = auth?.uid
++  if (auth?.type !== "oauth" || typeof uid !== "string" || !uid.trim() || uid !== uid.trim() ||
++      !s || !["bigmodel", "zai"].includes(s.site) || !deviceID(s.device)) throw new Error("ZCode has no verified saved binding")
++  if (expected.expectedUid !== undefined && expected.expectedUid !== uid ||
++      expected.expectedRealm !== undefined && expected.expectedRealm !== s.site) throw new Error("ZCode authorization target changed")
++  return { ...s, uid }
++}
+ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+ 
+ // authorize opens ZCode's sign-in flow on site; its callback polls it.
+ // onTeam signs in to the account's seat on a team's plan, named apart from
+ // the account's own plan (the host keeps one entry per account name).
+-async function authorize(site, log, onTeam = false) {
++async function authorize(site, log, onTeam = false, context = {}) {
+   const poll = "Bearer " + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
+-  const device = uuid()
++  const device = context.device ?? uuid()
++  const expectedUid = context.expectedUid
++  if (!deviceID(device) || context.expectedRealm !== undefined && context.expectedRealm !== site) throw new Error("ZCode sign-in: invalid target binding")
+   let flow
+   try {
+     flow = await call("POST", ZCODE + "/api/v1/oauth/cli/init", { auth: poll, body: { provider: site }, device })
+@@ -1483,6 +1498,7 @@
+         if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
+         const uid = uidOf(got.user)
+         if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
++        if (expectedUid !== undefined && uid !== expectedUid) return fail("ZCode sign-in: the official account differs from the saved target")
+         let s
+         try {
+           s = await signedIn(site, token, first(got.token), device, onTeam)
+@@ -2812,6 +2828,16 @@
+     },
+     auth: {
+       provider: PROVIDER,
++      // Optional public host hooks: authorization still goes through the
++      // same native callback and is saved only by the host.
++      async reauthorize(getAuth, context = {}) {
++        const s = savedGrant(await getAuth(), context)
++        return authorize(s.site, log, isTeam(s), { device: context.device ?? s.device, expectedUid: s.uid, expectedRealm: s.site })
++      },
++      async rewardContext(getAuth) {
++        const s = savedGrant(await getAuth())
++        return { version: APP_VERSION, platform: platform(), deviceMid: s.device, language: clientLanguage(), timezone: intl().timeZone || "unknown" }
++      },
+       // a plan serves one account a few requests at a time: magpie's own
+       // field, so its queue spaces what the agents ask for before the vendor
+       // sees it. For the coding plan this is a default, not a cap the plugin

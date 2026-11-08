@@ -1170,8 +1170,9 @@ function changeAuth(change) {
   return run
 }
 
-async function setAuth(key, info) {
+async function setAuth(key, info, expected) {
   await changeAuth((all) => {
+    if (expected !== undefined && JSON.stringify(all[key]) !== expected) throw new Error("the authorization target changed")
     all[key] = info
   })
   forgetAccount(key)
@@ -2422,19 +2423,23 @@ function tiersOf(v) {
 // that gave up (signal) has every hook it would still have asked told, so
 // a timed-out listing stops its vendor reads instead of multiplying them
 // (#4678).
-async function providers({ proxies, off } = {}, signal) {
+async function providers({ proxies, off, offAccounts } = {}, signal) {
   const stored = readAuth()
   // a provider switched off in magpie is asked nothing: its models hook
   // (and the sign-in renewal before it) would reach its vendor. It is
   // told as fallen back, so magpie keeps the list it had.
   const quiet = new Set(Array.isArray(off) ? off : [])
+  // Optional account admission is applied before any models or renewal hook.
+  // Without it the native default-account behavior remains unchanged.
+  const filtered = Array.isArray(offAccounts)
+  const blocked = new Set(filtered ? offAccounts : [])
   // every provider is listed side by side, each models hook given
   // listWait: one whose vendor is stuck holds up no other's row
   const row = async ([id, a]) => {
-    const keys = accountsOf(stored, id)
+    const keys = accountsOf(stored, id).filter((k) => !blocked.has(k))
     const through = (k) => proxies?.[id]?.[k ?? keys[0] ?? ""] ?? proxies?.[id]?.[""] ?? ""
     const gen = infoGen
-    if (quiet.has(id)) {
+    if (quiet.has(id) || (filtered && keys.length === 0)) {
       const p = await info(id, undefined, false, listWait, true)
       return rowOf(id, a, keys, stored, p, [])
     }
@@ -2443,7 +2448,7 @@ async function providers({ proxies, off } = {}, signal) {
     // listWaits back to back took one provider past refreshDeadline twice
     // over (#4065)
     const [p, own] = await Promise.all([
-      via.run(through(), () => info(id, undefined, false, listWait, false, signal)).then((q) => (keepInfo(keys[0] ?? id, q, gen), q)),
+      via.run(through(), () => info(id, filtered ? keys[0] : undefined, false, listWait, false, signal)).then((q) => (keepInfo(keys[0] ?? id, q, gen), q)),
       // each account's own models, as the built-ins read each account's: a
       // plan may serve fewer, or others, than the first account's. One that
       // can't be read is taken to have them all, or the ones it was last
@@ -2479,6 +2484,9 @@ function rowOf(id, a, keys, stored, p, own) {
     icon: iconOf(a),
     usage: typeof a.auth.usage === "function",
     checkin: typeof a.auth.checkin === "function",
+    reauthorize: typeof a.auth.reauthorize === "function",
+    rewardContext: typeof a.auth.rewardContext === "function",
+    checkinStatus: typeof a.auth.checkinStatus === "function",
     // its sign-ins are renewed in the background as they come due, so
     // long before expires (keepSignedIn)
     renews: keepsAlive(a.auth),
@@ -2592,17 +2600,18 @@ function validate(provider, index, key, value) {
 // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
 // a sign-in the plugin says is another provider's, a new account of
 // that one). It gives the provider and where the account is kept.
-async function save(provider, key, result, inputs, apiKey) {
+async function save(provider, key, result, inputs, apiKey, accountId, expected) {
   const id = result.provider ?? provider
+  if (expected !== undefined && id !== provider) throw new Error("the authorization provider changed")
   if (id !== provider) key = freshKey(id)
   if ("refresh" in result) {
     const { type: _t, provider: _p, refresh, access, expires, ...extra } = result
-    await setAuth(key, { type: "oauth", refresh, access, expires, ...extra })
+    await setAuth(key, { type: "oauth", refresh, access, expires, ...extra }, expected)
   } else if ("key" in result || apiKey) {
     const md = { ...(inputs && Object.keys(inputs).length ? inputs : {}), ...(result.metadata ?? {}) }
-    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(Object.keys(md).length ? { metadata: md } : {}) })
+    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) }, expected)
   }
-  return { provider: id, account: await settle(id, key) }
+  return { provider: id, account: expected === undefined ? await settle(id, key) : key }
 }
 
 // signInKey is where a sign-in goes: the account named, else a new one.
@@ -2624,17 +2633,24 @@ let nextSession = 1
 // callback(code, { signal }), authorize(inputs, { signal }); OpenCode
 // passes none), and whatever the plugin answers after it is dropped,
 // nothing saved.
-async function authorize({ provider, method, inputs, account, proxy }, signal) {
-  const m = authOf(provider).methods[method]
-  if (!m) throw new Error(`no sign-in method ${method} for ${provider}`)
-  if (m.type !== "oauth") throw new Error("not an oauth method")
+async function authorize({ provider, method, inputs, account, proxy, context }, signal) {
+  const auth = authOf(provider)
+  const targeted = account && account !== "new" && typeof auth.reauthorize === "function"
+  const m = auth.methods[method]
+  if (!targeted && !m) throw new Error(`no sign-in method ${method} for ${provider}`)
+  if (!targeted && m.type !== "oauth") throw new Error("not an oauth method")
   const key = signInKey(provider, account)
+  const original = targeted ? authCopy(key) : undefined
+  if (targeted && !original) throw new Error("not signed in")
+  const expected = targeted ? JSON.stringify(original) : undefined
   // the inputs go only to a method that asks something, as OpenCode's TUI
   // (/connect) passes them: an object with none is how its CLI (opencode
   // auth login) calls, and a plugin told so asks its questions on the
   // terminal, magpie's stdin here (opencode-antigravity-auth waited on its
   // "Project ID" prompt, the sign-in never starting)
-  const a = await signingIn(signal, proxy ?? "", provider, key, () => m.authorize(m.prompts?.length ? inputs ?? {} : undefined, { signal }))
+  const a = await signingIn(signal, proxy ?? "", provider, key, () => targeted
+    ? auth.reauthorize(async () => structuredClone(original), structuredClone(context ?? {}), { signal })
+    : m.authorize(m.prompts?.length ? inputs ?? {} : undefined, { signal }))
   if (signal?.aborted) throw abortedSignIn()
   // a plugin that can't start the sign-in may say why as an api method's
   // authorize does ({ type: "failed", error }) rather than throw; with no
@@ -2644,7 +2660,7 @@ async function authorize({ provider, method, inputs, account, proxy }, signal) {
   if (a?.type === "failed") return failed(a)
   if (typeof a?.callback !== "function") return { ok: false, error: `${provider}'s sign-in gave nothing to finish it with` }
   const session = String(nextSession++)
-  sessions.set(session, { provider, key, a, inputs, proxy: proxy ?? "" })
+  sessions.set(session, { provider, key, a, inputs, expected, proxy: proxy ?? "" })
   // opened (not OpenCode's) is a page the plugin's own CLI opened already:
   // Grok Build's `grok login` opens it on macOS and Windows, and magpie's
   // opening it too showed it twice (andyfmyth on X)
@@ -2676,22 +2692,25 @@ async function callback({ session, code }, signal) {
   const r = await signingIn(signal, s.proxy, s.provider, s.key, () => (s.a.method === "code" ? s.a.callback(code ?? "", { signal }) : s.a.callback(undefined, { signal })))
   if (signal?.aborted) throw abortedSignIn()
   if (!r || r.type !== "success") return failed(r)
-  return { ok: true, ...(await save(s.provider, s.key, r, undefined)) }
+  return { ok: true, ...(await save(s.provider, s.key, r, undefined, undefined, undefined, s.expected)) }
 }
 
-async function apiKey({ provider, method, inputs, key, account, proxy }, signal) {
+async function apiKey({ provider, method, inputs, key, account, accountId, proxy }, signal) {
+  // A caller's scoped API identity is separate from the plugin's prompt inputs.
+  // OAuth results retain the official identity supplied by their auth hook.
+  accountId = typeof accountId === "string" ? accountId.trim() : ""
   const m = authOf(provider).methods[method]
   if (!m || m.type !== "api") throw new Error("not an API key method")
   const at = signInKey(provider, account)
   if (typeof m.authorize !== "function") {
     const md = inputs && Object.keys(inputs).length ? { metadata: inputs } : {}
-    await setAuth(at, { type: "api", key, ...md })
+    await setAuth(at, { type: "api", key, ...(accountId ? { accountId } : {}), ...md })
     return { ok: true, provider, account: await settle(provider, at) }
   }
   const r = await signingIn(signal, proxy ?? "", provider, at, () => m.authorize(inputs ?? {}, { signal }))
   if (signal?.aborted) throw abortedSignIn()
   if (!r || r.type !== "success") return failed(r)
-  return { ok: true, ...(await save(provider, at, r, inputs, key)) }
+  return { ok: true, ...(await save(provider, at, r, inputs, key, accountId)) }
 }
 
 // ---- renewing a sign-in ------------------------------------------------------
@@ -3010,6 +3029,7 @@ async function usageOf(provider, account, signal) {
   }
   const text = (v) => (typeof v === "string" ? v : "")
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
+  const quantity = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null) // null: unknown, not zero
   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
   return {
     plan: text(u.plan),
@@ -3035,8 +3055,8 @@ async function usageOf(provider, account, signal) {
       resetsAt: when(w?.resetsAt),
       resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
       display: text(w?.display),
-      amount: Math.max(0, num(w?.amount)),
-      limit: Math.max(0, num(w?.limit)),
+      amount: quantity(w?.amount),
+      limit: quantity(w?.limit),
       unit: text(w?.unit),
       span: Math.max(0, num(w?.span)),
       model: text(w?.model),
@@ -3044,7 +3064,7 @@ async function usageOf(provider, account, signal) {
       notModels: ids(w?.notModels),
       aside: !!w?.aside,
       runsOutAt: when(w?.runsOutAt),
-      runsOut: Math.max(0, num(w?.runsOut)),
+      runsOut: quantity(w?.runsOut),
       balance: typeof w?.balance === "number" && isFinite(w.balance) ? Math.max(0, w.balance) : null, // null: not said
     })),
   }
@@ -3068,30 +3088,66 @@ async function usageOf(provider, account, signal) {
 // again later that day after a failure, or at until; a hook that throws is
 // a failure.
 // Run in the account's scope, a token it renews is saved to that account.
-async function checkin({ provider, account, proxy }) {
-  return via.run(proxy ?? "", () => checkinOf(provider, account))
+async function checkin({ provider, account, proxy, expectedScope }) {
+  return via.run(proxy ?? "", () => checkinOf(provider, account, expectedScope))
+}
+
+// Optional read-only reward evidence. Never fall back to the mutating hook.
+// scope is an opaque, provider-owned cycle/campaign identity, not a host date.
+// A hook returning scope must enforce context.expectedScope before its claim.
+async function checkinStatus({ provider, account, proxy }) {
+  return via.run(proxy ?? "", async () => {
+    const a = auths().get(provider)?.auth
+    if (typeof a?.checkinStatus !== "function") return { outcome: "unknown" }
+    const key = accountKey(provider, account)
+    if (!readAuth()[key]) throw new Error("not signed in")
+    try {
+      await fresh(provider, key)
+      const p = await infoOf(provider, key)
+      const r = (await inScope(provider, key, () => a.checkinStatus(async () => authCopy(key), JSON.parse(JSON.stringify(p))))) ?? {}
+      const outcome = r.outcome === "claimed" ? "done" : r.outcome
+      const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
+      const boundary = Number.isFinite(t) && t > 0 ? { until: new Date(t).toISOString() } : {}
+      if (!["claimable", "done", "ineligible", "inactive", "captcha"].includes(outcome)) return { outcome: "unknown", ...boundary }
+      const quantity = v => typeof v === "number" && Number.isFinite(v) && v >= 0
+      return {
+        outcome,
+        ...(quantity(r.credit) ? { credit: r.credit } : {}),
+        ...(quantity(r.streak) ? { streak: r.streak } : {}),
+        ...(typeof r.message === "string" ? { message: r.message } : {}),
+        ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}),
+        ...boundary,
+      }
+    } catch {
+      // Read failures are retryable observations, never reward intents. Error
+      // text may contain credentials, so the public RPC does not echo it.
+      return { outcome: "unknown" }
+    }
+  })
 }
 
 const checkinOutcomes = ["claimed", "done", "ineligible", "inactive", "captcha", "failed"]
 
-async function checkinOf(provider, account) {
+async function checkinOf(provider, account, expectedScope) {
   const a = auths().get(provider)?.auth
   if (typeof a?.checkin !== "function") throw new Error(`${provider}'s plugin doesn't check in`)
   const key = accountKey(provider, account)
   if (!readAuth()[key]) throw new Error("not signed in")
   await fresh(provider, key)
   const p = await infoOf(provider, key)
-  const r = (await inScope(provider, key, () => a.checkin(async () => authCopy(key), JSON.parse(JSON.stringify(p))))) ?? {}
+  const r = (await inScope(provider, key, () => a.checkin(async () => authCopy(key), JSON.parse(JSON.stringify(p)), { expectedScope }))) ?? {}
   const num = (v) => (typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0)
+  // An absent or invalid receipt amount is unknown, never zero credits.
+  const credit = typeof r.credit === "number" && Number.isFinite(r.credit) && r.credit >= 0 ? { credit: r.credit } : {}
   const message = typeof r.message === "string" ? r.message : ""
   // a time that doesn't read is not told
   const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
   const until = Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : ""
   if (!checkinOutcomes.includes(r.outcome)) {
     const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
-    return { outcome: "failed", credit: 0, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
+    return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
   }
-  return { outcome: r.outcome, credit: num(r.credit), streak: Math.round(num(r.streak)), message, until }
+  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
 }
 
 // sdkHeaders are what the AI SDK package the model is on sends of the key.
@@ -3281,6 +3337,12 @@ const handlers = {
     await loadPlugins(p.plugins ?? [])
     return { plugins: loaded.map(withProviders) }
   },
+  // Read the native owner's storage decision without renewing any account.
+  authSnapshot() {
+    const state = readAuthState()
+    if (!state.known) throw new Error("native auth storage is unknown")
+    return structuredClone(state.all)
+  },
   providers: (p, signal) => providers(p ?? {}, signal),
   prompt: async (p) => ({ prompt: await nextPrompt(p.provider, p.method, p.inputs ?? {}) }),
   validate: (p) => ({ error: validate(p.provider, p.method, p.key, p.value) }),
@@ -3291,7 +3353,15 @@ const handlers = {
   apiKey,
   load,
   usage,
+  async rewardContext({ provider, account }, signal) {
+    const hook = authOf(provider).rewardContext
+    if (typeof hook !== "function") throw new Error(`${provider}'s plugin does not expose reward context`)
+    const key = accountKey(provider, account)
+    if (!readAuth()[key]) throw new Error("not signed in")
+    return inScope(provider, key, () => hook(async () => authCopy(key), { signal }))
+  },
   checkin,
+  checkinStatus,
   keepSignedIn,
   // setOptions takes the user's option values over, as init did: the
   // plugin reads them when it next asks (#2038)

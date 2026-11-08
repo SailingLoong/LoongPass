@@ -34,6 +34,26 @@ void main() {
         throwsA(isA<FormatException>()),
       );
       expect(await File(installation.hostPath).exists(), isTrue);
+      await installation.publishBridge();
+      final firstBridge = await File('${installation.bridgePath}/index.mjs')
+          .readAsString();
+      final next = await PluginInstallation.prepare(root.path, (path) async {
+        final bytes = await File(path).readAsBytes();
+        return path == 'runtime/bridge/index.mjs'
+            ? [...utf8.encode('// new bundled bridge\n'), ...bytes]
+            : bytes;
+      });
+      await next.publishBridge();
+      expect(next.codePath, isNot(installation.codePath));
+      expect(next.bridgePath, installation.bridgePath);
+      expect(
+        await File('${next.bridgePath}/index.mjs').readAsString(),
+        '// new bundled bridge\n$firstBridge',
+      );
+      expect(
+        await File('${installation.codePath}/bridge/index.mjs').readAsString(),
+        firstBridge,
+      );
     } finally {
       await root.delete(recursive: true);
     }

@@ -1,12 +1,10 @@
-// Minimal port of candidate-669/src-tauri/src/workbuddy/{authorization,http,protocol}.rs.
-// Existing MIT notices retained. No signatures, credential persistence or UI.
+// WorkBuddy-only official desktop profile verification. Native Magpie owns
+// browser authorization, token renewal, inference and rewards. MIT provenance
+// for the retained strict profile/HTTP contract remains in THIRD_PARTY_NOTICES.md.
 import 'dart:convert';
 import 'dart:io';
 
 import 'native_account_gate.dart';
-import 'workbuddy_claim.dart';
-import 'workbuddy_balance.dart';
-import 'workbuddy_vault.dart';
 import 'workbuddy_desktop_session.dart';
 
 class WorkBuddyApiFailure implements Exception {
@@ -30,14 +28,6 @@ void requireWorkBuddyProductionAccess() {
       mayHaveBeenSent: false,
     );
   }
-}
-
-void requireWorkBuddyIdentityAccess() {
-  if (!workBuddyMemoryIdentityApproved)
-    throw const WorkBuddyApiFailure(
-      'WorkBuddyIdentityUnavailable',
-      mayHaveBeenSent: false,
-    );
 }
 
 bool _success(Map m) => [0, 200, '0', '200'].contains(m['code']);
@@ -117,71 +107,22 @@ abstract interface class WorkBuddyExchange {
   );
 }
 
-/// The same authorization API, bounded to three identity endpoints. Applied
-/// also to injected synthetic exchanges so tests exercise the actual policy.
-class WorkBuddyIdentityExchange implements WorkBuddyExchange {
-  final WorkBuddyExchange _inner;
-  WorkBuddyIdentityExchange(this._inner);
-  static bool permits(WorkBuddyRequest r) {
-    const methods = {
-      '/v2/plugin/auth/state': 'POST',
-      '/v2/plugin/auth/token': 'GET',
-      '/v2/plugin/account': 'GET',
-    };
-    return r.uri.scheme == 'https' &&
-        ['www.workbuddy.cn', 'www.codebuddy.cn'].contains(r.uri.host) &&
-        r.uri.port == 443 &&
-        r.uri.userInfo.isEmpty &&
-        !r.uri.hasFragment &&
-        methods[r.uri.path] == r.method;
-  }
-
-  @override
-  Future<Map<String, Object?>> send(
-    WorkBuddyRequest r,
-    bool Function() admitted,
-  ) {
-    if (!permits(r) || !admitted())
-      throw const WorkBuddyApiFailure(
-        'IdentityRequestUnavailable',
-        mayHaveBeenSent: false,
-      );
-    return _inner.send(r, admitted);
-  }
-}
-
-/// Actual HTTPS implementation. Tests inject a fake; no live traffic was tested.
+/// Bounded read-only profile transport. It never signs in, refreshes or claims.
 class WorkBuddyHttps implements WorkBuddyExchange {
-  final bool identityValidationOnly;
-  WorkBuddyHttps() : identityValidationOnly = false;
-  WorkBuddyHttps.identityValidation() : identityValidationOnly = true;
-  void requireAccess() {
-    if (identityValidationOnly) {
-      requireWorkBuddyIdentityAccess();
-    } else {
-      requireWorkBuddyProductionAccess();
-    }
-  }
-
-  bool get _accessApproved => identityValidationOnly
-      ? workBuddyMemoryIdentityApproved
-      : workBuddyNativeAdapterValidated;
   @override
   Future<Map<String, Object?>> send(
     WorkBuddyRequest r,
     bool Function() admitted,
   ) async {
-    requireAccess();
-    if (identityValidationOnly && !WorkBuddyIdentityExchange.permits(r))
-      throw const WorkBuddyApiFailure(
-        'IdentityRequestUnavailable',
-        mayHaveBeenSent: false,
-      );
+    requireWorkBuddyProductionAccess();
+    if (r.method != 'GET' || r.uri.path != '/v2/plugin/account')
+      _fail('UnsupportedContext');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20)
       ..userAgent = 'LoongPass';
     var dispatched = false, finished = false;
-    bool allowed() => _accessApproved && !finished && admitted();
+    bool allowed() =>
+        workBuddyNativeAdapterValidated && !finished && admitted();
     Future<Map<String, Object?>> run() async {
       final uri = r.uri;
       if (uri.scheme != 'https' ||
@@ -205,10 +146,6 @@ class WorkBuddyHttps implements WorkBuddyExchange {
         _fail('ExpiredAuthorization');
       }
       dispatched = true;
-      if (r.method == 'POST') {
-        request.headers.contentType = ContentType.json;
-        request.write(r.body);
-      }
       final response = await request.close();
       if (response.statusCode == 401 || response.statusCode == 403)
         _fail('NeedsVerification');
@@ -241,343 +178,14 @@ class WorkBuddyHttps implements WorkBuddyExchange {
 }
 
 class WorkBuddyApi {
-  final WorkBuddyExchange exchange;
-  final bool Function() isCurrent;
-  final DateTime Function() now;
-  // Connection authority is independent of the token's account domain.
-  final String endpointHost;
-  Future<bool> Function()? prepareAdmission;
-  int _epoch = 0;
-  String? _state;
-  WorkBuddyAccount? _pendingAccount;
-  DateTime? _expires;
-  Stopwatch? _elapsed;
-  bool _polling = false;
   WorkBuddyApi(
     this.exchange, {
     required this.isCurrent,
     DateTime Function()? now,
-    this.endpointHost = 'www.workbuddy.cn',
-    this.prepareAdmission,
-  }) : now = now ?? DateTime.now {
-    if (!['www.workbuddy.cn', 'www.codebuddy.cn'].contains(endpointHost))
-      _fail('UnsupportedContext');
-  }
-  void cancel() {
-    _epoch++;
-    _state = null;
-    _pendingAccount = null;
-    _expires = null;
-    _elapsed?.stop();
-    _elapsed = null;
-  }
-
-  bool _flow(int e) =>
-      e == _epoch &&
-      isCurrent() &&
-      _expires != null &&
-      now().isBefore(_expires!) &&
-      _elapsed != null &&
-      _elapsed!.elapsed < const Duration(minutes: 5);
-  Future<Map<String, Object?>> _send(
-    String path, {
-    WorkBuddyAccount? account,
-    String? state,
-    String method = 'POST',
-    bool Function()? gate,
-    bool claim = false,
-    Map<String, Object?> body = const {},
-    Map<String, String> extraHeaders = const {},
-  }) async {
-    final host = endpointHost;
-    final query = path.endsWith('/auth/state')
-        ? {'platform': 'workbuddy'}
-        : state != null
-        ? {'state': state}
-        : null;
-    final headers = <String, String>{'Accept': 'application/json'};
-    headers.addAll(extraHeaders);
-    if (path.endsWith('/auth/state') || path.endsWith('/auth/token')) {
-      for (final name in [
-        'Authorization',
-        'User-Id',
-        'Enterprise-Id',
-        'Department-Info',
-      ]) {
-        headers['X-No-$name'] = 'true';
-      }
-      if (path.endsWith('/auth/state')) headers['X-Domain'] = endpointHost;
-    }
-    if (account != null) {
-      headers.addAll({
-        'Authorization': 'Bearer ${account._token}',
-        'X-Domain': account.domain,
-      });
-      if (path != '/v2/plugin/account') headers['X-User-Id'] = account.uid;
-    }
-    final epoch = _epoch;
-    bool admitted() =>
-        epoch == _epoch &&
-        isCurrent() &&
-        (gate?.call() ?? true) &&
-        (account?.expiresAt == null || now().isBefore(account!.expiresAt!));
-    if (!admitted() ||
-        (prepareAdmission != null && !await prepareAdmission!()) ||
-        !admitted())
-      throw const WorkBuddyApiFailure(
-        'ExpiredAuthorization',
-        mayHaveBeenSent: false,
-      );
-    try {
-      final result = await exchange.send(
-        WorkBuddyRequest(
-          Uri.https(host, path, query),
-          method,
-          headers,
-          body: body,
-        ),
-        admitted,
-      );
-      if (!admitted()) _fail('ExpiredAuthorization');
-      return result;
-    } on WorkBuddyApiFailure catch (e) {
-      if (claim && e.mayHaveBeenSent)
-        throw const WorkBuddyApiFailure('OutcomeUnknown');
-      rethrow;
-    } catch (_) {
-      _fail('OutcomeUnknown');
-    }
-  }
-
-  Future<Uri> begin() async {
-    cancel();
-    final epoch = _epoch;
-    _expires = now().add(const Duration(minutes: 5));
-    _elapsed = Stopwatch()..start();
-    try {
-      final response = await _send(
-        '/v2/plugin/auth/state',
-        gate: () => _flow(epoch),
-      );
-      if (!_success(response) || response['data'] is! Map)
-        _fail('NeedsVerification');
-      final d = response['data'] as Map;
-      final state = _text(d, ['state']);
-      final raw = _text(d, ['authUrl', 'auth_url', 'url']);
-      if (state == null || !_safe(state, 4096) || raw == null)
-        _fail('InvalidAuthorization');
-      final url = Uri.tryParse(raw);
-      if (url == null ||
-          url.scheme != 'https' ||
-          !['www.workbuddy.cn', 'www.codebuddy.cn'].contains(url.host) ||
-          url.port != 443 ||
-          url.userInfo.isNotEmpty ||
-          url.hasFragment ||
-          url.queryParametersAll['state']?.length != 1 ||
-          url.queryParameters['state'] != state ||
-          url.queryParameters.keys.any(
-            (k) =>
-                k.toLowerCase().contains('token') ||
-                k.toLowerCase().contains('password'),
-          ))
-        _fail('InvalidAuthorization');
-      if (!_flow(epoch)) _fail('ExpiredAuthorization');
-      _state = state;
-      return url.replace(host: endpointHost);
-    } catch (_) {
-      if (epoch == _epoch) cancel();
-      rethrow;
-    }
-  }
-
-  Future<WorkBuddyAccount?> poll() async {
-    final epoch = _epoch;
-    if (!_flow(epoch) || _state == null) _fail('ExpiredAuthorization');
-    if (_polling) _fail('Busy');
-    _polling = true;
-    try {
-      if (_pendingAccount == null) {
-        final token = await _send(
-          '/v2/plugin/auth/token',
-          state: _state,
-          method: 'GET',
-          gate: () => _flow(epoch),
-        );
-        final pending = [11217, '11217'].contains(token['code']);
-        final payload = token['data'];
-        if (pending &&
-            (payload is! Map ||
-                payload['accessToken'] is! String ||
-                (payload['accessToken'] as String).isEmpty))
-          return null;
-        if ((!_success(token) && !pending) || payload is! Map)
-          _fail('NeedsVerification');
-        final d = token['data'] as Map;
-        _personal(d);
-        final secret = _text(d, ['accessToken']);
-        if (secret == null) _fail('InvalidAuthorization');
-        final rawDomain = d['domain'];
-        if (rawDomain != null && (rawDomain is! String || rawDomain.isEmpty))
-          _fail('UnsupportedContext');
-        final domain = rawDomain as String? ?? endpointHost;
-        final tokenDeadline = _expiration(d);
-        if (tokenDeadline != null && !now().isBefore(tokenDeadline))
-          _fail('ExpiredAuthorization');
-        _pendingAccount = WorkBuddyAccount(
-          domain,
-          'authorization-pending',
-          secret,
-          expiresAt: tokenDeadline,
-          refreshToken: _text(d, ['refreshToken']),
-          refreshExpiresAt: _expiration(d, prefix: 'refresh'),
-        );
-      }
-      final temporary = _pendingAccount!;
-      final domain = temporary.domain;
-      bool authorized() =>
-          _flow(epoch) &&
-          (temporary.expiresAt == null || now().isBefore(temporary.expiresAt!));
-      final response = await _send(
-        '/v2/plugin/account',
-        account: temporary,
-        method: 'GET',
-        gate: authorized,
-      );
-      if ([12151, '12151'].contains(response['code'])) return null;
-      if (!_success(response) || response['data'] is! Map)
-        _fail('NeedsVerification');
-      final p = response['data'] as Map;
-      _personal(p, requiredIdentity: true);
-      if (p['domain'] != null && p['domain'] != domain)
-        _fail('IdentityMismatch');
-      final uid = _text(p, ['uid']);
-      if (uid == null) _fail('UnsupportedContext');
-      final account = WorkBuddyAccount(
-        domain,
-        uid,
-        temporary._token,
-        expiresAt: temporary.expiresAt,
-        refreshToken: temporary.refreshToken,
-        refreshExpiresAt: temporary.refreshExpiresAt,
-      );
-      if (!authorized()) _fail('ExpiredAuthorization');
-      cancel();
-      return account;
-    } finally {
-      _polling = false;
-    }
-  }
-
-  bool matchesStoredAccount(
-    WorkBuddyAccount account,
-    WorkBuddyVaultCredential c,
-  ) =>
-      account.domain == c.domain &&
-      account.uid == c.uid &&
-      account._token == c.accessToken &&
-      account.refreshToken == c.refreshToken &&
-      account.refreshExpiresAt == c.refreshExpiresAt &&
-      account.expiresAt == c.expiresAt &&
-      endpointHost == c.endpoint;
-  Future<bool> saveVerifiedAccount(
-    WorkBuddyAccount account,
-    WorkBuddyVault vault,
-    String key, {
-    required bool Function() gate,
-  }) async {
-    final expires = account.expiresAt;
-    if (!isCurrent() ||
-        !gate() ||
-        (expires != null && !now().isBefore(expires)))
-      return false;
-    return vault.save(
-      key,
-      WorkBuddyVaultCredential(
-        domain: account.domain,
-        endpoint: endpointHost,
-        uid: account.uid,
-        accessToken: account._token,
-        refreshToken: account.refreshToken,
-        refreshExpiresAt: account.refreshExpiresAt,
-        expiresAt: expires,
-      ),
-      admission: () => isCurrent() && gate(),
-      replaceVerified: true,
-    );
-  }
-
-  DateTime? _expiration(Map data, {String prefix = ''}) {
-    final at = prefix.isEmpty ? 'expiresAt' : '${prefix}ExpiresAt';
-    final seconds = prefix.isEmpty ? 'expiresIn' : '${prefix}ExpiresIn';
-    DateTime? result;
-    for (final key in [at, seconds]) {
-      if (!data.containsKey(key)) continue;
-      final value = data[key];
-      if (value is! num ||
-          !value.isFinite ||
-          value <= 0 ||
-          value > (key == at ? 8640000000000000 : 8640000000000))
-        _fail('InvalidAuthorization');
-      final millis = key == at
-          ? value.toInt()
-          : now().millisecondsSinceEpoch + (value * 1000).toInt();
-      if (millis > 8640000000000000) _fail('InvalidAuthorization');
-      final deadline = DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
-      if (result == null || deadline.isBefore(result)) result = deadline;
-    }
-    return result;
-  }
-
-  /// One rotating refresh, called only by the existing credential owner after
-  /// its vault durably reserved the rotation. No model request is replayed.
-  Future<WorkBuddyVaultCredential?> renewCredential(
-    WorkBuddyVaultCredential credential, {
-    required bool Function() admission,
-  }) async {
-    if (credential.refreshToken == null || !admission() || !isCurrent())
-      throw const WorkBuddyApiFailure(
-        'ExpiredAuthorization',
-        mayHaveBeenSent: false,
-      );
-    final response = await _send(
-      '/v2/plugin/auth/token/refresh',
-      gate: admission,
-      extraHeaders: {
-        'X-Refresh-Token': credential.refreshToken!,
-        'X-Auth-Refresh-Source': 'plugin',
-        'X-Domain': credential.domain,
-      },
-    );
-    if (!_success(response)) return null;
-    final data = response['data'];
-    if (data is! Map) _fail('InvalidAuthorization');
-    final access = _text(data, ['accessToken']);
-    if (access == null) _fail('InvalidAuthorization');
-    if (data['uid'] != null && data['uid'] != credential.uid)
-      _fail('IdentityMismatch');
-    final domain = _text(data, ['domain']) ?? credential.domain;
-    if (domain != credential.domain) _fail('IdentityMismatch');
-    return WorkBuddyVaultCredential(
-      domain: credential.domain,
-      endpoint: credential.endpoint,
-      uid: credential.uid,
-      accessToken: access,
-      refreshToken: _text(data, ['refreshToken']) ?? credential.refreshToken,
-      expiresAt: _expiration(data) ?? credential.expiresAt,
-      refreshExpiresAt:
-          _expiration(data, prefix: 'refresh') ?? credential.refreshExpiresAt,
-    );
-  }
-
-  /// Revalidate a saved identity through the same strict personal profile
-  /// contract as login. No auth-token poll, refresh or claim is sent here.
-  Future<void> verifyStoredAccount(
-    WorkBuddyAccount account, {
-    required bool Function() gate,
-  }) async {
-    await _verifiedProfile(account, gate: gate);
-  }
-
+  }) : now = now ?? DateTime.now;
+  final WorkBuddyExchange exchange;
+  final bool Function() isCurrent;
+  final DateTime Function() now;
   Future<Map<String, Object?>> _verifiedProfile(
     WorkBuddyAccount account, {
     required bool Function() gate,
@@ -587,12 +195,20 @@ class WorkBuddyApi {
         'ExpiredAuthorization',
         mayHaveBeenSent: false,
       );
-    final response = await _send(
-      '/v2/plugin/account',
-      account: account,
-      method: 'GET',
-      gate: gate,
+    bool admitted() =>
+        isCurrent() &&
+        gate() &&
+        (account.expiresAt == null || now().isBefore(account.expiresAt!));
+    if (!admitted()) _fail('ExpiredAuthorization');
+    final response = await exchange.send(
+      WorkBuddyRequest(Uri.https(account.domain, '/v2/plugin/account'), 'GET', {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ${account._token}',
+        'X-Domain': account.domain,
+      }),
+      admitted,
     );
+    if (!admitted()) _fail('ExpiredAuthorization');
     if (!_success(response) || response['data'] is! Map)
       _fail('NeedsVerification');
     final p = response['data'] as Map;
@@ -602,36 +218,6 @@ class WorkBuddyApi {
       _fail('IdentityMismatch');
     if (!gate() || !isCurrent()) _fail('ExpiredAuthorization');
     return Map<String, Object?>.from(p);
-  }
-
-  Future<T> withInferenceAuthorization<T>(
-    WorkBuddyAccount account,
-    Future<T> Function(
-      String domain,
-      String uid,
-      String accessToken,
-      bool Function() isCurrent,
-    )
-    use, {
-    required bool Function() gate,
-  }) async {
-    if (!isCurrent() ||
-        !gate() ||
-        !(await prepareAdmission?.call() ?? true) ||
-        account.expiresAt != null && !now().isBefore(account.expiresAt!))
-      throw const WorkBuddyApiFailure(
-        'ExpiredAuthorization',
-        mayHaveBeenSent: false,
-      );
-    return use(
-      account.domain,
-      account.uid,
-      account._token,
-      () =>
-          isCurrent() &&
-          gate() &&
-          (account.expiresAt == null || now().isBefore(account.expiresAt!)),
-    );
   }
 
   Future<WorkBuddyDesktopSession> desktopSession(
@@ -645,162 +231,5 @@ class WorkBuddyApi {
       accessToken: account._token,
       expiresAt: account.expiresAt,
     );
-  }
-
-  Future<Map<String, Object?>> status(WorkBuddyAccount account) =>
-      _send('/v2/billing/meter/checkin-activity-status', account: account);
-  Future<({WorkBuddySubject subject, double? totalRemaining})> completeBalance(
-    WorkBuddyAccount account,
-    WorkBuddySubject subject, {
-    required bool Function() gate,
-  }) async {
-    final credits = await creditDetails(account, subject, gate: gate);
-    return (subject: subject, totalRemaining: credits?.totalRemaining);
-  }
-
-  Future<CreditSummary?> creditDetails(
-    WorkBuddyAccount account,
-    WorkBuddySubject subject, {
-    required bool Function() gate,
-  }) async {
-    if (account.domain != subject.domain || account.uid != subject.uid) {
-      throw const WorkBuddyFailure('IdentityMismatch');
-    }
-    final epoch = _epoch;
-    bool admitted() => epoch == _epoch && isCurrent() && gate();
-    if (!admitted())
-      throw const WorkBuddyApiFailure(
-        'ExpiredAuthorization',
-        mayHaveBeenSent: false,
-      );
-    final observedAt = now().toUtc();
-    String day(DateTime value) => value
-        .toUtc()
-        .add(const Duration(hours: 8))
-        .toIso8601String()
-        .substring(0, 10);
-    final chinaDay = day(observedAt);
-    final summary = await _send(
-      '/billing/meter/get-user-resource-summary',
-      account: account,
-      gate: admitted,
-    );
-    if (day(now()) != chinaDay) return null;
-    final paid = await _send(
-      '/billing/meter/get-user-resource-paid-packages',
-      account: account,
-      gate: admitted,
-      body: {
-        'PageNumber': 1,
-        'PageSize': 200,
-        'Status': [0, 3],
-        'PackageCodes': _paidCodes,
-        'NeedRenewInfo': true,
-        'IsDisplayTotalInfo': true,
-      },
-    );
-    if (day(now()) != chinaDay) return null;
-    final free = await _send(
-      '/billing/meter/get-user-resource-free-packages',
-      account: account,
-      gate: admitted,
-      body: {
-        'PageNumber': 1,
-        'PageSize': 200,
-        'Status': [0, 3],
-        'PackageCodes': _freeCodes,
-        'SlicePeriodStartTime': '$chinaDay 00:00:00',
-        'SlicePeriodEndTime': '$chinaDay 23:59:59',
-        'IsDisplayTotalInfo': true,
-      },
-    );
-    if (!admitted()) throw const WorkBuddyApiFailure('ExpiredAuthorization');
-    if (day(now()) != chinaDay) return null;
-    return normalizeWorkBuddyCredits(summary, paid, free, now: observedAt);
-  }
-
-  /// One network attempt, not an idempotency scheduler. Existing owner/core must
-  /// persist intent and prevent replays. A success receipt is NOT credited proof.
-  Future<Map<String, Object?>> claimOnce(WorkBuddyAccount account) =>
-      _send('/v2/billing/meter/daily-checkin', account: account, claim: true);
-}
-
-// Pinned mature request lists, not new product discovery or speculative paging.
-const _paidCodes = [
-  'TCACA_code_002_AkiJS3ZHF5',
-  'TCACA_code_023_4xbGhMrE6q',
-  'TCACA_code_026_BaESVICNoi',
-  'TCACA_code_027_0FCGVA6vSa',
-  'TCACA_code_009_0XmEQc2xOf',
-  'TCACA_code_038_OhvqZtiPKr',
-  'TCACA_code_003_FAnt7lcmRT',
-  'TCACA_code_036_lupO5WgNdG',
-];
-const _freeCodes = [
-  'TCACA_code_008_cfWoLwvjU4',
-  'TCACA_code_007_nzdH5h4Nl0',
-  'TCACA_code_028_NtpWi0jzXs',
-  'TCACA_code_029_6wCGEWquYy',
-  'TCACA_code_030_BjSt89qTvr',
-  'TCACA_code_001_PqouKr6QWV',
-  'TCACA_code_006_DbXS0lrypC',
-  'TCACA_code_035_ArVxJcGDsm',
-  'TCACA_code_037_WxOD3MpI2o',
-  'TCACA_code_039_KRcQj7wUat',
-  'TCACA_code_040_mi9rCYg46x',
-];
-
-/// Existing authenticated owner supplies a complete normalized total, never a
-/// partial package sum. Null means unavailable. Identity includes generation.
-typedef WorkBuddyBalanceReader =
-    Future<({WorkBuddySubject subject, double? totalRemaining})> Function(
-      WorkBuddySubject subject,
-    );
-
-/// Thin connection to the existing claim core. The same owner must bind API,
-/// credential generation, durable store and complete-balance reader together.
-class WorkBuddyApiTransport implements WorkBuddyTransport {
-  final WorkBuddyApi api;
-  final WorkBuddyAccount account;
-  final WorkBuddySubject subject;
-  final WorkBuddyBalanceReader readCompleteBalance;
-  WorkBuddyApiTransport(
-    this.api,
-    this.account,
-    this.subject, {
-    required this.readCompleteBalance,
-  }) {
-    if (account.domain != subject.domain || account.uid != subject.uid)
-      throw const WorkBuddyFailure('IdentityMismatch');
-  }
-  void _check(WorkBuddySubject requested, int epoch) {
-    if (!subject.matches(requested))
-      throw const WorkBuddyFailure('IdentityMismatch');
-    if (epoch != api._epoch || !api.isCurrent())
-      throw const WorkBuddyFailure('ExpiredAuthorization');
-  }
-
-  @override
-  Future<WorkBuddyObservation> observe(WorkBuddySubject requested) async {
-    final epoch = api._epoch;
-    _check(requested, epoch);
-    final status = await api.status(account);
-    _check(requested, epoch);
-    final balance = await readCompleteBalance(requested);
-    _check(requested, epoch);
-    if (!requested.matches(balance.subject))
-      throw const WorkBuddyFailure('IdentityMismatch');
-    final total = balance.totalRemaining;
-    return WorkBuddyObservation(
-      requested,
-      status,
-      total != null && total.isFinite && total >= 0 ? total : null,
-    );
-  }
-
-  @override
-  Future<Map<String, Object?>> claim(WorkBuddySubject requested) async {
-    _check(requested, api._epoch);
-    return api.claimOnce(account);
   }
 }

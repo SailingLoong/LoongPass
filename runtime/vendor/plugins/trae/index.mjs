@@ -136,7 +136,7 @@ const SITES = {
           // WorkBuddy's does, so magpie says it in the window's row, used or
           // left, in its own words and number format, rather than as an
           // English balance line beside it (yetone/magpie#694)
-          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: round(c.used), limit: round(c.limit), unit: "credits" }
+          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: c.used, limit: c.limit, unit: "credits" }
           if (c.until) w.resetsAt = new Date(c.until).toISOString()
           out.windows = [w]
         }
@@ -3311,15 +3311,18 @@ const makePlugin = (site) => async ({ client }) => {
     return { body }
   }
 
-  const checkin = async (getAuth) => {
+  const checkin = async (getAuth, readOnly = false) => {
     if (!site.checkin) return { outcome: "inactive", message: `${site.realm} has no daily check-in` }
     const a0 = fromAuth(await getAuth(), site)
     if (!a0) return { outcome: "failed", message: "not signed in" }
     const first = await checkinStatus(getAuth, a0)
     if (first.outcome) return first.outcome
     const body = first.body
+    if (readOnly && typeof body.checked_in !== "boolean") return { outcome: "unknown" }
     if (body.checked_in) return { outcome: "done", ...(Number(body.credits) > 0 ? { credit: Number(body.credits) } : {}) }
+    if (readOnly && typeof body.enable !== "boolean") return { outcome: "unknown" }
     if (!body.enable) return { outcome: "inactive" }
+    if (readOnly) return { outcome: "claimable" }
     const read = async (res) => {
       const text = await res.text()
       let v
@@ -3685,7 +3688,8 @@ const makePlugin = (site) => async ({ client }) => {
     auth: {
       provider: site.id,
       usage,
-      checkin,
+      checkin: (getAuth) => checkin(getAuth),
+      ...(site.checkin ? { checkinStatus: (getAuth) => checkin(getAuth, true) } : {}),
       // magpie renews the token LEAD_MS before its end, once, before its
       // requests, models and usage ask; the check before each request
       // stays for OpenCode, which doesn't call this

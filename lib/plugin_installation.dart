@@ -11,6 +11,30 @@ class PluginInstallation {
   final Map<String, dynamic> manifest;
   String get hostPath => '$codePath/vendor/magpie/host.js';
   String get launcherPath => '$codePath/launcher.mjs';
+  String get bridgePath => '${Directory(codePath).parent.parent.path}/bridge';
+
+  /// The external Magpie registration keeps one stable local package path.
+  /// Publish only verified package files; restart/reload is owned by Magpie.
+  Future<void> publishBridge() async {
+    final directory = Directory(bridgePath);
+    await directory.create(recursive: true);
+    for (final name in ['package.json', 'index.mjs']) {
+      final bytes = await File('$codePath/bridge/$name').readAsBytes();
+      final target = File('$bridgePath/$name');
+      if (await target.exists() &&
+          sha256.convert(await target.readAsBytes()) == sha256.convert(bytes))
+        continue;
+      final stage = await directory.createTemp('.publish-');
+      try {
+        final next = File('${stage.path}/$name');
+        await next.writeAsBytes(bytes, flush: true);
+        await next.rename(target.path);
+      } finally {
+        await stage.delete(recursive: true);
+      }
+    }
+  }
+
   List<Map<String, Object?>> get plugins => [
     for (final package in manifest['packages'] as List)
       {'spec': package['spec'], 'target': '$codePath/${package['target']}'},

@@ -1,6 +1,21 @@
 {
   "schema": 1,
-  "localFiles": ["launcher.mjs"],
+  "localFiles": [
+    "launcher.mjs",
+    "migrate.mjs",
+    "bridge/package.json",
+    "bridge/index.mjs",
+    "patches/qoder.patch",
+    "patches/plugin-identity.patch",
+    "patches/usage-precision.patch",
+    "patches/host-usage.patch",
+    "patches/host-api-identity.patch",
+    "patches/checkin-status.patch",
+    "patches/zcode-binding.patch",
+    "patches/workbuddy-desktop-identity.patch",
+    "patches/host-auth-snapshot.patch",
+    "patches/host-account-catalog.patch"
+  ],
   "sources": {
     "magpie": {
       "url": "https://github.com/yetone/magpie",
@@ -57,7 +72,8 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "1c0053cbb85b210a8ed46dde7276aa79acaac7909d5cb565eababb3473e07134"
+      "sha256": "5c735e6cca198b3cee1cbe8d861c4492e41f5b11237b04e9d3fecfbd34402514",
+      "upstreamSha256": "1c0053cbb85b210a8ed46dde7276aa79acaac7909d5cb565eababb3473e07134"
     },
     {
       "source": "magpie",
@@ -75,7 +91,8 @@
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "44e5610b6bf7cf6dccaed3e71f5a4b7ef12352e14e9d72f110ab7f2900f02ed2"
+      "sha256": "af272230aa18f37ebd0909e80ff87f89f2b090a505e40a96bfbaa05f205b7ced",
+      "upstreamSha256": "44e5610b6bf7cf6dccaed3e71f5a4b7ef12352e14e9d72f110ab7f2900f02ed2"
     },
     {
       "source": "plugins",
@@ -117,7 +134,8 @@
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "6af85a4a022c8f8cf9311aab56b270d27cc687f42f80df507c989461cfcc48e5"
+      "sha256": "9191d09df36ed5df1e009caed48c4610b2cb60fb4e1b847d70fe394445de53f2",
+      "upstreamSha256": "6af85a4a022c8f8cf9311aab56b270d27cc687f42f80df507c989461cfcc48e5"
     },
     {
       "source": "plugins",
@@ -159,7 +177,8 @@
       "source": "plugins",
       "path": "packages/minimax/index.mjs",
       "target": "vendor/plugins/minimax/index.mjs",
-      "sha256": "bacc7e6cd1aca661583a81fdaba957c91e84bfb2f850f29a4d2c1549d0b145a8"
+      "sha256": "71dedc0e5c492a2af1abfcbf20bf4e1ef4d23fd514ae4ac7b57642c364460a26",
+      "upstreamSha256": "bacc7e6cd1aca661583a81fdaba957c91e84bfb2f850f29a4d2c1549d0b145a8"
     },
     {
       "source": "plugins",
@@ -213,7 +232,8 @@
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "333ace640081487b094e2de30bde577fe96463c043d798357499de82be65f65c"
+      "sha256": "fbe468ba88ecf89c4164b6c768e251b4861aeacce33e6f2b1a7fdff33a6394fa",
+      "upstreamSha256": "333ace640081487b094e2de30bde577fe96463c043d798357499de82be65f65c"
     },
     {
       "source": "plugins",
@@ -249,7 +269,8 @@
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "60781063c67ec66c1d5d04a30b34c38259605206bd1e4b26e9fb43c1d186b8af"
+      "sha256": "3e4258749a7a4add8b714965b954f5d6ff4527da849b4bb128839a6e9834a9be",
+      "upstreamSha256": "60781063c67ec66c1d5d04a30b34c38259605206bd1e4b26e9fb43c1d186b8af"
     },
     {
       "source": "plugins",
@@ -285,7 +306,8 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "4fa4d8fd8d5c8ce879c5ad840ed1646efc0fda18354a95f5217175d020631cbb"
+      "sha256": "7afe74673102973a916b01e71ee52c4dbcf5a5cf472a8cf5127ae96b9c591282",
+      "upstreamSha256": "4fa4d8fd8d5c8ce879c5ad840ed1646efc0fda18354a95f5217175d020631cbb"
     },
     {
       "source": "plugins",
@@ -317,5 +339,17 @@
       "target": "vendor/plugins/zcode/LICENSE",
       "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
     }
+  ],
+  "patches": [
+    "patches/qoder.patch",
+    "patches/plugin-identity.patch",
+    "patches/usage-precision.patch",
+    "patches/host-usage.patch",
+    "patches/host-api-identity.patch",
+    "patches/checkin-status.patch",
+    "patches/zcode-binding.patch",
+    "patches/workbuddy-desktop-identity.patch",
+    "patches/host-auth-snapshot.patch",
+    "patches/host-account-catalog.patch"
   ]
 }

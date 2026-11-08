@@ -773,7 +773,10 @@ function creditsWindow(batches, now = Date.now()) {
     if (exp <= now) continue
     total += granted
     left += Math.min(rest, granted)
-    if (rest > 0 && (!soonest || exp < soonest.at)) soonest = { at: exp, n: rest }
+    if (rest > 0) {
+      if (!soonest || exp < soonest.at) soonest = { at: exp, n: rest }
+      else if (exp === soonest.at) soonest.n += rest
+    }
   }
   if (!(total > 0)) return undefined
   const used = Math.max(0, total - left)
@@ -782,10 +785,10 @@ function creditsWindow(batches, now = Date.now()) {
     name: "Credits",
     used: (100 * used) / total,
     display: `${round(used)} / ${round(total)}`,
-    amount: round(used),
-    limit: round(total),
+    amount: used,
+    limit: total,
     unit: "credits",
-    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: round(soonest.n) } : {}),
+    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: soonest.n } : {}),
   }
 }
 
@@ -839,7 +842,7 @@ async function checkinCall(site, access, userID, path, body) {
 // hasn't started, or the panel has none), ineligible (the day isn't
 // available); a throw is failed. streak counts the claimed days up to and
 // including today.
-async function checkinOf(site, access, userID) {
+async function checkinOf(site, access, userID, readOnly = false) {
   if (!String(userID ?? "").trim()) userID = (await identity(site, access)).realUserID
   const panel = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/status")
   const days = Array.isArray(panel?.data?.days) ? panel.data.days : null
@@ -850,6 +853,7 @@ async function checkinOf(site, access, userID) {
   const claimable = sorted.filter((d) => d?.status === 2)
   if (todays.length > 1 || claimable.length > 1) throw new Error("check-in: malformed panel")
   const today = todays[0]
+  if (readOnly && sorted.some(d => typeof d.is_today !== "boolean" || ![1, 2, 3, 4].includes(d.status))) return { outcome: "unknown" }
   if (!today) return { outcome: "inactive" }
   const streakFrom = (i) => {
     let n = 0
@@ -861,6 +865,7 @@ async function checkinOf(site, access, userID) {
     return { outcome: "done", ...(points ? { credit: points } : {}), streak: streakFrom(sorted.indexOf(today)) }
   }
   if (today.status === 2) {
+    if (readOnly) return { outcome: "claimable" }
     const claim = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/claim", {})
     const r = pos(claim?.data, "claim_result")
     const credit = pos(claim?.data, "points")
@@ -991,6 +996,34 @@ function accountSession(site, client, accountID = site.id) {
 function makePlugin(site) {
   return async ({ client }) => {
     const fresh = accountSession(site, client)
+    // Read-only status uses the same authentication and native panel path.
+    const checkin = async (getAuth, readOnly = false) => {
+      const auth = await getAuth()
+      if (auth?.type !== "oauth" || !auth.access) return { outcome: "failed", message: "not signed in" }
+      let a
+      try {
+        ;({ a } = await fresh(getAuth))
+      } catch (e) {
+        return { outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) }
+      }
+      const failed = (e) => ({ outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) })
+      try {
+        return await checkinOf(site, a.access, a.realUserID, readOnly)
+      } catch (e) {
+        if (!(e instanceof AccountRefused && e.status === 401)) return failed(e)
+        // MiniMax Code's /checkin on a 401: renewed, and asked once more
+        try {
+          ;({ a } = await fresh(getAuth, a.access))
+        } catch (e2) {
+          return e2 instanceof SignInExpired ? failed(e2) : failed(e)
+        }
+        try {
+          return await checkinOf(site, a.access, undefined, readOnly)
+        } catch (e2) {
+          return failed(e2)
+        }
+      }
+    }
 
     // one conversation id for requests that come with none of their own
     const session = randomUUID()
@@ -1141,33 +1174,8 @@ function makePlugin(site) {
         // the daily check-in (每日签到): magpie runs it once a day per
         // account, and its Check in now button asks right away; the
         // outcome lands on the account's Usage card.
-        async checkin(getAuth) {
-          const auth = await getAuth()
-          if (auth?.type !== "oauth" || !auth.access) return { outcome: "failed", message: "not signed in" }
-          let a
-          try {
-            ;({ a } = await fresh(getAuth))
-          } catch (e) {
-            return { outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) }
-          }
-          const failed = (e) => ({ outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) })
-          try {
-            return await checkinOf(site, a.access, a.realUserID)
-          } catch (e) {
-            if (!(e instanceof AccountRefused && e.status === 401)) return failed(e)
-            // MiniMax Code's /checkin on a 401: renewed, and asked once more
-            try {
-              ;({ a } = await fresh(getAuth, a.access))
-            } catch (e2) {
-              return e2 instanceof SignInExpired ? failed(e2) : failed(e)
-            }
-            try {
-              return await checkinOf(site, a.access, undefined)
-            } catch (e2) {
-              return failed(e2)
-            }
-          }
-        },
+        checkin: (getAuth) => checkin(getAuth),
+        checkinStatus: (getAuth) => checkin(getAuth, true),
         methods: [
           {
             type: "oauth",

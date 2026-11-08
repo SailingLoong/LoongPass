@@ -1,0 +1,358 @@
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -2479,6 +2479,7 @@
+     icon: iconOf(a),
+     usage: typeof a.auth.usage === "function",
+     checkin: typeof a.auth.checkin === "function",
++    checkinStatus: typeof a.auth.checkinStatus === "function",
+     // its sign-ins are renewed in the background as they come due, so
+     // long before expires (keepSignedIn)
+     renews: keepsAlive(a.auth),
+@@ -3068,30 +3069,66 @@
+ // again later that day after a failure, or at until; a hook that throws is
+ // a failure.
+ // Run in the account's scope, a token it renews is saved to that account.
+-async function checkin({ provider, account, proxy }) {
+-  return via.run(proxy ?? "", () => checkinOf(provider, account))
++async function checkin({ provider, account, proxy, expectedScope }) {
++  return via.run(proxy ?? "", () => checkinOf(provider, account, expectedScope))
++}
++
++// Optional read-only reward evidence. Never fall back to the mutating hook.
++// scope is an opaque, provider-owned cycle/campaign identity, not a host date.
++// A hook returning scope must enforce context.expectedScope before its claim.
++async function checkinStatus({ provider, account, proxy }) {
++  return via.run(proxy ?? "", async () => {
++    const a = auths().get(provider)?.auth
++    if (typeof a?.checkinStatus !== "function") return { outcome: "unknown" }
++    const key = accountKey(provider, account)
++    if (!readAuth()[key]) throw new Error("not signed in")
++    try {
++      await fresh(provider, key)
++      const p = await infoOf(provider, key)
++      const r = (await inScope(provider, key, () => a.checkinStatus(async () => authCopy(key), JSON.parse(JSON.stringify(p))))) ?? {}
++      const outcome = r.outcome === "claimed" ? "done" : r.outcome
++      const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
++      const boundary = Number.isFinite(t) && t > 0 ? { until: new Date(t).toISOString() } : {}
++      if (!["claimable", "done", "ineligible", "inactive", "captcha"].includes(outcome)) return { outcome: "unknown", ...boundary }
++      const quantity = v => typeof v === "number" && Number.isFinite(v) && v >= 0
++      return {
++        outcome,
++        ...(quantity(r.credit) ? { credit: r.credit } : {}),
++        ...(quantity(r.streak) ? { streak: r.streak } : {}),
++        ...(typeof r.message === "string" ? { message: r.message } : {}),
++        ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}),
++        ...boundary,
++      }
++    } catch {
++      // Read failures are retryable observations, never reward intents. Error
++      // text may contain credentials, so the public RPC does not echo it.
++      return { outcome: "unknown" }
++    }
++  })
+ }
+ 
+ const checkinOutcomes = ["claimed", "done", "ineligible", "inactive", "captcha", "failed"]
+ 
+-async function checkinOf(provider, account) {
++async function checkinOf(provider, account, expectedScope) {
+   const a = auths().get(provider)?.auth
+   if (typeof a?.checkin !== "function") throw new Error(`${provider}'s plugin doesn't check in`)
+   const key = accountKey(provider, account)
+   if (!readAuth()[key]) throw new Error("not signed in")
+   await fresh(provider, key)
+   const p = await infoOf(provider, key)
+-  const r = (await inScope(provider, key, () => a.checkin(async () => authCopy(key), JSON.parse(JSON.stringify(p))))) ?? {}
++  const r = (await inScope(provider, key, () => a.checkin(async () => authCopy(key), JSON.parse(JSON.stringify(p)), { expectedScope }))) ?? {}
+   const num = (v) => (typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0)
++  // An absent or invalid receipt amount is unknown, never zero credits.
++  const credit = typeof r.credit === "number" && Number.isFinite(r.credit) && r.credit >= 0 ? { credit: r.credit } : {}
+   const message = typeof r.message === "string" ? r.message : ""
+   // a time that doesn't read is not told
+   const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
+   const until = Number.isFinite(t) && t > 0 ? new Date(t).toISOString() : ""
+   if (!checkinOutcomes.includes(r.outcome)) {
+     const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
+-    return { outcome: "failed", credit: 0, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
+-  }
+-  return { outcome: r.outcome, credit: num(r.credit), streak: Math.round(num(r.streak)), message, until }
++    return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
++  }
++  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
+ }
+ 
+ // sdkHeaders are what the AI SDK package the model is on sends of the key.
+@@ -3292,6 +3329,7 @@
+   load,
+   usage,
+   checkin,
++  checkinStatus,
+   keepSignedIn,
+   // setOptions takes the user's option values over, as init did: the
+   // plugin reads them when it next asks (#2038)
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -2145,7 +2145,7 @@
+ // upstream failures are asked again twice (the bounded retry quota-hub
+ // observed on the billing endpoint; callers may shorten the waits for a
+ // test).
+-async function checkinOf(site, a, { waits = [0, 0] } = {}) {
++async function checkinOf(site, a, { waits = [0, 0], readOnly = false } = {}) {
+   let status
+   try {
+     status = await meter(site, a, "/v2/billing/meter/checkin-activity-status")
+@@ -2156,13 +2156,16 @@
+     if (e?.status !== undefined || e?.code !== undefined) return { outcome: "failed", message: e.message }
+     throw e
+   }
++  if (readOnly && typeof status?.active !== "boolean") return { outcome: "unknown" }
+   if (!status?.active) return { outcome: "inactive" }
++  if (readOnly && typeof (status.today_checked_in ?? status.todayCheckedIn) !== "boolean") return { outcome: "unknown" }
+   if (status.today_checked_in ?? status.todayCheckedIn) {
+     // today_credit is what today actually gave, the built-in's word for a
+     // day already in; daily_credit is the day's grant
+     const credit = Number(status.today_credit ?? status.daily_credit)
+     return { outcome: "done", ...(Number.isFinite(credit) && credit > 0 ? { credit } : {}) }
+   }
++  if (readOnly) return { outcome: "claimable" }
+   const paths = ["/v2/billing/meter/daily-checkin"]
+   for (let attempt = 0; ; attempt++) {
+     let i = 0
+@@ -3620,6 +3623,15 @@
+   // account. Bounded as refusedSystems is.
+   const commaSystems = new Set()
+   return async ({ client, magpie }) => {
++  // Both public hooks share the native preflight; only checkin may claim.
++  const checkin = async (getAuth, readOnly = false) => {
++    const auth = await getAuth()
++    // an API key reads no credits (see usage), so it has no day to claim
++    if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
++    if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
++    const a = await current(site, client, auth)
++    return await checkinOf(site, a, { waits: [2000, 4000], readOnly })
++  }
+   // each account's list as last read, for FREE_ONLY: {at, list}
+   const lists = new Map()
+   const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
+@@ -3737,14 +3749,8 @@
+       // full 30 minutes (magpie-community/plugins#149). checkinOf returns
+       // an outcome only for answers it read and classified.
+       ...(site.ai ? {} : {
+-        async checkin(getAuth) {
+-          const auth = await getAuth()
+-          // an API key reads no credits (see usage), so it has no day to claim
+-          if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
+-          if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
+-          const a = await current(site, client, auth)
+-          return await checkinOf(site, a, { waits: [2000, 4000] })
+-        },
++        checkin: (getAuth) => checkin(getAuth),
++        checkinStatus: (getAuth) => checkin(getAuth, true),
+       }),
+       options: [
+         {
+--- a/runtime/vendor/plugins/minimax/index.mjs
++++ b/runtime/vendor/plugins/minimax/index.mjs
+@@ -842,7 +842,7 @@
+ // hasn't started, or the panel has none), ineligible (the day isn't
+ // available); a throw is failed. streak counts the claimed days up to and
+ // including today.
+-async function checkinOf(site, access, userID) {
++async function checkinOf(site, access, userID, readOnly = false) {
+   if (!String(userID ?? "").trim()) userID = (await identity(site, access)).realUserID
+   const panel = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/status")
+   const days = Array.isArray(panel?.data?.days) ? panel.data.days : null
+@@ -853,6 +853,7 @@
+   const claimable = sorted.filter((d) => d?.status === 2)
+   if (todays.length > 1 || claimable.length > 1) throw new Error("check-in: malformed panel")
+   const today = todays[0]
++  if (readOnly && sorted.some(d => typeof d.is_today !== "boolean" || ![1, 2, 3, 4].includes(d.status))) return { outcome: "unknown" }
+   if (!today) return { outcome: "inactive" }
+   const streakFrom = (i) => {
+     let n = 0
+@@ -864,6 +865,7 @@
+     return { outcome: "done", ...(points ? { credit: points } : {}), streak: streakFrom(sorted.indexOf(today)) }
+   }
+   if (today.status === 2) {
++    if (readOnly) return { outcome: "claimable" }
+     const claim = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/claim", {})
+     const r = pos(claim?.data, "claim_result")
+     const credit = pos(claim?.data, "points")
+@@ -994,6 +996,34 @@
+ function makePlugin(site) {
+   return async ({ client }) => {
+     const fresh = accountSession(site, client)
++    // Read-only status uses the same authentication and native panel path.
++    const checkin = async (getAuth, readOnly = false) => {
++      const auth = await getAuth()
++      if (auth?.type !== "oauth" || !auth.access) return { outcome: "failed", message: "not signed in" }
++      let a
++      try {
++        ;({ a } = await fresh(getAuth))
++      } catch (e) {
++        return { outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) }
++      }
++      const failed = (e) => ({ outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) })
++      try {
++        return await checkinOf(site, a.access, a.realUserID, readOnly)
++      } catch (e) {
++        if (!(e instanceof AccountRefused && e.status === 401)) return failed(e)
++        // MiniMax Code's /checkin on a 401: renewed, and asked once more
++        try {
++          ;({ a } = await fresh(getAuth, a.access))
++        } catch (e2) {
++          return e2 instanceof SignInExpired ? failed(e2) : failed(e)
++        }
++        try {
++          return await checkinOf(site, a.access, undefined, readOnly)
++        } catch (e2) {
++          return failed(e2)
++        }
++      }
++    }
+ 
+     // one conversation id for requests that come with none of their own
+     const session = randomUUID()
+@@ -1144,33 +1174,8 @@
+         // the daily check-in (每日签到): magpie runs it once a day per
+         // account, and its Check in now button asks right away; the
+         // outcome lands on the account's Usage card.
+-        async checkin(getAuth) {
+-          const auth = await getAuth()
+-          if (auth?.type !== "oauth" || !auth.access) return { outcome: "failed", message: "not signed in" }
+-          let a
+-          try {
+-            ;({ a } = await fresh(getAuth))
+-          } catch (e) {
+-            return { outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) }
+-          }
+-          const failed = (e) => ({ outcome: "failed", message: e?.message ?? String(e), ...(e?.signIn ? { signIn: e.signIn } : {}) })
+-          try {
+-            return await checkinOf(site, a.access, a.realUserID)
+-          } catch (e) {
+-            if (!(e instanceof AccountRefused && e.status === 401)) return failed(e)
+-            // MiniMax Code's /checkin on a 401: renewed, and asked once more
+-            try {
+-              ;({ a } = await fresh(getAuth, a.access))
+-            } catch (e2) {
+-              return e2 instanceof SignInExpired ? failed(e2) : failed(e)
+-            }
+-            try {
+-              return await checkinOf(site, a.access, undefined)
+-            } catch (e2) {
+-              return failed(e2)
+-            }
+-          }
+-        },
++        checkin: (getAuth) => checkin(getAuth),
++        checkinStatus: (getAuth) => checkin(getAuth, true),
+         methods: [
+           {
+             type: "oauth",
+--- a/runtime/vendor/plugins/qoder/index.mjs
++++ b/runtime/vendor/plugins/qoder/index.mjs
+@@ -2883,6 +2883,15 @@
+   return start === undefined ? end : Math.max(end, start + DAY_MS)
+ }
+ 
++// Only native campaign identity plus explicit boundaries can reconcile an
++// uncertain claim. A host clock/day or the balance is never receipt evidence.
++const campaignScope = (c) => {
++  const start = at(c?.startAt), end = at(c?.endAt)
++  return typeof c?.campaignId === "string" && c.campaignId.trim() && start !== undefined && end > start
++    ? { scope: JSON.stringify([c.campaignId, start, end]) }
++    : {}
++}
++
+ // askAgain is a check-in's until: when to ask again, with room.
+ const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
+ 
+@@ -3510,7 +3519,7 @@
+   // checkin claims the daily credits through the same campaigns page as
+   // Qoder's client. A campaign already claimed is done; one not available
+   // is inactive, never an error that magpie would retry all day.
+-  const checkin = async (getAuth) => {
++  const checkin = async (getAuth, readOnly = false, expectedScope) => {
+     let cred
+     try {
+       if ((await getAuth())?.lingma) return { outcome: "inactive", message: "a Lingma 1.0 dedicated domain has no daily credits" }
+@@ -3551,13 +3560,14 @@
+       if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
+       const now = Date.now()
+       const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
++      if (readOnly && !Array.isArray(list.campaigns)) return { outcome: "unknown" }
+       const campaigns = (Array.isArray(list.campaigns) ? list.campaigns : []).filter((x) => x?.actionType === "CLAIM_BENEFIT")
+       const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE")
+       if (!campaign) {
+         const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x))
+         if (done) {
+           const amount = Number(done.benefit?.amount)
+-          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)) }
++          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)), ...campaignScope(done) }
+         }
+         // the next day's credits open at a time the list says: ask then,
+         // not half an hour later
+@@ -3576,6 +3586,13 @@
+         // say that much, and where the credits can still be claimed.
+         return { outcome: "inactive", message: noCampaign(site.name) }
+       }
++      if (readOnly) return typeof campaign.campaignId === "string" && campaign.campaignId.trim()
++        ? { outcome: "claimable", ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
++        : { outcome: "unknown" }
++      // Bind the write to the native campaign observed before durable intent.
++      // A cycle turn must not silently submit the newly offered campaign.
++      if (expectedScope !== undefined && expectedScope !== campaignScope(campaign).scope)
++        return { outcome: "failed", message: "campaigns: scope changed; check-in was not submitted" }
+       const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
+       let claim = {}
+       let claimRaw = ""
+@@ -3589,7 +3606,7 @@
+       if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
+       if (said === "CLAIMED") {
+         const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
+-        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)) }
++        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+       }
+       return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
+     } catch (e) {
+@@ -3985,7 +4002,7 @@
+       // the daily check-in reads the vendor's desktop device identity and
+       // posts it to the campaign endpoint: a site without one (QwenWork)
+       // sets checkin: false and gets none
+-      ...(site.checkin === false ? {} : { checkin }),
++      ...(site.checkin === false ? {} : { checkin: (getAuth, _provider, context) => checkin(getAuth, false, context?.expectedScope), checkinStatus: (getAuth) => checkin(getAuth, true) }),
+     },
+     async config(config) {
+       config.provider ??= {}
+--- a/runtime/vendor/plugins/trae/index.mjs
++++ b/runtime/vendor/plugins/trae/index.mjs
+@@ -3311,15 +3311,18 @@
+     return { body }
+   }
+ 
+-  const checkin = async (getAuth) => {
++  const checkin = async (getAuth, readOnly = false) => {
+     if (!site.checkin) return { outcome: "inactive", message: `${site.realm} has no daily check-in` }
+     const a0 = fromAuth(await getAuth(), site)
+     if (!a0) return { outcome: "failed", message: "not signed in" }
+     const first = await checkinStatus(getAuth, a0)
+     if (first.outcome) return first.outcome
+     const body = first.body
++    if (readOnly && typeof body.checked_in !== "boolean") return { outcome: "unknown" }
+     if (body.checked_in) return { outcome: "done", ...(Number(body.credits) > 0 ? { credit: Number(body.credits) } : {}) }
++    if (readOnly && typeof body.enable !== "boolean") return { outcome: "unknown" }
+     if (!body.enable) return { outcome: "inactive" }
++    if (readOnly) return { outcome: "claimable" }
+     const read = async (res) => {
+       const text = await res.text()
+       let v
+@@ -3685,7 +3688,8 @@
+     auth: {
+       provider: site.id,
+       usage,
+-      checkin,
++      checkin: (getAuth) => checkin(getAuth),
++      ...(site.checkin ? { checkinStatus: (getAuth) => checkin(getAuth, true) } : {}),
+       // magpie renews the token LEAD_MS before its end, once, before its
+       // requests, models and usage ask; the check before each request
+       // stays for OpenCode, which doesn't call this

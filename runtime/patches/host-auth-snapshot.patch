@@ -1,0 +1,17 @@
+# Native auth snapshots retain the host-owned recovery decision.
+# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -3333,6 +3333,12 @@
+     await loadPlugins(p.plugins ?? [])
+     return { plugins: loaded.map(withProviders) }
+   },
++  // Read the native owner's storage decision without renewing any account.
++  authSnapshot() {
++    const state = readAuthState()
++    if (!state.known) throw new Error("native auth storage is unknown")
++    return structuredClone(state.all)
++  },
+   providers: (p, signal) => providers(p ?? {}, signal),
+   prompt: async (p) => ({ prompt: await nextPrompt(p.provider, p.method, p.inputs ?? {}) }),
+   validate: (p) => ({ error: validate(p.provider, p.method, p.key, p.value) }),

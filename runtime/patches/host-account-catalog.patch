@@ -1,0 +1,42 @@
+# Account admission before native catalog/renewal hooks.
+# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
+# Cumulative base host SHA256: 3d9d155830dc172c34982363b1c763b4aea2d7ac91327b1e543d70587a1e23bd
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -2423,19 +2423,23 @@
+ // that gave up (signal) has every hook it would still have asked told, so
+ // a timed-out listing stops its vendor reads instead of multiplying them
+ // (#4678).
+-async function providers({ proxies, off } = {}, signal) {
++async function providers({ proxies, off, offAccounts } = {}, signal) {
+   const stored = readAuth()
+   // a provider switched off in magpie is asked nothing: its models hook
+   // (and the sign-in renewal before it) would reach its vendor. It is
+   // told as fallen back, so magpie keeps the list it had.
+   const quiet = new Set(Array.isArray(off) ? off : [])
++  // Optional account admission is applied before any models or renewal hook.
++  // Without it the native default-account behavior remains unchanged.
++  const filtered = Array.isArray(offAccounts)
++  const blocked = new Set(filtered ? offAccounts : [])
+   // every provider is listed side by side, each models hook given
+   // listWait: one whose vendor is stuck holds up no other's row
+   const row = async ([id, a]) => {
+-    const keys = accountsOf(stored, id)
++    const keys = accountsOf(stored, id).filter((k) => !blocked.has(k))
+     const through = (k) => proxies?.[id]?.[k ?? keys[0] ?? ""] ?? proxies?.[id]?.[""] ?? ""
+     const gen = infoGen
+-    if (quiet.has(id)) {
++    if (quiet.has(id) || (filtered && keys.length === 0)) {
+       const p = await info(id, undefined, false, listWait, true)
+       return rowOf(id, a, keys, stored, p, [])
+     }
+@@ -2444,7 +2448,7 @@
+     // listWaits back to back took one provider past refreshDeadline twice
+     // over (#4065)
+     const [p, own] = await Promise.all([
+-      via.run(through(), () => info(id, undefined, false, listWait, false, signal)).then((q) => (keepInfo(keys[0] ?? id, q, gen), q)),
++      via.run(through(), () => info(id, filtered ? keys[0] : undefined, false, listWait, false, signal)).then((q) => (keepInfo(keys[0] ?? id, q, gen), q)),
+       // each account's own models, as the built-ins read each account's: a
+       // plan may serve fewer, or others, than the first account's. One that
+       // can't be read is taken to have them all, or the ones it was last

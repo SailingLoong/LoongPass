@@ -636,6 +636,25 @@ function siteOf(site, a) {
   return s
 }
 
+// Shared by browser authorization and one-time device-grant migration.
+async function exchangeDeviceGrant(site, dt) {
+  const jr = site.deviceOnly ? null : await openapi(site, "/api/v1/me/jobToken", { method: "POST", token: dt.token, body: { clientId: site.clientId } })
+  let chat
+  if (site.deviceOnly) {
+    // the service's device token is itself the chat token, renewed as
+    // one (QwenWork never makes a job token)
+    chat = { access: dt.token, refresh: dt.refresh_token ?? "", expires: deviceExpiry(dt), deviceChat: true }
+  } else if (jr.status === 200) {
+    if (!String(jr.json?.token ?? "").trim()) throw new Error(`${site.name} job token: empty token in response`)
+    chat = { access: jr.json.token, refresh: jr.json.refresh_token ?? "", expires: expiresAt(jr.json) }
+  } else if (site.deviceChat && jr.status >= 400 && jr.status < 500) {
+    // Qoder CN's CLI never makes a job token: its device token is what
+    // signs the model calls, renewed as a device token
+    chat = { access: dt.token, refresh: dt.refresh_token ?? "", expires: deviceExpiry(dt), deviceChat: true }
+  } else throw Object.assign(new Error(`${site.name} job token: status ${jr.status}: ${jr.text.trim().slice(0, 300)}`), { status: jr.status })
+  return chat
+}
+
 async function deviceSignIn(site) {
   const verifier = b64url(randomBytes(64))
   const challenge = b64url(createHash("sha256").update(verifier).digest())
@@ -661,20 +680,7 @@ async function deviceSignIn(site) {
         } catch {} // a hiccup: ask again
         await new Promise((r) => setTimeout(r, 2000))
       }
-      const jr = site.deviceOnly ? null : await openapi(site, "/api/v1/me/jobToken", { method: "POST", token: dt.token, body: { clientId: site.clientId } })
-      let chat
-      if (site.deviceOnly) {
-        // the service's device token is itself the chat token, renewed as
-        // one (QwenWork never makes a job token)
-        chat = { access: dt.token, refresh: dt.refresh_token ?? "", expires: deviceExpiry(dt), deviceChat: true }
-      } else if (jr.status === 200) {
-        if (!String(jr.json?.token ?? "").trim()) throw new Error(`${site.name} job token: empty token in response`)
-        chat = { access: jr.json.token, refresh: jr.json.refresh_token ?? "", expires: expiresAt(jr.json) }
-      } else if (site.deviceChat && jr.status >= 400 && jr.status < 500) {
-        // Qoder CN's CLI never makes a job token: its device token is what
-        // signs the model calls, renewed as a device token
-        chat = { access: dt.token, refresh: dt.refresh_token ?? "", expires: deviceExpiry(dt), deviceChat: true }
-      } else throw new Error(`${site.name} job token: status ${jr.status}: ${jr.text.trim().slice(0, 300)}`)
+      const chat = await exchangeDeviceGrant(site, dt)
       let email = ""
       let name = ""
       let uid = dt.user_id
@@ -1933,6 +1939,8 @@ function parseCall(v, tools = []) {
   return { name, args: JSON.stringify(args) }
 }
 
+const hasTool = (tools, name) => tools.some((t) => (t.function ?? t)?.name === name)
+
 // propsOf is the parameters the request declared for tool name
 const propsOf = (tools, name) => (tools.find((t) => (t.function ?? t)?.name === name)?.function ?? {}).parameters?.properties ?? {}
 
@@ -2003,7 +2011,7 @@ function xmlCall(s, end, tools) {
     return { text: true }
   }
   const name = m[1].trim()
-  if (!tools.some((t) => (t.function ?? t)?.name === name)) return { text: true }
+  if (!hasTool(tools, name)) return { text: true }
   const body = s.slice(m[0].length)
   const c = body.match(closeRe)
   const n = body.search(XML_NEXT)
@@ -2024,12 +2032,85 @@ function xmlCall(s, end, tools) {
   return { call: { name, args: JSON.stringify(p.args) }, rest: whole ? body.slice(stop + c[0].length) : body.slice(stop) }
 }
 
-// quoted says text ends inside a code fence or an inline code span: a
-// <tool_call> there is prose about one, not a call
-function quoted(text) {
-  if ((text.match(/```/g)?.length ?? 0) % 2) return true
-  const line = text.slice(text.lastIndexOf("\n") + 1).replace(/```/g, "")
-  return (line.match(/`/g)?.length ?? 0) % 2 === 1
+// Track Markdown code incrementally, including delimiter runs split across
+// chunks. A fence closes only on its own line; inline spans require an
+// equally long backtick run. Four columns of indentation stay literal.
+class MarkdownCode {
+  fence = ""
+  fenceLength = 0
+  inlineTicks = 0
+  run = ""
+  runLength = 0
+  runAtStart = false
+  lineStart = true
+  indent = 0
+  closing = false
+  escaped = false
+  openingLine = false
+  indented = false
+  get beforeTag() {
+    this.finishRun()
+    return !!this.fence || this.inlineTicks > 0 || this.indented
+  }
+  finishRun() {
+    if (!this.runLength) return
+    if (this.fence) {
+      if (this.openingLine && this.fence === "`" && this.run === "`") {
+        // Backticks in a backtick fence's info string make it an inline
+        // span instead, possibly closed by this very run.
+        this.inlineTicks = this.runLength === this.fenceLength ? 0 : this.fenceLength
+        this.fence = ""
+        this.openingLine = false
+      } else this.closing = this.run === this.fence && this.runAtStart && this.runLength >= this.fenceLength
+    } else if (this.inlineTicks) {
+      if (this.run === "`" && this.runLength === this.inlineTicks) this.inlineTicks = 0
+    } else if (this.runAtStart && this.runLength >= 3) {
+      this.fence = this.run
+      this.fenceLength = this.runLength
+      this.openingLine = this.run === "`"
+    } else if (this.run === "`") this.inlineTicks = this.runLength
+    this.lineStart = false
+    this.runLength = 0
+  }
+  add(text) {
+    for (const char of text) {
+      if (this.indented && char !== "\n") continue
+      if (this.runLength && char === this.run) {
+        this.runLength++
+        continue
+      }
+      this.finishRun()
+      if ((char === "`" || char === "~") && !this.escaped) {
+        this.closing = false
+        this.run = char
+        this.runLength = 1
+        this.runAtStart = this.lineStart
+        continue
+      }
+      if (char === "\n") {
+        this.openingLine = false
+        if (this.closing) {
+          this.fence = ""
+          this.fenceLength = 0
+        }
+        this.closing = false
+        this.lineStart = true
+        this.indent = 0
+        this.escaped = false
+        this.indented = false
+        continue
+      }
+      if (char !== " " && char !== "\t" && char !== "\r") this.closing = false
+      if (this.lineStart && (char === " " || char === "\t")) {
+        this.indent += char === "\t" ? 4 - this.indent % 4 : 1
+        if (this.indent >= 4) {
+          this.lineStart = false
+          this.indented = !this.fence && !this.inlineTicks
+        }
+      } else if (char !== "\r") this.lineStart = false
+      this.escaped = !this.fence && !this.inlineTicks && char === "\\" ? !this.escaped : false
+    }
+  }
 }
 
 // callish says a block was on its way to being a call: its JSON began, or
@@ -2053,12 +2134,12 @@ class Splitter {
   inCall = false
   sawTool = false
   after = false // a bare call just ended: the closes and blanks after it are dropped
-  sent = "" // the text given out so far, to tell a block in code from a call
+  markdown = new MarkdownCode()
   constructor(tools = []) {
     this.tools = tools.filter((t) => (t?.function ?? t)?.name)
   }
   text(out, t) {
-    this.sent += t
+    this.markdown.add(t)
     out.push({ text: t })
   }
   // bare reads text that may hold a bare call, comb starting at its tag x:
@@ -2066,23 +2147,22 @@ class Splitter {
   // when the turn ended in an error
   bare(out, comb, x, end) {
     const head = comb.slice(0, x)
+    if (head) this.text(out, head)
     const at = comb.slice(x)
     const opener = at.match(/^<[^<>]*>?/)[0]
-    if (quoted(this.sent + head)) {
-      this.text(out, head + opener)
+    if (this.markdown.beforeTag) {
+      this.text(out, opener)
       return at.slice(opener.length)
     }
     const b = xmlCall(at, end, this.tools)
     if (b.wait) {
-      if (head) this.text(out, head)
       this.textBuf = at
       return null
     }
     if (b.text) {
-      this.text(out, head + opener)
+      this.text(out, opener)
       return at.slice(opener.length)
     }
-    if (head) this.text(out, head)
     if (b.error) {
       out.push({ error: b.error })
       return false
@@ -2102,6 +2182,10 @@ class Splitter {
   }
   feed(input) {
     const out = []
+    if (!this.tools.length) {
+      if (input) this.text(out, input)
+      return out
+    }
     while (input) {
       if (!this.inCall) {
         let comb = this.textBuf + input
@@ -2140,6 +2224,10 @@ class Splitter {
         }
         if (i > 0) this.text(out, comb.slice(0, i))
         input = comb.slice(i + CALL_OPEN.length)
+        if (this.markdown.beforeTag) {
+          this.text(out, CALL_OPEN)
+          continue
+        }
         this.inCall = true
         continue
       }
@@ -2152,10 +2240,10 @@ class Splitter {
       }
       const body = comb.slice(0, j)
       const c = parseCall(body, this.tools)
-      if (c) {
+      if (c && hasTool(this.tools, c.name)) {
         this.sawTool = true
         out.push({ call: c })
-      } else if (callish(body) && !quoted(this.sent)) {
+      } else if (!c && callish(body)) {
         this.inCall = false
         out.push({ error: UNREADABLE })
         return out
@@ -2170,14 +2258,16 @@ class Splitter {
       const body = this.callBuf
       this.inCall = false
       this.callBuf = ""
-      if (callish(body) && !quoted(this.sent)) {
+      if (callish(body)) {
         const c = parseCall(body, this.tools)
         if (!c) return [{ error: CUT_SHORT }]
-        this.sawTool = true
-        return [{ call: c }]
+        if (hasTool(this.tools, c.name)) {
+          this.sawTool = true
+          return [{ call: c }]
+        }
       }
       const t = CALL_OPEN + body
-      this.sent += t
+      this.markdown.add(t)
       return [{ text: t }]
     }
     if (this.textBuf) {
@@ -2278,6 +2368,10 @@ async function* events(body, tools = []) {
     for (const tc of delta.tool_calls ?? []) {
       const i = Number(tc.index ?? 0)
       const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : ""
+      if (name && !hasTool(tools, name)) {
+        yield { error: { status: 502, message: "the model called a tool the request did not declare" } }
+        return
+      }
       const args = tc.function?.arguments ?? ""
       if (!tc.id && !name && !args) continue
       let call = native.get(i)
@@ -2789,6 +2883,15 @@ const nextOpens = (c) => {
   return start === undefined ? end : Math.max(end, start + DAY_MS)
 }
 
+// Only native campaign identity plus explicit boundaries can reconcile an
+// uncertain claim. A host clock/day or the balance is never receipt evidence.
+const campaignScope = (c) => {
+  const start = at(c?.startAt), end = at(c?.endAt)
+  return typeof c?.campaignId === "string" && c.campaignId.trim() && start !== undefined && end > start
+    ? { scope: JSON.stringify([c.campaignId, start, end]) }
+    : {}
+}
+
 // askAgain is a check-in's until: when to ask again, with room.
 const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
 
@@ -2825,11 +2928,11 @@ function parseUsage(env) {
   if (typeof plan === "string") out.plan = plan
   const until = when(field("expiresAt", "expires_at"))
   if (until) out.until = until
-  const num = (v) => v === undefined || v === null || typeof v === "number"
+  const num = (v) => v === undefined || v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0)
   const str = (v) => v === undefined || v === null || typeof v === "string"
+  const valid = (b) => b !== null && typeof b === "object" && !Array.isArray(b) && [b.total, b.cap, b.used, b.remaining].every(num) && str(b.name) && str(b.unit)
   const add = (b, name) => {
-    if (b === null || typeof b !== "object" || Array.isArray(b)) return
-    if (![b.total, b.cap, b.used, b.remaining].every(num) || !str(b.name) || !str(b.unit)) return
+    if (!valid(b)) return
     const total = b.total ?? b.cap
     if (total == null || total <= 0 || (b.used == null && b.remaining == null)) return
     const used = b.used != null ? b.used : total - b.remaining
@@ -2842,6 +2945,7 @@ function parseUsage(env) {
     if (name === "Credits" && until) w.resetsAt = until
     out.windows.push(w)
     if (SPENT_IN_TURN.has(name)) turn.push({ w, used: Math.min(used, total), total, unit })
+    return w
   }
   const turn = []
   add(field("userQuota", "user_quota"), "Credits")
@@ -2855,7 +2959,26 @@ function parseUsage(env) {
     out.windows.unshift({ name: "Total credits", used: Math.min(100, (100 * used) / total), display: `${gfmt(used)} / ${gfmt(total)} ${turn[0].unit}`, amount: used, limit: total, unit: turn[0].unit })
   }
   const dedicated = field("dedicatedResourcePackages", "dedicated_resource_packages")
-  for (const b of Array.isArray(dedicated) ? dedicated : []) add(b, "Dedicated credits")
+  for (const b of Array.isArray(dedicated) ? dedicated : []) {
+    if (!valid(b) || b.available === false) continue
+    const total = b.total ?? b.cap
+    const remaining = b.remaining ?? (total != null && b.used != null ? Math.max(0, total - b.used) : undefined)
+    if (remaining === undefined) continue // A grant alone is no remaining balance.
+    let expires
+    try { expires = when(b.expires_at ?? b.expiresAt) } catch {}
+    if (expires && new Date(expires).getUTCFullYear() >= 9999) expires = undefined
+    if (expires && Date.parse(expires) <= Date.now()) continue
+    let w = add(b, "Dedicated credits")
+    if (!w) {
+      const unit = b.unit || "credits"
+      w = { name: b.name || "Dedicated credits", display: `${gfmt(remaining)} ${unit}`, unit }
+      out.windows.push(w)
+    }
+    // Packages can overlap the plan/add-on pools. Keep their own remaining
+    // amount and expiry beside those pools, never add them to Total credits.
+    Object.assign(w, { balance: remaining, aside: true })
+    if (expires) Object.assign(w, { runsOutAt: expires, runsOut: remaining })
+  }
   // A free account (personal_standard) with no add-on credits has a plan of
   // 0 and nothing else: Qoder's client shows that pool as 0/0 and counts the
   // account as out of credits. Without a window of its own magpie showed no
@@ -3396,7 +3519,7 @@ const makePlugin = (site) => async ({ client }) => {
   // checkin claims the daily credits through the same campaigns page as
   // Qoder's client. A campaign already claimed is done; one not available
   // is inactive, never an error that magpie would retry all day.
-  const checkin = async (getAuth) => {
+  const checkin = async (getAuth, readOnly = false, expectedScope) => {
     let cred
     try {
       if ((await getAuth())?.lingma) return { outcome: "inactive", message: "a Lingma 1.0 dedicated domain has no daily credits" }
@@ -3437,13 +3560,14 @@ const makePlugin = (site) => async ({ client }) => {
       if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
       const now = Date.now()
       const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
+      if (readOnly && !Array.isArray(list.campaigns)) return { outcome: "unknown" }
       const campaigns = (Array.isArray(list.campaigns) ? list.campaigns : []).filter((x) => x?.actionType === "CLAIM_BENEFIT")
       const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE")
       if (!campaign) {
         const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x))
         if (done) {
           const amount = Number(done.benefit?.amount)
-          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)) }
+          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)), ...campaignScope(done) }
         }
         // the next day's credits open at a time the list says: ask then,
         // not half an hour later
@@ -3462,6 +3586,13 @@ const makePlugin = (site) => async ({ client }) => {
         // say that much, and where the credits can still be claimed.
         return { outcome: "inactive", message: noCampaign(site.name) }
       }
+      if (readOnly) return typeof campaign.campaignId === "string" && campaign.campaignId.trim()
+        ? { outcome: "claimable", ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+        : { outcome: "unknown" }
+      // Bind the write to the native campaign observed before durable intent.
+      // A cycle turn must not silently submit the newly offered campaign.
+      if (expectedScope !== undefined && expectedScope !== campaignScope(campaign).scope)
+        return { outcome: "failed", message: "campaigns: scope changed; check-in was not submitted" }
       const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
       let claim = {}
       let claimRaw = ""
@@ -3475,7 +3606,7 @@ const makePlugin = (site) => async ({ client }) => {
       if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
       if (said === "CLAIMED") {
         const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
-        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)) }
+        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
       }
       return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
     } catch (e) {
@@ -3871,7 +4002,7 @@ const makePlugin = (site) => async ({ client }) => {
       // the daily check-in reads the vendor's desktop device identity and
       // posts it to the campaign endpoint: a site without one (QwenWork)
       // sets checkin: false and gets none
-      ...(site.checkin === false ? {} : { checkin }),
+      ...(site.checkin === false ? {} : { checkin: (getAuth, _provider, context) => checkin(getAuth, false, context?.expectedScope), checkinStatus: (getAuth) => checkin(getAuth, true) }),
     },
     async config(config) {
       config.provider ??= {}
@@ -3996,7 +4127,7 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
 // businessProduct, sessionType, systemPrompt, userInfoPath, normalizeUser,
 // deviceOnly, deviceRefreshTarget, rsaKey, cosyVersion, fallbackModels and
 // the vpcDomain branch of siteOf), and the openapi fetch.
-export const protocol = { makePlugin, deviceSignIn, openapi, siteOf }
+export const protocol = { makePlugin, deviceSignIn, exchangeDeviceGrant, openapi, siteOf }
 
 // for tests
 export const _internal = { OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }

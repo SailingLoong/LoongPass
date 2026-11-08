@@ -1,0 +1,500 @@
+import 'package:flutter/material.dart';
+
+import 'claim_receipt.dart';
+import 'compact_accounts_table.dart';
+import 'credit_summary_view.dart';
+import 'native_zcode_activity.dart';
+import 'plugin_accounts.dart';
+import 'plugin_rewards.dart';
+import 'plugin_sign_in_dialog.dart';
+import 'plugin_zcode_binding.dart';
+import 'zcode_api.dart';
+import 'zcode_rewards.dart';
+
+class PluginAccountsPanel extends StatefulWidget {
+  const PluginAccountsPanel({
+    super.key,
+    required this.accounts,
+    required this.rewards,
+    required this.providerIds,
+    required this.title,
+    this.activate,
+  });
+  final PluginAccounts accounts;
+  final PluginRewards rewards;
+  final Set<String> providerIds;
+  final String title;
+  final Future<String> Function(String)? activate;
+  @override
+  State<PluginAccountsPanel> createState() => _PluginAccountsPanelState();
+}
+
+class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
+  bool _busy = false;
+  String? _message;
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await action();
+    } on ZcodeFailure catch (e) {
+      if (mounted)
+        setState(
+          () => _message = e.code == 'device_pool_empty'
+              ? '没有可用的已保存设备号，账号设备未改变。'
+              : '操作未完成，请核对授权与网络。待核验的领取记录会保留。',
+        );
+    } catch (_) {
+      if (mounted) setState(() => _message = '操作未完成，请核对授权与网络。待核验的领取记录会保留。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _authorize([PluginAccount? account]) => _run(() async {
+    final saved = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PluginSignInDialog(
+        accounts: widget.accounts,
+        providerIds: account == null ? widget.providerIds : {account.provider},
+        initialProvider: account?.provider,
+        target: account,
+        title: account == null
+            ? '添加 ${widget.title} 账号'
+            : '重新授权 ${account.label}',
+      ),
+    );
+    if (saved != null && mounted)
+      setState(
+        () => _message = account != null && saved != account.key
+            ? '已保存新的授权账号，请核对列表中的账号身份。'
+            : '账号授权已保存。',
+      );
+  });
+
+  Future<void> _rebind(PluginAccount account) => _run(() async {
+    // Preserve the currently verified device before asking the native owner
+    // for a new grant. This is a metadata commit, with no reward HTTP request.
+    await widget.rewards.zcode.captureBinding(account.key);
+    final reservation = await ZcodeDeviceReservation.take(
+      widget.accounts,
+      account,
+    );
+    try {
+      if (!mounted) return;
+      final saved = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PluginSignInDialog(
+          accounts: widget.accounts,
+          providerIds: {account.provider},
+          initialProvider: account.provider,
+          target: account,
+          authorizationContext: {'device': reservation.device},
+          title: '重新绑定 ${account.label} 的设备',
+        ),
+      );
+      if (saved == null) return;
+      try {
+        await widget.rewards.zcode.captureBinding(saved);
+        if (mounted) setState(() => _message = '已通过官方授权更新设备绑定。领取记录已保留。');
+      } catch (_) {
+        if (mounted) setState(() => _message = '官方授权已保存，设备历史尚待核验，请刷新活动记录。');
+      }
+    } finally {
+      reservation.release();
+    }
+  });
+
+  Future<void> _refresh() => _run(() async {
+    await widget.accounts.refresh();
+    for (final account in widget.accounts.accounts) {
+      if (widget.providerIds.contains(account.provider) &&
+          account.active &&
+          account.provider == 'zcode')
+        await widget.rewards.zcode.refresh(account.key);
+    }
+  });
+
+  Future<void> _claim(PluginAccount account) => _run(() async {
+    if (_pending(account)) {
+      await widget.rewards.refresh(account.key);
+    } else if (account.provider == 'zcode') {
+      await widget.rewards.zcode.claim(
+        account.key,
+        verify: verifyNativeZcodeClaim,
+      );
+    } else {
+      await widget.rewards.claim(account.key);
+    }
+  });
+
+  Future<void> _activate(PluginAccount account) => _run(() async {
+    final result = await widget.activate!(account.key);
+    if (mounted)
+      setState(
+        () => _message = switch (result) {
+          'opened' => '已应用授权并打开 WorkBuddy，请在客户端核对当前身份。',
+          'applied' => '授权已应用，请打开 WorkBuddy 核对当前身份。',
+          'cancelled' => '本次客户端切换已取消。',
+          'expired' => '切换准备已超时，请重新操作。',
+          'busy' => '未能确认 WorkBuddy 已完全退出，请保存工作并关闭客户端。',
+          'recoveryRequired' => '客户端文件状态存在冲突，请核对恢复记录后再操作。',
+          'unavailable' => '账号正在处理其他操作或授权需要核验，请稍后重试。',
+          _ => '客户端切换结果待核对，请检查客户端当前身份。',
+        },
+      );
+  });
+
+  Future<void> _remove(PluginAccount account) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('移除已保存的账号？'),
+        content: const Text('将移除账号授权，保留领取记录，避免重新授权后重复领取。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('移除账号'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted)
+      await _run(() => widget.accounts.remove(account.key));
+  }
+
+  bool _canClaim(PluginAccount a) =>
+      a.active &&
+      a.uid.isNotEmpty &&
+      (a.provider == 'zcode' ||
+          widget.accounts.providers[a.provider]?['checkin'] == true);
+  bool _canActivate(PluginAccount a) =>
+      widget.activate != null &&
+      a.provider == 'workbuddy' &&
+      a.uid.isNotEmpty &&
+      a.source != 'desktop';
+
+  Widget _details(PluginAccount a) {
+    final usage = a.usage, reward = _reward(a), buckets = _buckets(a);
+    final rewardTime = _millis(reward['checkedAt'] ?? reward['observedAt']);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SelectableText(_identity(a)),
+        Text(_status(a)),
+        const SizedBox(height: 12),
+        Text('官方套餐与额度', style: Theme.of(context).textTheme.titleSmall),
+        if (usage == null)
+          const Text('尚无可核实的官方额度快照。')
+        else ...[
+          if (usage['plan'] is String) Text('套餐：${usage['plan']}'),
+          if (usage['balance'] is num)
+            Text('余额：${_number(usage['balance'])} ${_unit(usage)}'),
+          if (_date(usage['until']) != null)
+            Text('套餐到期：${creditTime(_date(usage['until'])!)}'),
+          if (_windows(a).isNotEmpty) const Text('各额度窗口独立列出，可能重叠，不合计。'),
+          for (final window in _windows(a))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_windowText(window)),
+                  if (window['display'] is String &&
+                      (window['display'] as String).isNotEmpty)
+                    Text(
+                      '官方摘要：${window['display']}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (window['aside'] == true) const Text('参考额度'),
+                  if (_date(window['resetsAt']) != null)
+                    Text('窗口重置：${creditTime(_date(window['resetsAt'])!)}'),
+                  if (_date(window['runsOutAt']) != null)
+                    Text(
+                      '到期额度：${_number(window['runsOut'])} ${_unit(window)} · ${creditTime(_date(window['runsOutAt'])!)}',
+                    ),
+                ],
+              ),
+            ),
+          if (usage['error'] != null) const Text('最近一次官方额度查询未完成。'),
+        ],
+        Text(
+          a.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(a.queriedAt!)}',
+        ),
+        if (a.provider == 'zcode') ...[
+          const Divider(),
+          Text(
+            'Start Plan 活动额度',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          if (buckets.isEmpty) const Text('尚无已核实的活动额度明细。'),
+          for (final bucket in buckets)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit}；'
+                '${bucket.expiresAt == null ? '到期时间未知' : '${creditTime(DateTime.fromMillisecondsSinceEpoch(bucket.expiresAt! * 1000))} 到期'}',
+              ),
+            ),
+          Text(
+            rewardTime == null
+                ? '活动额度查询时间未知'
+                : '活动额度查询于 ${creditTime(rewardTime)}',
+          ),
+        ],
+        const Divider(),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton(
+              onPressed: _busy || !a.active
+                  ? null
+                  : () => _run(
+                      () => _canClaim(a)
+                          ? widget.rewards.refresh(a.key)
+                          : widget.accounts.refresh(),
+                    ),
+              child: const Text('刷新额度'),
+            ),
+            if (_canClaim(a) || _pending(a))
+              OutlinedButton(
+                onPressed: _busy || !_canClaim(a) ? null : () => _claim(a),
+                child: Text(
+                  _pending(a)
+                      ? '核验领取结果'
+                      : a.provider == 'zcode'
+                      ? '核对并领取活动'
+                      : '核对并领取',
+                ),
+              ),
+            if (_canActivate(a))
+              OutlinedButton(
+                onPressed: _busy || !a.active ? null : () => _activate(a),
+                child: const Text('切换客户端账号'),
+              ),
+            TextButton(
+              onPressed: _busy ? null : () => _authorize(a),
+              child: const Text('重新授权'),
+            ),
+            if (a.provider == 'zcode' &&
+                a.uid.isNotEmpty &&
+                widget.accounts.providers[a.provider]?['reauthorize'] == true)
+              TextButton(
+                onPressed: _busy || !a.active ? null : () => _rebind(a),
+                child: const Text('重新绑定设备'),
+              ),
+            TextButton(
+              onPressed: _busy ? null : () => _remove(a),
+              child: const Text('移除账号'),
+            ),
+          ],
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('自动领取'),
+          subtitle: Text(
+            a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
+          ),
+          value: a.automatic,
+          onChanged: _busy || a.uid.isEmpty
+              ? null
+              : (value) =>
+                    _run(() => widget.accounts.setAutomatic(a.key, value)),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.accounts,
+    builder: (context, _) {
+      final rows = widget.accounts.accounts
+          .where((a) => widget.providerIds.contains(a.provider))
+          .toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AccountPanelToolbar(
+            title: widget.title,
+            accountCount: rows.length,
+            helpText:
+                '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可自动领取。'
+                '领取结果待核验时只查询官方状态。各额度窗口保留官方单位，不合计重叠额度。',
+            actions: [
+              FilledButton(
+                onPressed: _busy ? null : _authorize,
+                child: const Text('添加账号'),
+              ),
+              TextButton(
+                onPressed: _busy ? null : _refresh,
+                child: const Text('刷新账号与额度'),
+              ),
+            ],
+          ),
+          if (_busy) const LinearProgressIndicator(),
+          if (_message != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(_message!),
+            ),
+          if (widget.accounts.error != null)
+            const Text('最近一次查询未完成，当前保留已保存的结果。'),
+          CompactAccountsTable(
+            entries: [
+              for (final a in rows)
+                AccountTableEntry(
+                  id: a.key,
+                  label: a.label,
+                  identity: _identity(a),
+                  balance: _balance(a),
+                  status: _status(a),
+                  details: _details(a),
+                  observedAt: a.queriedAt,
+                  receipt: _receipt(a),
+                  notice: _message,
+                  expiryAt: _expiry(a),
+                  needsAttention:
+                      !a.active ||
+                      a.error != null ||
+                      _pending(a) ||
+                      {
+                        'captcha',
+                        'verificationRequired',
+                        'activationRequired',
+                        'authorization_required',
+                      }.contains(_reward(a)['status']),
+                  onActivate: _canActivate(a) ? () => _activate(a) : null,
+                  activationEnabled: !_busy && a.active,
+                ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Map _reward(PluginAccount a) =>
+    a.facts['reward'] is Map ? a.facts['reward'] : const {};
+bool _pending(PluginAccount a) =>
+    {'pending', 'unknown'}.contains(_reward(a)['status']);
+String _identity(PluginAccount a) =>
+    '${a.uid.isEmpty ? '身份未验证' : a.uid} · ${a.realm.isEmpty ? '地区未提供' : a.realm}';
+String _unit(Map value) =>
+    value['unit'] is String && (value['unit'] as String).isNotEmpty
+    ? value['unit']
+    : '单位未知';
+String _number(Object? value) => value is num && value.isFinite
+    ? value is int
+          ? value.toString()
+          : value == value.truncateToDouble()
+          ? value.toStringAsFixed(0)
+          : value.toString()
+    : '未知';
+DateTime? _date(Object? value) =>
+    value is String ? DateTime.tryParse(value) : null;
+DateTime? _millis(Object? value) =>
+    value is int && value > 0 && value < 8640000000000000
+    ? DateTime.fromMillisecondsSinceEpoch(value)
+    : null;
+List<Map> _windows(PluginAccount a) => [
+  for (final w in a.usage?['windows'] as List? ?? const [])
+    if (w is Map) w,
+];
+List<ZcodeBucket> _buckets(PluginAccount a) => [
+  for (final b in _reward(a)['buckets'] as List? ?? const [])
+    if (b is Map && b['label'] is String && b['unit'] is String)
+      ZcodeBucket.fromJson(Map<String, dynamic>.from(b)),
+];
+
+String _windowText(Map w) {
+  final unit = _unit(w);
+  final values = [
+    if (w['balance'] is num) '余额 ${_number(w['balance'])} $unit',
+    if (w['amount'] is num) '已用 ${_number(w['amount'])} $unit',
+    if (w['limit'] is num) '上限 ${_number(w['limit'])} $unit',
+    if (w['used'] is num) '使用率 ${_number(w['used'])}%',
+  ];
+  return '${w['name'] is String ? w['name'] : '额度窗口'}：${values.isEmpty ? '数值未知' : values.join(' · ')}';
+}
+
+String _balance(PluginAccount a) {
+  final parts = [
+    if (a.usage?['balance'] is num)
+      '${_number(a.usage!['balance'])} ${_unit(a.usage!)}',
+    for (final w in _windows(a)) _windowText(w),
+    if (a.provider == 'zcode')
+      for (final b in _buckets(a))
+        'Start Plan · ${b.label} ${_number(b.remaining)} ${b.unit}',
+  ];
+  return parts.isEmpty ? '尚无已核实余额' : parts.join(' / ');
+}
+
+String _status(PluginAccount a) {
+  if (_pending(a)) return '待核验：不会重复发送领取请求。';
+  if (!a.active) return '需要重新授权。';
+  return switch (_reward(a)['status']) {
+    'claimed' => '已确认领取。',
+    'done' || 'observedClaimed' => '官方确认已有权益。',
+    'claimable' => '当前有可领取活动。',
+    'noOffer' || 'inactive' => '当前没有可领取活动。',
+    'captcha' || 'verificationRequired' => '需要完成官方验证。',
+    'activationRequired' => '请先使用官方客户端完成活动要求。',
+    'ineligible' => '本次不符合官方领取条件。',
+    'authorization_required' => '授权需要更新，请重新授权。',
+    'discoveryIncomplete' => '活动信息暂不完整。',
+    _ => a.error == null ? '等待官方额度与领取检查。' : '最近一次查询未完成。',
+  };
+}
+
+ClaimReceipt? _receipt(PluginAccount a) {
+  final reward = _reward(a);
+  for (final r in [
+    reward,
+    ...(reward['history'] as List? ?? const []).reversed,
+  ]) {
+    if (r is Map && {'claimed', 'done'}.contains(r['status']))
+      return ClaimReceipt(
+        amount: r['credit'] is num ? r['credit'] : null,
+        unit: _unit(r),
+        confirmedAt: _millis(r['confirmedAt']),
+        day: r['day'] is String ? r['day'] : null,
+      );
+  }
+  for (final claims in [
+    reward['claims'],
+    for (final binding in reward['bindingHistory'] as List? ?? const [])
+      if (binding is Map) binding['claims'],
+  ]) {
+    if (claims is Map &&
+        claims.values.any((c) => c is Map && c['state'] == 'claimed')) {
+      return const ClaimReceipt(unit: '单位未知');
+    }
+  }
+  return null;
+}
+
+DateTime? _expiry(PluginAccount a) {
+  final now = DateTime.now();
+  final values = [
+    for (final b in _buckets(a))
+      if (b.expiresAt != null && b.remaining != 0)
+        DateTime.fromMillisecondsSinceEpoch(b.expiresAt! * 1000),
+    for (final w in _windows(a))
+      if (w['runsOut'] != 0 && _date(w['runsOutAt']) != null)
+        _date(w['runsOutAt'])!,
+  ].where((d) => d.isAfter(now)).toList()..sort();
+  return values.firstOrNull;
+}

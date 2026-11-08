@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +60,33 @@ void main() {
     runtime = null;
     await directory.delete(recursive: true);
   });
+
+  test(
+    'cancelled native authorization never publishes a late credential',
+    () async {
+      runtime = await open();
+      final started = await runtime!.call('authorize', {
+        'provider': 'fixture',
+        'method': 0,
+      }) as Map;
+      final cancel = Completer<void>();
+      final result = runtime!.call('callback', {
+        'session': started['session'],
+      }, cancellation: cancel.future);
+      final rejected = expectLater(
+        result,
+        throwsA(isA<PluginRuntimeFailure>()),
+      );
+      cancel.complete();
+      await rejected;
+      await runtime!.close();
+      final file = File('${directory.path}/plugin-auth.json');
+      expect(
+        await file.exists() ? jsonDecode(await file.readAsString()) : {},
+        isEmpty,
+      );
+    },
+  );
 
   test(
     'failed plugin initialization cannot expose a partially loaded host',

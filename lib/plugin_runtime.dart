@@ -25,6 +25,8 @@ class PluginRuntime {
   bool _closing = false;
   bool _dead = false;
   Future<void>? _closeFuture;
+  List<String> _providers = const [];
+  List<String> get providerIds => _providers;
   static const _maxLine = 32 << 20;
 
   Stream<Map<String, dynamic>> get events => _events.stream;
@@ -90,6 +92,11 @@ class PluginRuntime {
           )) {
         throw const PluginRuntimeFailure('plugin_load_failed');
       }
+      runtime._providers = List.unmodifiable([
+        for (final plugin in result['plugins'] as List)
+          for (final provider in plugin['provides'] as List? ?? const [])
+            if (provider is String) provider,
+      ]);
       return runtime;
     } catch (_) {
       await runtime.close();
@@ -101,12 +108,21 @@ class PluginRuntime {
     String method,
     Map<String, Object?> params, {
     Duration timeout = const Duration(seconds: 30),
+    Future<void>? cancellation,
   }) async {
     if (_closing || _dead) throw const PluginRuntimeFailure('host_closed');
     if (_calls.length >= 64) throw const PluginRuntimeFailure('host_busy');
     final id = ++_nextId;
     final result = Completer<Object?>();
     _calls[id] = result;
+    void cancel() {
+      if (_calls.remove(id) == null) return;
+      _notify('abort', {'id': id});
+      result.completeError(const PluginRuntimeFailure('request_cancelled'));
+    }
+
+    if (cancellation != null)
+      unawaited(cancellation.then((_) => cancel(), onError: (_) => cancel()));
     final timer = Timer(timeout, () {
       if (_calls.remove(id) == null) return;
       _send({

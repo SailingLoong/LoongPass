@@ -1,8 +1,17 @@
 let aborted = 0;
-export const FixturePlugin = async () => ({
+export const FixturePlugin = async (_, options = {}) => ({
   auth: {
-    provider: "fixture",
-    methods: [],
+    provider: options.provider ?? "fixture",
+    methods: [{
+      type: 'oauth', label: 'Synthetic authorization',
+      authorize: async () => ({url: 'https://fixture.invalid/login', method: 'auto',
+        callback: async () => {
+          await new Promise(resolve => setTimeout(resolve, 80));
+          return {type: 'success', uid: 'signed-in', accountId: 'Synthetic',
+            access: 'signed-access', refresh: '', expires: 0};
+        },
+      }),
+    }],
     refreshLead: 0,
     refresh: async () => {
       await new Promise((resolve) => setTimeout(resolve, 80));
@@ -42,8 +51,11 @@ export const FixturePlugin = async () => ({
       },
     }),
   },
-  "provider.models": async () => ({
-    "fixture-model": {id: "fixture-model", name: "Fixture", api: {npm: "@ai-sdk/openai-compatible"}},
-  }),
+  provider: {
+    id: options.provider ?? 'fixture',
+    models: async () => ({
+      'fixture-model': {id: 'fixture-model', name: 'Fixture', api: {npm: '@ai-sdk/openai-compatible'}},
+    }),
+  },
   "chat.headers": async (input, output) => { output.headers['x-fixture-session'] = input.sessionID; },
 });

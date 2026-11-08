@@ -14,7 +14,8 @@
 //
 // The sign-in is kept as OpenCode keeps an OAuth one: `access` is the key,
 // `refresh` the rest of it as JSON (site, base, key, jwt, team project,
-// plan, device id), `accountId` the account's email.
+// plan, device id), `accountId` the region and official user id, and
+// `name` the account's display label.
 
 import { createDecipheriv, createHash } from "node:crypto"
 import { existsSync, readFileSync, readdirSync } from "node:fs"
@@ -1431,15 +1432,34 @@ const who = (u) => first(String(u?.email ?? "").replace(/@phone\.local$/, ""), u
 // uidOf is the account's user id, kept beside its name: magpie tells two
 // accounts of one name apart by it, a name being no one's own (wakkana on
 // Discord, WorkBuddy's)
-const uidOf = (u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id).trim())
+const uidOf = (u) => {
+  const uid = u?.user_id ?? u?.id
+  return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
+}
+const accountIdOf = (site, uid) => `${site}:${uid}`
+const deviceID = (value) => typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
+// Target operations consume only the saved native grant. They do not follow
+// another installed client's current account or synthesize a device/identity.
+function savedGrant(auth, expected = {}) {
+  let s
+  try { s = JSON.parse(auth?.refresh) } catch {}
+  const uid = auth?.uid
+  if (auth?.type !== "oauth" || typeof uid !== "string" || !uid.trim() || uid !== uid.trim() ||
+      !s || !["bigmodel", "zai"].includes(s.site) || !deviceID(s.device)) throw new Error("ZCode has no verified saved binding")
+  if (expected.expectedUid !== undefined && expected.expectedUid !== uid ||
+      expected.expectedRealm !== undefined && expected.expectedRealm !== s.site) throw new Error("ZCode authorization target changed")
+  return { ...s, uid }
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // authorize opens ZCode's sign-in flow on site; its callback polls it.
 // onTeam signs in to the account's seat on a team's plan, named apart from
 // the account's own plan (the host keeps one entry per account name).
-async function authorize(site, log, onTeam = false) {
+async function authorize(site, log, onTeam = false, context = {}) {
   const poll = "Bearer " + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
-  const device = uuid()
+  const device = context.device ?? uuid()
+  const expectedUid = context.expectedUid
+  if (!deviceID(device) || context.expectedRealm !== undefined && context.expectedRealm !== site) throw new Error("ZCode sign-in: invalid target binding")
   let flow
   try {
     flow = await call("POST", ZCODE + "/api/v1/oauth/cli/init", { auth: poll, body: { provider: site }, device })
@@ -1476,6 +1496,9 @@ async function authorize(site, log, onTeam = false) {
         if (got.status === "pending" || !got.status) continue
         if (got.status === "failed") return fail(`the sign-in was declined on ${SITES[site].name}`)
         if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
+        const uid = uidOf(got.user)
+        if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
+        if (expectedUid !== undefined && uid !== expectedUid) return fail("ZCode sign-in: the official account differs from the saved target")
         let s
         try {
           s = await signedIn(site, token, first(got.token), device, onTeam)
@@ -1489,8 +1512,9 @@ async function authorize(site, log, onTeam = false) {
           access: s.key || s.jwt || "",
           // the key doesn't run out; ZCode's token, when it is all there is, does
           expires: s.key || isTeam(s) ? 0 : jwtExpiry(s.jwt),
-          accountId: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
-          ...(uidOf(got.user) ? { uid: uidOf(got.user) } : {}),
+          accountId: accountIdOf(site, uid) + (onTeam ? ` (${TEAM})` : ""),
+          uid,
+          name: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
         }
       }
     },
@@ -1723,17 +1747,19 @@ function ownSignIn() {
   const jwt = first(first(decrypt(key, store.zcodejwttoken)).replace(/^Bearer /, ""))
   const team = ownTeam(store, key)
   if (team) s = { ...team, jwt }
-  else s = { ...s, jwt, base: s.base || ZAI_BASE, site: s.base === BIGMODEL_BASE ? "bigmodel" : "zai" }
+  else {
+    const selected = readJSON(join(settingDir(), "setting.json"))?.providerFamilyDomain
+    const site = s.base ? (s.base === BIGMODEL_BASE ? "bigmodel" : "zai") : selected
+    // A JWT carries no verified region here. Use the client's selection,
+    // never another region's profile or a guessed Z.ai default.
+    if (site !== "zai" && site !== "bigmodel") return null
+    s = { ...s, jwt, base: s.base || SITES[site].base, site }
+  }
   if (!s.key && !s.jwt && !isTeam(s)) return null
   let info = {}
-  for (const name of ["oauth:zai:user_info", "oauth:bigmodel:user_info"]) {
-    const v = decrypt(key, store[name])
-    if (v && !first(info.email, info.name, info.user_id)) {
-      try {
-        info = JSON.parse(v)
-      } catch {}
-    }
-  }
+  try {
+    info = JSON.parse(decrypt(key, store[`oauth:${s.site}:user_info`]) ?? "{}")
+  } catch {}
   return { ...s, user: who(info), uid: uidOf(info) }
 }
 
@@ -1747,8 +1773,9 @@ function asZCode() {
       const own = ownSignIn()
       if (!own) return { type: "failed", error: "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
       const { user, uid, ...s } = own
+      if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
       const state = { source: "zcode", device: anyDevice, ...s }
-      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: user, ...(uid ? { uid } : {}) }
+      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: accountIdOf(s.site, uid), uid, name: user }
     },
   }
 }
@@ -1767,8 +1794,8 @@ function stateOf(auth) {
       // send this account's requests as that one, and an expired session
       // says sign in again (EXPIRED) rather than borrowing another's.
       const own = ownSignIn()
-      // (by user id where both have one: another account may share the name)
-      if (own && own.user === String(auth.accountId ?? "") && (!own.uid || !auth.uid || own.uid === String(auth.uid))) {
+      // Display names can change and IDs can repeat across regions.
+      if (own?.uid && own.site === s.site && own.uid === auth.uid && accountIdOf(own.site, own.uid) === auth.accountId) {
         const { user, uid: _uid, ...now } = own
         s = { source: "zcode", device: s.device, plan: s.plan, ...now }
       }
@@ -2801,6 +2828,16 @@ export async function ZCodeAuthPlugin({ client, magpie } = {}, options = {}) {
     },
     auth: {
       provider: PROVIDER,
+      // Optional public host hooks: authorization still goes through the
+      // same native callback and is saved only by the host.
+      async reauthorize(getAuth, context = {}) {
+        const s = savedGrant(await getAuth(), context)
+        return authorize(s.site, log, isTeam(s), { device: context.device ?? s.device, expectedUid: s.uid, expectedRealm: s.site })
+      },
+      async rewardContext(getAuth) {
+        const s = savedGrant(await getAuth())
+        return { version: APP_VERSION, platform: platform(), deviceMid: s.device, language: clientLanguage(), timezone: intl().timeZone || "unknown" }
+      },
       // a plan serves one account a few requests at a time: magpie's own
       // field, so its queue spaces what the agents ask for before the vendor
       // sees it. For the coding plan this is a default, not a cap the plugin

@@ -27,6 +27,7 @@ if not os.environ.get('LOONGPASS_BUN'):
              if os.name == 'nt' else Path.home() / '.cache/loongpass-runtime-tests')
     os.environ['LOONGPASS_BUN'] = subprocess.check_output(
         [dart, 'tool/prepare_bun.dart', str(cache)], cwd=root, text=True).strip()
+run([os.environ['LOONGPASS_BUN'], 'test', *[str(p) for p in sorted((root / 'test').glob('native_*.test.mjs'))]])
 
 run([dart, "analyze", "lib", "test"])
 run([flutter, "test", "--no-pub", "--reporter", "expanded"])
@@ -37,7 +38,7 @@ for check in sorted((root / "tool").glob("workbuddy_*checks.dart")):
 for check in sorted((root / "test").glob("*checks.py")):
     run([sys.executable, str(check)])
 
-if os.uname().sysname == "Darwin":
+if sys.platform == "darwin":
     with tempfile.TemporaryDirectory(prefix="loongpass-native-checks-") as scratch:
         zcode_context = str(Path(scratch) / "zcode-context-checks")
         run(["xcrun", "swiftc", "macos/Runner/ZcodeRequestContext.swift", "tool/zcode_request_context_checks.swift", "-o", zcode_context])

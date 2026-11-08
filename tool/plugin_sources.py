@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import shutil
+import tempfile
 
 
 def verify(root):
@@ -17,6 +19,26 @@ def verify(root):
         path = runtime / entry['target']
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
             raise ValueError('Modified upstream source: ' + entry['target'])
+    # Reversing the reviewed patches must recover the exact pinned originals.
+    # Runtime installation uses the verified effective files, never a patcher.
+    with tempfile.TemporaryDirectory(prefix='loongpass-source-check-') as temp:
+        stage = Path(temp)
+        for entry in manifest['files']:
+            if 'upstreamSha256' not in entry:
+                continue
+            path = stage / 'runtime' / entry['target']
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(runtime / entry['target'], path)
+        for patch in reversed(manifest.get('patches', [])):
+            result = subprocess.run(['git', 'apply', '--reverse', str(runtime / patch)],
+                                    cwd=stage, capture_output=True)
+            if result.returncode:
+                raise ValueError('Upstream patch cannot be reversed: ' + patch)
+        for entry in manifest['files']:
+            if 'upstreamSha256' in entry:
+                original = stage / 'runtime' / entry['target']
+                if hashlib.sha256(original.read_bytes()).hexdigest() != entry['upstreamSha256']:
+                    raise ValueError('Upstream provenance mismatch: ' + entry['target'])
     for package in manifest['packages']:
         directory = runtime / package['target']
         meta = json.loads((directory / 'package.json').read_text())
@@ -51,11 +73,13 @@ def main():
             if repo is None:
                 parser.error('--sync requires --magpie and --plugins checkouts')
             data = subprocess.check_output(['git', '-C', str(repo), 'show', source['commit'] + ':' + entry['path']])
-            if hashlib.sha256(data).hexdigest() != entry['sha256']:
+            if hashlib.sha256(data).hexdigest() != entry.get('upstreamSha256', entry['sha256']):
                 raise ValueError('Pinned source hash differs: ' + entry['path'])
             path = root / 'runtime' / entry['target']
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
+        for patch in manifest.get('patches', []):
+            subprocess.run(['git', 'apply', str(root / 'runtime' / patch)], cwd=root, check=True)
     manifest = verify(root)
     print('Verified', len(manifest['files']), 'pinned files and', len(manifest['packages']), 'complete packages')
 

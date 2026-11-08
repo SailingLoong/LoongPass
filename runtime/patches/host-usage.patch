@@ -1,0 +1,35 @@
+# Native host usage preserves unknown quantities for LoongPass.
+# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
+# Base host SHA256: 1c0053cbb85b210a8ed46dde7276aa79acaac7909d5cb565eababb3473e07134
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 2bc993b..96998a8 100644
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -3010,6 +3010,7 @@ async function usageOf(provider, account, signal) {
+   }
+   const text = (v) => (typeof v === "string" ? v : "")
+   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
++  const quantity = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null) // null: unknown, not zero
+   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
+   return {
+     plan: text(u.plan),
+@@ -3035,8 +3036,8 @@ async function usageOf(provider, account, signal) {
+       resetsAt: when(w?.resetsAt),
+       resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
+       display: text(w?.display),
+-      amount: Math.max(0, num(w?.amount)),
+-      limit: Math.max(0, num(w?.limit)),
++      amount: quantity(w?.amount),
++      limit: quantity(w?.limit),
+       unit: text(w?.unit),
+       span: Math.max(0, num(w?.span)),
+       model: text(w?.model),
+@@ -3044,7 +3045,7 @@ async function usageOf(provider, account, signal) {
+       notModels: ids(w?.notModels),
+       aside: !!w?.aside,
+       runsOutAt: when(w?.runsOutAt),
+-      runsOut: Math.max(0, num(w?.runsOut)),
++      runsOut: quantity(w?.runsOut),
+       balance: typeof w?.balance === "number" && isFinite(w.balance) ? Math.max(0, w.balance) : null, // null: not said
+     })),
+   }

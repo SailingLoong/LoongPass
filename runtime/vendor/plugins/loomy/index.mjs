@@ -350,13 +350,18 @@ export async function LoomyAuthPlugin({ client } = {}) {
             if (codeOf(answer) !== OK) return { type: "failed", error: `登录失败：${messageOf(answer) || `code=${codeOf(answer)}`}` }
             const session = String(answer?.data?.session ?? "").trim()
             if (!session) return { type: "failed", error: "登录成功但上游没有返回 session" }
+            const id = answer?.data?.userid
+            const uid = typeof id === "string" ? id.trim() : Number.isSafeInteger(id) ? String(id) : ""
+            if (!uid) return { type: "failed", error: "登录成功但上游没有返回用户 ID，请重新登录" }
             return {
               type: "success",
               refresh: "",
               access: session,
               expires: Date.now() + 14 * 86400e3, // the session the client asks for is 14 days
-              accountId: `${phone.slice(0, 3)}****${phone.slice(-4)}`,
-              userId: String(answer?.data?.userid ?? ""),
+              accountId: uid,
+              uid,
+              userId: uid,
+              name: `${phone.slice(0, 3)}****${phone.slice(-4)}`,
               source: "sms",
             }
           } catch (e) {
@@ -370,19 +375,9 @@ export async function LoomyAuthPlugin({ client } = {}) {
     type: "oauth",
     label: "手动粘贴 session（Paste token）",
     prompts: [{ type: "text", key: "session", message: "session（token 头的值，14 天有效）", validate: (v) => (v && v.trim() ? undefined : "必填") }],
-    // an oauth authorize() hands back {url, method, instructions, callback}
-    // and the host finishes the sign-in by calling callback() — returning
-    // the account directly leaves the host on a callback that doesn't exist
-    authorize: async (inputs) => {
-      const session = String(inputs?.session ?? "").trim()
-      if (!session) return { type: "failed", error: "session 必填" }
-      return {
-        url: "",
-        instructions: "已取到粘贴的 session，确认即完成登录。",
-        method: "auto",
-        callback: async () => ({ type: "success", refresh: "", access: session, expires: 0, accountId: "手动粘贴", source: "manual" }),
-      }
-    },
+    // This protocol has no profile lookup that verifies a pasted session's
+    // user ID. A shared label or a token fingerprint is not an account ID.
+    authorize: async () => ({ type: "failed", error: "无法核实粘贴 session 的用户 ID，请使用短信验证码登录" }),
   })
 
   return {
@@ -491,7 +486,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
           if (AUTH_CODES.has(code)) return { error: "Loomy 登录态已失效，请重新登录", signIn: "expired" }
           if (code !== OK) return { error: `积分查询失败：${messageOf(payload) || `code=${code}`}`, signIn: "kept" }
           const data = payload?.data?.data ?? payload?.data ?? {}
-          const daily = toNum(data.dailyBalance)
+          const daily = toNum(data.dailyRemainingPoints) ?? toNum(data.dailyBalance)
           const permanent = toNum(data.balance)
           // this endpoint is a records list, so a reply without the balance
           // fields is a realistic case — "unknown" must not read as a
@@ -505,6 +500,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
           // always read as full
           const dailyLimit = toNum(data.dailyLimitPoints)
           const dailyRemaining = toNum(data.dailyRemainingPoints)
+          const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.max(0, dailyLimit - dailyRemaining) : null
 
           // the daily wallet shows from whichever numbers came back: the
           // limit/remaining pair alone is enough (remaining IS its number);
@@ -512,13 +508,13 @@ export async function LoomyAuthPlugin({ client } = {}) {
           // neither, no daily wallet at all — a missing one is not 0
           const dailyWallet =
             dailyLimit != null && dailyRemaining != null
-              ? { name: "每日赠送积分", used: Math.max(0, dailyLimit - dailyRemaining), amount: dailyRemaining, limit: dailyLimit, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
+              ? { name: "每日赠送积分", used: dailyLimit > 0 ? 100 * dailySpent / dailyLimit : undefined, amount: dailySpent, limit: dailyLimit, balance: dailyRemaining, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
               : daily != null
-                ? { name: "每日赠送积分", used: 0, display: `${daily} credits`, aside: true }
+                ? { name: "每日赠送积分", balance: daily, unit: "credits", display: `${daily} credits`, aside: true }
                 : null
           const windows = [
             ...(dailyWallet ? [dailyWallet] : []),
-            ...(permanent != null ? [{ name: "永久积分", used: 0, display: `${permanent} credits`, aside: true }] : []),
+            ...(permanent != null ? [{ name: "永久积分", balance: permanent, unit: "credits", display: `${permanent} credits`, aside: true }] : []),
           ]
           // no `signIn` on a clean read: that absence is how magpie takes an
           // expired mark back off the account (Loomy has no renewal, so a

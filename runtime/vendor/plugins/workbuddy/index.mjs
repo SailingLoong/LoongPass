@@ -1826,7 +1826,9 @@ function readDesktop(site) {
   try {
     const f = JSON.parse(readFileSync(desktopFile(site), "utf8"))
     const t = f?.auth ?? {}
-    if (typeof t.accessToken !== "string" || !t.accessToken || !f?.account?.uid) return null
+    if (typeof t.accessToken !== "string" || !t.accessToken ||
+        typeof f?.account?.uid !== "string" || !f.account.uid.trim() ||
+        typeof t.domain !== "string" || !t.domain.trim()) return null
     const now = Date.now()
     const acct = f.account
     return {
@@ -1872,7 +1874,7 @@ function desktopSignIn(site) {
     async callback() {
       const d = readDesktop(site)
       if (!d) return { type: "failed", error: notDesktop(site) }
-      return { type: "success", refresh: "", access: "", expires: 0, source: "desktop", accountId: d.name || site.name, uid: d.uid }
+      return { type: "success", refresh: "", access: "", expires: 0, source: "desktop", accountId: d.name || site.name, uid: d.uid, domain: d.domain }
     },
   }
 }
@@ -1880,6 +1882,9 @@ function desktopSignIn(site) {
 // desktopHeld is what a desktop sign-in was renewed to here, by site and
 // account: kept in memory only, never written where the app keeps it.
 const desktopHeld = new Map()
+const desktopKey = (site, a) => JSON.stringify([site.id, a.domain, a.uid])
+const sameAccount = (a, b) => a.uid === b.uid && a.domain === b.domain
+const desktopChanged = (site) => `${site.name} desktop account changed; sign in again for this account`
 
 // current is the sign-in a stored auth names, fresh: WorkBuddy desktop's,
 // read where it keeps it, or one kept here.
@@ -1887,9 +1892,13 @@ async function current(site, client, auth) {
   if (auth?.source !== "desktop") return fresh(site, client, auth)
   const d = readDesktop(site)
   if (!d) throw new Error(notDesktop(site))
-  const k = site.id + "|" + d.uid
+  // A saved desktop grant names an account, not whichever person is now in
+  // the app. Old grants without a domain must be authorized again.
+  if (!sameAccount(d, auth)) throw new Error(desktopChanged(site))
+  const k = desktopKey(site, d)
   const h = desktopHeld.get(k)
   const a = await fresh(site, null, h && h.expires >= d.expires ? h : d)
+  if (!sameAccount(a, auth)) throw new Error(desktopChanged(site))
   desktopHeld.set(k, a)
   return a
 }
@@ -2030,17 +2039,22 @@ const refreshRefused = (e) => e instanceof WBError && (e.status === 401 || /inva
 // desktopSignIn).
 async function reissued(site, client, getAuth, a, began) {
   if (a.source === "desktop") {
-    desktopHeld.delete(site.id + "|" + a.uid)
+    desktopHeld.delete(desktopKey(site, a))
     const d = readDesktop(site)
     if (!d) return { why: notDesktop(site), kind: "unknown" }
+    if (!sameAccount(d, a)) return { why: desktopChanged(site), kind: "unknown" }
     if (d.access !== a.access) {
-      desktopHeld.set(site.id + "|" + d.uid, d)
+      desktopHeld.set(desktopKey(site, d), d)
       return { a: d }
     }
     return { why: `${site.name} desktop's own sign-in is the one refused`, kind: "unknown" }
   }
   const newer = async () => {
     const now = await getAuth().catch(() => null)
+    // A replacement account in the same native slot is not this request's
+    // token rotation. Stop before retrying or saving a renewal over it.
+    if (now?.type === "oauth" && now.source !== "desktop" && !sameAccount(now, a))
+      throw new Error(`${site.name} account changed; sign in again for this account`)
     return now?.type === "oauth" && now.source !== "desktop" && now.access && now.access !== began && now.access !== a.access ? now : null
   }
   const saved = await newer()
@@ -2145,7 +2159,7 @@ async function meter(site, a, path, body = {}) {
 // upstream failures are asked again twice (the bounded retry quota-hub
 // observed on the billing endpoint; callers may shorten the waits for a
 // test).
-async function checkinOf(site, a, { waits = [0, 0] } = {}) {
+async function checkinOf(site, a, { waits = [0, 0], readOnly = false } = {}) {
   let status
   try {
     status = await meter(site, a, "/v2/billing/meter/checkin-activity-status")
@@ -2156,13 +2170,16 @@ async function checkinOf(site, a, { waits = [0, 0] } = {}) {
     if (e?.status !== undefined || e?.code !== undefined) return { outcome: "failed", message: e.message }
     throw e
   }
+  if (readOnly && typeof status?.active !== "boolean") return { outcome: "unknown" }
   if (!status?.active) return { outcome: "inactive" }
+  if (readOnly && typeof (status.today_checked_in ?? status.todayCheckedIn) !== "boolean") return { outcome: "unknown" }
   if (status.today_checked_in ?? status.todayCheckedIn) {
     // today_credit is what today actually gave, the built-in's word for a
     // day already in; daily_credit is the day's grant
     const credit = Number(status.today_credit ?? status.daily_credit)
     return { outcome: "done", ...(Number.isFinite(credit) && credit > 0 ? { credit } : {}) }
   }
+  if (readOnly) return { outcome: "claimable" }
   const paths = ["/v2/billing/meter/daily-checkin"]
   for (let attempt = 0; ; attempt++) {
     let i = 0
@@ -3620,6 +3637,15 @@ function makePlugin(site) {
   // account. Bounded as refusedSystems is.
   const commaSystems = new Set()
   return async ({ client, magpie }) => {
+  // Both public hooks share the native preflight; only checkin may claim.
+  const checkin = async (getAuth, readOnly = false) => {
+    const auth = await getAuth()
+    // an API key reads no credits (see usage), so it has no day to claim
+    if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
+    if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
+    const a = await current(site, client, auth)
+    return await checkinOf(site, a, { waits: [2000, 4000], readOnly })
+  }
   // each account's list as last read, for FREE_ONLY: {at, list}
   const lists = new Map()
   const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
@@ -3737,14 +3763,8 @@ function makePlugin(site) {
       // full 30 minutes (magpie-community/plugins#149). checkinOf returns
       // an outcome only for answers it read and classified.
       ...(site.ai ? {} : {
-        async checkin(getAuth) {
-          const auth = await getAuth()
-          // an API key reads no credits (see usage), so it has no day to claim
-          if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
-          if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
-          const a = await current(site, client, auth)
-          return await checkinOf(site, a, { waits: [2000, 4000] })
-        },
+        checkin: (getAuth) => checkin(getAuth),
+        checkinStatus: (getAuth) => checkin(getAuth, true),
       }),
       options: [
         {
