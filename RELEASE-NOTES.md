@@ -1,3 +1,15 @@
+LoongPass 1.0.1 安全维护候选
+
+- 使用 Flutter 3.47.8 / Dart 3.13.7 重建 Windows 安装版与便携版，修复 GHSA-frr6-h895-5pxp 所述的 HTTPS 证书验证问题。
+- 基于 1.0.0 发布源码制作最小补丁；账号、授权与签到逻辑保持原有行为。
+- 构建和发布检查实际 SDK 版本，拒绝受影响版本，并在 Windows 构建记录中保留工具链信息。
+
+受影响版本不代表已经发生凭据泄露。macOS 不受此项漏洞影响。当前为待验收候选，尚未替换正式安装包或线上更新源；真实 Windows 官方登录、授权恢复与签到回执仍需在候选包上核对。
+
+官方公告：https://github.com/dart-lang/sdk/security/advisories/GHSA-frr6-h895-5pxp
+
+以下为原 1.0.0 发布说明。
+
 LoongPass 1.0.0：统一管理 AI 平台多账号、免费奖励和积分到期信息。
 
 - 首次同时提供 macOS Universal、Windows x64 安装版和便携版。macOS 包包含 Apple Silicon 与 Intel 架构。

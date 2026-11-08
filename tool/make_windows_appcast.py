@@ -12,6 +12,7 @@ import zipfile
 
 from make_appcast import ROOT, SPARKLE, download_prefix, verify_signatures
 from release_version import read_release_version
+from verify_flutter import verify_toolchain
 
 INSTALLER = "LoongPass-Windows-x64-Setup.exe"
 PORTABLE = "LoongPass-Windows-x64.zip"
@@ -50,6 +51,7 @@ def verify_portable(archive, version, build):
 
 def verify_windows_bundle(directory, version, build, source):
     metadata = json.loads((directory / "WINDOWS-BUILD.json").read_text())
+    verify_toolchain(metadata.get("flutterToolchain"))
     assert metadata["source"] == source == (directory / "SOURCE_COMMIT.windows").read_text().strip()
     assert metadata["version"] == version and metadata["build"] == build
     assert metadata["architecture"] == "x64"

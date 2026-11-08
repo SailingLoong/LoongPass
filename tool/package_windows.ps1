@@ -6,6 +6,9 @@ $name, $build = $release.Trim().Split('+')
 $bundle = Join-Path $root 'build\windows\x64\runner\Release'
 $dist = Join-Path $root 'dist-windows'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
+& python "$PSScriptRoot\verify_flutter.py" "$dist\FLUTTER-VERSION.windows.json"
+if ($LASTEXITCODE -ne 0) { throw 'Patched stable Flutter and Dart SDKs are required' }
+$flutterToolchain = Get-Content "$dist\FLUTTER-VERSION.windows.json" -Raw | ConvertFrom-Json
 $exe = Join-Path $bundle 'LoongPass.exe'
 $expectedVersion = ($name -split '-')[0] + '.' + $build
 $info = (Get-Item $exe).VersionInfo
@@ -29,7 +32,7 @@ Get-ChildItem -LiteralPath $bundle -Filter 'loongpass_*_checks.exe' -File | Remo
 if ($LASTEXITCODE -ne 0) { throw 'Windows license bundling failed' }
 $source = (& git -C $root rev-parse HEAD).Trim()
 [IO.File]::WriteAllText((Join-Path $dist 'SOURCE_COMMIT.windows'), "$source`n", [Text.UTF8Encoding]::new($false))
-$metadata = @{ version=$name; build=$build; architecture='x64'; source=$source; executableSHA256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
+$metadata = @{ version=$name; build=$build; architecture='x64'; source=$source; flutterToolchain=$flutterToolchain; executableSHA256=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
 [IO.File]::WriteAllText((Join-Path $dist 'WINDOWS-BUILD.json'), ($metadata | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 Compress-Archive -Path "$bundle\*" -DestinationPath "$dist\LoongPass-Windows-x64.zip" -Force
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
