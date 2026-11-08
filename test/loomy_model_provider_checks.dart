@@ -40,6 +40,15 @@ class Wire implements ModelTransport {
                 'max_tokens': 4096,
                 'capabilities': {'function_calling': true},
               },
+              {
+                'id': 'image-only',
+                'name': 'Image generation',
+                'capabilities': {
+                  'input_modalities': ['text', 'image'],
+                  'output_modalities': ['image'],
+                  'function_calling': false,
+                },
+              },
             ],
           })
         : 'data: {"choices":[{"delta":{"content":"你好"}}]}\n\ndata: [DONE]\n\n';

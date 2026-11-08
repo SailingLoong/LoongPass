@@ -67,7 +67,10 @@ class LoomyModelProvider extends ModelProvider {
             final caps = row['capabilities'];
             // This gateway's image-generation entries are not Chat models.
             if (caps is Map &&
-                (caps['image_generation'] == true || caps['chat'] == false))
+                (caps['image_generation'] == true ||
+                    caps['chat'] == false ||
+                    caps['output_modalities'] is List &&
+                        !(caps['output_modalities'] as List).contains('text')))
               continue;
             models.add(
               ModelDefinition(
