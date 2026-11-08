@@ -6,8 +6,13 @@ import 'dart:io';
 
 class ZcodeFailure implements Exception {
   final String code;
-  final int? httpStatus, serviceCode;
-  const ZcodeFailure(this.code, {this.httpStatus, this.serviceCode});
+  final int? httpStatus, serviceCode, retryAfterMs;
+  const ZcodeFailure(
+    this.code, {
+    this.httpStatus,
+    this.serviceCode,
+    this.retryAfterMs,
+  });
   @override
   String toString() => 'ZcodeFailure($code)';
 }
@@ -21,9 +26,8 @@ bool zcodeText(Object? v, [int max = 256]) =>
 
 String zcodeDeviceId(dynamic value) {
   if (value is! String ||
-      !RegExp(
-        r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$',
-      ).hasMatch(value))
+      !RegExp(r'^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$')
+          .hasMatch(value))
     throw const ZcodeFailure('device_required');
   return value.toLowerCase();
 }
@@ -39,9 +43,8 @@ const _zcodeOperatingSystems = {
 Map<String, String> zcodeContext(Map<String, dynamic> value) {
   const keys = ['version', 'platform', 'deviceMid', 'language', 'timezone'];
   if (keys.any((k) => !zcodeText(value[k], 128)) ||
-      !RegExp(
-        r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$',
-      ).hasMatch(value['version']) ||
+      !RegExp(r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$')
+          .hasMatch(value['version']) ||
       !_zcodeOperatingSystems.containsKey(value['platform'])) {
     throw const ZcodeFailure('device_required');
   }
@@ -70,7 +73,8 @@ class ZcodeRequest {
 class ZcodeReply {
   final int status;
   final Map<String, dynamic> body;
-  const ZcodeReply(this.status, this.body);
+  final int? retryAfterMs;
+  const ZcodeReply(this.status, this.body, {this.retryAfterMs});
   @override
   String toString() => 'ZcodeReply($status, [redacted])';
 }
@@ -92,9 +96,8 @@ class ZcodeHttp implements ZcodeTransport {
     };
     if (!allowed.contains(r.path) &&
         !(r.path.startsWith(ZcodeApi.pollPrefix) &&
-            RegExp(
-              r'^[a-zA-Z0-9_-]{1,256}$',
-            ).hasMatch(r.path.substring(ZcodeApi.pollPrefix.length)))) {
+            RegExp(r'^[a-zA-Z0-9_-]{1,256}$')
+                .hasMatch(r.path.substring(ZcodeApi.pollPrefix.length)))) {
       throw const ZcodeFailure('invalid_request');
     }
     if (!zcodeText(r.token, 16384))
@@ -147,6 +150,10 @@ class ZcodeHttp implements ZcodeTransport {
         check();
         if (r.body != null) req.write(jsonEncode(r.body));
         final response = await req.close();
+        final retryAfterMs = zcodeRetryAfterMs(
+          response.headers.value('retry-after'),
+          DateTime.now(),
+        );
         final bytes = <int>[];
         await for (final chunk in response) {
           check();
@@ -166,10 +173,15 @@ class ZcodeHttp implements ZcodeTransport {
                 ? 'authorization_required'
                 : 'invalid_response',
             httpStatus: response.statusCode,
+            retryAfterMs: retryAfterMs,
           );
         }
         // No response strings, URLs or credential values escape as diagnostics.
-        return ZcodeReply(response.statusCode, decoded);
+        return ZcodeReply(
+          response.statusCode,
+          decoded,
+          retryAfterMs: retryAfterMs,
+        );
       })().timeout(const Duration(seconds: 25));
     } on ZcodeFailure {
       rethrow;
@@ -214,13 +226,27 @@ class ZcodeApi {
         serviceCode: zcodeCode(result.body),
       );
     }
-    if (result.status != 200)
+    if (result.status != 200 || zcodeCode(result.body) == 3002)
       throw ZcodeFailure(
         'service_unavailable',
         httpStatus: result.status,
         serviceCode: zcodeCode(result.body),
+        retryAfterMs: result.retryAfterMs,
       );
     return result.body;
+  }
+}
+
+int? zcodeRetryAfterMs(String? value, DateTime now) {
+  if (value == null) return null;
+  final seconds = double.tryParse(value.trim());
+  if (seconds != null && seconds.isFinite && seconds >= 0)
+    return (seconds * 1000).ceil();
+  try {
+    final wait = HttpDate.parse(value).difference(now).inMilliseconds;
+    return wait > 0 ? wait : 0;
+  } catch (_) {
+    return null;
   }
 }
 

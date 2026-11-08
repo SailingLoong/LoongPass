@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+
 import '../lib/app_sidebar.dart';
 import '../lib/ui_preferences.dart';
 
@@ -19,6 +20,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: AppWorkspace(
+            sections: const {WorkspaceSection.models: Text('Magpie models')},
             pages: const {
               ManagedApp.zcode: Text('ZCode content'),
               ManagedApp.qoder: TextField(key: Key('draft')),
@@ -44,7 +46,6 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Magpie'), findsWidgets);
-      expect(find.text('尚未启动'), findsWidgets);
       expect(find.textContaining('127.0.0.1'), findsNothing);
     },
   );

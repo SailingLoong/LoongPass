@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/main.dart';
 
 Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
@@ -50,25 +51,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('toggle-examples')), findsNothing);
       expect(find.byKey(const Key('backup-file')), findsNothing);
-      expect(find.byKey(const Key('account-search')), findsOneWidget);
       expect(find.text('导入样例'), findsNothing);
       expect(find.text('ZCode 样例 A'), findsNothing);
       expect(find.byKey(const Key('switch-zcode-a')), findsNothing);
       expect(find.byKey(const Key('checkin-zcode-a')), findsNothing);
     }
-  });
-
-  testWidgets('Qoder regions present separate official login entries', (
-    tester,
-  ) async {
-    await desktop(tester);
-    await tester.tap(find.byKey(const ValueKey('app-qoderCn')));
-    await tester.pumpAndSettle();
-    expect(find.text('授权 Qoder CN 账号'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('app-qoder')));
-    await tester.pumpAndSettle();
-    expect(find.text('授权 Qoder 账号'), findsOneWidget);
-    expect(find.text('签到成功'), findsNothing);
   });
 
   for (final width in [480.0, 760.0, 1280.0]) {

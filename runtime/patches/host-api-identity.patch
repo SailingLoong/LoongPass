@@ -1,0 +1,51 @@
+# Native API identity separate from provider inputs for LoongPass.
+# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
+# Apply after host-usage.patch.
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 96998a8..0865506 100644
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -2592,7 +2592,7 @@ function validate(provider, index, key, value) {
+ // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
+ // a sign-in the plugin says is another provider's, a new account of
+ // that one). It gives the provider and where the account is kept.
+-async function save(provider, key, result, inputs, apiKey) {
++async function save(provider, key, result, inputs, apiKey, accountId) {
+   const id = result.provider ?? provider
+   if (id !== provider) key = freshKey(id)
+   if ("refresh" in result) {
+@@ -2600,7 +2600,7 @@ async function save(provider, key, result, inputs, apiKey) {
+     await setAuth(key, { type: "oauth", refresh, access, expires, ...extra })
+   } else if ("key" in result || apiKey) {
+     const md = { ...(inputs && Object.keys(inputs).length ? inputs : {}), ...(result.metadata ?? {}) }
+-    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(Object.keys(md).length ? { metadata: md } : {}) })
++    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) })
+   }
+   return { provider: id, account: await settle(id, key) }
+ }
+@@ -2679,19 +2679,22 @@ async function callback({ session, code }, signal) {
+   return { ok: true, ...(await save(s.provider, s.key, r, undefined)) }
+ }
+ 
+-async function apiKey({ provider, method, inputs, key, account, proxy }, signal) {
++async function apiKey({ provider, method, inputs, key, account, accountId, proxy }, signal) {
++  // A caller's scoped API identity is separate from the plugin's prompt inputs.
++  // OAuth results retain the official identity supplied by their auth hook.
++  accountId = typeof accountId === "string" ? accountId.trim() : ""
+   const m = authOf(provider).methods[method]
+   if (!m || m.type !== "api") throw new Error("not an API key method")
+   const at = signInKey(provider, account)
+   if (typeof m.authorize !== "function") {
+     const md = inputs && Object.keys(inputs).length ? { metadata: inputs } : {}
+-    await setAuth(at, { type: "api", key, ...md })
++    await setAuth(at, { type: "api", key, ...(accountId ? { accountId } : {}), ...md })
+     return { ok: true, provider, account: await settle(provider, at) }
+   }
+   const r = await signingIn(signal, proxy ?? "", provider, at, () => m.authorize(inputs ?? {}, { signal }))
+   if (signal?.aborted) throw abortedSignIn()
+   if (!r || r.type !== "success") return failed(r)
+-  return { ok: true, ...(await save(provider, at, r, inputs, key)) }
++  return { ok: true, ...(await save(provider, at, r, inputs, key, accountId)) }
+ }
+ 
+ // ---- renewing a sign-in ------------------------------------------------------

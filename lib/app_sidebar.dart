@@ -1,5 +1,7 @@
 import 'app_navigation_item.dart';
+
 import 'package:flutter/material.dart';
+
 import 'managed_app.dart';
 import 'ui_preferences.dart';
 import 'workspace_tools.dart';
@@ -75,7 +77,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
             filterQuality: FilterQuality.high,
           );
           final sections = {
-            WorkspaceSection.models: const ModelServicesPage(),
             WorkspaceSection.settings: WorkspaceSettingsPage(
               preferences: _preferences,
             ),

@@ -1,6 +1,17 @@
 # Source provenance
 
-LoongPass uses Flutter for its macOS interface and retains the licenses of the following source adaptations.
+LoongPass uses Flutter for its desktop interface. Current supplier authorization,
+renewal, model and request behavior runs the complete native Magpie community
+packages through the pinned Magpie Bun host. The exact source commits, package
+versions, original and effective hashes are owned by `runtime/upstream.lock.json`;
+the retained MIT licenses and reviewed native changes are documented in
+`THIRD_PARTY_NOTICES.md` and `runtime/README.md`. The generic LoongPass bridge,
+private account facts, durable reward transactions and desktop activation remain
+LoongPass application code.
+
+The following records retain the lineage and notices of earlier adaptations and
+the app-specific capabilities that remain. They do not mean that the removed
+Dart supplier adapters still own current authorization or inference.
 
 - ZCode snapshot and switch rules originate from SailingLoong/LoongPort commit `9e1b7e574e1ca923d8ee5aab3cd7ede16a8872b6`, source tree `a64268e64b391d856146ea0ddaef027e3d921715`, under MIT. Copyright notices are retained in `LICENSE` and the native module licenses.
 - WorkBuddy authorization and claim contracts derive from the MIT LoongPort and workbuddy-switch modules. Attribution is retained in `WORKBUDDY-LICENSE.txt`.

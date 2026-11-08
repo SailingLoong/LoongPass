@@ -1,0 +1,2 @@
+# Source locks verify original bytes, including each upstream's line endings.
+runtime/** -text

@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
+
 import 'account_document_store.dart';
 
 class NativeAccountDocumentStore implements AccountDocumentStore {
@@ -38,6 +40,14 @@ class NativeAccountDocumentStore implements AccountDocumentStore {
     } catch (_) {
       throw const AccountDocumentFailure();
     }
+  }
+
+  Future<String> privateDirectory() async {
+    final value = (await _call('privateAccountDirectory', {}))['path'];
+    if (value is! String || value.isEmpty || value.contains('\u0000')) {
+      throw const AccountDocumentFailure();
+    }
+    return value;
   }
 
   @override

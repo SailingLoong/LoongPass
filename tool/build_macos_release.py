@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from release_version import read_release_version
+from plugin_sources import verify as verify_plugin_sources
 
 
 def verify_app(app):
@@ -29,6 +30,7 @@ def verify_app(app):
 
 def main():
     root = Path(__file__).resolve().parents[1]
+    verify_plugin_sources(root)
     cache = Path.home() / "Library/Caches/LoongPass"
     cache.mkdir(parents=True, exist_ok=True)
     with ExitStack() as locks:

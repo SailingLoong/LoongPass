@@ -1,0 +1,72 @@
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -1826,7 +1826,9 @@
+   try {
+     const f = JSON.parse(readFileSync(desktopFile(site), "utf8"))
+     const t = f?.auth ?? {}
+-    if (typeof t.accessToken !== "string" || !t.accessToken || !f?.account?.uid) return null
++    if (typeof t.accessToken !== "string" || !t.accessToken ||
++        typeof f?.account?.uid !== "string" || !f.account.uid.trim() ||
++        typeof t.domain !== "string" || !t.domain.trim()) return null
+     const now = Date.now()
+     const acct = f.account
+     return {
+@@ -1872,7 +1874,7 @@
+     async callback() {
+       const d = readDesktop(site)
+       if (!d) return { type: "failed", error: notDesktop(site) }
+-      return { type: "success", refresh: "", access: "", expires: 0, source: "desktop", accountId: d.name || site.name, uid: d.uid }
++      return { type: "success", refresh: "", access: "", expires: 0, source: "desktop", accountId: d.name || site.name, uid: d.uid, domain: d.domain }
+     },
+   }
+ }
+@@ -1880,6 +1882,9 @@
+ // desktopHeld is what a desktop sign-in was renewed to here, by site and
+ // account: kept in memory only, never written where the app keeps it.
+ const desktopHeld = new Map()
++const desktopKey = (site, a) => JSON.stringify([site.id, a.domain, a.uid])
++const sameAccount = (a, b) => a.uid === b.uid && a.domain === b.domain
++const desktopChanged = (site) => `${site.name} desktop account changed; sign in again for this account`
+ 
+ // current is the sign-in a stored auth names, fresh: WorkBuddy desktop's,
+ // read where it keeps it, or one kept here.
+@@ -1887,9 +1892,13 @@
+   if (auth?.source !== "desktop") return fresh(site, client, auth)
+   const d = readDesktop(site)
+   if (!d) throw new Error(notDesktop(site))
+-  const k = site.id + "|" + d.uid
++  // A saved desktop grant names an account, not whichever person is now in
++  // the app. Old grants without a domain must be authorized again.
++  if (!sameAccount(d, auth)) throw new Error(desktopChanged(site))
++  const k = desktopKey(site, d)
+   const h = desktopHeld.get(k)
+   const a = await fresh(site, null, h && h.expires >= d.expires ? h : d)
++  if (!sameAccount(a, auth)) throw new Error(desktopChanged(site))
+   desktopHeld.set(k, a)
+   return a
+ }
+@@ -2030,17 +2039,22 @@
+ // desktopSignIn).
+ async function reissued(site, client, getAuth, a, began) {
+   if (a.source === "desktop") {
+-    desktopHeld.delete(site.id + "|" + a.uid)
++    desktopHeld.delete(desktopKey(site, a))
+     const d = readDesktop(site)
+     if (!d) return { why: notDesktop(site), kind: "unknown" }
++    if (!sameAccount(d, a)) return { why: desktopChanged(site), kind: "unknown" }
+     if (d.access !== a.access) {
+-      desktopHeld.set(site.id + "|" + d.uid, d)
++      desktopHeld.set(desktopKey(site, d), d)
+       return { a: d }
+     }
+     return { why: `${site.name} desktop's own sign-in is the one refused`, kind: "unknown" }
+   }
+   const newer = async () => {
+     const now = await getAuth().catch(() => null)
++    // A replacement account in the same native slot is not this request's
++    // token rotation. Stop before retrying or saving a renewal over it.
++    if (now?.type === "oauth" && now.source !== "desktop" && !sameAccount(now, a))
++      throw new Error(`${site.name} account changed; sign in again for this account`)
+     return now?.type === "oauth" && now.source !== "desktop" && now.access && now.access !== began && now.access !== a.access ? now : null
+   }
+   const saved = await newer()

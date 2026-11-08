@@ -355,6 +355,8 @@ Json ReadEnvelope(FileOwner& file, size_t limit = kFileLimit) {
 
 Json DocumentOperation(FileOwner& file, const std::string& method,
                        const Json& args) {
+  if (method == "privateAccountDirectory")
+    return {{"path", Utf8(file.root().wstring())}};
   const auto current = ReadEnvelope(file);
   const auto revision = Integer(current.at("revision"));
   if (method == "readAccountDocument")
@@ -607,7 +609,8 @@ Json QoderOperation(FileOwner& file, const std::string& method,
 }
 
 const std::set<std::string> kDocumentScopes = {
-    "MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode"};
+    "MiniMax-cn", "MiniMax-global", "TRAE-cn", "ZCode", "RewardChannels",
+    "ModelService", "PluginRuntime", "PluginAccounts", "PluginMigration"};
 std::mutex storage_mutex;
 bool workbuddy_journal_prepared = false;
 
@@ -640,7 +643,7 @@ bool HandleStorageCall(const std::string& channel, const Call& call,
                        std::unique_ptr<Result>& result) {
   const auto& method = call.method_name();
   static const std::set<std::string> documents = {
-      "readAccountDocument", "writeAccountDocument"};
+      "readAccountDocument", "writeAccountDocument", "privateAccountDirectory"};
   static const std::set<std::string> vault = {
       "listWorkBuddyVaultKeys", "readWorkBuddyVault",
       "compareExchangeWorkBuddyVault"};
