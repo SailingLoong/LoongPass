@@ -31,9 +31,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          flutter-version: '3.47.1'
+          flutter-version-file: pubspec.yaml
           channel: stable
           cache: true
+      - name: Verify patched release SDK
+        run: python3 tool/verify_flutter.py
       - name: Resolve locked dependencies
         run: |
           flutter pub get --enforce-lockfile
@@ -98,15 +100,31 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
-          flutter-version: '3.47.1'
+          flutter-version-file: pubspec.yaml
           channel: stable
           cache: true
+      - name: Verify patched release SDK
+        run: python tool/verify_flutter.py
       - name: Resolve locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Check shared Dart behavior
         run: |
           dart analyze lib test
+          if ($LASTEXITCODE -ne 0) { throw 'Dart analysis failed' }
           flutter test --no-pub --reporter expanded
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter behavior checks failed' }
+          python test/flutter_toolchain_checks.py
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter SDK gate checks failed' }
+      - name: Check authorization and reward protocols with synthetic accounts
+        run: |
+          $checks = @('test/minimax_http_checks.dart', 'test/minimax_oauth_checks.dart',
+            'test/qoder_cn_checks.dart', 'test/trae_accounts_checks.dart',
+            'test/zcode_activities_checks.dart', 'tool/workbuddy_flow_checks.dart',
+            'tool/workbuddy_automatic_checks.dart')
+          foreach ($check in $checks) {
+            dart $check
+            if ($LASTEXITCODE -ne 0) { throw "Protocol check failed: $check" }
+          }
       - name: Identify native toolchain
         id: toolchain
         run: |
