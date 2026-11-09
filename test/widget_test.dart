@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'desktop_test_app.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/main.dart';
@@ -13,7 +15,7 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
-  testWidgets(
+  testDesktopWidgets(
     'Qoder CN invitation defaults and overrides stay platform scoped',
     (tester) async {
       await desktop(tester);
@@ -40,28 +42,32 @@ void main() {
     },
   );
 
-  testWidgets('WorkBuddy page offers an editable default invitation code', (
-    tester,
-  ) async {
-    await desktop(tester);
-    expect(find.byKey(const Key('workbuddy-invitation-code')), findsOneWidget);
-    expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const Key('workbuddy-invitation-code')),
-      'my-invite-code',
-    );
-    await tester.tap(find.byKey(const Key('workbuddy-invitation-save')));
-    await tester.pumpAndSettle();
-    expect(find.text('邀请码已保存'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('app-qoderCn')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
-    await tester.tap(find.byKey(const Key('app-workbuddy')));
-    await tester.pumpAndSettle();
-    expect(find.text('my-invite-code'), findsOneWidget);
-  });
+  testDesktopWidgets(
+    'WorkBuddy page offers an editable default invitation code',
+    (tester) async {
+      await desktop(tester);
+      expect(
+        find.byKey(const Key('workbuddy-invitation-code')),
+        findsOneWidget,
+      );
+      expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('workbuddy-invitation-code')),
+        'my-invite-code',
+      );
+      await tester.tap(find.byKey(const Key('workbuddy-invitation-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请码已保存'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
+      await tester.tap(find.byKey(const Key('app-workbuddy')));
+      await tester.pumpAndSettle();
+      expect(find.text('my-invite-code'), findsOneWidget);
+    },
+  );
 
-  testWidgets(
+  testDesktopWidgets(
     'secondary workspaces are reachable without example model credentials',
     (tester) async {
       await desktop(tester);
@@ -80,7 +86,7 @@ void main() {
       }
     },
   );
-  testWidgets('production navigation has regional account workspaces', (
+  testDesktopWidgets('production navigation has regional account workspaces', (
     tester,
   ) async {
     await desktop(tester);
@@ -107,31 +113,36 @@ void main() {
   });
 
   for (final width in [480.0, 760.0, 1280.0]) {
-    testWidgets('app workspace has no layout exception at width $width', (
-      tester,
-    ) async {
-      await desktop(tester, width: width);
-      expect(tester.takeException(), isNull);
-      if (width < 760) {
-        expect(find.byTooltip('LoongPass'), findsOneWidget);
-      } else {
-        expect(find.text('LoongPass'), findsOneWidget);
-      }
-      expect(find.byTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
-      for (final app in [
-        'zcode',
-        'qoderCn',
-        'qoder',
-        'minimaxCn',
-        'minimax',
-        'workbuddy',
-        'traeCn',
-        'codex',
-      ]) {
-        await tester.tap(find.byKey(ValueKey('app-$app')));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: '$app at width $width');
-      }
-    });
+    testDesktopWidgets(
+      'app workspace has no layout exception at width $width',
+      (tester) async {
+        await desktop(tester, width: width);
+        expect(tester.takeException(), isNull);
+        if (width < 760) {
+          expect(findTooltip('LoongPass'), findsOneWidget);
+        } else {
+          expect(find.text('LoongPass'), findsOneWidget);
+        }
+        expect(findTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
+        for (final app in [
+          'zcode',
+          'qoderCn',
+          'qoder',
+          'minimaxCn',
+          'minimax',
+          'workbuddy',
+          'traeCn',
+          'codex',
+        ]) {
+          await tester.tap(find.byKey(ValueKey('app-$app')));
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$app at width $width',
+          );
+        }
+      },
+    );
   }
 }

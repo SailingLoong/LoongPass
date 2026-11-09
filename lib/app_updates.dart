@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter/services.dart';
 
 /// Read-only projection of Sparkle's state. Native Sparkle owns scheduling,
@@ -70,37 +71,38 @@ class AppUpdateCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(updates.version == null ? '正在读取版本信息' : '当前版本 ${updates.version}'),
         const Text('更新会保留本机账号和设置。'),
-        SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('辅助检查并下载更新'),
-          subtitle: Text(
+        FSwitch(
+          value: updates.automaticUpdates,
+          label: const Text('辅助检查并下载更新'),
+          description: Text(
             updates.installOnQuit
                 ? '按计划检查并下载，校验通过后在退出时安装，也可以主动安装并重启。'
                 : '按计划检查、下载并校验更新后打开安装程序。',
           ),
-          value: updates.automaticUpdates,
-          onChanged: updates.available ? updates.setAutomaticUpdates : null,
+          leadingLabel: true,
+          enabled: updates.available,
+          onChange: updates.setAutomaticUpdates,
         ),
-        SwitchListTile.adaptive(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('接收 Beta 版更新'),
-          subtitle: Text(
+        FSwitch(
+          value: updates.receiveBetaUpdates,
+          label: const Text('接收 Beta 版更新'),
+          description: Text(
             updates.available && !updates.canChangeChannel
                 ? '更新进行中或已下载，安装或跳过后可切换渠道。'
                 : '提前体验新功能，稳定性可能不如正式版。关闭后仅接收正式版。',
           ),
-          value: updates.receiveBetaUpdates,
-          onChanged: updates.available && updates.canChangeChannel
-              ? updates.setReceiveBetaUpdates
-              : null,
+          leadingLabel: true,
+          enabled: updates.available && updates.canChangeChannel,
+          onChange: updates.setReceiveBetaUpdates,
         ),
         if (updates.error != null) Text(updates.error!),
-        OutlinedButton.icon(
-          onPressed: updates.available && updates.canCheck
-              ? updates.check
-              : null,
-          icon: const Icon(Icons.system_update_alt, size: 17),
-          label: const Text('检查更新'),
+        FButton(
+          variant: FButtonVariant.outline,
+          size: FButtonSizeVariant.sm,
+          mainAxisSize: MainAxisSize.min,
+          onPress: updates.available && updates.canCheck ? updates.check : null,
+          prefix: const Icon(FLucideIcons.download, size: 17),
+          child: const Text('检查更新'),
         ),
       ],
     ),

@@ -1,6 +1,7 @@
 import 'app_navigation_item.dart';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 
 import 'managed_app.dart';
 import 'ui_preferences.dart';
@@ -8,11 +9,11 @@ import 'workspace_tools.dart';
 export 'managed_app.dart';
 
 enum WorkspaceSection {
-  overview('总览', Icons.space_dashboard_outlined),
-  accounts('账号与积分', Icons.account_balance_wallet_outlined),
-  models('模型服务', Icons.route_outlined),
-  activity('活动记录', Icons.receipt_long_outlined),
-  settings('设置', Icons.tune);
+  overview('总览', FLucideIcons.layoutDashboard),
+  accounts('账号与积分', FLucideIcons.wallet),
+  models('模型服务', FLucideIcons.route),
+  activity('活动记录', FLucideIcons.receiptText),
+  settings('设置', FLucideIcons.slidersHorizontal);
 
   const WorkspaceSection(this.label, this.icon);
   final String label;
@@ -68,7 +69,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 760 || _preferences.collapsed;
-          final colors = Theme.of(context).colorScheme;
+          final colors = context.theme.colors;
           final brandIcon = Image.asset(
             'assets/branding/loongpass.png',
             width: 28,
@@ -94,32 +95,38 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 selected: _section == section,
                 onPressed: () => selectSection(section),
               );
-          final toggle = IconButton(
-            key: const Key('toggle-sidebar'),
-            tooltip: constraints.maxWidth < 760
-                ? 'LoongPass'
-                : compact
-                ? '展开应用栏'
-                : '收起应用栏',
-            onPressed: constraints.maxWidth < 760
-                ? null
-                : () => _preferences.setCollapsed(!_preferences.collapsed),
-            style: IconButton.styleFrom(
-              fixedSize: const Size(30, 30),
-              padding: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(5),
+          final toggle = FTooltip(
+            tipBuilder: (context, controller) => Text(
+              constraints.maxWidth < 760
+                  ? 'LoongPass'
+                  : compact
+                  ? '展开应用栏'
+                  : '收起应用栏',
+            ),
+            child: Semantics(
+              tooltip: constraints.maxWidth < 760
+                  ? 'LoongPass'
+                  : compact
+                  ? '展开应用栏'
+                  : '收起应用栏',
+              child: FButton.icon(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                key: const Key('toggle-sidebar'),
+                onPress: constraints.maxWidth < 760
+                    ? null
+                    : () => _preferences.setCollapsed(!_preferences.collapsed),
+                child: compact
+                    ? brandIcon
+                    : const Icon(FLucideIcons.panelLeft, size: 19),
               ),
             ),
-            icon: compact
-                ? brandIcon
-                : const Icon(Icons.view_sidebar_outlined, size: 19),
           );
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Material(
-                color: colors.surfaceContainerLow,
+              ColoredBox(
+                color: colors.muted,
                 child: SizedBox(
                   key: const Key('app-sidebar'),
                   width: compact ? 64 : 196,
@@ -139,13 +146,8 @@ class AppWorkspaceState extends State<AppWorkspace> {
                                 Expanded(
                                   child: Text(
                                     'LoongPass',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium!
-                                        .copyWith(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                    style: context.theme.typography.body.md
+                                        .copyWith(fontWeight: FontWeight.w600),
                                   ),
                                 ),
                               if (compact) Expanded(child: toggle) else toggle,
@@ -169,29 +171,31 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               '我的应用',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colors.onSurfaceVariant,
+                              style: context.theme.typography.body.xs.copyWith(
+                                color: colors.mutedForeground,
                               ),
                             ),
                           ),
                         ),
                       Expanded(
-                        child: ReorderableListView.builder(
+                        child: ReorderableList(
                           key: const Key('app-order'),
                           padding: const EdgeInsets.symmetric(
                             horizontal: 6,
                             vertical: 4,
                           ),
-                          buildDefaultDragHandles: false,
                           itemCount: _preferences.appOrder.length,
                           onReorderItem: _preferences.reorder,
-                          proxyDecorator: (child, index, animation) => Material(
-                            elevation: 4,
-                            color: colors.surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(6),
-                            child: child,
-                          ),
+                          proxyDecorator: (child, index, animation) =>
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: colors.muted,
+                                  borderRadius:
+                                      context.theme.style.borderRadius.xs,
+                                  boxShadow: context.theme.style.shadow,
+                                ),
+                                child: child,
+                              ),
                           itemBuilder: (context, index) {
                             final app = _preferences.appOrder[index];
                             return AppNavigationItem(
@@ -211,11 +215,15 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           },
                         ),
                       ),
-                      Divider(
-                        height: 12,
-                        indent: 12,
-                        endIndent: 12,
-                        color: colors.outlineVariant,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: FDivider(
+                          style: FDividerStyleDelta.delta(
+                            padding: const EdgeInsetsGeometryDelta.value(
+                              EdgeInsets.symmetric(vertical: 6),
+                            ),
+                          ),
+                        ),
                       ),
                       for (final section in [
                         WorkspaceSection.models,
@@ -228,36 +236,44 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             child: sectionButton(section),
                           ),
                       if (_preferences.error != null)
-                        TextButton(
-                          onPressed: () =>
-                              selectSection(WorkspaceSection.settings),
+                        FButton(
+                          variant: FButtonVariant.ghost,
+                          size: FButtonSizeVariant.sm,
+                          mainAxisSize: MainAxisSize.min,
                           child: compact
-                              ? const Icon(Icons.warning_amber, size: 16)
+                              ? const Icon(FLucideIcons.triangleAlert, size: 16)
                               : const Text('布局尚未保存'),
+                          onPress: () =>
+                              selectSection(WorkspaceSection.settings),
                         ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 9),
-                        child: Tooltip(
-                          message: '账号保存在本机；辅助任务仅在运行期间执行',
-                          child: compact
-                              ? const Icon(Icons.computer_outlined, size: 15)
-                              : Text(
-                                  '账号保存在本机',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: colors.onSurfaceVariant,
+                        child: FTooltip(
+                          tipBuilder: (context, controller) =>
+                              Text('账号保存在本机；辅助任务仅在运行期间执行'),
+                          child: Semantics(
+                            tooltip: '账号保存在本机；辅助任务仅在运行期间执行',
+                            child: compact
+                                ? const Icon(FLucideIcons.monitor, size: 15)
+                                : Text(
+                                    '账号保存在本机',
+                                    style: context.theme.typography.body.xs
+                                        .copyWith(
+                                          color: colors.mutedForeground,
+                                        ),
                                   ),
-                                ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: colors.outlineVariant,
+              const FDivider(
+                axis: Axis.vertical,
+                style: FDividerStyleDelta.delta(
+                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+                ),
               ),
               Expanded(
                 child: IndexedStack(

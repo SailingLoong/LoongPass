@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart' show SelectableText;
 
 import 'claim_receipt.dart';
 import 'compact_accounts_table.dart';
@@ -63,10 +65,11 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   }
 
   Future<void> _authorize([PluginAccount? account]) => _run(() async {
-    final saved = await showDialog<String>(
+    final saved = await showFDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => PluginSignInDialog(
+      builder: (context, style, animation) => PluginSignInDialog(
+        animation: animation,
         accounts: widget.accounts,
         providerIds: account == null ? widget.providerIds : {account.provider},
         initialProvider: account?.provider,
@@ -97,10 +100,11 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
     );
     try {
       if (!mounted) return;
-      final saved = await showDialog<String>(
+      final saved = await showFDialog<String>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => PluginSignInDialog(
+        builder: (context, style, animation) => PluginSignInDialog(
+          animation: animation,
           accounts: widget.accounts,
           providerIds: {account.provider},
           initialProvider: account.provider,
@@ -162,21 +166,53 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   }, accountKey: account.key);
 
   Future<void> _remove(PluginAccount account) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showFDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('移除已保存的账号？'),
-        content: const Text('将移除账号授权，保留领取记录，避免重新授权后重复领取。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+      builder: (context, style, animation) => FDialog(
+        animation: animation,
+        constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+        builder: (context, style) => Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              DefaultTextStyle(
+                style: style.titleTextStyle,
+                child: const Text('移除已保存的账号？'),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: DefaultTextStyle(
+                  style: style.bodyTextStyle,
+                  child: const Text('将移除账号授权，保留领取记录，避免重新授权后重复领取。'),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
+                children: [
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    child: const Text('取消'),
+                    onPress: () => Navigator.pop(context, false),
+                  ),
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    child: const Text('移除账号'),
+                    onPress: () => Navigator.pop(context, true),
+                  ),
+                ],
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('移除账号'),
-          ),
-        ],
+        ),
       ),
     );
     if (confirmed == true && mounted)
@@ -206,7 +242,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         SelectableText(_identity(a)),
         Text(_status(a)),
         const SizedBox(height: 12),
-        Text('官方套餐与额度', style: Theme.of(context).textTheme.titleSmall),
+        Text('官方套餐与额度', style: context.theme.typography.body.sm),
         if (usage == null)
           const Text('尚无可核实的官方额度快照。')
         else ...[
@@ -227,7 +263,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                       (window['display'] as String).isNotEmpty)
                     Text(
                       '官方摘要：${window['display']}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: context.theme.typography.body.xs,
                     ),
                   if (window['aside'] == true) const Text('参考额度'),
                   if (_date(window['resetsAt']) != null)
@@ -247,11 +283,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           a.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(a.queriedAt!)}',
         ),
         if (a.provider == 'zcode') ...[
-          const Divider(),
-          Text(
-            'Start Plan 活动额度',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
+          const FDivider(),
+          Text('Start Plan 活动额度', style: context.theme.typography.body.sm),
           if (buckets.isEmpty) const Text('尚无已核实的活动额度明细。'),
           for (final bucket in buckets)
             Padding(
@@ -267,13 +300,17 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 : '活动额度查询于 ${creditTime(rewardTime)}',
           ),
         ],
-        const Divider(),
+        const FDivider(),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            OutlinedButton(
-              onPressed: _busy || !a.active
+            FButton(
+              variant: FButtonVariant.outline,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
+              child: const Text('刷新额度'),
+              onPress: _busy || !a.active
                   ? null
                   : () => _run(
                       () => _canClaim(a)
@@ -281,11 +318,12 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                           : widget.accounts.refresh(),
                       accountKey: a.key,
                     ),
-              child: const Text('刷新额度'),
             ),
             if (_canClaim(a) || _pending(a))
-              OutlinedButton(
-                onPressed: _busy || !_canClaim(a) ? null : () => _claim(a),
+              FButton(
+                variant: FButtonVariant.outline,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 child: Text(
                   _pending(a)
                       ? '核验领取结果'
@@ -293,42 +331,54 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                       ? '核对并领取活动'
                       : '核对并领取',
                 ),
+                onPress: _busy || !_canClaim(a) ? null : () => _claim(a),
               ),
             if (_canActivate(a))
-              OutlinedButton(
-                onPressed: _busy || !a.active ? null : () => _activate(a),
+              FButton(
+                variant: FButtonVariant.outline,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 child: const Text('切换客户端账号'),
+                onPress: _busy || !a.active ? null : () => _activate(a),
               ),
-            TextButton(
-              onPressed: _busy ? null : () => _authorize(a),
+            FButton(
+              variant: FButtonVariant.ghost,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
               child: const Text('重新授权'),
+              onPress: _busy ? null : () => _authorize(a),
             ),
             if (a.provider == 'zcode' &&
                 a.uid.isNotEmpty &&
                 widget.accounts.providers[a.provider]?['reauthorize'] == true)
-              TextButton(
-                onPressed: _busy || !a.active ? null : () => _rebind(a),
+              FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 child: const Text('重新绑定设备'),
+                onPress: _busy || !a.active ? null : () => _rebind(a),
               ),
-            TextButton(
-              onPressed: _busy ? null : () => _remove(a),
+            FButton(
+              variant: FButtonVariant.ghost,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
               child: const Text('移除账号'),
+              onPress: _busy ? null : () => _remove(a),
             ),
           ],
         ),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('自动领取'),
-          subtitle: Text(
+        FSwitch(
+          value: a.automatic,
+          label: const Text('自动领取'),
+          description: Text(
             a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
           ),
-          value: a.automatic,
-          onChanged: _busy || a.uid.isEmpty
-              ? null
-              : (value) => _run(
-                  () => widget.accounts.setAutomatic(a.key, value),
-                  accountKey: a.key,
-                ),
+          leadingLabel: true,
+          enabled: !(_busy || a.uid.isEmpty),
+          onChange: (value) => _run(
+            () => widget.accounts.setAutomatic(a.key, value),
+            accountKey: a.key,
+          ),
         ),
       ],
     );
@@ -351,17 +401,23 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可自动领取。'
                 '领取结果待核验时只查询官方状态。各额度窗口保留官方单位，不合计重叠额度。',
             actions: [
-              FilledButton(
-                onPressed: _busy ? null : _authorize,
+              FButton(
+                variant: FButtonVariant.primary,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 child: const Text('添加账号'),
+                onPress: _busy ? null : _authorize,
               ),
-              TextButton(
-                onPressed: _busy ? null : _refresh,
+              FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 child: const Text('刷新账号与额度'),
+                onPress: _busy ? null : _refresh,
               ),
             ],
           ),
-          if (_busy) const LinearProgressIndicator(),
+          if (_busy) const FProgress(),
           if (_message != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),

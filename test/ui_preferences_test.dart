@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/ui_preferences.dart';
 import '../lib/managed_app.dart';
 

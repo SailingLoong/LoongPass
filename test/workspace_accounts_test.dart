@@ -1,5 +1,8 @@
-import 'package:flutter/material.dart';
+import 'desktop_test_app.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/account_workspace_registry.dart';
 import '../lib/compact_accounts_table.dart';
 import '../lib/managed_app.dart';
@@ -7,7 +10,7 @@ import '../lib/workspace_accounts.dart';
 import '../lib/claim_receipt.dart';
 
 void main() {
-  testWidgets(
+  testDesktopWidgets(
     'overview retains a known expiry when the remaining amount is unknown',
     (tester) async {
       final registry = AccountWorkspaceRegistry();
@@ -24,7 +27,7 @@ void main() {
         ),
       ]);
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: WorkspaceOverviewPage(
               registry: registry,
@@ -38,7 +41,7 @@ void main() {
       expect(find.textContaining('额度未知'), findsOneWidget);
     },
   );
-  testWidgets(
+  testDesktopWidgets(
     'aggregate rows follow owner presentation and isolate identical regional IDs',
     (tester) async {
       final registry = AccountWorkspaceRegistry();
@@ -67,7 +70,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: Stack(
               children: [
@@ -96,7 +99,7 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
-  testWidgets(
+  testDesktopWidgets(
     'activity only shows confirmed receipts, with unknown amounts still unknown',
     (tester) async {
       final registry = AccountWorkspaceRegistry();
@@ -122,7 +125,7 @@ void main() {
         ),
       ]);
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: WorkspaceActivityPage(registry: registry, onOpenApp: (_) {}),
           ),

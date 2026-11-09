@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:forui/forui.dart';
 
 import 'desktop_platform.dart';
 import 'app_theme.dart';
@@ -73,6 +74,10 @@ class _AccountToolAppState extends State<AccountToolApp> {
       theme: loongPassTheme(Brightness.light),
       darkTheme: loongPassTheme(Brightness.dark),
       themeMode: _preferences.themeMode,
+      locale: const Locale('zh', 'CN'),
+      localizationsDelegates: FLocalizations.localizationsDelegates,
+      supportedLocales: FLocalizations.supportedLocales,
+      builder: loongPassThemeBuilder,
       home: _home,
     ),
   );
@@ -133,14 +138,14 @@ class _AccountPageState extends State<_AccountPage> {
       children: [
         Text(_starting ? '正在准备账号服务…' : _startError ?? '当前系统不支持原生账号服务。'),
         if (_starting)
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: LinearProgressIndicator(),
-          ),
+          const Padding(padding: EdgeInsets.only(top: 12), child: FProgress()),
         if (_startError != null)
-          TextButton(
-            onPressed: _starting ? null : _start,
+          FButton(
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
             child: const Text('重试'),
+            onPress: _starting ? null : _start,
           ),
       ],
     ),
@@ -199,8 +204,9 @@ class _AccountPageState extends State<_AccountPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
+  Widget build(BuildContext context) => FScaffold(
+    childPad: false,
+    child: SafeArea(
       child: AppWorkspace(
         key: _workspace,
         preferences: widget.preferences,
@@ -245,8 +251,7 @@ class AccountWorkspacePage extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(24),
     children: [
-      if (showTitle)
-        Text(name, style: Theme.of(context).textTheme.headlineSmall),
+      if (showTitle) Text(name, style: context.theme.typography.display.xl),
       if (showTitle) const SizedBox(height: 8),
       panel,
     ],

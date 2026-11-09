@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'desktop_test_app.dart';
+
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -17,7 +20,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      MaterialApp(
+      DesktopTestApp(
         home: Scaffold(
           body: AppWorkspace(
             sections: const {WorkspaceSection.models: Text('Magpie models')},
@@ -33,7 +36,7 @@ void main() {
     );
   }
 
-  testWidgets(
+  testDesktopWidgets(
     'sidebar toggle shares the brand row and model entry stays reachable',
     (tester) async {
       await mount(tester);
@@ -50,7 +53,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'dragging an app preserves selected content and unfinished input',
     (tester) async {
       await mount(tester);
@@ -81,7 +84,7 @@ void main() {
     },
   );
 
-  testWidgets('regional app buttons navigate without account actions', (
+  testDesktopWidgets('regional app buttons navigate without account actions', (
     tester,
   ) async {
     await mount(tester);
@@ -100,22 +103,25 @@ void main() {
     expect(find.text('${ManagedApp.values.last.label} 尚未接入'), findsOneWidget);
     expect(find.text('ZCode content'), findsNothing);
   });
-  testWidgets('navigation and repeated clicks preserve an unfinished form', (
-    tester,
-  ) async {
-    await mount(tester);
-    await tester.tap(find.byKey(const ValueKey('app-qoder')));
-    await tester.pump();
-    await tester.enterText(find.byKey(const Key('draft')), 'unfinished note');
-    await tester.tap(find.byKey(const ValueKey('app-zcode')));
-    await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('app-qoder')));
-    await tester.tap(find.byKey(const ValueKey('app-qoder')));
-    await tester.pump();
-    expect(find.text('unfinished note'), findsOneWidget);
-  });
+  testDesktopWidgets(
+    'navigation and repeated clicks preserve an unfinished form',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.byKey(const ValueKey('app-qoder')));
+      await tester.pump();
+      await tester.enterText(find.byKey(const Key('draft')), 'unfinished note');
+      await tester.tap(find.byKey(const ValueKey('app-zcode')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('app-qoder')));
+      await tester.tap(find.byKey(const ValueKey('app-qoder')));
+      await tester.pump();
+      expect(find.text('unfinished note'), findsOneWidget);
+    },
+  );
   for (final width in [480.0, 760.0, 1280.0]) {
-    testWidgets('sidebar fits ${width.toInt()} wide viewport', (tester) async {
+    testDesktopWidgets('sidebar fits ${width.toInt()} wide viewport', (
+      tester,
+    ) async {
       await mount(tester, width: width, height: 360);
       expect(tester.takeException(), isNull);
       await tester.scrollUntilVisible(
@@ -137,22 +143,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
-  testWidgets('manual collapse keeps app tooltips and content', (tester) async {
+  testDesktopWidgets('manual collapse keeps app tooltips and content', (
+    tester,
+  ) async {
     await mount(tester);
     await tester.tap(find.byKey(const Key('toggle-sidebar')));
     await tester.pumpAndSettle();
-    expect(find.byTooltip('Qoder'), findsOneWidget);
+    expect(findTooltip('Qoder'), findsOneWidget);
     expect(find.text('ZCode content'), findsOneWidget);
     expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 64);
   });
 
-  testWidgets(
+  testDesktopWidgets(
     'keyboard move and persisted order keep the selected app on remount',
     (tester) async {
       String? stored;
       final preferences = UiPreferences(write: (value) async => stored = value);
       Future<void> show(UiPreferences state) => tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: AppWorkspace(
               preferences: state,
@@ -165,7 +173,7 @@ void main() {
       await show(preferences);
       final button = find.descendant(
         of: find.byKey(const Key('app-workbuddy')),
-        matching: find.byType(TextButton),
+        matching: find.byType(FButton),
       );
       Focus.of(
         tester.element(

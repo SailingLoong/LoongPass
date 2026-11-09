@@ -1,6 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart' show SelectableText;
 import 'package:flutter/services.dart';
 
 import 'plugin_accounts.dart';
@@ -9,6 +11,7 @@ import 'plugin_sign_in.dart';
 class PluginSignInDialog extends StatefulWidget {
   const PluginSignInDialog({
     super.key,
+    this.animation,
     required this.accounts,
     required this.providerIds,
     required this.title,
@@ -17,6 +20,7 @@ class PluginSignInDialog extends StatefulWidget {
     this.authorizationContext = const {},
     this.registrationUrl,
   });
+  final Animation<double>? animation;
   final PluginAccounts accounts;
   final Set<String> providerIds;
   final String title;
@@ -308,15 +312,16 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   }
 
   Widget _entry(String label, {bool secret = false, String? placeholder}) =>
-      TextField(
+      FTextField(
         key: const Key('plugin-auth-input'),
-        controller: _input,
+        control: FTextFieldControl.managed(controller: _input),
+        label: Text(label),
+        hint: placeholder,
         enabled: !_busy,
         obscureText: secret,
         autocorrect: false,
         enableSuggestions: !secret,
-        decoration: InputDecoration(labelText: label, hintText: placeholder),
-        onSubmitted: (_) => unawaited(_continue()),
+        onSubmit: (_) => unawaited(_continue()),
       );
 
   @override
@@ -327,189 +332,271 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         _signIn.cancel();
       }
     },
-    child: AlertDialog(
-      title: Text(widget.title),
-      content: SizedBox(
-        width: 480,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_step == _Step.select && _target != null)
-                Text(
-                  '将通过官方授权更新 ${_target.label}（${_target.realm} · ${_target.uid}）。',
-                ),
-              if (_step == _Step.select && _target == null) ...[
-                DropdownButtonFormField<String>(
-                  key: const Key('plugin-auth-provider'),
-                  initialValue: _provider,
-                  decoration: const InputDecoration(labelText: '平台'),
-                  items: [
-                    for (final id in widget.providerIds)
-                      if (widget.accounts.providers.containsKey(id))
-                        DropdownMenuItem(
-                          value: id,
-                          child: Text(
-                            widget.accounts.providers[id]?['name'] as String? ??
+    child: FDialog(
+      animation: widget.animation,
+      constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+      builder: (context, style) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DefaultTextStyle(
+              style: style.titleTextStyle,
+              child: Text(widget.title),
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: DefaultTextStyle(
+                style: style.bodyTextStyle,
+                child: SizedBox(
+                  width: 480,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (_step == _Step.select && _target != null)
+                          Text(
+                            '将通过官方授权更新 ${_target.label}（${_target.realm} · ${_target.uid}）。',
+                          ),
+                        if (_step == _Step.select && _target == null) ...[
+                          FSelect<String>.rich(
+                            key: const Key('plugin-auth-provider'),
+                            label: const Text('平台'),
+                            enabled: !_busy,
+                            format: (id) =>
+                                widget.accounts.providers[id]?['name']
+                                    as String? ??
                                 id,
-                          ),
-                        ),
-                  ],
-                  onChanged: _busy
-                      ? null
-                      : (value) => setState(() {
-                          _provider = value;
-                          _selectMethod();
-                        }),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  key: ValueKey('plugin-auth-method'),
-                  initialValue: _method,
-                  decoration: const InputDecoration(labelText: '授权方式'),
-                  items: [
-                    for (var i = 0; i < _methods.length; i++)
-                      if ({'oauth', 'api'}.contains(_methods[i]['type']))
-                        DropdownMenuItem(
-                          value: i,
-                          child: Text(
-                            _methods[i]['label'] as String? ?? '授权方式 ${i + 1}',
-                          ),
-                        ),
-                  ],
-                  onChanged: _busy
-                      ? null
-                      : (value) => setState(() => _method = value),
-                ),
-                if (_method == null)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Text('平台授权方式暂不可用，请关闭后刷新账号列表。'),
-                  ),
-                if (_invitationAvailable)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      _registrationOpened
-                          ? '请在官方邀请页完成注册，然后继续账号授权。邀请关系与奖励资格由平台确认。'
-                          : '新用户可使用已保存的邀请码前往官方邀请页注册，完成注册后继续授权。',
-                    ),
-                  ),
-              ],
-              if (_step == _Step.prompt)
-                if (_prompt!['type'] == 'select')
-                  DropdownButtonFormField<String>(
-                    key: const Key('plugin-auth-prompt-select'),
-                    initialValue: _selected,
-                    decoration: InputDecoration(
-                      labelText: _prompt!['message'] as String? ?? '请选择',
-                    ),
-                    items: [
-                      for (final option
-                          in _prompt!['options'] as List? ?? const [])
-                        if (option is Map && option['value'] is String)
-                          DropdownMenuItem<String>(
-                            value: option['value'],
-                            child: Text(
-                              option['label'] as String? ?? option['value'],
+                            children: [
+                              for (final id in widget.providerIds)
+                                if (widget.accounts.providers.containsKey(id))
+                                  FSelectItem(
+                                    value: id,
+                                    title: Text(
+                                      widget.accounts.providers[id]?['name']
+                                              as String? ??
+                                          id,
+                                    ),
+                                  ),
+                            ],
+                            control: FSelectControl.lifted(
+                              value: _provider,
+                              onChange: (value) => setState(() {
+                                _provider = value;
+                                _selectMethod();
+                              }),
                             ),
                           ),
-                    ],
-                    onChanged: _busy
-                        ? null
-                        : (value) => setState(() => _selected = value),
-                  )
-                else
-                  _entry(
-                    _prompt!['message'] as String? ?? '请填写',
-                    secret: _prompt!['type'] == 'password',
-                    placeholder: _prompt!['placeholder'] as String?,
-                  ),
-              if (_step == _Step.key)
-                _entry(
-                  _chosen['label'] as String? ?? 'API key',
-                  secret: true,
-                  placeholder: _chosen['placeholder'] as String?,
-                ),
-              if (_authorization != null) ...[
-                if ((_authorization!['instructions'] as String? ?? '')
-                    .isNotEmpty)
-                  SelectableText(_authorization!['instructions']),
-                if ((_authorization!['url'] as String? ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(onPressed: _open, child: const Text('打开授权页面')),
-                      TextButton(
-                        onPressed: _copyLink,
-                        child: const Text('复制授权链接'),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-              if (_browserError != null)
-                Text(
-                  _browserError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              if (_step == _Step.code) ...[
-                const SizedBox(height: 12),
-                _entry('官方验证码', secret: true),
-              ],
-              if (_step == _Step.waiting)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('请在官方页面完成授权，正在等待结果。'),
-                ),
-              if (_busy || _step == _Step.waiting)
-                const LinearProgressIndicator(),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                          const SizedBox(height: 12),
+                          FSelect<int>.rich(
+                            key: const ValueKey('plugin-auth-method'),
+                            label: const Text('授权方式'),
+                            enabled: !_busy,
+                            format: (index) =>
+                                _methods[index]['label'] as String? ??
+                                '授权方式 ${index + 1}',
+                            children: [
+                              for (
+                                var index = 0;
+                                index < _methods.length;
+                                index++
+                              )
+                                if ({
+                                  'oauth',
+                                  'api',
+                                }.contains(_methods[index]['type']))
+                                  FSelectItem(
+                                    value: index,
+                                    title: Text(
+                                      _methods[index]['label'] as String? ??
+                                          '授权方式 ${index + 1}',
+                                    ),
+                                  ),
+                            ],
+                            control: FSelectControl.lifted(
+                              value: _method,
+                              onChange: (value) =>
+                                  setState(() => _method = value),
+                            ),
+                          ),
+                          if (_method == null)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 12),
+                              child: Text('平台授权方式暂不可用，请关闭后刷新账号列表。'),
+                            ),
+                          if (_invitationAvailable)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                _registrationOpened
+                                    ? '请在官方邀请页完成注册，然后继续账号授权。邀请关系与奖励资格由平台确认。'
+                                    : '新用户可使用已保存的邀请码前往官方邀请页注册，完成注册后继续授权。',
+                              ),
+                            ),
+                        ],
+                        if (_step == _Step.prompt)
+                          if (_prompt!['type'] == 'select')
+                            FSelect<String>.rich(
+                              key: const Key('plugin-auth-prompt-select'),
+                              label: Text(
+                                _prompt!['message'] as String? ?? '请选择',
+                              ),
+                              enabled: !_busy,
+                              format: (value) {
+                                final options =
+                                    _prompt!['options'] as List? ?? const [];
+                                final option = options
+                                    .whereType<Map>()
+                                    .where((option) => option['value'] == value)
+                                    .firstOrNull;
+                                return option?['label'] as String? ?? value;
+                              },
+                              children: [
+                                for (final option
+                                    in _prompt!['options'] as List? ?? const [])
+                                  if (option is Map &&
+                                      option['value'] is String)
+                                    FSelectItem(
+                                      value: option['value'] as String,
+                                      title: Text(
+                                        option['label'] as String? ??
+                                            option['value'] as String,
+                                      ),
+                                    ),
+                              ],
+                              control: FSelectControl.lifted(
+                                value: _selected,
+                                onChange: (value) =>
+                                    setState(() => _selected = value),
+                              ),
+                            )
+                          else
+                            _entry(
+                              _prompt!['message'] as String? ?? '请填写',
+                              secret: _prompt!['type'] == 'password',
+                              placeholder: _prompt!['placeholder'] as String?,
+                            ),
+                        if (_step == _Step.key)
+                          _entry(
+                            _chosen['label'] as String? ?? 'API key',
+                            secret: true,
+                            placeholder: _chosen['placeholder'] as String?,
+                          ),
+                        if (_authorization != null) ...[
+                          if ((_authorization!['instructions'] as String? ?? '')
+                              .isNotEmpty)
+                            SelectableText(_authorization!['instructions']),
+                          if ((_authorization!['url'] as String? ?? '')
+                              .isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              children: [
+                                FButton(
+                                  variant: FButtonVariant.ghost,
+                                  size: FButtonSizeVariant.sm,
+                                  mainAxisSize: MainAxisSize.min,
+                                  child: const Text('打开授权页面'),
+                                  onPress: _open,
+                                ),
+                                FButton(
+                                  variant: FButtonVariant.ghost,
+                                  size: FButtonSizeVariant.sm,
+                                  mainAxisSize: MainAxisSize.min,
+                                  child: const Text('复制授权链接'),
+                                  onPress: _copyLink,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                        if (_browserError != null)
+                          Text(
+                            _browserError!,
+                            style: TextStyle(color: context.theme.colors.error),
+                          ),
+                        if (_step == _Step.code) ...[
+                          const SizedBox(height: 12),
+                          _entry('官方验证码', secret: true),
+                        ],
+                        if (_step == _Step.waiting)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text('请在官方页面完成授权，正在等待结果。'),
+                          ),
+                        if (_busy || _step == _Step.waiting) const FProgress(),
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color: context.theme.colors.error,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  child: const Text('取消'),
+                  onPress: _cancel,
+                ),
+                if (_step == _Step.select &&
+                    _invitationAvailable &&
+                    !_registrationOpened)
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: _busy ? null : () => _run(_next),
+                    child: const Text('已有账号，直接授权'),
+                  ),
+                if (_step == _Step.failed)
+                  FButton(
+                    variant: FButtonVariant.primary,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    child: const Text('重新开始'),
+                    onPress: _busy ? null : _restart,
+                  )
+                else if (_step != _Step.waiting)
+                  FButton(
+                    variant: FButtonVariant.primary,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    child: Text(
+                      _step == _Step.code || _step == _Step.key
+                          ? '完成授权'
+                          : _step == _Step.select && _invitationAvailable
+                          ? _registrationOpened
+                                ? '继续授权'
+                                : '邀请注册'
+                          : '继续',
+                    ),
+                    onPress: _busy || _target == null && _method == null
+                        ? null
+                        : _continue,
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
-      actions: [
-        TextButton(onPressed: _cancel, child: const Text('取消')),
-        if (_step == _Step.select &&
-            _invitationAvailable &&
-            !_registrationOpened)
-          TextButton(
-            onPressed: _busy ? null : () => _run(_next),
-            child: const Text('已有账号，直接授权'),
-          ),
-        if (_step == _Step.failed)
-          FilledButton(
-            onPressed: _busy ? null : _restart,
-            child: const Text('重新开始'),
-          )
-        else if (_step != _Step.waiting)
-          FilledButton(
-            onPressed: _busy || _target == null && _method == null
-                ? null
-                : _continue,
-            child: Text(
-              _step == _Step.code || _step == _Step.key
-                  ? '完成授权'
-                  : _step == _Step.select && _invitationAvailable
-                  ? _registrationOpened
-                        ? '继续授权'
-                        : '邀请注册'
-                  : '继续',
-            ),
-          ),
-      ],
     ),
   );
 }

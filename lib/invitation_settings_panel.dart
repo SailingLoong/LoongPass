@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'invitation_settings.dart';
@@ -53,53 +53,48 @@ class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context).brightness == Brightness.dark
-        ? FTheme.neutral.dark.desktop
-        : FTheme.neutral.light.desktop;
-    return FTheme(
-      data: theme,
-      child: ListenableBuilder(
-        listenable: widget.settings,
-        builder: (context, _) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('邀请设置', style: theme.typography.display.lg),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: FTextField(
-                key: Key('${widget.settings.app.name}-invitation-code'),
-                control: FTextFieldControl.managed(
-                  controller: _input,
-                  onChange: (_) => setState(() => _message = _error = null),
-                ),
-                label: const Text('邀请码'),
-                hint: widget.settings.defaultCode,
-                description: const Text('留空使用默认邀请码。新用户可在添加账号时前往官方邀请注册页。'),
-                error: _error == null ? null : Text(_error!),
-                enabled: !_saving && widget.settings.ready,
-                autocorrect: false,
+    final theme = context.theme;
+    return ListenableBuilder(
+      listenable: widget.settings,
+      builder: (context, _) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('邀请设置', style: theme.typography.display.lg),
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: FTextField(
+              key: Key('${widget.settings.app.name}-invitation-code'),
+              control: FTextFieldControl.managed(
+                controller: _input,
+                onChange: (_) => setState(() => _message = _error = null),
+              ),
+              label: const Text('邀请码'),
+              hint: widget.settings.defaultCode,
+              description: const Text('留空使用默认邀请码。新用户可在添加账号时前往官方邀请注册页。'),
+              error: _error == null ? null : Text(_error!),
+              enabled: !_saving && widget.settings.ready,
+              autocorrect: false,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (widget.settings.error != null) ...[
+            Text(widget.settings.error!),
+            FButton(onPress: _reload, child: const Text('重试读取')),
+          ] else
+            IntrinsicWidth(
+              child: FButton(
+                key: Key('${widget.settings.app.name}-invitation-save'),
+                onPress: _saving ? null : _save,
+                child: Text(_saving ? '正在保存…' : '保存邀请码'),
               ),
             ),
-            const SizedBox(height: 12),
-            if (widget.settings.error != null) ...[
-              Text(widget.settings.error!),
-              FButton(onPress: _reload, child: const Text('重试读取')),
-            ] else
-              IntrinsicWidth(
-                child: FButton(
-                  key: Key('${widget.settings.app.name}-invitation-save'),
-                  onPress: _saving ? null : _save,
-                  child: Text(_saving ? '正在保存…' : '保存邀请码'),
-                ),
-              ),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_message!, style: theme.typography.body.sm),
-              ),
-          ],
-        ),
+          if (_message != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_message!, style: theme.typography.body.sm),
+            ),
+        ],
       ),
     );
   }
