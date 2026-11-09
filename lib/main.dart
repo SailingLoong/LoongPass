@@ -16,27 +16,36 @@ import 'app_updates.dart';
 import 'plugin_application.dart';
 import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
+import 'workbuddy_invitation.dart';
+import 'workbuddy_invitation_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = UiPreferences.persistent();
-  await preferences.load();
-  runApp(AccountToolApp(preferences: preferences));
+  final invitation = WorkBuddyInvitation.persistent();
+  await Future.wait([preferences.load(), invitation.load()]);
+  runApp(AccountToolApp(preferences: preferences, invitation: invitation));
 }
 
 class AccountToolApp extends StatefulWidget {
-  const AccountToolApp({super.key, this.preferences});
+  const AccountToolApp({super.key, this.preferences, this.invitation});
   final UiPreferences? preferences;
+  final WorkBuddyInvitation? invitation;
   @override
   State<AccountToolApp> createState() => _AccountToolAppState();
 }
 
 class _AccountToolAppState extends State<AccountToolApp> {
   late final _preferences = widget.preferences ?? UiPreferences();
-  late final _home = _AccountPage(preferences: _preferences);
+  late final _invitation = widget.invitation ?? WorkBuddyInvitation();
+  late final _home = _AccountPage(
+    preferences: _preferences,
+    invitation: _invitation,
+  );
   @override
   void dispose() {
     if (widget.preferences == null) _preferences.dispose();
+    if (widget.invitation == null) _invitation.dispose();
     super.dispose();
   }
 
@@ -56,8 +65,9 @@ class _AccountToolAppState extends State<AccountToolApp> {
 
 /// Composition owns mounted platform pages; auxiliary pages only read UI snapshots.
 class _AccountPage extends StatefulWidget {
-  const _AccountPage({required this.preferences});
+  const _AccountPage({required this.preferences, required this.invitation});
   final UiPreferences preferences;
+  final WorkBuddyInvitation invitation;
   @override
   State<_AccountPage> createState() => _AccountPageState();
 }
@@ -127,20 +137,36 @@ class _AccountPageState extends State<_AccountPage> {
         registry: _registry,
         child: AccountWorkspacePage(
           app.label,
-          app == ManagedApp.codex
-              ? CodexAccountsPanel(owner: _codex)
-              : _application == null
-              ? _status
-              : PluginAccountsPanel(
-                  accounts: _application!.accounts,
-                  rewards: _application!.rewards,
-                  providerIds: providersForApp(app),
-                  title: app.label,
-                  activate:
-                      app == ManagedApp.workbuddy && workBuddyDesktopSupported
-                      ? _application!.activateWorkBuddy
-                      : null,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              app == ManagedApp.codex
+                  ? CodexAccountsPanel(owner: _codex)
+                  : _application == null
+                  ? _status
+                  : PluginAccountsPanel(
+                      accounts: _application!.accounts,
+                      rewards: _application!.rewards,
+                      providerIds: providersForApp(app),
+                      title: app.label,
+                      registrationUrl: app == ManagedApp.workbuddy
+                          ? () => widget.invitation.ready
+                                ? widget.invitation.url
+                                : null
+                          : null,
+                      activate:
+                          app == ManagedApp.workbuddy &&
+                              workBuddyDesktopSupported
+                          ? _application!.activateWorkBuddy
+                          : null,
+                    ),
+              if (app == ManagedApp.workbuddy)
+                Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: WorkBuddyInvitationPanel(settings: widget.invitation),
                 ),
+            ],
+          ),
           showTitle: false,
         ),
       ),
