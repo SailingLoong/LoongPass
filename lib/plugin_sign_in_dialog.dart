@@ -18,6 +18,7 @@ class PluginSignInDialog extends StatefulWidget {
     this.initialProvider,
     this.target,
     this.authorizationContext = const {},
+    this.registrationUrl,
   });
   final Animation<double>? animation;
   final PluginAccounts accounts;
@@ -26,6 +27,7 @@ class PluginSignInDialog extends StatefulWidget {
   final String? initialProvider;
   final PluginAccount? target;
   final Map<String, String> authorizationContext;
+  final Uri? registrationUrl;
   @override
   State<PluginSignInDialog> createState() => _PluginSignInDialogState();
 }
@@ -42,6 +44,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   Map<String, dynamic>? _prompt, _authorization;
   _Step _step = _Step.select;
   bool _busy = false, _ended = false;
+  bool _registrationOpened = false;
   late final PluginAccount? _target;
   late final Map<String, String> _targetContext;
 
@@ -54,6 +57,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   Map get _chosen => _method != null && _method! < _methods.length
       ? _methods[_method!]
       : const <String, dynamic>{};
+  bool get _invitationAvailable =>
+      _target == null &&
+      widget.registrationUrl != null &&
+      _chosen['type'] == 'oauth';
 
   @override
   void initState() {
@@ -181,7 +188,16 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   }
 
   Future<void> _continue() => _run(() async {
-    if (_step == _Step.select) return _next();
+    if (_step == _Step.select) {
+      if (_invitationAvailable && !_registrationOpened) {
+        final opened = await _open(widget.registrationUrl);
+        if (mounted && !_ended && opened) {
+          setState(() => _registrationOpened = true);
+        }
+        return;
+      }
+      return _next();
+    }
     if (_step == _Step.prompt) {
       final value = _prompt!['type'] == 'select' ? _selected : _input.text;
       if (value == null) {
@@ -244,9 +260,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     Navigator.of(context).pop();
   }
 
-  Future<void> _open() async {
+  Future<bool> _open([Uri? link]) async {
     try {
-      final uri = Uri.tryParse(_authorization?['url'] as String? ?? '');
+      final uri = link ?? Uri.tryParse(_authorization?['url'] as String? ?? '');
       if (uri == null ||
           uri.scheme != 'https' ||
           uri.host.isEmpty ||
@@ -257,8 +273,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         'url': uri.toString(),
       });
       if (mounted) setState(() => _browserError = null);
+      return true;
     } catch (_) {
-      if (mounted) setState(() => _browserError = '未能打开浏览器。可复制授权链接手动打开，或再次尝试。');
+      if (mounted) setState(() => _browserError = '未能打开浏览器，请再次尝试。');
+      return false;
     }
   }
 
@@ -281,6 +299,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
       _authorization = null;
       _error = null;
       _browserError = null;
+      _registrationOpened = false;
       _step = _Step.select;
     });
   }
@@ -407,6 +426,15 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               padding: EdgeInsets.only(top: 12),
                               child: Text('平台授权方式暂不可用，请关闭后刷新账号列表。'),
                             ),
+                          if (_invitationAvailable)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Text(
+                                _registrationOpened
+                                    ? '请在官方邀请页完成注册，然后继续账号授权。邀请关系与奖励资格由平台确认。'
+                                    : '新用户可使用已保存的邀请码前往官方邀请页注册，完成注册后继续授权。',
+                              ),
+                            ),
                         ],
                         if (_step == _Step.prompt)
                           if (_prompt!['type'] == 'select')
@@ -528,6 +556,16 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                   child: const Text('取消'),
                   onPress: _cancel,
                 ),
+                if (_step == _Step.select &&
+                    _invitationAvailable &&
+                    !_registrationOpened)
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: _busy ? null : () => _run(_next),
+                    child: const Text('已有账号，直接授权'),
+                  ),
                 if (_step == _Step.failed)
                   FButton(
                     variant: FButtonVariant.primary,
@@ -542,7 +580,13 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
                     child: Text(
-                      _step == _Step.code || _step == _Step.key ? '完成授权' : '继续',
+                      _step == _Step.code || _step == _Step.key
+                          ? '完成授权'
+                          : _step == _Step.select && _invitationAvailable
+                          ? _registrationOpened
+                                ? '继续授权'
+                                : '邀请注册'
+                          : '继续',
                     ),
                     onPress: _busy || _target == null && _method == null
                         ? null

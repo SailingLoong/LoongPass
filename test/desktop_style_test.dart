@@ -1,3 +1,6 @@
+import 'package:flutter/rendering.dart';
+
+import '../lib/compact_accounts_table.dart';
 import 'desktop_test_app.dart';
 
 import 'package:forui/forui.dart';
@@ -5,7 +8,6 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/main.dart';
-import '../lib/account_panel_header.dart';
 import '../lib/workspace_tools.dart';
 import '../lib/ui_preferences.dart';
 
@@ -160,4 +162,62 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+  testDesktopWidgets(
+    'account rows and search keep enlarged text vertically visible',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: const Scaffold(
+            body: SingleChildScrollView(
+              child: CompactAccountsTable(
+                entries: [
+                  AccountTableEntry(
+                    id: 'large',
+                    label: 'Large account',
+                    identity: 'synthetic',
+                    balance: '1000 积分',
+                    status: '已保存',
+                    details: Text('账号详情'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('account-search')), 'Large');
+      await tester.pumpAndSettle();
+      final editable = tester
+          .state<EditableTextState>(
+            find.descendant(
+              of: find.byKey(const Key('account-search')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .renderEditable;
+      expect(
+        editable.size.height,
+        greaterThanOrEqualTo(editable.preferredLineHeight),
+      );
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Large account'),
+      );
+      final boxes = label.getBoxesForSelection(
+        const TextSelection(baseOffset: 0, extentOffset: 13),
+      );
+      expect(boxes, hasLength(1));
+      expect(label.size.height, greaterThanOrEqualTo(boxes.single.bottom));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

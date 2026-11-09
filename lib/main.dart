@@ -17,27 +17,51 @@ import 'app_updates.dart';
 import 'plugin_application.dart';
 import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
+import 'invitation_settings.dart';
+import 'invitation_settings_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = UiPreferences.persistent();
-  await preferences.load();
-  runApp(AccountToolApp(preferences: preferences));
+  final invitations = {
+    for (final app in InvitationSettings.platforms)
+      app: InvitationSettings.persistent(app),
+  };
+  await Future.wait([
+    preferences.load(),
+    ...invitations.values.map((settings) => settings.load()),
+  ]);
+  runApp(AccountToolApp(preferences: preferences, invitations: invitations));
 }
 
 class AccountToolApp extends StatefulWidget {
-  const AccountToolApp({super.key, this.preferences});
+  const AccountToolApp({super.key, this.preferences, this.invitations});
   final UiPreferences? preferences;
+  final Map<ManagedApp, InvitationSettings>? invitations;
   @override
   State<AccountToolApp> createState() => _AccountToolAppState();
 }
 
 class _AccountToolAppState extends State<AccountToolApp> {
   late final _preferences = widget.preferences ?? UiPreferences();
-  late final _home = _AccountPage(preferences: _preferences);
+  late final _invitations =
+      widget.invitations ??
+      {
+        for (final app in InvitationSettings.platforms)
+          app: InvitationSettings(app),
+      };
+  late final _home = _AccountPage(
+    preferences: _preferences,
+    invitations: _invitations,
+  );
   @override
   void dispose() {
     if (widget.preferences == null) _preferences.dispose();
+    if (widget.invitations == null) {
+      for (final settings in _invitations.values) {
+        settings.dispose();
+      }
+    }
     super.dispose();
   }
 
@@ -61,8 +85,9 @@ class _AccountToolAppState extends State<AccountToolApp> {
 
 /// Composition owns mounted platform pages; auxiliary pages only read UI snapshots.
 class _AccountPage extends StatefulWidget {
-  const _AccountPage({required this.preferences});
+  const _AccountPage({required this.preferences, required this.invitations});
   final UiPreferences preferences;
+  final Map<ManagedApp, InvitationSettings> invitations;
   @override
   State<_AccountPage> createState() => _AccountPageState();
 }
@@ -132,20 +157,38 @@ class _AccountPageState extends State<_AccountPage> {
         registry: _registry,
         child: AccountWorkspacePage(
           app.label,
-          app == ManagedApp.codex
-              ? CodexAccountsPanel(owner: _codex)
-              : _application == null
-              ? _status
-              : PluginAccountsPanel(
-                  accounts: _application!.accounts,
-                  rewards: _application!.rewards,
-                  providerIds: providersForApp(app),
-                  title: app.label,
-                  activate:
-                      app == ManagedApp.workbuddy && workBuddyDesktopSupported
-                      ? _application!.activateWorkBuddy
-                      : null,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              app == ManagedApp.codex
+                  ? CodexAccountsPanel(owner: _codex)
+                  : _application == null
+                  ? _status
+                  : PluginAccountsPanel(
+                      accounts: _application!.accounts,
+                      rewards: _application!.rewards,
+                      providerIds: providersForApp(app),
+                      title: app.label,
+                      registrationUrl: widget.invitations[app] == null
+                          ? null
+                          : () => widget.invitations[app]!.ready
+                                ? widget.invitations[app]!.url
+                                : null,
+                      activate:
+                          app == ManagedApp.workbuddy &&
+                              workBuddyDesktopSupported
+                          ? _application!.activateWorkBuddy
+                          : null,
+                    ),
+              if (widget.invitations[app] != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 24),
+                  child: InvitationSettingsPanel(
+                    settings: widget.invitations[app]!,
+                  ),
                 ),
+            ],
+          ),
           showTitle: false,
         ),
       ),

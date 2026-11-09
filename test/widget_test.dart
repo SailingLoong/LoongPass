@@ -16,6 +16,58 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 
 void main() {
   testDesktopWidgets(
+    'Qoder CN invitation defaults and overrides stay platform scoped',
+    (tester) async {
+      await desktop(tester);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.text('n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('qoderCn-invitation-code')),
+        'custom-qoder-code',
+      );
+      await tester.tap(find.byKey(const Key('qoderCn-invitation-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请码已保存'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-workbuddy')));
+      await tester.pumpAndSettle();
+      expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
+      expect(find.text('custom-qoder-code'), findsNothing);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.text('custom-qoder-code'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请设置'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'WorkBuddy page offers an editable default invitation code',
+    (tester) async {
+      await desktop(tester);
+      expect(
+        find.byKey(const Key('workbuddy-invitation-code')),
+        findsOneWidget,
+      );
+      expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('workbuddy-invitation-code')),
+        'my-invite-code',
+      );
+      await tester.tap(find.byKey(const Key('workbuddy-invitation-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请码已保存'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
+      await tester.tap(find.byKey(const Key('app-workbuddy')));
+      await tester.pumpAndSettle();
+      expect(find.text('my-invite-code'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
     'secondary workspaces are reachable without example model credentials',
     (tester) async {
       await desktop(tester);

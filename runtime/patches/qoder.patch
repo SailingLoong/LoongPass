@@ -270,6 +270,16 @@ index b9931af..d3ab8fb 100644
        const args = tc.function?.arguments ?? ""
        if (!tc.id && !name && !args) continue
        let call = native.get(i)
+@@ -2831,5 +2925,7 @@ function spentOf(env) {
+     const p = u[a] !== undefined ? u[a] : u[b]
+-    if (p === null || typeof p !== "object" || Array.isArray(p)) continue
++    if (p === undefined || p === null) continue
++    // A present pool with incomplete data cannot establish exhaustion.
++    if (typeof p !== "object" || Array.isArray(p)) return ""
+     const t = p.total ?? p.cap
+-    if (typeof t !== "number" || !Number.isFinite(t) || t < 0) continue
++    if (typeof t !== "number" || !Number.isFinite(t) || t < 0) return ""
+     const n = typeof p.used === "number" ? p.used : typeof p.remaining === "number" ? t - p.remaining : NaN
 @@ -3996,7 +4090,7 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
  // businessProduct, sessionType, systemPrompt, userInfoPath, normalizeUser,
  // deviceOnly, deviceRefreshTarget, rsaKey, cosyVersion, fallbackModels and
@@ -278,4 +288,4 @@ index b9931af..d3ab8fb 100644
 +export const protocol = { makePlugin, deviceSignIn, exchangeDeviceGrant, openapi, siteOf }
  
  // for tests
- export const _internal = { OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }
+ export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }

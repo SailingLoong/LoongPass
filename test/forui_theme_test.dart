@@ -63,6 +63,10 @@ void main() {
       preferences.setTheme(ThemeMode.dark);
       await tester.pumpAndSettle();
       expect(context.theme.colors, FTheme.neutral.dark.desktop.colors);
+      final invitation = tester.element(
+        find.byKey(const Key('workbuddy-invitation-code')),
+      );
+      expect(invitation.theme.colors, FTheme.neutral.dark.desktop.colors);
       preferences.setTheme(ThemeMode.light);
       await tester.pumpAndSettle();
       expect(context.theme.colors, FTheme.neutral.light.desktop.colors);

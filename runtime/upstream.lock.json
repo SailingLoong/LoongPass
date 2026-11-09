@@ -23,7 +23,7 @@
     },
     "plugins": {
       "url": "https://github.com/magpie-community/plugins",
-      "commit": "9b41df15075b770e87d428fc2d650c4a14d79b3f"
+      "commit": "e2d15ba653c6c575d2208dd5817ca439bda4b4d4"
     }
   },
   "bun": {
@@ -43,7 +43,7 @@
     },
     {
       "name": "qoder",
-      "spec": "@magpie-community/opencode-qoder-auth@0.2.63",
+      "spec": "@magpie-community/opencode-qoder-auth@0.2.64",
       "target": "vendor/plugins/qoder"
     },
     {
@@ -128,14 +128,14 @@
       "source": "plugins",
       "path": "packages/qoder/README.md",
       "target": "vendor/plugins/qoder/README.md",
-      "sha256": "3e585c5b9b3fa2ef8541891c330f3fa0b31fb4614484df1b417e8e37a8e9c55c"
+      "sha256": "11389722e6fe8ab0add8b3cc536732bdac94076fd744bfefc4ec0c70b7bc9599"
     },
     {
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "9191d09df36ed5df1e009caed48c4610b2cb60fb4e1b847d70fe394445de53f2",
-      "upstreamSha256": "6af85a4a022c8f8cf9311aab56b270d27cc687f42f80df507c989461cfcc48e5"
+      "sha256": "b5cef0b81c4b11ae06f9d1707fd4fc54fce5aa6eb1fe7fb90038b3cd003f37ca",
+      "upstreamSha256": "e50c4291bf0dc7be3886ff20c0c85e3515e1f5d305c21f9cc14e50560278d4cb"
     },
     {
       "source": "plugins",
@@ -153,7 +153,7 @@
       "source": "plugins",
       "path": "packages/qoder/package.json",
       "target": "vendor/plugins/qoder/package.json",
-      "sha256": "8819376dfabdc73678959dba0517205f31e650362bac11c963fda4f9c3be1489"
+      "sha256": "7bcd9e813ff39d1d3ee3a5e0eaa1433d78383b2be62e40569aaf62a94aaea7ef"
     },
     {
       "source": "plugins",

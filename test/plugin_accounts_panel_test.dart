@@ -14,6 +14,8 @@ import '../lib/plugin_rewards.dart';
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_sign_in_dialog.dart';
 import '../lib/plugin_zcode_rewards.dart';
+import '../lib/invitation_settings.dart';
+import '../lib/managed_app.dart';
 
 class _Runtime implements PluginRuntime {
   final calls = <(String, Map<String, Object?>)>[];
@@ -182,6 +184,150 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  for (final platform in [
+    (
+      app: ManagedApp.workbuddy,
+      url: 'https://www.workbuddy.cn/events/invite/?inviteCode=custom-code',
+    ),
+    (
+      app: ManagedApp.qoderCn,
+      url: 'https://qoder.cn/activities?referral_code=custom-code',
+    ),
+  ]) {
+    testDesktopWidgets(
+      '${platform.app.label} browser account opens saved invitation before native sign-in',
+      (tester) async {
+        final runtime = _Runtime()..auto = true;
+        final provider = platform.app.nativeProviders.single;
+        final accounts = _Accounts(
+          runtime,
+          providers: {
+            provider: {
+              'name': platform.app.label,
+              'methods': [
+                {
+                  'type': 'oauth',
+                  'label': '${platform.app.label} account (browser)',
+                },
+              ],
+            },
+          },
+        );
+        final settings = InvitationSettings(platform.app);
+        addTearDown(settings.dispose);
+        addTearDown(accounts.dispose);
+        final opened = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              opened.add((call.arguments as Map)['url'] as String);
+              return null;
+            });
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(
+              body: PluginAccountsPanel(
+                accounts: accounts,
+                rewards: _Rewards(accounts),
+                providerIds: {provider},
+                title: platform.app.label,
+                registrationUrl: () => settings.url,
+              ),
+            ),
+          ),
+        );
+        await settings.save('custom-code');
+        await tester.tap(find.text('添加账号'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('邀请注册'));
+        await tester.pump();
+        expect(opened, [platform.url]);
+        expect(runtime.calls, isEmpty);
+        await tester.tap(find.text('继续授权'));
+        await tester.pump();
+        await tester.pump();
+        expect(
+          runtime.calls.singleWhere((c) => c.$1 == 'authorize').$2['provider'],
+          provider,
+        );
+        expect(opened.last, 'https://fixture.invalid/authorize');
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+      },
+    );
+  }
+
+  testDesktopWidgets(
+    'invitation browser failure keeps direct authorization available',
+    (tester) async {
+      final runtime = _Runtime()..auto = true;
+      final accounts = _Accounts(
+        runtime,
+        providers: {
+          'workbuddy': {
+            'name': 'WorkBuddy',
+            'methods': [
+              {'type': 'oauth', 'label': 'WorkBuddy account (browser)'},
+            ],
+          },
+        },
+      );
+      addTearDown(accounts.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: PluginSignInDialog(
+              accounts: accounts,
+              providerIds: const {'workbuddy'},
+              title: '添加账号',
+              registrationUrl: Uri.parse(
+                'https://www.workbuddy.cn/events/invite/?inviteCode=custom',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('邀请注册'));
+      await tester.pumpAndSettle();
+      expect(runtime.calls, isEmpty);
+      expect(find.textContaining('未能打开浏览器'), findsOneWidget);
+      await tester.tap(find.text('已有账号，直接授权'));
+      await tester.pump();
+      await tester.pump();
+      expect(runtime.calls.any((c) => c.$1 == 'authorize'), isTrue);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testDesktopWidgets('API-key entry bypasses invitation registration', (
+    tester,
+  ) async {
+    final runtime = _Runtime()..auto = true;
+    final accounts = _Accounts(runtime);
+    addTearDown(accounts.dispose);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: PluginSignInDialog(
+            accounts: accounts,
+            providerIds: const {'fixture'},
+            title: '添加账号',
+            registrationUrl: Uri.parse(
+              'https://www.workbuddy.cn/events/invite/?inviteCode=custom',
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('邀请注册'), findsNothing);
+    await tester.tap(find.text('继续'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('plugin-auth-input')), findsOneWidget);
+    expect(runtime.calls.any((c) => c.$1 == 'authorize'), isFalse);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testDesktopWidgets(
     'target reauthorization uses native capability without choosing a login method',
     (tester) async {
@@ -226,6 +372,9 @@ void main() {
                     providerIds: const {'zcode'},
                     title: '更新授权',
                     target: target,
+                    registrationUrl: Uri.parse(
+                      'https://www.workbuddy.cn/events/invite/?inviteCode=custom',
+                    ),
                     authorizationContext: frozen,
                   ),
                 ),

@@ -38,7 +38,12 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   bool _favorite(AccountTableEntry entry) =>
       _preferences?.isFavorite(_preferenceKey(entry)) ??
       _favorites.contains(entry.id);
-  double get _rowHeight => _preferences?.rowHeight ?? 36;
+  double get _textScale {
+    final fontSize = context.theme.typography.body.sm.fontSize!;
+    return MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
+  }
+
+  double get _rowHeight => (_preferences?.rowHeight ?? 36) * _textScale;
   int _page = 0, _size = 10;
   String _filter = '全部', _sort = '默认排序';
   @override
@@ -272,8 +277,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SizedBox(
-                width: 210,
-                height: 34,
+                width: 210 * _textScale,
                 child: FTextField(
                   key: const Key('account-search'),
                   hint: '搜索账号 / 身份',
@@ -314,7 +318,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                   }),
                 ),
               SizedBox(
-                width: 128,
+                width: 128 * _textScale,
                 child: FSelect<String>(
                   key: const Key('account-sort'),
                   size: FTextFieldSizeVariant.sm,
@@ -341,12 +345,15 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               builder: (context, box) => RawScrollbar(
                 thumbColor: colors.mutedForeground,
                 controller: _scroll,
-                thumbVisibility: box.maxWidth < _minimumTableWidth,
+                thumbVisibility: box.maxWidth < _minimumTableWidth * _textScale,
                 child: SingleChildScrollView(
                   controller: _scroll,
                   scrollDirection: Axis.horizontal,
                   child: SizedBox(
-                    width: math.max(_minimumTableWidth, box.maxWidth),
+                    width: math.max(
+                      _minimumTableWidth * _textScale,
+                      box.maxWidth,
+                    ),
                     child: Table(
                       columnWidths: const {
                         0: FlexColumnWidth(3.4),
@@ -482,7 +489,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                 style: context.theme.typography.body.sm,
               ),
               SizedBox(
-                width: 128,
+                width: 128 * _textScale,
                 child: FSelect<int>(
                   key: const Key('account-page-size'),
                   size: FTextFieldSizeVariant.sm,
