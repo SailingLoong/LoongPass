@@ -19,12 +19,14 @@ class PluginAccountsPanel extends StatefulWidget {
     required this.providerIds,
     required this.title,
     this.activate,
+    this.registrationUrl,
   });
   final PluginAccounts accounts;
   final PluginRewards rewards;
   final Set<String> providerIds;
   final String title;
   final Future<String> Function(String)? activate;
+  final Uri? Function()? registrationUrl;
   @override
   State<PluginAccountsPanel> createState() => _PluginAccountsPanelState();
 }
@@ -69,6 +71,9 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         providerIds: account == null ? widget.providerIds : {account.provider},
         initialProvider: account?.provider,
         target: account,
+        registrationUrl: account == null
+            ? widget.registrationUrl?.call()
+            : null,
         title: account == null
             ? '添加 ${widget.title} 账号'
             : '重新授权 ${account.label}',

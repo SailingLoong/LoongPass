@@ -13,6 +13,27 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
+  testWidgets('WorkBuddy page offers an editable default invitation code', (
+    tester,
+  ) async {
+    await desktop(tester);
+    expect(find.byKey(const Key('workbuddy-invitation-code')), findsOneWidget);
+    expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('workbuddy-invitation-code')),
+      'my-invite-code',
+    );
+    await tester.tap(find.byKey(const Key('workbuddy-invitation-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('邀请码已保存'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('app-qoderCn')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
+    await tester.tap(find.byKey(const Key('app-workbuddy')));
+    await tester.pumpAndSettle();
+    expect(find.text('my-invite-code'), findsOneWidget);
+  });
+
   testWidgets(
     'secondary workspaces are reachable without example model credentials',
     (tester) async {

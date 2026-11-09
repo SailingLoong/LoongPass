@@ -399,7 +399,10 @@ void OpenAuthorization(HWND parent, const std::string& method, const Json& args)
                        [](wchar_t c) { return !std::iswspace(c); });
     }
   }
-  if (method == "openWorkBuddyAuthorization" ||
+  if (method == "openExternalHTTPS") {
+    allowed = raw.size() <= 16384 && !url.host.empty() &&
+              !token && !password && !verifier;
+  } else if (method == "openWorkBuddyAuthorization" ||
       method == "openWorkBuddyIdentityAuthorization") {
     allowed = raw.size() <= 16384 &&
         (url.host == L"www.codebuddy.cn" || url.host == L"www.workbuddy.cn") &&
@@ -967,7 +970,8 @@ bool NativeAuthorization::Handle(const Call& call,
     catch (...) { result->Error("device_required"); }
     return true;
   }
-  const std::array<const char*, 6> methods = {
+  const std::array<const char*, 7> methods = {
+      "openExternalHTTPS",
       "openWorkBuddyAuthorization", "openWorkBuddyIdentityAuthorization",
       "openMiniMaxAuthorization", "openQoderAuthorization",
       "openTraeAuthorization", "openZcodeAuthorization"};
