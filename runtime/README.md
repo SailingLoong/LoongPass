@@ -36,7 +36,7 @@ component; they are not duplicated as client or Dart protocol workarounds.
 
 | Patch | Purpose and removal condition |
 | --- | --- |
-| `qoder.patch` | Reuse native device-to-job-token exchange for migration; keep Markdown examples out of executable tool calls. Remove once upstream exposes the exchange and passes the tool corpus. |
+| `qoder.patch` | Reuse native device-to-job-token exchange for migration, keep Markdown examples out of executable tool calls and preserve unknown credit-pool data during exhaustion classification. Remove once upstream exposes the exchange and passes the tool and quota corpora. |
 | `plugin-identity.patch` | Persist verified Loomy UID and region/profile-qualified ZCode identity. Remove when upstream preserves those identities under same-name accounts. |
 | `usage-precision.patch` | Preserve exact MiniMax/TRAE quantities, Loomy spent/remaining semantics and Qoder package expiry. Remove when native outputs pass the absolute-value corpus. |
 | `host-usage.patch` | Keep unknown quantity fields distinct from zero. Remove when upstream normalizes those fields without fabricating numbers. |
