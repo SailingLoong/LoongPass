@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+
 import 'account_workspace_registry.dart';
 import 'compact_accounts_table.dart';
 import 'managed_app.dart';
@@ -74,14 +76,13 @@ class WorkspaceOverviewPage extends StatelessWidget {
                 if (expiring.isEmpty)
                   const Text('已载入的记录中暂无 7 天内到期信息。缺失明细的账号不代表永久有效。'),
                 for (final account in expiring.take(5))
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
+                  FItem(
                     title: Text(
                       '${account.app.label} · ${account.entry.label}',
                     ),
                     subtitle: Text(account.entry.upcomingExpiryText),
-                    trailing: const Icon(Icons.chevron_right, size: 18),
-                    onTap: () => onOpenApp(account.app),
+                    suffix: const Icon(FLucideIcons.chevronRight, size: 18),
+                    onPress: () => onOpenApp(account.app),
                   ),
               ],
             ),
@@ -96,14 +97,13 @@ class WorkspaceOverviewPage extends StatelessWidget {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   for (final account in attention.take(5))
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
+                    FItem(
                       title: Text(
                         '${account.app.label} · ${account.entry.label}',
                       ),
                       subtitle: Text(account.entry.status),
-                      trailing: const Icon(Icons.chevron_right, size: 18),
-                      onTap: () => onOpenApp(account.app),
+                      suffix: const Icon(FLucideIcons.chevronRight, size: 18),
+                      onPress: () => onOpenApp(account.app),
                     ),
                 ],
               ),
@@ -122,11 +122,14 @@ class WorkspaceOverviewPage extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     for (final app in ManagedApp.values)
-                      ActionChip(
-                        label: Text(
+                      FButton(
+                        variant: FButtonVariant.outline,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        child: Text(
                           '${app.label} · ${registry.entriesFor(app).length} 个已载入',
                         ),
-                        onPressed: () => onOpenApp(app),
+                        onPress: () => onOpenApp(app),
                       ),
                   ],
                 ),
@@ -143,9 +146,12 @@ class WorkspaceOverviewPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text('在模型服务中查看本机连接设置和可用来源。'),
-                TextButton(
-                  onPressed: onOpenModels,
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
                   child: const Text('查看模型服务'),
+                  onPress: onOpenModels,
                 ),
               ],
             ),
@@ -197,15 +203,25 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
           Wrap(
             spacing: 8,
             children: [
-              ChoiceChip(
-                label: const Text('最近成功领取'),
+              FButton(
+                variant: !_attention
+                    ? FButtonVariant.secondary
+                    : FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
+                child: const Text('最近成功领取'),
                 selected: !_attention,
-                onSelected: (_) => setState(() => _attention = false),
+                onPress: () => setState(() => _attention = false),
               ),
-              ChoiceChip(
-                label: const Text('待处理'),
+              FButton(
+                variant: _attention
+                    ? FButtonVariant.secondary
+                    : FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
+                child: const Text('待处理'),
                 selected: _attention,
-                onSelected: (_) => setState(() => _attention = true),
+                onPress: () => setState(() => _attention = true),
               ),
             ],
           ),
@@ -216,14 +232,7 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
                 : Column(
                     children: [
                       for (final account in records)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: Icon(
-                            _attention
-                                ? Icons.info_outline
-                                : Icons.check_circle_outline,
-                            size: 20,
-                          ),
+                        FItem(
                           title: Text(
                             '${account.app.label} · ${account.entry.label}',
                           ),
@@ -232,8 +241,17 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
                                 ? account.entry.status
                                 : account.entry.receipt!.display,
                           ),
-                          trailing: const Icon(Icons.chevron_right, size: 18),
-                          onTap: () => widget.onOpenApp(account.app),
+                          prefix: Icon(
+                            _attention
+                                ? FLucideIcons.info
+                                : FLucideIcons.circleCheck,
+                            size: 20,
+                          ),
+                          suffix: const Icon(
+                            FLucideIcons.chevronRight,
+                            size: 18,
+                          ),
+                          onPress: () => widget.onOpenApp(account.app),
                         ),
                     ],
                   ),
@@ -257,15 +275,16 @@ class _SummaryValue extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            style: context.theme.typography.body.sm.copyWith(
+              color: context.theme.colors.mutedForeground,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '$value',
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
+            style: context.theme.typography.display.xl2.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

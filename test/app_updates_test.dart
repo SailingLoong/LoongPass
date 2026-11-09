@@ -1,6 +1,10 @@
-import 'package:flutter/material.dart';
+import 'desktop_test_app.dart';
+
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/app_updates.dart';
 
 void main() {
@@ -42,18 +46,17 @@ void main() {
     final updates = AppUpdates();
     await updates.load();
     await tester.pumpWidget(
-      MaterialApp(
+      DesktopTestApp(
         home: Scaffold(body: AppUpdateCard(updates: updates)),
       ),
     );
     return updates;
   }
 
-  bool enabled(WidgetTester tester, String label) => tester
-      .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, label))
-      .value;
+  bool enabled(WidgetTester tester, String label) =>
+      tester.widget<FSwitch>(find.widgetWithText(FSwitch, label)).value;
 
-  testWidgets(
+  testDesktopWidgets(
     'opening settings only reads state; manual checks remain explicit',
     (tester) async {
       final updates = await render(tester);
@@ -66,12 +69,12 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'automatic updates and beta are two independent native preferences',
     (tester) async {
       final updates = await render(tester);
       addTearDown(updates.dispose);
-      expect(find.byType(SwitchListTile), findsNWidgets(2));
+      expect(find.byType(FSwitch), findsNWidgets(2));
       expect(find.text('辅助检查并下载更新'), findsOneWidget);
       expect(find.text('接收 Beta 版更新'), findsOneWidget);
       await tester.tap(find.text('辅助检查并下载更新'));
@@ -91,7 +94,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'save failure keeps native preferences and reload restores them',
     (tester) async {
       final updates = await render(tester);
@@ -111,24 +114,19 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'active native update prevents another check and channel switch',
     (tester) async {
       native['canCheck'] = false;
       native['canChangeChannel'] = false;
       final updates = await render(tester);
       addTearDown(updates.dispose);
-      expect(
-        tester.widget<OutlinedButton>(find.byType(OutlinedButton)).onPressed,
-        isNull,
-      );
+      expect(tester.widget<FButton>(find.byType(FButton)).onPress, isNull);
       expect(
         tester
-            .widget<SwitchListTile>(
-              find.widgetWithText(SwitchListTile, '接收 Beta 版更新'),
-            )
-            .onChanged,
-        isNull,
+            .widget<FSwitch>(find.widgetWithText(FSwitch, '接收 Beta 版更新'))
+            .enabled,
+        isFalse,
       );
       expect(calls.map((c) => c.method), ['state']);
     },

@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+
 import 'codex_accounts.dart';
 import 'compact_accounts_table.dart';
 
@@ -23,37 +25,71 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
     if (account == null) return;
     _confirming = true;
     try {
-      final allowed = await showDialog<bool>(
+      final allowed = await showFDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: Text(remove ? '移除保存的 Codex 账号？' : '切换 Codex 官方账号？'),
-          content: SizedBox(
-            width: 500,
-            child: SingleChildScrollView(
-              child: Text(
-                '${account.email ?? '邮箱未知'}\n工作区：${account.workspaceId ?? '未知'}\n\n' +
-                    (remove
-                        ? '只删除 LoongPass 保存的登录副本，不会退出 Codex 中的账号。'
-                        : '如 Codex 正在运行，将先正常退出，再应用所选登录并重新打开。正在进行的任务可能中断。'
-                              '现有本机项目、对话与设置会保留；云端对话与权限仍由账号所属工作区决定。'
-                              '操作后请在 Codex 中核对登录账号。'),
-              ),
+        builder: (context, style, animation) => FDialog(
+          animation: animation,
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+          builder: (context, style) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DefaultTextStyle(
+                  style: style.titleTextStyle,
+                  child: Text(remove ? '移除保存的 Codex 账号？' : '切换 Codex 官方账号？'),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: DefaultTextStyle(
+                    style: style.bodyTextStyle,
+                    child: SizedBox(
+                      width: 500,
+                      child: SingleChildScrollView(
+                        child: Text(
+                          '${account.email ?? '邮箱未知'}\n工作区：${account.workspaceId ?? '未知'}\n\n' +
+                              (remove
+                                  ? '只删除 LoongPass 保存的登录副本，不会退出 Codex 中的账号。'
+                                  : '如 Codex 正在运行，将先正常退出，再应用所选登录并重新打开。正在进行的任务可能中断。'
+                                        '现有本机项目、对话与设置会保留；云端对话与权限仍由账号所属工作区决定。'
+                                        '操作后请在 Codex 中核对登录账号。'),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      key: const Key('codex-confirm-cancel'),
+                      child: const Text('取消'),
+                      onPress: () => Navigator.pop(context, false),
+                    ),
+                    FButton(
+                      variant: FButtonVariant.primary,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      key: Key(
+                        remove
+                            ? 'codex-confirm-remove'
+                            : 'codex-confirm-switch',
+                      ),
+                      child: Text(remove ? '移除保存副本' : '确认切换'),
+                      onPress: () => Navigator.pop(context, true),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          actions: [
-            TextButton(
-              key: const Key('codex-confirm-cancel'),
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              key: Key(
-                remove ? 'codex-confirm-remove' : 'codex-confirm-switch',
-              ),
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(remove ? '移除保存副本' : '确认切换'),
-            ),
-          ],
         ),
       );
       if (!mounted || !identical(owner, widget.owner) || allowed != true)
@@ -88,28 +124,40 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                 '移除只删除 LoongPass 的保存副本，不会退出官方客户端。'
                 'Codex 未提供签到或积分数据。',
             actions: [
-              FilledButton(
+              FButton(
+                variant: FButtonVariant.primary,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 key: const Key('codex-login'),
-                onPressed: owner.canMutate ? owner.startLogin : null,
                 child: const Text('添加官方账号'),
+                onPress: owner.canMutate ? owner.startLogin : null,
               ),
-              OutlinedButton(
+              FButton(
+                variant: FButtonVariant.outline,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 key: const Key('codex-import'),
-                onPressed: owner.canMutate ? owner.importCurrent : null,
                 child: const Text('导入当前登录'),
+                onPress: owner.canMutate ? owner.importCurrent : null,
               ),
-              TextButton(
+              FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 key: const Key('codex-status'),
-                onPressed: owner.supported && !owner.reading && !owner.busy
+                child: const Text('刷新记录'),
+                onPress: owner.supported && !owner.reading && !owner.busy
                     ? owner.refreshSnapshot
                     : null,
-                child: const Text('刷新记录'),
               ),
               if (state.loginPending)
-                TextButton(
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
                   key: const Key('codex-cancel-login'),
-                  onPressed: owner.canCancelLogin ? owner.cancelLogin : null,
                   child: const Text('取消授权'),
+                  onPress: owner.canCancelLogin ? owner.cancelLogin : null,
                 ),
             ],
           ),
@@ -127,7 +175,7 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
           if (owner.busy)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: LinearProgressIndicator(),
+              child: FProgress(),
             ),
           if (state.loginPending)
             const Padding(
@@ -223,15 +271,21 @@ class _CodexAccountDetails extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              OutlinedButton(
+              FButton(
+                variant: FButtonVariant.outline,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 key: Key('codex-switch-$id'),
-                onPressed: owner.canMutate ? onSwitch : null,
                 child: const Text('切换到此账号'),
+                onPress: owner.canMutate ? onSwitch : null,
               ),
-              TextButton(
+              FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
                 key: Key('codex-remove-$id'),
-                onPressed: owner.canMutate ? onRemove : null,
                 child: const Text('移除保存副本'),
+                onPress: owner.canMutate ? onRemove : null,
               ),
             ],
           ),

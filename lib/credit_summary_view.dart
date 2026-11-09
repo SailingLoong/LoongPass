@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+
 import 'credit_summary.dart';
 import 'account_table_entry.dart' show accountPoints;
 
@@ -16,18 +18,22 @@ class CreditSummaryView extends StatelessWidget {
         Text(
           '最近到期：${creditTime(summary.expiring.first.expiresAt)} · ${accountPoints(summary.expiring.first.remaining)} 积分',
         ),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          title: const Text('积分到期明细'),
+        FAccordion(
           children: [
-            for (final batch in summary.expiring)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(
-                  '${creditTime(batch.expiresAt)} · ${accountPoints(batch.remaining)} 积分',
-                ),
+            FAccordionItem(
+              title: const Text('积分到期明细'),
+              child: Column(
+                children: [
+                  for (final batch in summary.expiring)
+                    FItem(
+                      title: Text(
+                        '${creditTime(batch.expiresAt)} · ${accountPoints(batch.remaining)} 积分',
+                      ),
+                      semanticsButton: false,
+                    ),
+                ],
               ),
+            ),
           ],
         ),
       ] else
@@ -36,7 +42,7 @@ class CreditSummaryView extends StatelessWidget {
         Text('另有 ${accountPoints(summary.withoutExpiry)} 积分未提供到期时间。'),
       Text(
         '更新于 ${creditTime(summary.observedAt)}；剩余额度会随使用变化。',
-        style: Theme.of(context).textTheme.bodySmall,
+        style: context.theme.typography.body.xs,
       ),
     ],
   );

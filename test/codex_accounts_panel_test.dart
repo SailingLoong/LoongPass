@@ -1,7 +1,13 @@
+import 'desktop_test_app.dart';
+
+import 'package:forui/forui.dart';
+
 import 'dart:async';
-import 'package:flutter/material.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/account_workspace_registry.dart';
 import '../lib/app_theme.dart';
 import '../lib/codex_accounts.dart';
@@ -67,7 +73,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final panel = CodexAccountsPanel(owner: accounts);
     await tester.pumpWidget(
-      MaterialApp(
+      DesktopTestApp(
         theme: loongPassTheme(Brightness.light),
         home: Scaffold(
           body: ListView(
@@ -94,7 +100,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets(
+  testDesktopWidgets(
     'rendering publishes safe account presentation without native mutations',
     (tester) async {
       final calls = <String>[];
@@ -128,7 +134,7 @@ void main() {
     },
   );
 
-  testWidgets('cancelled restart confirmation sends no activation', (
+  testDesktopWidgets('cancelled restart confirmation sends no activation', (
     tester,
   ) async {
     final calls = <String>[];
@@ -154,7 +160,7 @@ void main() {
     'applied': '登录记录已应用。打开 Codex',
     'unchanged': '本机登录记录与所选账号一致',
   }.entries) {
-    testWidgets(
+    testDesktopWidgets(
       'activation describes ${outcome.key} without verified identity claims',
       (tester) async {
         final calls = <MethodCall>[];
@@ -184,7 +190,7 @@ void main() {
     );
   }
 
-  testWidgets(
+  testDesktopWidgets(
     'import, official login, cancellation and saved-copy removal are explicit',
     (tester) async {
       var imported = false, pending = false;
@@ -216,9 +222,7 @@ void main() {
       await tester.tap(find.byKey(const Key('codex-login')));
       await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<OutlinedButton>(find.byKey(const Key('codex-import')))
-            .onPressed,
+        tester.widget<FButton>(find.byKey(const Key('codex-import'))).onPress,
         isNull,
       );
       await tester.tap(find.byKey(const Key('codex-cancel-login')));
@@ -242,7 +246,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'native busy and failed operations disable conflicting controls without exposing diagnostics',
     (tester) async {
       final pending = Completer<Map<String, Object?>>();
@@ -256,12 +260,10 @@ void main() {
       await tester.tap(find.byKey(const Key('codex-import')));
       await tester.pump();
       expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('codex-login')))
-            .onPressed,
+        tester.widget<FButton>(find.byKey(const Key('codex-login'))).onPress,
         isNull,
       );
-      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.byType(FProgress), findsOneWidget);
       pending.completeError(
         PlatformException(
           code: 'synthetic-secret',
@@ -273,9 +275,7 @@ void main() {
       expect(find.textContaining('结果未能确认'), findsOneWidget);
       expect(find.textContaining('synthetic'), findsNothing);
       expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('codex-login')))
-            .onPressed,
+        tester.widget<FButton>(find.byKey(const Key('codex-login'))).onPress,
         isNull,
       );
     },
@@ -287,7 +287,7 @@ void main() {
     'restricted': '登录或工作区限制',
     'unavailable': 'Codex 账号功能暂不可用',
   }.entries) {
-    testWidgets(
+    testDesktopWidgets(
       '${issue.key} disables controls with an actionable explanation',
       (tester) async {
         messenger.setMockMethodCallHandler(
@@ -298,15 +298,11 @@ void main() {
         await accounts.refreshSnapshot();
         await mount(tester, accounts);
         expect(
-          tester
-              .widget<FilledButton>(find.byKey(const Key('codex-login')))
-              .onPressed,
+          tester.widget<FButton>(find.byKey(const Key('codex-login'))).onPress,
           isNull,
         );
         expect(
-          tester
-              .widget<OutlinedButton>(find.byKey(const Key('codex-import')))
-              .onPressed,
+          tester.widget<FButton>(find.byKey(const Key('codex-import'))).onPress,
           isNull,
         );
         expect(find.textContaining(issue.value), findsOneWidget);
@@ -314,7 +310,7 @@ void main() {
     );
   }
 
-  testWidgets(
+  testDesktopWidgets(
     'unsupported platforms show disabled controls and never call the native bridge',
     (tester) async {
       var nativeCalls = 0;
@@ -325,16 +321,14 @@ void main() {
       await mount(tester, owner(platform: TargetPlatform.linux));
       expect(find.textContaining('目前仅支持 macOS'), findsOneWidget);
       expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('codex-login')))
-            .onPressed,
+        tester.widget<FButton>(find.byKey(const Key('codex-login'))).onPress,
         isNull,
       );
       expect(nativeCalls, 0);
     },
   );
 
-  testWidgets('leaving the page keeps native authorization running', (
+  testDesktopWidgets('leaving the page keeps native authorization running', (
     tester,
   ) async {
     final calls = <String>[];
@@ -354,7 +348,7 @@ void main() {
   });
 
   for (final width in [360.0, 480.0, 760.0]) {
-    testWidgets('account controls and details fit width $width', (
+    testDesktopWidgets('account controls and details fit width $width', (
       tester,
     ) async {
       messenger.setMockMethodCallHandler(_channel, (_) async => _snapshot());

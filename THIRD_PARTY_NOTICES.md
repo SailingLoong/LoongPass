@@ -53,6 +53,17 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Forui and desktop UI dependencies
+
+Forui supplies the desktop theme, controls and Inter font from the packages locked
+in `pubspec.lock`. Forui is MIT licensed and Inter uses SIL Open Font License 1.1.
+The companion Lucide icon package retains its MIT and ISC notices. Their full
+license texts are included in Flutter's bundled package notices.
+[Forui upstream](https://github.com/duobaseio/forui), [Inter upstream](https://github.com/rsms/inter), [Lucide upstream](https://github.com/lucide-icons/lucide).
+
+The `material_ui` package provides the application host and platform text-selection
+foundation under Flutter's BSD license. Self-authored controls use Forui.
+
 ## Rust dependencies and template images
 
 THIRD_PARTY_RUST/INDEX.json lists the resolved macOS dependency packages and their declared licenses. Corresponding upstream license/notice files are retained under THIRD_PARTY_RUST/. This conservative inventory also retains build/development dependency notices. Official Flutter template image attribution is retained in FLUTTER-TEMPLATE-IMAGES-LICENSE and ICON-PROVENANCE.md.

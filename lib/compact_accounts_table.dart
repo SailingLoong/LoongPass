@@ -1,7 +1,11 @@
 export 'account_panel_header.dart';
+
 import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+
 import 'account_table_entry.dart';
 export 'account_table_entry.dart';
 import 'credit_summary_view.dart';
@@ -21,6 +25,7 @@ class CompactAccountsTable extends StatefulWidget {
 }
 
 class _CompactAccountsTableState extends State<CompactAccountsTable> {
+  static const _minimumTableWidth = 760.0;
   final _search = TextEditingController();
   final _scroll = ScrollController();
   late final _live = ValueNotifier(widget.entries);
@@ -81,84 +86,129 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
 
   void _details(String id, {bool expiry = false}) {
     widget.entries.where((e) => e.id == id).firstOrNull?.onOpenDetails?.call();
-    showDialog<void>(
+    showFDialog<void>(
       context: context,
-      builder: (context) => ValueListenableBuilder<List<AccountTableEntry>>(
-        valueListenable: _live,
-        builder: (context, rows, _) {
-          final row = rows.where((r) => r.id == id).firstOrNull;
-          return AlertDialog(
-            title: Text(
-              row == null
-                  ? '账号已移除'
-                  : '${row.label} · ${expiry ? '积分到期' : '账号详情'}',
-            ),
-            content: SizedBox(
-              width: 600,
-              child: SingleChildScrollView(
-                child: row == null
-                    ? const Text('该账号已不在当前列表中。')
-                    : expiry && row.credits != null
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+      builder: (context, style, animation) =>
+          ValueListenableBuilder<List<AccountTableEntry>>(
+            valueListenable: _live,
+            builder: (context, rows, _) {
+              final row = rows.where((r) => r.id == id).firstOrNull;
+              return FDialog(
+                animation: animation,
+                constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+                builder: (context, style) => Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DefaultTextStyle(
+                        style: style.titleTextStyle,
+                        child: Text(
+                          row == null
+                              ? '账号已移除'
+                              : '${row.label} · ${expiry ? '积分到期' : '账号详情'}',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Flexible(
+                        child: DefaultTextStyle(
+                          style: style.bodyTextStyle,
+                          child: SizedBox(
+                            width: 600,
+                            child: SingleChildScrollView(
+                              child: row == null
+                                  ? const Text('该账号已不在当前列表中。')
+                                  : expiry && row.credits != null
+                                  ? Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text('最近 3 批 · 当前剩余额度'),
+                                        for (final b in upcomingCreditBatches(
+                                          row.credits,
+                                        ).take(3))
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 8,
+                                            ),
+                                            child: Text(
+                                              '${accountPoints(b.remaining)} 积分 · ${creditTime(b.expiresAt)} 到期',
+                                            ),
+                                          ),
+                                        if (row.credits!.withoutExpiry > 0)
+                                          Text(
+                                            '另有 ${accountPoints(row.credits!.withoutExpiry)} 积分到期时间未知。',
+                                          ),
+                                        Text(
+                                          '查询于 ${creditTime(row.credits!.observedAt)}',
+                                        ),
+                                        FButton(
+                                          variant: FButtonVariant.ghost,
+                                          size: FButtonSizeVariant.sm,
+                                          mainAxisSize: MainAxisSize.min,
+                                          child: const Text('查看全部账号明细'),
+                                          onPress: () {
+                                            Navigator.pop(context);
+                                            _details(id);
+                                          },
+                                        ),
+                                      ],
+                                    )
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (row.notice != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 8,
+                                            ),
+                                            child: Text(row.notice!),
+                                          ),
+                                        const Text(
+                                          '最近一次成功领取',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
+                                          child: Text(row.latestClaim),
+                                        ),
+                                        const FDivider(),
+                                        row.details,
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        alignment: WrapAlignment.end,
                         children: [
-                          const Text('最近 3 批 · 当前剩余额度'),
-                          for (final b in upcomingCreditBatches(
-                            row.credits,
-                          ).take(3))
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Text(
-                                '${accountPoints(b.remaining)} 积分 · ${creditTime(b.expiresAt)} 到期',
-                              ),
-                            ),
-                          if (row.credits!.withoutExpiry > 0)
-                            Text(
-                              '另有 ${accountPoints(row.credits!.withoutExpiry)} 积分到期时间未知。',
-                            ),
-                          Text('查询于 ${creditTime(row.credits!.observedAt)}'),
-                          TextButton(
-                            onPressed: () {
-                              Navigator.pop(context);
-                              _details(id);
-                            },
-                            child: const Text('查看全部账号明细'),
+                          FButton(
+                            variant: FButtonVariant.ghost,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            child: const Text('关闭'),
+                            onPress: () => Navigator.pop(context),
                           ),
-                        ],
-                      )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (row.notice != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: Text(row.notice!),
-                            ),
-                          const Text(
-                            '最近一次成功领取',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Text(row.latestClaim),
-                          ),
-                          const Divider(),
-                          row.details,
                         ],
                       ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('关闭'),
-              ),
-            ],
-          );
-        },
-      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
     );
   }
 
@@ -210,7 +260,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     final pages = math.max(1, (rows.length / _size).ceil());
     final page = math.min(_page, pages - 1);
     final visible = rows.skip(page * _size).take(_size).toList();
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.theme.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -224,38 +274,26 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               SizedBox(
                 width: 210,
                 height: 34,
-                child: TextField(
+                child: FTextField(
                   key: const Key('account-search'),
-                  controller: _search,
-                  style: const TextStyle(fontSize: 12),
-                  decoration: const InputDecoration(
-                    hintText: '搜索账号 / 身份',
-                    prefixIcon: Icon(Icons.search, size: 17),
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
+                  hint: '搜索账号 / 身份',
+                  size: FTextFieldSizeVariant.sm,
+                  prefixBuilder: (context, style, variants) =>
+                      const Icon(FLucideIcons.search, size: 17),
+                  control: FTextFieldControl.managed(
+                    controller: _search,
+                    onChange: (_) => setState(() => _page = 0),
                   ),
-                  onChanged: (_) => setState(() => _page = 0),
                 ),
               ),
               for (final f in ['全部', '常用', '7 天内到期', '待处理'])
-                TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(32, 32),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    foregroundColor: _filter == f
-                        ? colors.primary
-                        : colors.onSurfaceVariant,
-                    backgroundColor: _filter == f
-                        ? colors.primaryContainer
-                        : null,
-                  ),
-                  onPressed: () => setState(() {
-                    _filter = f;
-                    _page = 0;
-                  }),
+                FButton(
+                  variant: _filter == f
+                      ? FButtonVariant.secondary
+                      : FButtonVariant.ghost,
+                  selected: _filter == f,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -265,45 +303,50 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                         '${widget.entries.where((e) => matches(e, f)).length}',
                         style: TextStyle(
                           fontSize: 10,
-                          color: colors.onSurfaceVariant,
+                          color: colors.mutedForeground,
                         ),
                       ),
                     ],
                   ),
+                  onPress: () => setState(() {
+                    _filter = f;
+                    _page = 0;
+                  }),
                 ),
-              DropdownButton<String>(
-                value: _sort,
-                isDense: true,
-                underline: const SizedBox(),
-                items: [
-                  for (final s in ['默认排序', '到期优先', '账号名称'])
-                    DropdownMenuItem(value: s, child: Text(s)),
-                ],
-                onChanged: (s) => setState(() {
-                  _sort = s!;
-                  _page = 0;
-                }),
+              SizedBox(
+                width: 128,
+                child: FSelect<String>(
+                  key: const Key('account-sort'),
+                  size: FTextFieldSizeVariant.sm,
+                  items: const {'默认排序': '默认排序', '到期优先': '到期优先', '账号名称': '账号名称'},
+                  control: FSelectControl.lifted(
+                    value: _sort,
+                    onChange: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _sort = value;
+                        _page = 0;
+                      });
+                    },
+                  ),
+                ),
               ),
             ],
           ),
         ),
         if (visible.isNotEmpty)
-          Material(
-            color: colors.surfaceContainerLowest,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-              side: BorderSide(color: colors.outlineVariant),
-            ),
+          FCard(
             clipBehavior: Clip.antiAlias,
             child: LayoutBuilder(
-              builder: (context, box) => Scrollbar(
+              builder: (context, box) => RawScrollbar(
+                thumbColor: colors.mutedForeground,
                 controller: _scroll,
-                thumbVisibility: box.maxWidth < 780,
+                thumbVisibility: box.maxWidth < _minimumTableWidth,
                 child: SingleChildScrollView(
                   controller: _scroll,
                   scrollDirection: Axis.horizontal,
                   child: SizedBox(
-                    width: math.max(780, box.maxWidth),
+                    width: math.max(_minimumTableWidth, box.maxWidth),
                     child: Table(
                       columnWidths: const {
                         0: FlexColumnWidth(3.4),
@@ -315,9 +358,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                           TableCellVerticalAlignment.middle,
                       children: [
                         TableRow(
-                          decoration: BoxDecoration(
-                            color: colors.surfaceContainerLow,
-                          ),
+                          decoration: BoxDecoration(color: colors.muted),
                           children: [
                             for (final label in ['账号', '余额', '即将到期', '最近领取'])
                               Padding(
@@ -327,11 +368,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                                 ),
                                 child: Text(
                                   label,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: colors.onSurfaceVariant,
-                                  ),
+                                  style: context.theme.typography.body.sm
+                                      .copyWith(
+                                        fontWeight: FontWeight.w600,
+                                        color: colors.mutedForeground,
+                                      ),
                                 ),
                               ),
                           ],
@@ -342,9 +383,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                             decoration: BoxDecoration(
                               border: Border(
                                 bottom: BorderSide(
-                                  color: colors.outlineVariant.withValues(
-                                    alpha: .45,
-                                  ),
+                                  color: colors.border.withValues(alpha: .45),
                                 ),
                               ),
                             ),
@@ -366,12 +405,25 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                                 }),
                                 onDetails: () => _details(e.id),
                               ),
-                              InkWell(
-                                onTap: () => _details(e.id),
-                                child: SizedBox(
-                                  height: _rowHeight,
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
+                              SizedBox(
+                                height: _rowHeight,
+                                child: FButton(
+                                  key: ValueKey('balance-${e.id}'),
+                                  variant: FButtonVariant.ghost,
+                                  size: FButtonSizeVariant.sm,
+                                  mainAxisSize: MainAxisSize.max,
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  style: const FButtonStyleDelta.delta(
+                                    contentStyle:
+                                        FButtonContentStyleDelta.delta(
+                                          padding:
+                                              EdgeInsetsGeometryDelta.value(
+                                                EdgeInsets.zero,
+                                              ),
+                                        ),
+                                  ),
+                                  onPress: () => _details(e.id),
+                                  child: Expanded(
                                     child: _cell(
                                       e.balance,
                                       tooltip:
@@ -403,13 +455,16 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                       : '没有匹配的账号。',
                 ),
                 if (widget.entries.isNotEmpty)
-                  TextButton(
-                    onPressed: () => setState(() {
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    child: const Text('清除搜索和筛选'),
+                    onPress: () => setState(() {
                       _search.clear();
                       _filter = '全部';
                       _page = 0;
                     }),
-                    child: const Text('清除搜索和筛选'),
                   ),
               ],
             ),
@@ -424,48 +479,72 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                 rows.isEmpty
                     ? '0 个账号'
                     : '${page * _size + 1}–${math.min((page + 1) * _size, rows.length)} / ${rows.length} 个账号',
-                style: const TextStyle(fontSize: 12),
+                style: context.theme.typography.body.sm,
               ),
-              DropdownButton<int>(
-                key: const Key('account-page-size'),
-                value: _size,
-                isDense: true,
-                underline: const SizedBox(),
-                items: [
-                  for (final n in [5, 10, 20])
-                    DropdownMenuItem(value: n, child: Text('$n 条 / 页')),
-                ],
-                onChanged: (n) => setState(() {
-                  _size = n!;
-                  _page = 0;
-                  _preferences?.setPageSize(_preferenceScope, n);
-                }),
+              SizedBox(
+                width: 128,
+                child: FSelect<int>(
+                  key: const Key('account-page-size'),
+                  size: FTextFieldSizeVariant.sm,
+                  items: {
+                    for (final size in [5, 10, 20]) '$size 条 / 页': size,
+                  },
+                  control: FSelectControl.lifted(
+                    value: _size,
+                    onChange: (value) {
+                      if (value == null) return;
+                      setState(() {
+                        _size = value;
+                        _page = 0;
+                        _preferences?.setPageSize(_preferenceScope, value);
+                      });
+                    },
+                  ),
+                ),
               ),
-              IconButton(
-                tooltip: '上一页',
-                onPressed: page > 0
-                    ? () => setState(() => _page = page - 1)
-                    : null,
-                icon: const Icon(Icons.chevron_left, size: 18),
+              FTooltip(
+                tipBuilder: (context, controller) => Text('上一页'),
+                child: Semantics(
+                  tooltip: '上一页',
+                  child: FButton.icon(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    onPress: page > 0
+                        ? () => setState(() => _page = page - 1)
+                        : null,
+                    child: const Icon(FLucideIcons.chevronLeft, size: 18),
+                  ),
+                ),
               ),
               Text(
                 '${page + 1} / $pages',
-                style: const TextStyle(fontSize: 12),
+                style: context.theme.typography.body.sm,
               ),
-              IconButton(
-                tooltip: '下一页',
-                onPressed: page + 1 < pages
-                    ? () => setState(() => _page = page + 1)
-                    : null,
-                icon: const Icon(Icons.chevron_right, size: 18),
+              FTooltip(
+                tipBuilder: (context, controller) => Text('下一页'),
+                child: Semantics(
+                  tooltip: '下一页',
+                  child: FButton.icon(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    onPress: page + 1 < pages
+                        ? () => setState(() => _page = page + 1)
+                        : null,
+                    child: const Icon(FLucideIcons.chevronRight, size: 18),
+                  ),
+                ),
               ),
               if (widget.entries.isNotEmpty)
-                Tooltip(
-                  message: '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
-                  child: Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: colors.onSurfaceVariant,
+                FTooltip(
+                  tipBuilder: (context, controller) =>
+                      Text('余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细'),
+                  child: Semantics(
+                    tooltip: '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
+                    child: Icon(
+                      FLucideIcons.info,
+                      size: 14,
+                      color: colors.mutedForeground,
+                    ),
                   ),
                 ),
             ],
@@ -475,15 +554,18 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     );
   }
 
-  Widget _cell(String text, {String? tooltip}) => Tooltip(
-    message: tooltip ?? text,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12),
+  Widget _cell(String text, {String? tooltip, Color? color}) => FTooltip(
+    tipBuilder: (context, controller) => Text(tooltip ?? text),
+    child: Semantics(
+      tooltip: tooltip ?? text,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: context.theme.typography.body.sm.copyWith(color: color),
+        ),
       ),
     ),
   );
@@ -491,25 +573,27 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     final batches = upcomingCreditBatches(row.credits);
     final text = row.upcomingExpiryText;
     if (batches.isEmpty && row.expiryText == null) return _cell(text);
-    return InkWell(
-      key: ValueKey('expiry-${row.id}'),
-      onTap: () => _details(row.id, expiry: true),
-      child: SizedBox(
-        height: _rowHeight,
-        child: DefaultTextStyle.merge(
-          style: TextStyle(
-            color:
-                row.nextExpiry != null &&
-                    row.nextExpiry!.isAfter(DateTime.now()) &&
-                    row.nextExpiry!.isBefore(
-                      DateTime.now().add(const Duration(days: 7)),
-                    )
-                ? (Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFFFFC46B)
-                      : const Color(0xFF8D5300))
-                : null,
+    final now = DateTime.now();
+    final urgent =
+        row.nextExpiry != null &&
+        row.nextExpiry!.isAfter(now) &&
+        row.nextExpiry!.isBefore(now.add(const Duration(days: 7)));
+    return SizedBox(
+      height: _rowHeight,
+      child: FButton(
+        key: ValueKey('expiry-${row.id}'),
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.max,
+        mainAxisAlignment: MainAxisAlignment.start,
+        style: const FButtonStyleDelta.delta(
+          contentStyle: FButtonContentStyleDelta.delta(
+            padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
           ),
-          child: Align(alignment: Alignment.centerLeft, child: _cell(text)),
+        ),
+        onPress: () => _details(row.id, expiry: true),
+        child: Expanded(
+          child: _cell(text, color: urgent ? context.theme.colors.error : null),
         ),
       ),
     );
@@ -551,52 +635,58 @@ class _AccountNameState extends State<_AccountName> {
           height: widget.height,
           child: Row(
             children: [
-              IconButton(
-                tooltip: widget.favorite ? '取消常用' : '设为常用',
-                onPressed: widget.onFavorite,
-                constraints: const BoxConstraints.tightFor(
-                  width: 28,
-                  height: 32,
-                ),
-                padding: EdgeInsets.zero,
-                icon: Icon(
-                  widget.favorite ? Icons.star : Icons.star_outline,
-                  size: 15,
+              FTooltip(
+                tipBuilder: (context, controller) =>
+                    Text(widget.favorite ? '取消常用' : '设为常用'),
+                child: Semantics(
+                  tooltip: widget.favorite ? '取消常用' : '设为常用',
+                  child: FButton.icon(
+                    variant: widget.favorite
+                        ? FButtonVariant.secondary
+                        : FButtonVariant.ghost,
+                    selected: widget.favorite,
+                    size: FButtonSizeVariant.sm,
+                    onPress: widget.onFavorite,
+                    child: Icon(FLucideIcons.star, size: 15),
+                  ),
                 ),
               ),
               Expanded(
-                child: Tooltip(
-                  message: '${e.identity}\n${e.status}',
-                  child: TextButton(
-                    key: ValueKey('account-${e.id}'),
-                    onPressed: widget.onDetails,
-                    style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.onSurface,
-                      alignment: Alignment.centerLeft,
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 32),
-                    ),
-                    child: Text(
-                      e.sourceLabel == null
-                          ? e.label
-                          : '${e.label} · ${e.sourceLabel}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
+                child: FTooltip(
+                  tipBuilder: (context, controller) =>
+                      Text('${e.identity}\n${e.status}'),
+                  child: Semantics(
+                    tooltip: '${e.identity}\n${e.status}',
+                    child: FButton(
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.max,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      key: ValueKey('account-${e.id}'),
+                      child: Expanded(
+                        child: Text(
+                          e.sourceLabel == null
+                              ? e.label
+                              : '${e.label} · ${e.sourceLabel}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      onPress: widget.onDetails,
                     ),
                   ),
                 ),
               ),
               if (e.needsAttention)
-                Tooltip(
-                  message: e.status,
-                  child: Icon(
-                    Icons.info_outline,
-                    size: 15,
-                    color: Theme.of(context).colorScheme.error,
+                FTooltip(
+                  tipBuilder: (context, controller) => Text(e.status),
+                  child: Semantics(
+                    tooltip: e.status,
+                    child: Icon(
+                      FLucideIcons.info,
+                      size: 15,
+                      color: context.theme.colors.error,
+                    ),
                   ),
                 ),
               if (e.onActivate != null)
@@ -604,14 +694,13 @@ class _AccountNameState extends State<_AccountName> {
                   opacity: show ? 1 : 0,
                   child: IgnorePointer(
                     ignoring: !show,
-                    child: TextButton(
+                    child: FButton(
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
                       key: ValueKey('activate-${e.id}'),
-                      onPressed: e.activationEnabled ? e.onActivate : null,
-                      style: TextButton.styleFrom(
-                        minimumSize: const Size(44, 30),
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      child: const Text('切换', style: TextStyle(fontSize: 11)),
+                      child: const Text('切换'),
+                      onPress: e.activationEnabled ? e.onActivate : null,
                     ),
                   ),
                 ),

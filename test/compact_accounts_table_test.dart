@@ -1,20 +1,121 @@
+import '../lib/app_theme.dart';
+import 'desktop_test_app.dart';
+
+import 'package:forui/forui.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+
 import '../lib/compact_accounts_table.dart';
 import '../lib/credit_summary.dart';
 import '../lib/ui_preferences.dart';
 
 void main() {
-  testWidgets(
+  Future<void> expiryRows(WidgetTester tester, Brightness brightness) async {
+    final now = DateTime.now();
+    await tester.pumpWidget(
+      DesktopTestApp(
+        theme: loongPassTheme(brightness),
+        home: Scaffold(
+          body: CompactAccountsTable(
+            entries: [
+              for (final entry in {'near': 2, 'later': 14}.entries)
+                AccountTableEntry(
+                  id: entry.key,
+                  label: entry.key,
+                  identity: 'synthetic-${entry.key}',
+                  balance: '1000 积分',
+                  status: '已保存',
+                  details: const Text('账号详情'),
+                  credits: CreditSummary(1000, 0, now, [
+                    CreditExpiry(now.add(Duration(days: entry.value)), 1000),
+                  ]),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testDesktopWidgets(
+    'balance and expiry cells retain visible hover and keyboard focus',
+    (tester) async {
+      await expiryRows(tester, Brightness.light);
+      final balance = find.ancestor(
+        of: find.text('1000 积分').first,
+        matching: find.byType(FButton),
+      );
+      expect(balance, findsOneWidget);
+      expect(
+        tester.widget(find.byKey(const Key('expiry-near'))),
+        isA<FButton>(),
+      );
+      List<Decoration> decorations() => tester
+          .widgetList<DecoratedBox>(
+            find.descendant(of: balance, matching: find.byType(DecoratedBox)),
+          )
+          .map((box) => box.decoration)
+          .toList();
+      final before = decorations();
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(balance));
+      await tester.pumpAndSettle();
+      expect(decorations(), isNot(equals(before)));
+      await mouse.moveTo(Offset.zero);
+      await mouse.removePointer();
+      await tester.pumpAndSettle();
+      bool focused() => tester
+          .widget<FFocusedOutline>(
+            find
+                .descendant(of: balance, matching: find.byType(FFocusedOutline))
+                .first,
+          )
+          .focused;
+      for (var index = 0; index < 16 && !focused(); index++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pumpAndSettle();
+      }
+      expect(focused(), isTrue);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
+
+  testDesktopWidgets('near expiry retains its reminder color in both themes', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      await expiryRows(tester, brightness);
+      Color? color(String id) => tester
+          .widget<Text>(
+            find
+                .descendant(
+                  of: find.byKey(ValueKey('expiry-$id')),
+                  matching: find.byType(Text),
+                )
+                .first,
+          )
+          .style
+          ?.color;
+      final colors = loongPassDesignTheme(brightness).colors;
+      expect(color('near'), colors.error);
+      expect(color('later'), colors.foreground);
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testDesktopWidgets(
     'favorites survive table recreation and unmatched search offers reset',
     (tester) async {
       final preferences = UiPreferences();
       addTearDown(preferences.dispose);
       Widget page() => UiPreferencesScope(
         preferences: preferences,
-        child: MaterialApp(
+        child: DesktopTestApp(
           home: Scaffold(
             body: CompactAccountsTable(
               entries: const [
@@ -32,10 +133,21 @@ void main() {
         ),
       );
       await tester.pumpWidget(page());
-      await tester.tap(find.byTooltip('设为常用'));
+      await tester.tap(findTooltip('设为常用'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(page());
+      expect(
+        tester
+            .widget<FButton>(
+              find.descendant(
+                of: findTooltip('取消常用'),
+                matching: find.byType(FButton),
+              ),
+            )
+            .selected,
+        isTrue,
+      );
       await tester.tap(find.text('常用'));
       await tester.pumpAndSettle();
       expect(find.text('Saved account'), findsOneWidget);
@@ -49,12 +161,12 @@ void main() {
       expect(find.text('Saved account'), findsOneWidget);
     },
   );
-  testWidgets(
+  testDesktopWidgets(
     'expired snapshot batches cannot hide the next future expiry from filtering',
     (tester) async {
       final now = DateTime.now();
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: CompactAccountsTable(
               entries: [
@@ -91,7 +203,7 @@ void main() {
       expect(find.textContaining('100 积分'), findsNothing);
     },
   );
-  testWidgets(
+  testDesktopWidgets(
     'open details follows owner messages and values without reopening',
     (tester) async {
       final rows = ValueNotifier<List<AccountTableEntry>>([]);
@@ -107,7 +219,7 @@ void main() {
       );
       rows.value = [row(null)];
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: ValueListenableBuilder<List<AccountTableEntry>>(
               valueListenable: rows,
@@ -135,7 +247,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
-      MaterialApp(
+      DesktopTestApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: CompactAccountsTable(
@@ -175,7 +287,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets(
+  testDesktopWidgets(
     'keyboard users can reveal and activate the switch without a mouse',
     (tester) async {
       var switched = false;
@@ -198,7 +310,7 @@ void main() {
       for (var i = 0; i < 6 && !switched; i++) {
         final focus = FocusManager.instance.primaryFocus;
         if (focus?.context != null &&
-            focus!.context!.findAncestorWidgetOfExactType<TextButton>()?.key ==
+            focus!.context!.findAncestorWidgetOfExactType<FButton>()?.key ==
                 const Key('activate-1')) {
           await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         } else {
@@ -211,11 +323,11 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'narrow windows scroll the table and page-size changes reset to the first page',
     (tester) async {
       await mount(tester);
-      await tester.tap(find.byTooltip('下一页'));
+      await tester.tap(findTooltip('下一页'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('account-page-size')));
       await tester.pumpAndSettle();
@@ -237,68 +349,75 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
-  testWidgets('search sees off-page accounts and paging never activates them', (
-    tester,
-  ) async {
-    var switches = 0;
-    await mount(tester, activate: () => switches++);
-    expect(find.text('账号 1'), findsOneWidget);
-    expect(find.text('账号 11'), findsNothing);
-    await tester.tap(find.byTooltip('下一页'));
-    await tester.pumpAndSettle();
-    expect(find.text('账号 11'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('account-search')), 'user20@');
-    await tester.pumpAndSettle();
-    expect(find.text('账号 20'), findsOneWidget);
-    expect(find.text('账号 11'), findsNothing);
-    expect(find.textContaining('120 积分'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('expiry-20')));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('200 积分'), findsOneWidget);
-    expect(find.textContaining('300 积分'), findsOneWidget);
-    expect(find.textContaining('260 积分'), findsOneWidget);
-    expect(switches, 0);
-    expect(tester.takeException(), isNull);
-  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+  testDesktopWidgets(
+    'search sees off-page accounts and paging never activates them',
+    (tester) async {
+      var switches = 0;
+      await mount(tester, activate: () => switches++);
+      expect(find.text('账号 1'), findsOneWidget);
+      expect(find.text('账号 11'), findsNothing);
+      await tester.tap(findTooltip('下一页'));
+      await tester.pumpAndSettle();
+      expect(find.text('账号 11'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('account-search')),
+        'user20@',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('账号 20'), findsOneWidget);
+      expect(find.text('账号 11'), findsNothing);
+      expect(find.textContaining('120 积分'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('expiry-20')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('200 积分'), findsOneWidget);
+      expect(find.textContaining('300 积分'), findsOneWidget);
+      expect(find.textContaining('260 积分'), findsOneWidget);
+      expect(switches, 0);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
 
-  testWidgets('switch appears on hover, hides on leave, and uses its own row', (
-    tester,
-  ) async {
-    var switches = 0;
-    await mount(tester, activate: () => switches++);
-    final target = find.byKey(const Key('activate-1'));
-    expect(
-      tester
-          .widget<Opacity>(
-            find.ancestor(of: target, matching: find.byType(Opacity)).first,
-          )
-          .opacity,
-      0,
-    );
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-    await mouse.addPointer(location: Offset.zero);
-    await mouse.moveTo(tester.getCenter(find.byKey(const Key('account-1'))));
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<Opacity>(
-            find.ancestor(of: target, matching: find.byType(Opacity)).first,
-          )
-          .opacity,
-      1,
-    );
-    await tester.tap(target);
-    expect(switches, 1);
-    await mouse.moveTo(Offset.zero);
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<Opacity>(
-            find.ancestor(of: target, matching: find.byType(Opacity)).first,
-          )
-          .opacity,
-      0,
-    );
-    await mouse.removePointer();
-  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+  testDesktopWidgets(
+    'switch appears on hover, hides on leave, and uses its own row',
+    (tester) async {
+      var switches = 0;
+      await mount(tester, activate: () => switches++);
+      final target = find.byKey(const Key('activate-1'));
+      expect(
+        tester
+            .widget<Opacity>(
+              find.ancestor(of: target, matching: find.byType(Opacity)).first,
+            )
+            .opacity,
+        0,
+      );
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.byKey(const Key('account-1'))));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Opacity>(
+              find.ancestor(of: target, matching: find.byType(Opacity)).first,
+            )
+            .opacity,
+        1,
+      );
+      await tester.tap(target);
+      expect(switches, 1);
+      await mouse.moveTo(Offset.zero);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<Opacity>(
+              find.ancestor(of: target, matching: find.byType(Opacity)).first,
+            )
+            .opacity,
+        0,
+      );
+      await mouse.removePointer();
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
 }

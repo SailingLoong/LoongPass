@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+
 import 'account_workspace_registry.dart';
 
 class AccountPanelToolbar extends StatelessWidget {
@@ -15,11 +17,11 @@ class AccountPanelToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AccountPresentationScope.maybeOf(context)?.app;
-    final colors = Theme.of(context).colorScheme;
+    final colors = context.theme.colors;
     final identity = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.headlineSmall),
+        Text(title, style: context.theme.typography.display.xl),
         const SizedBox(height: 5),
         Wrap(
           spacing: 8,
@@ -34,7 +36,9 @@ class AccountPanelToolbar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
       child: DefaultTextStyle.merge(
-        style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+        style: context.theme.typography.body.xs.copyWith(
+          color: colors.mutedForeground,
+        ),
         child: LayoutBuilder(
           builder: (context, box) {
             final wide = box.maxWidth >= 640;
@@ -72,23 +76,59 @@ class AccountPanelHelp extends StatelessWidget {
   const AccountPanelHelp({super.key, required this.text});
   final String text;
   @override
-  Widget build(BuildContext context) => IconButton(
-    icon: const Icon(Icons.help_outline, size: 16),
-    tooltip: '使用说明',
-    onPressed: () => showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('账号与领取说明'),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(child: Text(text)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
+  Widget build(BuildContext context) => FTooltip(
+    tipBuilder: (context, controller) => Text('使用说明'),
+    child: Semantics(
+      tooltip: '使用说明',
+      child: FButton.icon(
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        onPress: () => showFDialog<void>(
+          context: context,
+          builder: (context, style, animation) => FDialog(
+            animation: animation,
+            constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+            builder: (context, style) => Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DefaultTextStyle(
+                    style: style.titleTextStyle,
+                    child: const Text('账号与领取说明'),
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: DefaultTextStyle(
+                      style: style.bodyTextStyle,
+                      child: SizedBox(
+                        width: 500,
+                        child: SingleChildScrollView(child: Text(text)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.end,
+                    children: [
+                      FButton(
+                        variant: FButtonVariant.ghost,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        child: const Text('关闭'),
+                        onPress: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
+        child: const Icon(FLucideIcons.circleHelp, size: 16),
       ),
     ),
   );

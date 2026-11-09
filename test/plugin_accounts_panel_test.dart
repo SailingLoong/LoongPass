@@ -1,6 +1,10 @@
+import 'desktop_test_app.dart';
+
+import 'package:forui/forui.dart';
+
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -178,7 +182,7 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  testWidgets(
+  testDesktopWidgets(
     'target reauthorization uses native capability without choosing a login method',
     (tester) async {
       final runtime = _Runtime()..auto = true;
@@ -209,11 +213,13 @@ void main() {
         'device': '11111111-2222-4333-8444-555555555555',
       };
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () => showDialog<String>(
+              builder: (context) => FButton(
+                mainAxisSize: MainAxisSize.min,
+                size: FButtonSizeVariant.sm,
+                onPress: () => showDialog<String>(
                   context: context,
                   builder: (_) => PluginSignInDialog(
                     accounts: accounts,
@@ -254,7 +260,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'details keep native amounts exact, isolate gifts, and only refresh pending claims',
     (tester) async {
       final expiry =
@@ -316,7 +322,7 @@ void main() {
       );
       final rewards = _Rewards(accounts);
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: SingleChildScrollView(
               child: PluginAccountsPanel(
@@ -362,18 +368,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(FDialog),
           matching: find.textContaining('操作未完成'),
         ),
         findsOneWidget,
       );
       accounts.failAutomatic = true;
-      await tester.ensureVisible(find.byType(Switch));
-      await tester.tap(find.byType(Switch));
+      await tester.ensureVisible(find.byType(FSwitch));
+      await tester.tap(find.byType(FSwitch));
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(FDialog),
           matching: find.textContaining('操作未完成'),
         ),
         findsOneWidget,
@@ -383,18 +389,20 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'native prompts preserve method index and show browser failures before manual completion',
     (tester) async {
       final runtime = _Runtime();
       final nativeAccounts = _Accounts(runtime);
       final completed = Completer<String?>();
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => completed.complete(
+              builder: (context) => FButton(
+                mainAxisSize: MainAxisSize.min,
+                size: FButtonSizeVariant.sm,
+                onPress: () async => completed.complete(
                   await showDialog<String>(
                     context: context,
                     builder: (_) => PluginSignInDialog(
@@ -426,7 +434,7 @@ void main() {
       await tester.tap(find.text('继续'));
       await tester.pumpAndSettle();
       final input = find.byKey(const Key('plugin-auth-input'));
-      expect(tester.widget<TextField>(input).obscureText, true);
+      expect(tester.widget<FTextField>(input).obscureText, true);
       await tester.enterText(input, 'synthetic-secret');
       await tester.tap(find.text('继续'));
       await tester.pumpAndSettle();
@@ -458,108 +466,114 @@ void main() {
     },
   );
 
-  testWidgets('disposing an automatic sign-in cancels its owned callback', (
-    tester,
-  ) async {
-    final runtime = _Runtime()..auto = true;
-    final accounts = _Accounts(
-      runtime,
-      providers: {
-        'fixture': {
-          'name': 'Fixture',
-          'methods': [
-            {'type': 'oauth', 'label': '官方账号'},
-          ],
+  testDesktopWidgets(
+    'disposing an automatic sign-in cancels its owned callback',
+    (tester) async {
+      final runtime = _Runtime()..auto = true;
+      final accounts = _Accounts(
+        runtime,
+        providers: {
+          'fixture': {
+            'name': 'Fixture',
+            'methods': [
+              {'type': 'oauth', 'label': '官方账号'},
+            ],
+          },
         },
-      },
-    );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: PluginSignInDialog(
-          accounts: accounts,
-          providerIds: const {'fixture'},
-          title: '添加账号',
+      );
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: PluginSignInDialog(
+            accounts: accounts,
+            providerIds: const {'fixture'},
+            title: '添加账号',
+          ),
         ),
-      ),
-    );
-    await tester.tap(find.text('继续'));
-    await tester.pump();
-    await tester.pump();
-    expect(runtime.callback, isNotNull);
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump();
-    expect(runtime.cancelled, true);
-    expect(accounts.saved, null);
-    accounts.dispose();
-  });
+      );
+      await tester.tap(find.text('继续'));
+      await tester.pump();
+      await tester.pump();
+      expect(runtime.callback, isNotNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      expect(runtime.cancelled, true);
+      expect(accounts.saved, null);
+      accounts.dispose();
+    },
+  );
 
-  testWidgets('cancel stops the callback before the dialog closing animation', (
-    tester,
-  ) async {
-    final runtime = _Runtime()..auto = true;
-    final accounts = _Accounts(
-      runtime,
-      providers: {
-        'fixture': {
-          'name': 'Fixture',
-          'methods': [
-            {'type': 'oauth', 'label': '官方账号'},
-          ],
+  testDesktopWidgets(
+    'cancel stops the callback before the dialog closing animation',
+    (tester) async {
+      final runtime = _Runtime()..auto = true;
+      final accounts = _Accounts(
+        runtime,
+        providers: {
+          'fixture': {
+            'name': 'Fixture',
+            'methods': [
+              {'type': 'oauth', 'label': '官方账号'},
+            ],
+          },
         },
-      },
-    );
-    final completed = Completer<String?>();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () async => completed.complete(
-                await showDialog<String>(
-                  context: context,
-                  builder: (_) => PluginSignInDialog(
-                    accounts: accounts,
-                    providerIds: const {'fixture'},
-                    title: '添加账号',
+      );
+      final completed = Completer<String?>();
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => FButton(
+                mainAxisSize: MainAxisSize.min,
+                size: FButtonSizeVariant.sm,
+                onPress: () async => completed.complete(
+                  await showDialog<String>(
+                    context: context,
+                    builder: (_) => PluginSignInDialog(
+                      accounts: accounts,
+                      providerIds: const {'fixture'},
+                      title: '添加账号',
+                    ),
                   ),
                 ),
+                child: const Text('Open'),
               ),
-              child: const Text('Open'),
             ),
           ),
         ),
-      ),
-    );
-    try {
-      await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('继续'));
-      await tester.pump();
-      expect(runtime.callback, isNotNull);
-      await tester.tap(find.text('取消'));
-      await tester.pump();
-      expect(runtime.cancelled, true);
-      expect(await completed.future, null);
-      expect(accounts.saved, null);
-    } finally {
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump();
-      accounts.dispose();
-    }
-  });
+      );
+      try {
+        await tester.tap(find.text('Open'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('继续'));
+        await tester.pump();
+        expect(runtime.callback, isNotNull);
+        await tester.tap(find.text('取消'));
+        await tester.pump();
+        expect(runtime.cancelled, true);
+        expect(await completed.future, null);
+        expect(accounts.saved, null);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+        accounts.dispose();
+      }
+    },
+  );
 
-  testWidgets(
+  testDesktopWidgets(
     'API authorization masks the key and preserves the native method',
     (tester) async {
       final runtime = _Runtime()..auto = true;
       final accounts = _Accounts(runtime);
       final completed = Completer<String?>();
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: Builder(
-              builder: (context) => TextButton(
-                onPressed: () async => completed.complete(
+              builder: (context) => FButton(
+                mainAxisSize: MainAxisSize.min,
+                size: FButtonSizeVariant.sm,
+                onPress: () async => completed.complete(
                   await showDialog<String>(
                     context: context,
                     builder: (_) => PluginSignInDialog(
@@ -580,7 +594,7 @@ void main() {
       await tester.tap(find.text('继续'));
       await tester.pumpAndSettle();
       final input = find.byKey(const Key('plugin-auth-input'));
-      expect(tester.widget<TextField>(input).obscureText, true);
+      expect(tester.widget<FTextField>(input).obscureText, true);
       await tester.enterText(input, 'synthetic-api-key');
       await tester.tap(find.text('完成授权'));
       await tester.pumpAndSettle();
@@ -595,7 +609,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  testDesktopWidgets(
     'desktop applied result asks for real client identity verification',
     (tester) async {
       final accounts = _Accounts(
@@ -619,7 +633,7 @@ void main() {
       final rewards = _Rewards(accounts);
       String? activated;
       await tester.pumpWidget(
-        MaterialApp(
+        DesktopTestApp(
           home: Scaffold(
             body: SingleChildScrollView(
               child: PluginAccountsPanel(
@@ -667,7 +681,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(FDialog),
           matching: find.textContaining('请打开 WorkBuddy 核对当前身份'),
         ),
         findsNothing,

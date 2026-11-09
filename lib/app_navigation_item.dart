@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
+
 import 'managed_app.dart';
 
 class AppNavigationItem extends StatefulWidget {
@@ -27,7 +29,6 @@ class AppNavigationItemState extends State<AppNavigationItem> {
   @override
   Widget build(BuildContext context) {
     final app = widget.app;
-    final colors = Theme.of(context).colorScheme;
     Widget icon = ExcludeSemantics(
       child: SizedBox(
         width: 28,
@@ -45,25 +46,13 @@ class AppNavigationItemState extends State<AppNavigationItem> {
               Positioned(
                 right: 0,
                 bottom: 0,
-                child: Container(
+                child: Transform.scale(
                   key: ValueKey('region-${app.name}'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 2,
-                    vertical: 1,
-                  ),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceContainerLowest,
-                    border: Border.all(color: colors.outlineVariant, width: .5),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text(
-                    app.regionCode,
-                    style: TextStyle(
-                      color: colors.onSurfaceVariant,
-                      fontSize: 7,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  scale: .55,
+                  alignment: Alignment.bottomRight,
+                  child: FBadge(
+                    variant: FBadgeVariant.secondary,
+                    child: Text(app.regionCode),
                   ),
                 ),
               ),
@@ -117,9 +106,13 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                         child: ReorderableDragStartListener(
                           key: ValueKey('drag-${app.name}'),
                           index: widget.index,
-                          child: const Tooltip(
-                            message: '拖动排序 · Option + ↑ / ↓',
-                            child: Icon(Icons.drag_indicator, size: 16),
+                          child: FTooltip(
+                            tipBuilder: (context, controller) =>
+                                Text('拖动排序 · Option + ↑ / ↓'),
+                            child: Semantics(
+                              tooltip: '拖动排序 · Option + ↑ / ↓',
+                              child: Icon(FLucideIcons.gripVertical, size: 16),
+                            ),
                           ),
                         ),
                       ),
@@ -149,47 +142,37 @@ class SidebarNavigationButton extends StatelessWidget {
   final Widget? trailing;
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: label,
-      child: TextButton(
-        onPressed: onPressed,
-        style: TextButton.styleFrom(
-          minimumSize: const Size(40, 38),
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 8 : 10,
-            vertical: 4,
-          ),
-          foregroundColor: selected ? colors.primary : colors.onSurfaceVariant,
-          textStyle: Theme.of(context).textTheme.labelLarge!.copyWith(
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-          ),
-          backgroundColor: selected
-              ? colors.primaryContainer
-              : Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        ),
-        child: Row(
-          mainAxisAlignment: compact
-              ? MainAxisAlignment.center
-              : MainAxisAlignment.start,
-          children: [
-            icon,
-            if (!compact) ...[
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+    final variant = selected ? FButtonVariant.secondary : FButtonVariant.ghost;
+    return FTooltip(
+      tipBuilder: (context, controller) => Text(label),
+      child: Semantics(
+        tooltip: label,
+        child: compact
+            ? FButton.icon(
+                variant: variant,
+                size: FButtonSizeVariant.sm,
+                selected: selected,
+                semanticsLabel: label,
+                onPress: onPressed,
+                child: icon,
+              )
+            : FButton(
+                variant: variant,
+                size: FButtonSizeVariant.sm,
+                selected: selected,
+                onPress: onPressed,
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.start,
+                prefix: icon,
+                suffix: trailing,
+                child: Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
-              if (trailing != null) trailing!,
-            ],
-            if (compact)
-              Semantics(label: label, child: const SizedBox.shrink()),
-          ],
-        ),
       ),
     );
   }

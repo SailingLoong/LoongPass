@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'desktop_test_app.dart';
+
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/main.dart';
@@ -13,7 +15,7 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
-  testWidgets(
+  testDesktopWidgets(
     'secondary workspaces are reachable without example model credentials',
     (tester) async {
       await desktop(tester);
@@ -32,7 +34,7 @@ void main() {
       }
     },
   );
-  testWidgets('production navigation has regional account workspaces', (
+  testDesktopWidgets('production navigation has regional account workspaces', (
     tester,
   ) async {
     await desktop(tester);
@@ -59,31 +61,36 @@ void main() {
   });
 
   for (final width in [480.0, 760.0, 1280.0]) {
-    testWidgets('app workspace has no layout exception at width $width', (
-      tester,
-    ) async {
-      await desktop(tester, width: width);
-      expect(tester.takeException(), isNull);
-      if (width < 760) {
-        expect(find.byTooltip('LoongPass'), findsOneWidget);
-      } else {
-        expect(find.text('LoongPass'), findsOneWidget);
-      }
-      expect(find.byTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
-      for (final app in [
-        'zcode',
-        'qoderCn',
-        'qoder',
-        'minimaxCn',
-        'minimax',
-        'workbuddy',
-        'traeCn',
-        'codex',
-      ]) {
-        await tester.tap(find.byKey(ValueKey('app-$app')));
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull, reason: '$app at width $width');
-      }
-    });
+    testDesktopWidgets(
+      'app workspace has no layout exception at width $width',
+      (tester) async {
+        await desktop(tester, width: width);
+        expect(tester.takeException(), isNull);
+        if (width < 760) {
+          expect(findTooltip('LoongPass'), findsOneWidget);
+        } else {
+          expect(find.text('LoongPass'), findsOneWidget);
+        }
+        expect(findTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
+        for (final app in [
+          'zcode',
+          'qoderCn',
+          'qoder',
+          'minimaxCn',
+          'minimax',
+          'workbuddy',
+          'traeCn',
+          'codex',
+        ]) {
+          await tester.tap(find.byKey(ValueKey('app-$app')));
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$app at width $width',
+          );
+        }
+      },
+    );
   }
 }

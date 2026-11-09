@@ -2,11 +2,17 @@
 // LOONGPASS_PREVIEW_DIR selects the output directory. No native account owners.
 import 'dart:io';
 import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:forui/forui.dart';
+
+import '../test/desktop_test_app.dart';
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/main.dart';
 import '../lib/app_sidebar.dart';
 import '../lib/compact_accounts_table.dart';
@@ -17,22 +23,26 @@ import '../lib/workspace_accounts.dart';
 
 void main() {
   setUpAll(() async {
-    final font = await File(
-      '/System/Library/Fonts/STHeiti Light.ttc',
-    ).readAsBytes();
-    for (final name in ['Roboto', 'Ahem', '.AppleSystemUIFont']) {
+    final font = await File('/System/Library/Fonts/STHeiti Light.ttc')
+        .readAsBytes();
+    for (final name in [
+      'Roboto',
+      'Ahem',
+      '.AppleSystemUIFont',
+      'packages/forui/Inter',
+    ]) {
       await (FontLoader(
         name,
       )..addFont(Future.value(ByteData.sublistView(font)))).load();
     }
-    final sdk =
-        Platform.environment['FLUTTER_ROOT'] ?? '/Users/allen/lib/flutter';
-    final icons = await File(
-      '$sdk/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
-    ).readAsBytes();
-    await (FontLoader(
-      'MaterialIcons',
-    )..addFont(Future.value(ByteData.sublistView(icons)))).load();
+    for (final font in {
+      'packages/forui_lucide/ForuiLucideIcons':
+          'packages/forui_lucide/assets/lucide.ttf',
+    }.entries) {
+      final bytes = await rootBundle.load(font.value);
+      final loader = FontLoader(font.key)..addFont(Future.value(bytes));
+      await loader.load();
+    }
   });
   for (final size in [
     const Size(1024, 720),
@@ -40,7 +50,7 @@ void main() {
     const Size(480, 800),
   ]) {
     for (final brightness in Brightness.values) {
-      testWidgets('compact ${size.width.toInt()} ${brightness.name}', (
+      testDesktopWidgets('compact ${size.width.toInt()} ${brightness.name}', (
         tester,
       ) async {
         tester.view.physicalSize = size;
@@ -81,11 +91,11 @@ void main() {
         await tester.pumpWidget(
           RepaintBoundary(
             key: boundary,
-            child: MaterialApp(
-              debugShowCheckedModeBanner: false,
+            child: DesktopTestApp(
               theme: loongPassTheme(brightness),
-              home: Scaffold(
-                body: AppWorkspace(
+              home: FScaffold(
+                childPad: false,
+                child: AppWorkspace(
                   key: workspace,
                   initialApp: ManagedApp.workbuddy,
                   sections: {
@@ -120,12 +130,17 @@ void main() {
                               accountCount: entries.length,
                               helpText: '演示数据，不操作真实账号。',
                               actions: [
-                                FilledButton(
-                                  onPressed: () {},
+                                FButton(
+                                  mainAxisSize: MainAxisSize.min,
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: () {},
                                   child: const Text('添加账号'),
                                 ),
-                                TextButton(
-                                  onPressed: () {},
+                                FButton(
+                                  variant: FButtonVariant.ghost,
+                                  mainAxisSize: MainAxisSize.min,
+                                  size: FButtonSizeVariant.sm,
+                                  onPress: () {},
                                   child: const Text('恢复已保存账号'),
                                 ),
                               ],
@@ -150,7 +165,10 @@ void main() {
         await tester.runAsync(() async {
           final context = tester.element(find.byKey(workspace));
           await Future.wait([
-            precacheImage(const AssetImage('assets/branding/loongpass.png'), context),
+            precacheImage(
+              const AssetImage('assets/branding/loongpass.png'),
+              context,
+            ),
             for (final app in ManagedApp.values)
               precacheImage(AssetImage(app.iconAsset), context),
           ]);
@@ -164,7 +182,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         if (size.width == 1024) {
-          expect(tester.getBottomLeft(find.byTooltip('下一页')).dy, lessThan(700));
+          expect(tester.getBottomLeft(findTooltip('下一页')).dy, lessThan(700));
           expect(
             tester.getTopLeft(find.byKey(const Key('account-2'))).dy -
                 tester.getTopLeft(find.byKey(const Key('account-1'))).dy,
@@ -191,6 +209,27 @@ void main() {
         });
         await capture('accounts');
         await mouse.moveTo(Offset.zero);
+        await tester.tap(find.byKey(const Key('account-1')));
+        await tester.pumpAndSettle();
+        await capture('details');
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const Key('expiry-1')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('expiry-1')));
+        await tester.pumpAndSettle();
+        await capture('expiry');
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const Key('account-search')));
+        await tester.enterText(
+          find.byKey(const Key('account-search')),
+          'no-matching-account',
+        );
+        await tester.pumpAndSettle();
+        await capture('empty-search');
+        await tester.tap(find.text('清除搜索和筛选'));
+        await tester.pumpAndSettle();
         if (size.width == 1024) {
           await tester.tap(find.byKey(const Key('toggle-sidebar')));
           await tester.pumpAndSettle();
@@ -198,7 +237,7 @@ void main() {
           await tester.tap(find.byKey(const Key('toggle-sidebar')));
           await tester.pumpAndSettle();
         }
-        for (final section in ['overview', 'models', 'activity', 'settings']) {
+        for (final section in ['overview', 'activity', 'settings']) {
           await tester.tap(find.byKey(ValueKey('nav-$section')));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);

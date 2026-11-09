@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
 
 import 'plugin_application.dart';
 import 'magpie_connection.dart';
@@ -44,21 +45,23 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('本机模型服务'),
-                  subtitle: Text(service.running ? '正在运行' : '已停止'),
+                FSwitch(
                   value: service.enabled,
-                  onChanged: _busy
-                      ? null
-                      : (value) => _run(() => service.setEnabled(value)),
+                  label: const Text('本机模型服务'),
+                  description: Text(service.running ? '正在运行' : '已停止'),
+                  leadingLabel: true,
+                  enabled: !(_busy),
+                  onChange: (value) => _run(() => service.setEnabled(value)),
                 ),
                 const Text(
                   '选择可供 Magpie 使用的账号。模型分组、路由和 Claude Code 等客户端的接入由 Magpie 管理。',
                 ),
                 const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed:
+                FButton(
+                  variant: FButtonVariant.primary,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress:
                       _busy ||
                           !service.running ||
                           !service.grants.any(
@@ -79,8 +82,8 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                                   '账号授权已保存到 Magpie。可在 Magpie 中选择模型或路由分组。',
                             );
                         }),
-                  icon: const Icon(Icons.link),
-                  label: Text(_busy ? '正在处理…' : '连接 Magpie'),
+                  prefix: const Icon(FLucideIcons.link),
+                  child: Text(_busy ? '正在处理…' : '连接 Magpie'),
                 ),
                 if (_message != null)
                   Padding(
@@ -101,18 +104,16 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(grant.account.label),
-                    subtitle: Text(
+                  FSwitch(
+                    value: grant.enabled,
+                    label: Text(grant.account.label),
+                    description: Text(
                       '${grant.account.provider} · ${grant.account.realm} · ${grant.account.models.length} 个模型',
                     ),
-                    value: grant.enabled,
-                    onChanged: _busy || !grant.account.active
-                        ? null
-                        : (value) => _run(
-                            () => service.enable(grant.account.key, value),
-                          ),
+                    leadingLabel: true,
+                    enabled: !(_busy || !grant.account.active),
+                    onChange: (value) =>
+                        _run(() => service.enable(grant.account.key, value)),
                   ),
                   if (!grant.account.active) const Text('账号需要重新授权。'),
                   Wrap(
@@ -120,8 +121,9 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                     runSpacing: 6,
                     children: [
                       for (final model in grant.account.models)
-                        Chip(
-                          label: Text(
+                        FBadge(
+                          variant: FBadgeVariant.secondary,
+                          child: Text(
                             '${model['name'] ?? model['id']}${grant.account.provider == 'zcode'
                                 ? (model['id'] as String).toLowerCase().endsWith('-trial')
                                       ? ' · 仅赠送'

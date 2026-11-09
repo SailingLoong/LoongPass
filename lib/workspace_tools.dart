@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
+import 'package:forui/forui.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 import 'ui_preferences.dart';
 import 'app_updates.dart';
@@ -13,7 +15,6 @@ class WorkspaceSettingsPage extends StatelessWidget {
   final AppUpdates? updates;
   @override
   Widget build(BuildContext context) {
-    final selectorWidth = MediaQuery.textScalerOf(context).scale(100) + 32;
     return ListenableBuilder(
       listenable: preferences,
       builder: (context, _) => WorkspacePage(
@@ -28,9 +29,12 @@ class WorkspaceSettingsPage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(preferences.error!),
-                  TextButton(
-                    onPressed: preferences.retrySave,
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
                     child: const Text('重新保存界面偏好'),
+                    onPress: preferences.retrySave,
                   ),
                 ],
               ),
@@ -44,80 +48,50 @@ class WorkspaceSettingsPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 12),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('主题'),
-                  trailing: SizedBox(
-                    width: selectorWidth,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<ThemeMode>(
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      FSelect<ThemeMode>(
+                        key: const Key('appearance-theme'),
+                        label: const Text('主题'),
+                        items: const {
+                          '跟随系统': ThemeMode.system,
+                          '浅色': ThemeMode.light,
+                          '深色': ThemeMode.dark,
+                        },
+                        control: FSelectControl.lifted(
                           value: preferences.themeMode,
-                          isDense: true,
-                          isExpanded: true,
-                          items: const [
-                            DropdownMenuItem(
-                              value: ThemeMode.system,
-                              child: Text('跟随系统'),
-                            ),
-                            DropdownMenuItem(
-                              value: ThemeMode.light,
-                              child: Text('浅色'),
-                            ),
-                            DropdownMenuItem(
-                              value: ThemeMode.dark,
-                              child: Text('深色'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v != null) preferences.setTheme(v);
+                          onChange: (value) {
+                            if (value != null) preferences.setTheme(value);
                           },
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('账号行距'),
-                  trailing: SizedBox(
-                    width: selectorWidth,
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<bool>(
+                      const SizedBox(height: 16),
+                      FSelect<bool>(
+                        key: const Key('account-row-density'),
+                        label: const Text('账号行距'),
+                        items: const {'紧凑': false, '舒适': true},
+                        control: FSelectControl.lifted(
                           value: preferences.comfortable,
-                          isDense: true,
-                          isExpanded: true,
-                          items: const [
-                            DropdownMenuItem(value: false, child: Text('紧凑')),
-                            DropdownMenuItem(value: true, child: Text('舒适')),
-                          ],
-                          onChanged: (v) {
-                            if (v != null) preferences.setComfortable(v);
+                          onChange: (value) {
+                            if (value != null)
+                              preferences.setComfortable(value);
                           },
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('精简应用栏'),
-                  subtitle: const Text('保留应用图标，悬停查看完整名称。'),
+                const SizedBox(height: 16),
+                FSwitch(
                   value: preferences.collapsed,
-                  onChanged: preferences.setCollapsed,
+                  label: const Text('精简应用栏'),
+                  description: const Text('保留应用图标，悬停查看完整名称。'),
+                  leadingLabel: true,
+                  enabled: true,
+                  onChange: preferences.setCollapsed,
                 ),
               ],
             ),
@@ -132,9 +106,12 @@ class WorkspaceSettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text('在左侧上下拖动应用。键盘聚焦应用后，也可用 Option + ↑ / ↓ 调整。顺序会保存在本机。'),
-                TextButton(
-                  onPressed: preferences.resetOrder,
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
                   child: const Text('恢复默认应用顺序'),
+                  onPress: preferences.resetOrder,
                 ),
               ],
             ),
@@ -172,13 +149,13 @@ class WorkspacePage extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(24),
     children: [
-      Text(title, style: Theme.of(context).textTheme.headlineSmall),
+      Text(title, style: context.theme.typography.display.xl),
       const SizedBox(height: 6),
       Text(
         subtitle,
-        style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+        style: context.theme.typography.body.md.copyWith(
           fontSize: 12,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          color: context.theme.colors.mutedForeground,
         ),
       ),
       const SizedBox(height: 20),
@@ -191,8 +168,10 @@ class WorkspaceCard extends StatelessWidget {
   const WorkspaceCard({super.key, required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) => Card(
-    margin: const EdgeInsets.only(bottom: 16),
-    child: Padding(padding: const EdgeInsets.all(18), child: child),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
+    child: FCard(
+      child: Padding(padding: const EdgeInsets.all(18), child: child),
+    ),
   );
 }
