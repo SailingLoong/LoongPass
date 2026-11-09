@@ -2,14 +2,51 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/workbuddy_invitation.dart';
+import '../lib/invitation_settings.dart';
+import '../lib/managed_app.dart';
 
 void main() {
+  test(
+    'Qoder CN uses the official referral parameter and its own saved override',
+    () async {
+      String? stored;
+      InvitationSettings open() => InvitationSettings(
+        ManagedApp.qoderCn,
+        read: () async => stored,
+        write: (value) async => stored = value,
+      );
+      final qoder = open();
+      addTearDown(qoder.dispose);
+      await qoder.load();
+      expect(
+        qoder.url.toString(),
+        'https://qoder.cn/activities?referral_code=n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3',
+      );
+      await qoder.save('custom-code');
+      final restored = open();
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(
+        restored.url.toString(),
+        'https://qoder.cn/activities?referral_code=custom-code',
+      );
+      await restored.save('');
+      expect(
+        restored.url.queryParameters['referral_code'],
+        'n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3',
+      );
+      final workbuddy = InvitationSettings(ManagedApp.workbuddy);
+      addTearDown(workbuddy.dispose);
+      expect(workbuddy.url.queryParameters['inviteCode'], '3wu5mr8ye2b0');
+    },
+  );
+
   test(
     'failed settings read stays unavailable until a successful retry',
     () async {
       var fail = true;
-      final settings = WorkBuddyInvitation(
+      final settings = InvitationSettings(
+        ManagedApp.workbuddy,
         read: () async {
           if (fail) throw StateError('synthetic read failure');
           return 'saved-code';
@@ -27,7 +64,10 @@ void main() {
   );
 
   test('blank settings produce the approved official invitation URL', () async {
-    final settings = WorkBuddyInvitation(read: () async => null);
+    final settings = InvitationSettings(
+      ManagedApp.workbuddy,
+      read: () async => null,
+    );
     addTearDown(settings.dispose);
     await settings.load();
     expect(
@@ -41,7 +81,8 @@ void main() {
     'saved override survives reopening and clearing restores default',
     () async {
       String? stored;
-      WorkBuddyInvitation open() => WorkBuddyInvitation(
+      InvitationSettings open() => InvitationSettings(
+        ManagedApp.workbuddy,
         read: () async => stored,
         write: (value) async => stored = value,
       );
@@ -62,7 +103,8 @@ void main() {
   );
 
   test('failed save keeps the previously saved invitation', () async {
-    final settings = WorkBuddyInvitation(
+    final settings = InvitationSettings(
+      ManagedApp.workbuddy,
       read: () async => 'saved-code',
       write: (_) async => throw StateError('synthetic storage failure'),
     );
@@ -77,7 +119,8 @@ void main() {
     () async {
       final gate = Completer<void>();
       String? stored;
-      final settings = WorkBuddyInvitation(
+      final settings = InvitationSettings(
+        ManagedApp.workbuddy,
         write: (value) async {
           if (value == 'first') await gate.future;
           stored = value;

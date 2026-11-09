@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
 
-import 'workbuddy_invitation.dart';
+import 'invitation_settings.dart';
 
-class WorkBuddyInvitationPanel extends StatefulWidget {
-  const WorkBuddyInvitationPanel({super.key, required this.settings});
-  final WorkBuddyInvitation settings;
+class InvitationSettingsPanel extends StatefulWidget {
+  const InvitationSettingsPanel({super.key, required this.settings});
+  final InvitationSettings settings;
 
   @override
-  State<WorkBuddyInvitationPanel> createState() =>
-      _WorkBuddyInvitationPanelState();
+  State<InvitationSettingsPanel> createState() =>
+      _InvitationSettingsPanelState();
 }
 
-class _WorkBuddyInvitationPanelState extends State<WorkBuddyInvitationPanel> {
+class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
   late final _input = TextEditingController(text: widget.settings.overrideCode);
   bool _saving = false;
   String? _message, _error;
@@ -68,13 +68,13 @@ class _WorkBuddyInvitationPanelState extends State<WorkBuddyInvitationPanel> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 480),
               child: FTextField(
-                key: const Key('workbuddy-invitation-code'),
+                key: Key('${widget.settings.app.name}-invitation-code'),
                 control: FTextFieldControl.managed(
                   controller: _input,
                   onChange: (_) => setState(() => _message = _error = null),
                 ),
                 label: const Text('邀请码'),
-                hint: WorkBuddyInvitation.defaultCode,
+                hint: widget.settings.defaultCode,
                 description: const Text('留空使用默认邀请码。新用户可在添加账号时前往官方邀请注册页。'),
                 error: _error == null ? null : Text(_error!),
                 enabled: !_saving && widget.settings.ready,
@@ -88,7 +88,7 @@ class _WorkBuddyInvitationPanelState extends State<WorkBuddyInvitationPanel> {
             ] else
               IntrinsicWidth(
                 child: FButton(
-                  key: const Key('workbuddy-invitation-save'),
+                  key: Key('${widget.settings.app.name}-invitation-save'),
                   onPress: _saving ? null : _save,
                   child: Text(_saving ? '正在保存…' : '保存邀请码'),
                 ),

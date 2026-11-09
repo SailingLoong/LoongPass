@@ -1,21 +1,41 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Owns the user's invitation override. Official WorkBuddy owns all binding
-/// and reward eligibility decisions.
-class WorkBuddyInvitation extends ChangeNotifier {
-  WorkBuddyInvitation({this.read, this.write}) : ready = read == null;
+import 'managed_app.dart';
 
-  factory WorkBuddyInvitation.persistent() {
+/// Owns each platform's invitation override. The official platform owns binding
+/// and reward eligibility decisions.
+class InvitationSettings extends ChangeNotifier {
+  InvitationSettings(this.app, {this.read, this.write}) : ready = read == null {
+    if (!_programs.containsKey(app)) throw ArgumentError.value(app, 'app');
+  }
+
+  factory InvitationSettings.persistent(ManagedApp app) {
     final store = SharedPreferencesAsync();
-    const key = 'loongpass.workbuddy.invitationCode';
-    return WorkBuddyInvitation(
+    final key = 'loongpass.${app.name}.invitationCode';
+    return InvitationSettings(
+      app,
       read: () => store.getString(key),
       write: (value) => store.setString(key, value),
     );
   }
 
-  static const defaultCode = '3wu5mr8ye2b0';
+  static const _programs = {
+    ManagedApp.workbuddy: (
+      defaultCode: '3wu5mr8ye2b0',
+      host: 'www.workbuddy.cn',
+      path: '/events/invite/',
+      parameter: 'inviteCode',
+    ),
+    ManagedApp.qoderCn: (
+      defaultCode: 'n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3',
+      host: 'qoder.cn',
+      path: '/activities',
+      parameter: 'referral_code',
+    ),
+  };
+  static Iterable<ManagedApp> get platforms => _programs.keys;
+  final ManagedApp app;
   final Future<String?> Function()? read;
   final Future<void> Function(String)? write;
   String _overrideCode = '';
@@ -26,9 +46,15 @@ class WorkBuddyInvitation extends ChangeNotifier {
   int _revision = 0;
 
   String get overrideCode => _overrideCode;
-  Uri get url => Uri.https('www.workbuddy.cn', '/events/invite/', {
-    'inviteCode': _overrideCode.isEmpty ? defaultCode : _overrideCode,
-  });
+  String get defaultCode => _programs[app]!.defaultCode;
+  Uri get url {
+    final program = _programs[app]!;
+    return Uri.https(program.host, program.path, {
+      program.parameter: _overrideCode.isEmpty
+          ? program.defaultCode
+          : _overrideCode,
+    });
+  }
 
   Future<void> load() async {
     final revision = _revision;

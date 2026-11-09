@@ -13,6 +13,33 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 void main() {
+  testWidgets(
+    'Qoder CN invitation defaults and overrides stay platform scoped',
+    (tester) async {
+      await desktop(tester);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.text('n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('qoderCn-invitation-code')),
+        'custom-qoder-code',
+      );
+      await tester.tap(find.byKey(const Key('qoderCn-invitation-save')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请码已保存'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-workbuddy')));
+      await tester.pumpAndSettle();
+      expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
+      expect(find.text('custom-qoder-code'), findsNothing);
+      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.pumpAndSettle();
+      expect(find.text('custom-qoder-code'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      expect(find.text('邀请设置'), findsNothing);
+    },
+  );
+
   testWidgets('WorkBuddy page offers an editable default invitation code', (
     tester,
   ) async {
