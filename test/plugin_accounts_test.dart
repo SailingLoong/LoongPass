@@ -623,8 +623,6 @@ void _identityTests() {
       {'email': 'native@example.invalid', 'site': 'three'},
     );
     expect((await h.accounts.credentials.account(authorized))['metadata'], {
-      'email': 'native@example.invalid',
-      'site': 'three',
       'fromPlugin': 'preserved',
     });
   });

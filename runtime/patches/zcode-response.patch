@@ -1,0 +1,15 @@
+# Compose native model and tool response transforms.
+# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -3104,8 +3104,8 @@
+             let giftName = ""
+             let asked = ""
+             let renamed = false
+-            const done = (res) => {
+-              if (giftName) res = trialNamed(res, giftName)
++            const done = async (res) => {
++              if (giftName) res = await trialNamed(res, giftName)
+               return renamed ? searchNamed(res) : res
+             }
+             if (opts.body != null) {

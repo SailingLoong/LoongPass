@@ -127,6 +127,41 @@ test('spent pools require exact totals and preserve available add-on credits', (
   } })).toBe('800 / 800 credits')
 })
 
+test('unavailable enterprise credit pools do not enter native routing totals', () => {
+  const usage = trial(800)
+  usage.qoderUsage.orgResourcePackage = { cap:100.125, used:10.0625, remaining:90.0625, unit:'credits', available:false }
+  const hidden = _internal.parseUsage(usage)
+  expect(hidden.windows.some(w=>w.name === 'Shared credits' || w.name === 'Total credits')).toBe(false)
+  expect(_internal.spentOf(usage)).toBe('800 / 800 credits')
+  usage.qoderUsage.orgResourcePackage.available = true
+  const shown = _internal.parseUsage(usage)
+  expect(shown.windows.find(w=>w.name === 'Shared credits')).toMatchObject({amount:10.0625,limit:100.125,unit:'credits'})
+  expect(_internal.spentOf(usage)).toBe('')
+  usage.qoderUsage.orgResourcePackage.cap = 0
+  expect(_internal.parseUsage(usage).windows.find(w=>w.name === 'Shared credits')).toMatchObject({amount:10.0625,limit:100.125,unit:'credits'})
+  const absent = {displayMode:'qoder',qoderUsage:{orgResourcePackage:{cap:0,used:0,remaining:0,available:false}}}
+  expect(_internal.parseUsage(absent).windows).toEqual([])
+  expect(_internal.spentOf(absent)).toBe('')
+});
+
+test('a partial sequential pool makes the combined quota unknown instead of exhausted', () => {
+  for (const field of ['addOnQuota','orgResourcePackage']) {
+    const usage = trial(800)
+    usage.qoderUsage.expiresAt = 4102444800000
+    usage.qoderUsage[field] = {remaining:60,unit:'credits'}
+    const windows = _internal.parseUsage(usage).windows
+    const aggregate = windows.find(w=>w.name === 'Total credits')
+    expect(aggregate).toMatchObject({used:null,amount:null,limit:null,unit:'credits'})
+    expect(windows.filter(w=>w.name !== 'Total credits').every(w=>w.aside === true)).toBe(true)
+    expect(windows.find(w=>w.name === 'Credits')).toMatchObject({amount:800,limit:800,used:100,aside:true})
+    expect(_internal.spentOf(usage)).toBe('')
+    usage.qoderUsage.userQuota = {total:0,used:0,remaining:0}
+    expect(_internal.parseUsage(usage).windows).toEqual([
+      {name:'Total credits',used:null,amount:null,limit:null,unit:'credits'},
+    ])
+  }
+});
+
 for (const arch of ['x64', 'arm64']) {
   test(`Windows ${arch} CLI helper selection handles new files and legacy folders`, async () => {
     const home = await mkdtemp(join(tmpdir(), 'loongpass-qoder-helper-'))

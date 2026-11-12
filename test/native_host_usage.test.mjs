@@ -36,7 +36,7 @@ beforeAll(async () => {
             ['negative infinity',-Infinity], ['boolean',false], ['object',{}],
           ].map(([name,value]) => ({name,amount:value,limit:value,runsOut:value,unit:'credits'})),
           {name:'zero',amount:0,limit:0,runsOut:0,unit:'credits'},
-          {name:'credits',amount:10.0625,limit:100.125,runsOut:90.0625,unit:'credits'},
+          {name:'credits',amount:10.0625,limit:100.125,runsOut:90.0625,unit:'credits',family:'Claude',pool:'shared'},
           {name:'money',amount:0.125,limit:1.0625,runsOut:0.9375,unit:'usd'},
           {name:'tokens',amount:500000,limit:2000000,runsOut:1500000,unit:'tokens'},
           {name:'partial',amount:null,limit:100.125,runsOut:0,unit:'credits'},
@@ -98,4 +98,8 @@ test('native host preserves absolute fractional credits through JSON RPC', () =>
 test('native host preserves monetary and token units without conversion', () => {
   expect(windows.get('money')).toMatchObject({ amount: 0.125, limit: 1.0625, runsOut: 0.9375, unit: 'usd' });
   expect(windows.get('tokens')).toMatchObject({ amount: 500000, limit: 2000000, runsOut: 1500000, unit: 'tokens' });
+});
+
+test('native shared-window grouping survives the host RPC', () => {
+  expect(windows.get('credits')).toMatchObject({ family: 'Claude', pool: 'shared' });
 });

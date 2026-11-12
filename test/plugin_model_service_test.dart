@@ -22,7 +22,7 @@ void main() {
         {
           'spec': 'fixture',
           'target': File('test/fixtures/native_plugin.mjs').absolute.path,
-          'options': {'apiId': 'fixture-wire'},
+          'options': {'apiId': 'fixture-wire', 'media': true},
         },
       ],
     );
@@ -86,6 +86,11 @@ void main() {
       expect(catalog.$1, 200);
       expect(jsonDecode(catalog.$3)['account']['id'], 'fixture#a');
       expect(catalog.$3, isNot(contains('native-a')));
+      expect(
+        (jsonDecode(catalog.$3)['models'] as List).map((m) => m['id']),
+        ['fixture-model', 'image'],
+        reason: 'Video polling has no model context in native Magpie; retain images and chat only.',
+      );
       Map<String, dynamic> envelope(String path) => {
         'model': 'fixture-wire',
         'npm': '@ai-sdk/openai-compatible',
@@ -136,7 +141,7 @@ void main() {
           },
         });
         final rows = await bridge.call('providers', {}) as List;
-        expect(rows.single['models'].single['id'], 'fixture/fixture-model');
+        expect((rows.single['models'] as List).map((m) => m['id']), ['fixture/fixture-model', 'fixture/image']);
         final through = bridge.fetch({
           'provider': 'loongpass',
           'model': 'fixture-wire',
@@ -162,6 +167,11 @@ void main() {
       expect(refused.$1, 429);
       expect(refused.$2['retry-after'], '7');
       expect(jsonDecode(refused.$3)['error']['code'], 11128);
+      expect(
+        (await request('/plugin/fetch', body: {...envelope('videos'), 'model': 'video-wire'})).$1,
+        400,
+        reason: 'An unsupported video job must not be created through a model grant.',
+      );
       expect(
         (await request(
           '/plugin/fetch',

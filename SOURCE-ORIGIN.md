@@ -23,3 +23,11 @@ Dart supplier adapters still own current authorization or inference.
 - The macOS runner originates from the Flutter template. Its BSD notice and template image attribution are retained in `THIRD_PARTY_NOTICES.md`, `FLUTTER-TEMPLATE-IMAGES-LICENSE`, and `ICON-PROVENANCE.md`.
 
 The beta 18 source handoff was the starting point for this repository. Current acceptance is maintained in `VALIDATION.md`. Native libraries are built from the included Rust sources and dependency lock files.
+
+## 2026-11-12 review
+
+The current fixed native cohort, patch disposition, whole-ecosystem review and
+official-client compatibility boundaries are recorded in
+[the upstream verification](docs/verification/2026-11-12-upstream-sync.md).
+Historical source hashes above remain provenance, not claims that a retired
+adapter owns the current runtime.

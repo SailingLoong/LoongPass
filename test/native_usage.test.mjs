@@ -14,7 +14,7 @@ const realFetch = globalThis.fetch;
 const noNetwork = async () => { throw new Error('Network forbidden in native usage tests'); };
 const future = Date.UTC(2100, 0, 1);
 const auth = { type: 'oauth', uid: 'synthetic', accountId: 'synthetic', access: 'fake', refresh: '', expires: 0 };
-let temporary, packages, mini, qoder, LoomyAuthPlugin, TraeCNAuthPlugin;
+let temporary, packages, mini, qoder, trae, LoomyAuthPlugin, TraeCNAuthPlugin;
 beforeAll(async () => {
   globalThis.fetch = noNetwork;
   temporary = await mkdtemp(join(tmpdir(), 'loongpass-native-usage-'));
@@ -26,7 +26,7 @@ beforeAll(async () => {
   ({ _internal: mini } = await import(pathToFileURL(join(packages, 'minimax/index.mjs')).href));
   ({ _internal: qoder } = await import(pathToFileURL(join(packages, 'qoder/index.mjs')).href));
   ({ LoomyAuthPlugin } = await import(pathToFileURL(join(packages, 'loomy/index.mjs')).href));
-  ({ TraeCNAuthPlugin } = await import(pathToFileURL(join(packages, 'trae/index.mjs')).href));
+  ({ TraeCNAuthPlugin, _internal: trae } = await import(pathToFileURL(join(packages, 'trae/index.mjs')).href));
 });
 afterEach(() => { globalThis.fetch = noNetwork; });
 afterAll(async () => {
@@ -78,6 +78,41 @@ test('TRAE CN public usage retains exact credits, not two-decimal amounts', asyn
   expect(calls).toBe(1);
   expect(usage.windows[0]).toMatchObject({ amount: 10.0625, limit: 100.125, unit: 'credits' });
   expect(usage.windows[0].limit - usage.windows[0].amount).toBe(90.0625);
+});
+
+const seatRow = (uid, cost) => ({ ...(uid ? { user_id: uid } : {}), in_seat_detail: { chat_usage_details: [{ total_cost_currency: cost }] } });
+function enterpriseUsage(site, rows, limit = 800.125) {
+  return trae.SITES[site].usage.ent.read({
+    quota: { user_model_quota: { user_id: 'seat-a', seat_pool_currency_quota: limit } },
+    spent: { user_usage_list: rows },
+    core: { Data: { ResetTime: future } },
+    credits: { user_entitlement_pack_list: [{
+      entitlement_base_info: { quota: { credits_limit: 100.125 }, end_time: future / 1000 },
+      usage: { credits_amount: 10.0625 },
+    }] },
+  }, { uid: 'official-a', name: 'Synthetic' }, 'kept', { credits: trae.credits, round: n => Math.round(n * 100) / 100 });
+}
+
+for (const [site, unit] of [['trae-cn', 'CNY'], ['trae-global', 'usd']]) {
+  test(`TRAE enterprise ${site} preserves small seat costs and exact limits`, () => {
+    const usage = enterpriseUsage(site, [seatRow('seat-a', 0.0002), seatRow('seat-b', 500)]);
+    expect(usage.windows[0]).toMatchObject({ amount: 0.0002, limit: 800.125, unit, resetsAt: '2100-01-01T00:00:00.000Z' });
+    // 0.0002 currency units is 1/5000; it must never become zero.
+    expect(usage.windows[0].amount * 5000).toBe(1);
+    if (site === 'trae-cn') {
+      expect(usage.windows[1]).toMatchObject({ amount: 10.0625, limit: 100.125, unit: 'credits', aside: true });
+      expect(usage.windows[1].limit - usage.windows[1].amount).toBe(90.0625);
+    } else expect(usage.windows).toHaveLength(1);
+    expect(enterpriseUsage(site, [], 0).windows[0]).toMatchObject({ amount: 0, limit: 0, used: 0, unit });
+  });
+}
+
+test('TRAE never assigns ambiguous anonymous enterprise seats to one account', () => {
+  const usage = enterpriseUsage('trae-cn', [seatRow('', 100), seatRow('', 500)]);
+  expect(usage.windows[0]).toMatchObject({ used: null, limit: 800.125, unit: 'CNY' });
+  expect(usage.windows[0].amount).toBeUndefined();
+  expect(enterpriseUsage('trae-cn', []).windows[0].amount).toBe(0);
+  expect(enterpriseUsage('trae-cn', [seatRow('seat-a', 100), seatRow('seat-b', 500)]).windows[0].amount).toBe(100);
 });
 
 async function loomyUsage(data) {
@@ -192,7 +227,7 @@ test('native host roundtrip preserves Loomy precise balance and percentage', asy
       if (new URL(String(input)).pathname !== '/api/v2/points/records' || init.method !== 'GET') throw new Error('Network forbidden');
       return Response.json({code:'000000', data:{dailyLimitPoints:50.125,dailyRemainingPoints:37.59375,balance:10.0625}});
     };
-    await import(${JSON.stringify(pathToFileURL(join(rootRuntime, 'vendor/magpie/host.js')).href)});
+    await import(${JSON.stringify(pathToFileURL(join(runtime, 'vendor/magpie/host.js')).href)});
   `);
   const child = spawn(process.execPath, [entry], { cwd: directory, env: { ...process.env, HOME: directory, USERPROFILE: directory }, stdio: ['pipe', 'pipe', 'pipe'] });
   const pending = new Map();

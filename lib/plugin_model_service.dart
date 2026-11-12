@@ -254,7 +254,7 @@ class PluginModelService extends ChangeNotifier {
             'provider': account.provider,
             'label': account.label,
           },
-          'models': account.models,
+          'models': _supportedModels(account).toList(),
           'usage': account.usage,
           'maxConcurrency': limits['maxConcurrency'] ?? 0,
           'maxAccounts': limits['maxAccounts'] ?? 0,
@@ -275,7 +275,7 @@ class PluginModelService extends ChangeNotifier {
         bytes.addAll(chunk);
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map;
-      final model = account.models
+      final model = _supportedModels(account)
           .where(
             (m) =>
                 // Magpie's native Go boundary sends api.id to its host, while
@@ -394,6 +394,15 @@ class PluginModelService extends ChangeNotifier {
       }
     }
   }
+
+  static Iterable<Map<String, dynamic>> _supportedModels(
+    PluginAccount account,
+  ) => account.models.where((model) {
+    // Native Magpie video polling omits the selected model/SDK context.
+    // Keep unsupported jobs out of both discovery and request admission.
+    final outputs = model['outputs'];
+    return outputs is! List || !outputs.contains('video');
+  });
 
   static bool _allowedURL(Object? baseValue, Object? targetValue) {
     if (baseValue is! String || targetValue is! String) return false;
