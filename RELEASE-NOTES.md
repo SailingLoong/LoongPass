@@ -1,4 +1,4 @@
-LoongPass 1.0.1-beta.35
+LoongPass 1.0.1-beta.36
 
 - 同步固定版本的 Magpie 原生宿主及 WorkBuddy、Qoder、MiniMax、Loomy、TRAE、ZCode 六个完整插件包，复用上游授权续期、模型目录、工具调用与恢复修复。
 - 修正 ZCode 赠送模型非流式回复中的 ToolSearch 工具名，以及跨地区同 UID 的并发额度隔离；保留同一地区不同设备、个人/团队的共享上限。
