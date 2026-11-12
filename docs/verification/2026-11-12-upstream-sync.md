@@ -57,6 +57,8 @@ The Rust/native switch facts remain productionDisabled with the existing reviewe
 - Release acceptance uses the immutable tag pipeline and independent package/source/signature/CDN readback. Published SOURCE_COMMIT and signed feeds identify the actual release; a local suite is not publication evidence.
 - No real vendor authorization, reward mutation, paid inference, current desktop switch or new media/client combination was exercised in this sync. Existing real-account baselines remain in VALIDATION.md. Platform build coverage is separate from Intel/Windows real-device coverage.
 
+The first tag candidate, beta.35, was not published: its macOS test run exposed a timing assumption in the bounded-shutdown test. A fixture renewal lasted 80 ms, so a slower second process could legitimately acquire the lease after renewal had already finished. Delaying the second startup reproduced the same failure locally. The test now holds a real loopback vendor response until after the second-host lease check, releases it explicitly, and verifies that both rotated credentials were saved. No production lease or host behavior changed. Beta.36 is the replacement release candidate; the failed tag remains immutable.
+
 ## Final reviewed cutoff
 
 At 2026-11-12 13:56 UTC, the final ref check found seven further Magpie commits (host bytes unchanged) and three community commits. WorkBuddy 0.2.31's native AI chat growth-event behavior remains confined to that upstream AI provider, which LoongPass does not enable. ZCode 0.1.61's expired-reset-card exclusion was adopted directly; agy-cli 0.1.26 remains external Magpie. The final source pins above include this delta. Later moving-head changes require the next reviewed sync, never an unreviewed startup update.

@@ -1,6 +1,6 @@
 name: loongpass
 description: A desktop tool for AI accounts, reward collection and credit expiry.
-version: 1.0.1-beta.35+35
+version: 1.0.1-beta.36+36
 publish_to: none
 environment:
   sdk: '>=3.14.0 <4.0.0'

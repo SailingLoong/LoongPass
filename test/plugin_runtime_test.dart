@@ -10,7 +10,7 @@ void main() {
   late Directory directory;
   PluginRuntime? runtime;
 
-  Future<PluginRuntime> open() => PluginRuntime.start(
+  Future<PluginRuntime> open({String? refreshURL}) => PluginRuntime.start(
     executable: Platform.environment['LOONGPASS_BUN'] ?? 'bun',
     hostPath: File('runtime/vendor/magpie/host.js').absolute.path,
     launcherPath: File('runtime/launcher.mjs').absolute.path,
@@ -19,6 +19,7 @@ void main() {
       {
         'spec': 'fixture',
         'target': File('test/fixtures/native_plugin.mjs').absolute.path,
+        'options': {'refreshURL': refreshURL},
       },
     ],
   );
@@ -268,7 +269,9 @@ void main() {
   test(
     'bounded shutdown leaves the credential lease with an unfinished renewal',
     () async {
-      runtime = await open();
+      final vendor = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => vendor.close(force: true));
+      runtime = await open(refreshURL: 'http://127.0.0.1:${vendor.port}/refresh');
       await runtime!.call('import', {
         'provider': 'fixture',
         'key': 'fixture#a',
@@ -285,21 +288,33 @@ void main() {
         'provider': 'fixture',
         'account': 'fixture#a',
       });
-      expect(
-        await runtime!.close(timeout: const Duration(milliseconds: 1)),
-        isFalse,
-      );
-      PluginRuntime? other;
+      // Hold the vendor response until the second host has checked the lease.
+      // Process startup speed must not decide whether renewal is unfinished.
+      final pendingRefresh = await vendor.first;
       try {
-        await expectLater(
-          () async => other = await open(),
-          throwsA(isA<PluginRuntimeFailure>()),
+        expect(
+          await runtime!.close(timeout: const Duration(milliseconds: 1)),
+          isFalse,
         );
+        PluginRuntime? other;
+        try {
+          await expectLater(
+            () async => other = await open(),
+            throwsA(isA<PluginRuntimeFailure>()),
+          );
+        } finally {
+          await other?.close();
+        }
       } finally {
-        await other?.close();
+        await pendingRefresh.response.close();
       }
-      await renewal;
+      expect((await renewal as Map)['renewed'], isTrue);
       expect(await runtime!.close(), isTrue);
+      final saved = jsonDecode(
+        await File('${directory.path}/plugin-auth.json').readAsString(),
+      );
+      expect(saved['fixture#a']['access'], 'fake-renewed');
+      expect(saved['fixture#a']['refresh'], 'fake-next');
       runtime = await open();
     },
   );

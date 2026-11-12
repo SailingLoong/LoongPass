@@ -14,7 +14,8 @@ export const FixturePlugin = async (_, options = {}) => ({
     }],
     refreshLead: 0,
     refresh: async () => {
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      if (options.refreshURL) await fetch(options.refreshURL);
+      else await new Promise((resolve) => setTimeout(resolve, 80));
       return {access: 'fake-renewed', refresh: 'fake-next', expires: Date.now() + 3600000};
     },
     loader: async (getAuth) => ({
