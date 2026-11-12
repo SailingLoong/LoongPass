@@ -1,21 +1,24 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.34</title><sparkle:version>34</sparkle:version><sparkle:shortVersionString>1.0.1-beta.34</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.34
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.36</title><sparkle:version>36</sparkle:version><sparkle:shortVersionString>1.0.1-beta.36</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.36
 
-- 桌面界面采用 Forui 官方 Neutral Desktop 浅色、深色主题，统一导航、账号表格、登录表单、明细弹窗、模型服务和设置页面。
-- 账号表格支持清晰的鼠标悬停与键盘焦点提示，修正到期文字颜色和较大文字下的输入框、行高，适配窄窗口及折叠侧栏。
-- WorkBuddy、Qoder CN 支持配置邀请码，并从添加账号表单打开官方邀请注册入口。
-- Qoder CN 原生插件更新到固定版本 0.2.64，改善额度耗尽后的模型账号选路。
-- 使用 Flutter 3.47.9 / Dart 3.13.7。
+- 同步固定版本的 Magpie 原生宿主及 WorkBuddy、Qoder、MiniMax、Loomy、TRAE、ZCode 六个完整插件包，复用上游授权续期、模型目录、工具调用与恢复修复。
+- 修正 ZCode 赠送模型非流式回复中的 ToolSearch 工具名，以及跨地区同 UID 的并发额度隔离；保留同一地区不同设备、个人/团队的共享上限。
+- 保留 TRAE 企业金额与积分原始精度，避免匿名多席位混算；修正 WorkBuddy 账号标签大小写导致的限流重置丢失。
+- Loomy 跟随官方模型目录的推理档位与默认值，保留 xhigh；Qoder 不再把明确不可用的企业资源池算作可用额度。
+- 完整打包 MiniMax 新增原生模块。外部 Magpie 视频轮询尚缺少模型上下文，暂不发布或启动视频模型；图像与其他新增能力仍需真实客户端验收。
+- 升级到 Flutter 3.50.0 / Dart 3.14.0、Bun 1.4.4，保留 Forui 桌面设计系统。
 
 安装与升级
 
-macOS 使用 LoongPass-macOS-universal.zip。Windows 日常使用 LoongPass-Windows-x64-Setup.exe，便携使用 LoongPass-Windows-x64.zip。升级时保留本机账号目录，旧版授权存储会按现有迁移流程处理。
+macOS 使用 LoongPass-macOS-universal.zip。Windows 日常使用 LoongPass-Windows-x64-Setup.exe，便携使用 LoongPass-Windows-x64.zip。应用内更新需开启「接收 Beta 版更新」。升级保留本机账号与领取记录。
 
-本版为 Beta。应用内更新需开启「接收 Beta 版更新」。macOS 仍使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器继续验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
+ZCode 3.18 新版系统加密凭据暂不能从桌面客户端导入；请在添加账号时使用 BigModel 或 Z.ai 官方网页登录。已有可用授权保留。桌面切换的受限能力不会因本次同步而自动开放。
 
-界面验收范围见 docs/verification/2026-11-09-forui-desktop.md。账号与原生模型运行时的验收记录见 VALIDATION.md 及 docs/verification/2026-11-09-native-runtime.md。辅助任务仅在应用运行期间执行，奖励资格及最终余额以平台官方结果为准。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.34/LoongPass-Windows-x64-Setup.exe" length="13691284" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="0nGvn0otzp9vFLlCFrdKrkGKUUWa3mvrhX731g0Lws2BMwcXtXzZSDPG7QKXmjG8xL+41Lb+DgR2bbdoQqRFAA==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: dmfH+XmJQPViz6EVHL15iJZDyzGsmlOBpXJGIGaVJp8CRBU/0yFRpHtbOJ4M4Xx4vGh3uUsSDhywaI17z2y/Cg==
-length: 2496
+本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
+
+本轮源码与隔离回归范围见 docs/verification/2026-11-12-upstream-sync.md；既有真实账号基线见 VALIDATION.md。新工具/媒体、Intel 与 Windows 真机、真实奖励到账分别验收，不由构建或模拟测试推导。
+</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.36/LoongPass-Windows-x64-Setup.exe" length="13778605" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="gyJTUX74f9FVLwimGV5AAN4SH0/ZO9Oail38X4yHlvONMauVjCdtHiBbsbBCxCHj3fpymI9l0RpDJAiDrpDTDQ==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: XFUZaOeQbNmDAm0J/HDy1P5JFpB5YMSybncTC01oC053D1eLILkn/+OCZbPbaFVuiuHx5gEKMKqT44Dkvq2nCw==
+length: 3011
 -->
