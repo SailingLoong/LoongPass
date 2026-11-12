@@ -1,8 +1,7 @@
-diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
-index b9931af..d3ab8fb 100644
+
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -636,6 +636,25 @@ function siteOf(site, a) {
+@@ -636,6 +636,25 @@
    return s
  }
  
@@ -28,7 +27,7 @@ index b9931af..d3ab8fb 100644
  async function deviceSignIn(site) {
    const verifier = b64url(randomBytes(64))
    const challenge = b64url(createHash("sha256").update(verifier).digest())
-@@ -661,20 +680,7 @@ async function deviceSignIn(site) {
+@@ -661,20 +680,7 @@
          } catch {} // a hiccup: ask again
          await new Promise((r) => setTimeout(r, 2000))
        }
@@ -50,7 +49,7 @@ index b9931af..d3ab8fb 100644
        let email = ""
        let name = ""
        let uid = dt.user_id
-@@ -1933,6 +1939,8 @@ function parseCall(v, tools = []) {
+@@ -1933,6 +1939,8 @@
    return { name, args: JSON.stringify(args) }
  }
  
@@ -59,7 +58,7 @@ index b9931af..d3ab8fb 100644
  // propsOf is the parameters the request declared for tool name
  const propsOf = (tools, name) => (tools.find((t) => (t.function ?? t)?.name === name)?.function ?? {}).parameters?.properties ?? {}
  
-@@ -2003,7 +2011,7 @@ function xmlCall(s, end, tools) {
+@@ -2003,7 +2011,7 @@
      return { text: true }
    }
    const name = m[1].trim()
@@ -68,7 +67,7 @@ index b9931af..d3ab8fb 100644
    const body = s.slice(m[0].length)
    const c = body.match(closeRe)
    const n = body.search(XML_NEXT)
-@@ -2024,12 +2032,85 @@ function xmlCall(s, end, tools) {
+@@ -2024,12 +2032,85 @@
    return { call: { name, args: JSON.stringify(p.args) }, rest: whole ? body.slice(stop + c[0].length) : body.slice(stop) }
  }
  
@@ -160,7 +159,7 @@ index b9931af..d3ab8fb 100644
  }
  
  // callish says a block was on its way to being a call: its JSON began, or
-@@ -2053,12 +2134,12 @@ class Splitter {
+@@ -2053,12 +2134,12 @@
    inCall = false
    sawTool = false
    after = false // a bare call just ended: the closes and blanks after it are dropped
@@ -175,7 +174,7 @@ index b9931af..d3ab8fb 100644
      out.push({ text: t })
    }
    // bare reads text that may hold a bare call, comb starting at its tag x:
-@@ -2066,23 +2147,22 @@ class Splitter {
+@@ -2066,23 +2147,22 @@
    // when the turn ended in an error
    bare(out, comb, x, end) {
      const head = comb.slice(0, x)
@@ -203,7 +202,7 @@ index b9931af..d3ab8fb 100644
      if (b.error) {
        out.push({ error: b.error })
        return false
-@@ -2102,6 +2182,10 @@ class Splitter {
+@@ -2102,6 +2182,10 @@
    }
    feed(input) {
      const out = []
@@ -214,7 +213,7 @@ index b9931af..d3ab8fb 100644
      while (input) {
        if (!this.inCall) {
          let comb = this.textBuf + input
-@@ -2140,6 +2224,10 @@ class Splitter {
+@@ -2140,6 +2224,10 @@
          }
          if (i > 0) this.text(out, comb.slice(0, i))
          input = comb.slice(i + CALL_OPEN.length)
@@ -225,7 +224,7 @@ index b9931af..d3ab8fb 100644
          this.inCall = true
          continue
        }
-@@ -2152,10 +2240,10 @@ class Splitter {
+@@ -2152,10 +2240,10 @@
        }
        const body = comb.slice(0, j)
        const c = parseCall(body, this.tools)
@@ -238,7 +237,7 @@ index b9931af..d3ab8fb 100644
          this.inCall = false
          out.push({ error: UNREADABLE })
          return out
-@@ -2170,14 +2258,16 @@ class Splitter {
+@@ -2170,14 +2258,16 @@
        const body = this.callBuf
        this.inCall = false
        this.callBuf = ""
@@ -259,7 +258,7 @@ index b9931af..d3ab8fb 100644
        return [{ text: t }]
      }
      if (this.textBuf) {
-@@ -2278,6 +2368,10 @@ async function* events(body, tools = []) {
+@@ -2279,6 +2369,10 @@
      for (const tc of delta.tool_calls ?? []) {
        const i = Number(tc.index ?? 0)
        const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : ""
@@ -270,17 +269,45 @@ index b9931af..d3ab8fb 100644
        const args = tc.function?.arguments ?? ""
        if (!tc.id && !name && !args) continue
        let call = native.get(i)
-@@ -2831,5 +2925,7 @@ function spentOf(env) {
+@@ -2823,6 +2917,19 @@
+ // account used up (magpie-community/plugins#454).
+ const SPENT_IN_TURN = new Set(["Credits", "Add-on credits", "Shared credits"])
+ 
++// One structured interpretation for routing exhaustion and usage windows.
++// A zero/missing cap can be recovered only from both exact used and remaining.
++function creditPoolOf(p) {
++  if (!p || typeof p !== "object" || Array.isArray(p)) return null
++  const quantity = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0
++  if ([p.total, p.cap, p.used, p.remaining].some((v) => v != null && !quantity(v))) return null
++  let total = p.total ?? p.cap
++  if (!(total > 0) && quantity(p.used) && quantity(p.remaining)) total = p.used + p.remaining
++  if (!quantity(total)) return null
++  const used = quantity(p.used) ? p.used : quantity(p.remaining) ? total - p.remaining : total === 0 ? 0 : NaN
++  return quantity(used) ? { total, used } : null
++}
++
+ // spentOf is the credits a usage envelope says the account has used of
+ // what it has ("800 / 800 credits") when the pools spent in turn
+ // (SPENT_IN_TURN) have none left together, and "" when they have some, or
+@@ -2835,11 +2942,12 @@
+   let pools = 0
+   for (const [a, b] of [["userQuota", "user_quota"], ["addOnQuota", "add_on_quota"], ["orgResourcePackage", "org_resource_package"]]) {
      const p = u[a] !== undefined ? u[a] : u[b]
 -    if (p === null || typeof p !== "object" || Array.isArray(p)) continue
-+    if (p === undefined || p === null) continue
-+    // A present pool with incomplete data cannot establish exhaustion.
-+    if (typeof p !== "object" || Array.isArray(p)) return ""
-     const t = p.total ?? p.cap
+-    const t = p.total ?? p.cap
 -    if (typeof t !== "number" || !Number.isFinite(t) || t < 0) continue
-+    if (typeof t !== "number" || !Number.isFinite(t) || t < 0) return ""
-     const n = typeof p.used === "number" ? p.used : typeof p.remaining === "number" ? t - p.remaining : NaN
-@@ -3996,7 +4090,7 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
+-    const n = typeof p.used === "number" ? p.used : typeof p.remaining === "number" ? t - p.remaining : NaN
+-    if (t > 0 && !Number.isFinite(n)) return ""
++    if (p === undefined || p === null) continue
++    if (p?.available === false) continue
++    // A present pool with incomplete data cannot establish exhaustion.
++    const pool = creditPoolOf(p)
++    if (!pool) return ""
++    const { total: t, used: n } = pool
+     pools++
+     total += t
+     used += t > 0 ? Math.min(Math.max(n, 0), t) : 0
+@@ -4087,7 +4195,7 @@
  // businessProduct, sessionType, systemPrompt, userInfoPath, normalizeUser,
  // deviceOnly, deviceRefreshTarget, rsaKey, cosyVersion, fallbackModels and
  // the vpcDomain branch of siteOf), and the openapi fetch.

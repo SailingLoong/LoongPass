@@ -1,9 +1,9 @@
 # Native auth snapshots retain the host-owned recovery decision.
-# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
+# Source: https://github.com/yetone/magpie @ 873b4987e97328071d4aeabd21996a3a8fcfab24
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -3333,6 +3333,12 @@
-     await loadPlugins(p.plugins ?? [])
+@@ -3595,6 +3595,12 @@
+     watchHeavy(p.heavy)
      return { plugins: loaded.map(withProviders) }
    },
 +  // Read the native owner's storage decision without renewing any account.

@@ -1,0 +1,13 @@
+# Use the admitted account identity for native routing-refusal rows.
+# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -2728,7 +2728,7 @@
+     const t = Date.parse(attempt.t)
+     if (!Number.isFinite(t) || t < oldest || t > now) continue
+     if (attempt.providerAccount.toLowerCase() !== account.toLowerCase()) continue
+-    rows.push({ ...attempt, providerAccount: attempt.keyedOnly ? account : attempt.providerAccount })
++    rows.push({ ...attempt, providerAccount: account })
+   }
+   return rows
+ }

@@ -94,3 +94,7 @@ MiniMax、Qoder 和独立 TRAE 授权的刷新由对应账号模块串行执行�
 最终包的界面回归确认：切换完成后出现操作提示，选中另一账号后旧提示消失。验收结束时，LoongPass 选中与 WorkBuddy 实际登录均回到第一号；没有重新授权、点击官方签到或发送推理请求。这段启动、恢复、往返切换与提示回归证据均来自 `821e94b` 发布包。旧候选已在确认退出、无打开文件且发布包正常运行后清理。
 
 后续只读核对确认 Qoder 两地区客户端的会话文件使用官方加密存储，不能直接写入 LoongPass 明文 JSON。具体契约、证据范围和本版约束见 [QODER-DESKTOP.md](QODER-DESKTOP.md)。此核对没有改动真实账号或新增切换能力。
+
+## 2026-11-12 upstream sync
+
+See [fixed native sources, regressions and acceptance boundaries](docs/verification/2026-11-12-upstream-sync.md). Browser authorization and stored rewards remain separate from ZCode 3.18 system-encrypted desktop import; this release does not enable the dormant native switch.

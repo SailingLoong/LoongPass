@@ -61,6 +61,11 @@ as WorkBuddy's own client sends them; without them WorkBuddy answers as the
 personal account, with the personal plan's models. A browser sign-in made
 before 0.1.13 has no enterprise id kept: sign in again.
 
+An enterprise's own models (`custom:<name>|<name>`) are listed after the
+plan's, as WorkBuddy's own client lists them, with their context, output,
+images and efforts; the id goes to WorkBuddy as it is. Before 0.2.28 they
+were left out of the list.
+
 Which account a browser sign-in gives is chosen on WorkBuddy's own sign-in
 page. After a phone sign-in it lists the person's accounts (personal, a
 team, 「WorkBuddy 教育公益版」…) and binds the one picked to the sign-in, so
@@ -168,6 +173,15 @@ Each chat carries WorkBuddy's headers:
 Not sent: `X-Device-Token`, which the desktop app gets from Tencent's
 native device SDK before each prompt, and a `traceparent`, which the CLI
 adds only while its server-side tracing is on.
+
+A WorkBuddy AI chat also carries, in its body, the `extra_vars` its own
+client sends (#691): `initiator: "user"` and `growthEvent`, a JSON string
+holding a `chat_request_send` event for the chat's `X-Conversation-ID`, with
+the user's last message's length, the model's id and name, `mode: "craft"`
+and no command. WorkBuddy AI's CLI sends this event in the chat itself
+instead of on `/v2/report`; whether WorkBuddy reads it for the daily credit
+is not known. Anything the caller put in `extra_vars` is kept. The China
+build's chats go without it.
 
 A chat that doesn't open with a system message is given WorkBuddy's
 default one, as the app does.
@@ -435,6 +449,14 @@ What is measured, and what is easy to read wrongly:
   429 whose named reset is still ahead makes the window full — `used: 100`,
   `resetsAt` the reset the vendor named — whatever the rows add up to. The
   sum carries the window only until the first refusal.
+- **A refusal hidden by routing still counts.** A group that moves to
+  another provider after the 429 writes only the 200 that answered, so the
+  failed WorkBuddy attempt is read from `routing/YYYY-MM-DD.jsonl` (or its
+  `.gz`) as well: its vendor words — or the gateway rest's `until` and
+  `key`, which names the account and model — pin the window the same way.
+  Three days of traces are read, the current plain file and the compressed
+  days before it, and what they held is kept until a trace itself changes;
+  an append to `usage.jsonl` does not decompress them again.
 - **The sum is shown, not routed on.** Until the vendor refuses, the card is
   set aside (`aside: true`): magpie draws it beside the account and never
   counts it as the account's allowance, so an estimate near its cap does not

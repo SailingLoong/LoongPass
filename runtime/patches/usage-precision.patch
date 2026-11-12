@@ -1,12 +1,8 @@
-# Native usage precision for LoongPass.
-# Source: https://github.com/magpie-community/plugins @ 9b41df15075b770e87d428fc2d650c4a14d79b3f
-# Packages: minimax 0.2.3; trae 0.2.32; loomy 0.1.4; qoder 0.2.63.
-# Apply after plugin-identity.patch and qoder.patch; only usage owners change.
-diff --git a/runtime/vendor/plugins/minimax/index.mjs b/runtime/vendor/plugins/minimax/index.mjs
-index 7d34b21..4f39e5c 100644
+# Native usage precision, balances and seat ownership for LoongPass.
+# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
 --- a/runtime/vendor/plugins/minimax/index.mjs
 +++ b/runtime/vendor/plugins/minimax/index.mjs
-@@ -773,7 +773,10 @@ function creditsWindow(batches, now = Date.now()) {
+@@ -805,7 +805,10 @@
      if (exp <= now) continue
      total += granted
      left += Math.min(rest, granted)
@@ -18,7 +14,7 @@ index 7d34b21..4f39e5c 100644
    }
    if (!(total > 0)) return undefined
    const used = Math.max(0, total - left)
-@@ -782,10 +785,10 @@ function creditsWindow(batches, now = Date.now()) {
+@@ -814,10 +817,10 @@
      name: "Credits",
      used: (100 * used) / total,
      display: `${round(used)} / ${round(total)}`,
@@ -32,11 +28,28 @@ index 7d34b21..4f39e5c 100644
    }
  }
  
-diff --git a/runtime/vendor/plugins/trae/index.mjs b/runtime/vendor/plugins/trae/index.mjs
-index 444dda7..74501a1 100644
 --- a/runtime/vendor/plugins/trae/index.mjs
 +++ b/runtime/vendor/plugins/trae/index.mjs
-@@ -136,7 +136,7 @@ const SITES = {
+@@ -165,15 +165,15 @@
+           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
+           const windows = []
+           if (q.unlimited) out.balance = "unlimited"
+-          else if (q.limit > 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
++          else if (q.limit >= 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
+           const c = page ? credits(page) : null
+           if (c && !c.unlimited && c.limit > 0) {
+             const w = {
+               name: "Credits",
+               used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)),
+               display: `${round(c.used)} / ${round(c.limit)}`,
+-              amount: round(c.used),
+-              limit: round(c.limit),
++              amount: c.used,
++              limit: c.limit,
+               unit: "credits",
+               aside: true,
+             }
+@@ -193,7 +193,7 @@
            // WorkBuddy's does, so magpie says it in the window's row, used or
            // left, in its own words and number format, rather than as an
            // English balance line beside it (yetone/magpie#694)
@@ -45,11 +58,43 @@ index 444dda7..74501a1 100644
            if (c.until) w.resetsAt = new Date(c.until).toISOString()
            out.windows = [w]
          }
-diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
-index d518bf9..fac18c9 100644
+@@ -314,7 +314,7 @@
+           if (!q) return { error: "Trae Global usage: the console named no seat pool", signIn, user: a.name }
+           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
+           if (q.unlimited) out.balance = "unlimited"
+-          else if (q.limit > 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
++          else if (q.limit >= 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
+           return out
+         },
+       },
+@@ -3200,13 +3200,13 @@
+   const w = {
+     name: "Seat Usage",
+     display: used === null ? `? / ${money(pool.limit)}` : `${money(used)} / ${money(pool.limit)}`,
+-    limit: round(pool.limit),
++    limit: pool.limit,
+     unit,
+   }
+   if (used === null) w.used = null
+   else {
+-    w.used = Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100
+-    w.amount = round(used)
++    w.used = pool.limit > 0 ? Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100 : 0
++    w.amount = used
+   }
+   if (until) w.resetsAt = until
+   return w
+@@ -3256,6 +3256,7 @@
+   const me = uid === undefined || uid === null || uid === "" ? null : String(uid)
+   const ids = new Set(list.map((u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id))).filter((s) => s !== ""))
+   let seats = list
++  if (ids.size === 0 && list.length > 1) return null
+   if (ids.size > 0) {
+     // the seats carry ids: take the account's own. With no id from the quota,
+     // a single seat's answer is that seat; several seats' is not knowable.
 --- a/runtime/vendor/plugins/loomy/index.mjs
 +++ b/runtime/vendor/plugins/loomy/index.mjs
-@@ -486,7 +486,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
+@@ -486,7 +486,7 @@
            if (AUTH_CODES.has(code)) return { error: "Loomy 登录态已失效，请重新登录", signIn: "expired" }
            if (code !== OK) return { error: `积分查询失败：${messageOf(payload) || `code=${code}`}`, signIn: "kept" }
            const data = payload?.data?.data ?? payload?.data ?? {}
@@ -58,36 +103,29 @@ index d518bf9..fac18c9 100644
            const permanent = toNum(data.balance)
            // this endpoint is a records list, so a reply without the balance
            // fields is a realistic case — "unknown" must not read as a
-@@ -500,6 +500,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
-           // always read as full
-           const dailyLimit = toNum(data.dailyLimitPoints)
-           const dailyRemaining = toNum(data.dailyRemainingPoints)
-+          const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.max(0, dailyLimit - dailyRemaining) : null
- 
-           // the daily wallet shows from whichever numbers came back: the
-           // limit/remaining pair alone is enough (remaining IS its number);
-@@ -507,13 +508,13 @@ export async function LoomyAuthPlugin({ client } = {}) {
-           // neither, no daily wallet at all — a missing one is not 0
+@@ -512,16 +512,13 @@
+           const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.min(dailyLimit, Math.max(0, dailyLimit - dailyRemaining)) : null
            const dailyWallet =
              dailyLimit != null && dailyRemaining != null
--              ? { name: "每日赠送积分", used: Math.max(0, dailyLimit - dailyRemaining), amount: dailyRemaining, limit: dailyLimit, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
-+              ? { name: "每日赠送积分", used: dailyLimit > 0 ? 100 * dailySpent / dailyLimit : undefined, amount: dailySpent, limit: dailyLimit, balance: dailyRemaining, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
+-              ? { name: "每日赠送积分", used: dailyLimit > 0 ? (100 * dailySpent) / dailyLimit : 0, amount: dailySpent, limit: dailyLimit, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
++              ? { name: "每日赠送积分", used: dailyLimit > 0 ? (100 * dailySpent) / dailyLimit : 0, amount: dailySpent, limit: dailyLimit, balance: dailyRemaining, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
                : daily != null
 -                ? { name: "每日赠送积分", used: 0, display: `${daily} credits`, aside: true }
 +                ? { name: "每日赠送积分", balance: daily, unit: "credits", display: `${daily} credits`, aside: true }
                  : null
            const windows = [
              ...(dailyWallet ? [dailyWallet] : []),
+-            // the permanent wallet comes back as a balance alone, with no
+-            // total and nothing spent, so there is no share or spent amount
+-            // a cap could read: it stays an amount shown aside
 -            ...(permanent != null ? [{ name: "永久积分", used: 0, display: `${permanent} credits`, aside: true }] : []),
 +            ...(permanent != null ? [{ name: "永久积分", balance: permanent, unit: "credits", display: `${permanent} credits`, aside: true }] : []),
            ]
            // no `signIn` on a clean read: that absence is how magpie takes an
            // expired mark back off the account (Loomy has no renewal, so a
-diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
-index d3ab8fb..b8d6368 100644
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -2919,11 +2919,11 @@ function parseUsage(env) {
+@@ -2958,15 +2958,14 @@
    if (typeof plan === "string") out.plan = plan
    const until = when(field("expiresAt", "expires_at"))
    if (until) out.until = until
@@ -98,11 +136,18 @@ index d3ab8fb..b8d6368 100644
    const add = (b, name) => {
 -    if (b === null || typeof b !== "object" || Array.isArray(b)) return
 -    if (![b.total, b.cap, b.used, b.remaining].every(num) || !str(b.name) || !str(b.unit)) return
-+    if (!valid(b)) return
-     const total = b.total ?? b.cap
-     if (total == null || total <= 0 || (b.used == null && b.remaining == null)) return
-     const used = b.used != null ? b.used : total - b.remaining
-@@ -2936,6 +2936,7 @@ function parseUsage(env) {
+-    const total = b.total ?? b.cap
+-    if (total == null || total <= 0 || (b.used == null && b.remaining == null)) return
+-    const used = b.used != null ? b.used : total - b.remaining
+-    if (used < 0) return
++    if (!valid(b) || b.available === false) return
++    const pool = creditPoolOf(b)
++    if (!pool || pool.total <= 0) return
++    const { total, used } = pool
+     const unit = b.unit || "credits"
+     // the count too, so magpie says "183 / 2,000 credits left" as Qoder's
+     // own panel does, not a bare share (jzing.draw on Discord); the plan's
+@@ -2975,13 +2974,20 @@
      if (name === "Credits" && until) w.resetsAt = until
      out.windows.push(w)
      if (SPENT_IN_TURN.has(name)) turn.push({ w, used: Math.min(used, total), total, unit })
@@ -110,8 +155,23 @@ index d3ab8fb..b8d6368 100644
    }
    const turn = []
    add(field("userQuota", "user_quota"), "Credits")
-@@ -2949,7 +2950,26 @@ function parseUsage(env) {
-     out.windows.unshift({ name: "Total credits", used: Math.min(100, (100 * used) / total), display: `${gfmt(used)} / ${gfmt(total)} ${turn[0].unit}`, amount: used, limit: total, unit: turn[0].unit })
+   add(field("addOnQuota", "add_on_quota"), "Add-on credits")
+   add(field("orgResourcePackage", "org_resource_package"), "Shared credits")
+-  // one count only when every pool counts in the same unit
+-  if (turn.length > 1 && turn.every((p) => p.unit === turn[0].unit)) {
++  const sequential = [field("userQuota", "user_quota"), field("addOnQuota", "add_on_quota"), field("orgResourcePackage", "org_resource_package")].filter((p) => p != null && p?.available !== false)
++  const incomplete = sequential.some((p) => !valid(p) || !creditPoolOf(p))
++  // Sequential child pools are alternatives, not independent account caps.
++  // A known exhausted child cannot stand for an unknown whole account.
++  if (incomplete) {
++    for (const p of turn) p.w.aside = true
++    out.windows.unshift({ name: "Total credits", used: null, amount: null, limit: null, unit: "credits" })
++  } else if (turn.length > 1 && turn.every((p) => p.unit === turn[0].unit)) {
+     const used = turn.reduce((a, p) => a + p.used, 0)
+     const total = turn.reduce((a, p) => a + p.total, 0)
+     for (const p of turn) p.w.aside = true
+@@ -2995,13 +3001,32 @@
+     out.windows.unshift(sum)
    }
    const dedicated = field("dedicatedResourcePackages", "dedicated_resource_packages")
 -  for (const b of Array.isArray(dedicated) ? dedicated : []) add(b, "Dedicated credits")
@@ -138,3 +198,10 @@ index d3ab8fb..b8d6368 100644
    // A free account (personal_standard) with no add-on credits has a plan of
    // 0 and nothing else: Qoder's client shows that pool as 0/0 and counts the
    // account as out of credits. Without a window of its own magpie showed no
+   // credits at all (Ariel on Discord), so it reads as none left.
+   if (out.windows.length === 0) {
+-    const zero = (b) => b !== null && typeof b === "object" && !Array.isArray(b) && (b.total ?? b.cap) === 0
++    const zero = (b) => b?.available !== false && b !== null && typeof b === "object" && !Array.isArray(b) && (b.total ?? b.cap) === 0
+     const pools = [field("userQuota", "user_quota"), field("addOnQuota", "add_on_quota"), field("orgResourcePackage", "org_resource_package")]
+     if (pools.some(zero)) out.windows.push({ name: "Credits", used: 100, display: "0 credits left" })
+   }

@@ -158,7 +158,7 @@ async function desktop(steps) {
     const results = [];
     let auth;
     for (const step of JSON.parse(await Bun.stdin.text())) {
-      writeFileSync(join(dir, 'credentials.json'), JSON.stringify(Object.fromEntries(Object.entries(step.credentials).map(([k, v]) => [k, seal(v)]))));
+      writeFileSync(join(dir, 'credentials.json'), JSON.stringify(Object.fromEntries(Object.entries(step.credentials).map(([k, v]) => [k, step.v2 ? 'enc:v2:os:synthetic' : seal(v)]))));
       writeFileSync(join(dir, 'setting.json'), JSON.stringify(step.settings ?? {}));
       if (!auth) {
         const method = hooks.auth.methods.find(m => m.label === "ZCode app's sign-in");
@@ -204,6 +204,17 @@ test('ZCode desktop JWT-only sign-in retains the selected region', async () => {
   const [result] = await desktop([desktopState('bigmodel', { key: '' })]);
   expect(result).toMatchObject({ type: 'success', uid: 'shared-uid', accountId: 'bigmodel:shared-uid' });
   expect(JSON.parse(result.refresh).site).toBe('bigmodel');
+});
+
+test('ZCode system-encrypted desktop credentials explain browser authorization without reading the OS key store', async () => {
+  const state = { ...desktopState('bigmodel'), v2: true };
+  const [result] = await desktop([state]);
+  expect(result.type).toBe('failed');
+  expect(result.error).toContain('system-encrypted');
+  expect(result.error).toContain('browser');
+  expect(await desktop([desktopState('bigmodel'), state])).toMatchObject([
+    {type:'success'}, {apiKey:'initial.secret',baseURL:'https://open.bigmodel.cn/api/anthropic/v1'},
+  ]);
 });
 
 test('ZCode desktop rejects a profile without official UID', async () => {

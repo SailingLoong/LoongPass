@@ -2314,6 +2314,7 @@ async function* events(body, tools = []) {
   const a = new Splitter(tools)
   let index = -1 // the tool call being given
   const native = new Map() // upstream index -> call and its output index
+  const begun = [] // every native call, one an index has moved past too
   // one piece of the split text as an event: a call, text, or a call that
   // can't be read, which ends the turn as a 502
   const piece = (f) =>
@@ -2375,9 +2376,14 @@ async function* events(body, tools = []) {
       const args = tc.function?.arguments ?? ""
       if (!tc.id && !name && !args) continue
       let call = native.get(i)
-      if (!call) {
+      // A new id at an index already in use is a new call: Qoder Ultimate
+      // has sent two calls at index 0, and the second's arguments ran
+      // into the first's as {"a"}{"b"} (plugins#930). No id, or the same
+      // one, is the open call going on.
+      if (!call || (tc.id && call.id && tc.id !== call.id)) {
         call = { id: "", args: "" }
         native.set(i, call)
+        begun.push(call)
       }
       if (tc.id) call.id = tc.id
       if (call.index === undefined) {
@@ -2425,7 +2431,7 @@ async function* events(body, tools = []) {
   // text, reasoning and named calls already given are kept: qoder-cn's
   // qfmodel did this now and then, and the whole turn failed with an
   // error the client didn't retry (plugins#579).
-  const nameless = [...native.values()].filter((call) => call.index === undefined).length
+  const nameless = begun.filter((call) => call.index === undefined).length
   if (nameless && !said) {
     yield { error: { status: 502, message: NAMELESS, nameless: true } }
     return
@@ -2920,6 +2926,19 @@ function when(v) {
 // account used up (magpie-community/plugins#454).
 const SPENT_IN_TURN = new Set(["Credits", "Add-on credits", "Shared credits"])
 
+// One structured interpretation for routing exhaustion and usage windows.
+// A zero/missing cap can be recovered only from both exact used and remaining.
+function creditPoolOf(p) {
+  if (!p || typeof p !== "object" || Array.isArray(p)) return null
+  const quantity = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0
+  if ([p.total, p.cap, p.used, p.remaining].some((v) => v != null && !quantity(v))) return null
+  let total = p.total ?? p.cap
+  if (!(total > 0) && quantity(p.used) && quantity(p.remaining)) total = p.used + p.remaining
+  if (!quantity(total)) return null
+  const used = quantity(p.used) ? p.used : quantity(p.remaining) ? total - p.remaining : total === 0 ? 0 : NaN
+  return quantity(used) ? { total, used } : null
+}
+
 // spentOf is the credits a usage envelope says the account has used of
 // what it has ("800 / 800 credits") when the pools spent in turn
 // (SPENT_IN_TURN) have none left together, and "" when they have some, or
@@ -2933,12 +2952,11 @@ function spentOf(env) {
   for (const [a, b] of [["userQuota", "user_quota"], ["addOnQuota", "add_on_quota"], ["orgResourcePackage", "org_resource_package"]]) {
     const p = u[a] !== undefined ? u[a] : u[b]
     if (p === undefined || p === null) continue
+    if (p?.available === false) continue
     // A present pool with incomplete data cannot establish exhaustion.
-    if (typeof p !== "object" || Array.isArray(p)) return ""
-    const t = p.total ?? p.cap
-    if (typeof t !== "number" || !Number.isFinite(t) || t < 0) return ""
-    const n = typeof p.used === "number" ? p.used : typeof p.remaining === "number" ? t - p.remaining : NaN
-    if (t > 0 && !Number.isFinite(n)) return ""
+    const pool = creditPoolOf(p)
+    if (!pool) return ""
+    const { total: t, used: n } = pool
     pools++
     total += t
     used += t > 0 ? Math.min(Math.max(n, 0), t) : 0
@@ -2965,11 +2983,10 @@ function parseUsage(env) {
   const str = (v) => v === undefined || v === null || typeof v === "string"
   const valid = (b) => b !== null && typeof b === "object" && !Array.isArray(b) && [b.total, b.cap, b.used, b.remaining].every(num) && str(b.name) && str(b.unit)
   const add = (b, name) => {
-    if (!valid(b)) return
-    const total = b.total ?? b.cap
-    if (total == null || total <= 0 || (b.used == null && b.remaining == null)) return
-    const used = b.used != null ? b.used : total - b.remaining
-    if (used < 0) return
+    if (!valid(b) || b.available === false) return
+    const pool = creditPoolOf(b)
+    if (!pool || pool.total <= 0) return
+    const { total, used } = pool
     const unit = b.unit || "credits"
     // the count too, so magpie says "183 / 2,000 credits left" as Qoder's
     // own panel does, not a bare share (jzing.draw on Discord); the plan's
@@ -2984,12 +3001,25 @@ function parseUsage(env) {
   add(field("userQuota", "user_quota"), "Credits")
   add(field("addOnQuota", "add_on_quota"), "Add-on credits")
   add(field("orgResourcePackage", "org_resource_package"), "Shared credits")
-  // one count only when every pool counts in the same unit
-  if (turn.length > 1 && turn.every((p) => p.unit === turn[0].unit)) {
+  const sequential = [field("userQuota", "user_quota"), field("addOnQuota", "add_on_quota"), field("orgResourcePackage", "org_resource_package")].filter((p) => p != null && p?.available !== false)
+  const incomplete = sequential.some((p) => !valid(p) || !creditPoolOf(p))
+  // Sequential child pools are alternatives, not independent account caps.
+  // A known exhausted child cannot stand for an unknown whole account.
+  if (incomplete) {
+    for (const p of turn) p.w.aside = true
+    out.windows.unshift({ name: "Total credits", used: null, amount: null, limit: null, unit: "credits" })
+  } else if (turn.length > 1 && turn.every((p) => p.unit === turn[0].unit)) {
     const used = turn.reduce((a, p) => a + p.used, 0)
     const total = turn.reduce((a, p) => a + p.total, 0)
     for (const p of turn) p.w.aside = true
-    out.windows.unshift({ name: "Total credits", used: Math.min(100, (100 * used) / total), display: `${gfmt(used)} / ${gfmt(total)} ${turn[0].unit}`, amount: used, limit: total, unit: turn[0].unit })
+    const sum = { name: "Total credits", used: Math.min(100, (100 * used) / total), display: `${gfmt(used)} / ${gfmt(total)} ${turn[0].unit}`, amount: used, limit: total, unit: turn[0].unit }
+    // the plan's credits renew when the plan says, and what is left of them
+    // is lost then: routing reads no window set aside, so the whole renews
+    // with the plan's, as WorkBuddy's does (a Teams account renewing
+    // tomorrow was ranked as one that never renews, behind an account
+    // renewing in 18 days: @tnt12231 on X)
+    if (until && turn.some((p) => p.w.resetsAt)) sum.resetsAt = until
+    out.windows.unshift(sum)
   }
   const dedicated = field("dedicatedResourcePackages", "dedicated_resource_packages")
   for (const b of Array.isArray(dedicated) ? dedicated : []) {
@@ -3017,7 +3047,7 @@ function parseUsage(env) {
   // account as out of credits. Without a window of its own magpie showed no
   // credits at all (Ariel on Discord), so it reads as none left.
   if (out.windows.length === 0) {
-    const zero = (b) => b !== null && typeof b === "object" && !Array.isArray(b) && (b.total ?? b.cap) === 0
+    const zero = (b) => b?.available !== false && b !== null && typeof b === "object" && !Array.isArray(b) && (b.total ?? b.cap) === 0
     const pools = [field("userQuota", "user_quota"), field("addOnQuota", "add_on_quota"), field("orgResourcePackage", "org_resource_package")]
     if (pools.some(zero)) out.windows.push({ name: "Credits", used: 100, display: "0 credits left" })
   }
@@ -3924,6 +3954,7 @@ const makePlugin = (site) => async ({ client }) => {
       // doesn't call this. The device token of a job-token account has no
       // end on record: usage rotates it once Qoder refuses it, as before.
       refreshLead: RENEW_LEAD,
+      rotating: true,
       async refresh(auth) {
         // a Lingma 1.0 account: the IDE's newer token, when it has one;
         // nothing when it hasn't yet (fresh says so once it is needed)

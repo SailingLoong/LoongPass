@@ -1,8 +1,124 @@
-# Native authorization identities for LoongPass.
-# Source: https://github.com/magpie-community/plugins @ 9b41df15075b770e87d428fc2d650c4a14d79b3f
-# Packages: loomy 0.1.4; zcode 0.1.57.
-diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
-index 6dd991f..d518bf9 100644
+# Verified regional account identities and concurrency ownership for LoongPass.
+# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -14,7 +14,8 @@
+ //
+ // The sign-in is kept as OpenCode keeps an OAuth one: `access` is the key,
+ // `refresh` the rest of it as JSON (site, base, key, jwt, team project,
+-// plan, device id), `accountId` the account's email.
++// plan, device id), `accountId` the region and official user id, and
++// `name` the account's display label.
+ 
+ import { createDecipheriv, createHash } from "node:crypto"
+ import { existsSync, readFileSync, readdirSync } from "node:fs"
+@@ -1433,7 +1434,11 @@
+ // uidOf is the account's user id, kept beside its name: magpie tells two
+ // accounts of one name apart by it, a name being no one's own (wakkana on
+ // Discord, WorkBuddy's)
+-const uidOf = (u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id).trim())
++const uidOf = (u) => {
++  const uid = u?.user_id ?? u?.id
++  return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
++}
++const accountIdOf = (site, uid) => `${site}:${uid}`
+ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+ 
+ // authorize opens ZCode's sign-in flow on site; its callback polls it.
+@@ -1478,6 +1483,8 @@
+         if (got.status === "pending" || !got.status) continue
+         if (got.status === "failed") return fail(`the sign-in was declined on ${SITES[site].name}`)
+         if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
++        const uid = uidOf(got.user)
++        if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
+         let s
+         try {
+           s = await signedIn(site, token, first(got.token), device, onTeam)
+@@ -1491,8 +1498,9 @@
+           access: s.key || s.jwt || "",
+           // the key doesn't run out; ZCode's token, when it is all there is, does
+           expires: s.key || isTeam(s) ? 0 : jwtExpiry(s.jwt),
+-          accountId: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
+-          ...(uidOf(got.user) ? { uid: uidOf(got.user) } : {}),
++          accountId: accountIdOf(site, uid) + (onTeam ? ` (${TEAM})` : ""),
++          uid,
++          name: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
+         }
+       }
+     },
+@@ -1797,17 +1805,19 @@
+   const jwt = first(first(decrypt(key, store.zcodejwttoken)).replace(/^Bearer /, ""))
+   const team = ownTeam(store, key)
+   if (team) s = { ...team, jwt }
+-  else s = { ...s, jwt, base: s.base || ZAI_BASE, site: s.base === BIGMODEL_BASE ? "bigmodel" : "zai" }
++  else {
++    const selected = readJSON(join(settingDir(), "setting.json"))?.providerFamilyDomain
++    const site = s.base ? (s.base === BIGMODEL_BASE ? "bigmodel" : "zai") : selected
++    // A JWT carries no verified region here. Use the client's selection,
++    // never another region's profile or a guessed Z.ai default.
++    if (site !== "zai" && site !== "bigmodel") return null
++    s = { ...s, jwt, base: s.base || SITES[site].base, site }
++  }
+   if (!s.key && !s.jwt && !isTeam(s)) return null
+   let info = {}
+-  for (const name of ["oauth:zai:user_info", "oauth:bigmodel:user_info"]) {
+-    const v = decrypt(key, store[name])
+-    if (v && !first(info.email, info.name, info.user_id)) {
+-      try {
+-        info = JSON.parse(v)
+-      } catch {}
+-    }
+-  }
++  try {
++    info = JSON.parse(decrypt(key, store[`oauth:${s.site}:user_info`]) ?? "{}")
++  } catch {}
+   return { ...s, user: who(info), uid: uidOf(info) }
+ }
+ 
+@@ -1819,10 +1829,17 @@
+     method: "auto",
+     async callback() {
+       const own = ownSignIn()
+-      if (!own) return { type: "failed", error: "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
++      if (!own) {
++        const store = readJSON(join(zcodeDir(), "credentials.json"))
++        if (store && Object.values(store).some((v) => typeof v === "string" && v.startsWith("enc:v2:"))) {
++          return { type: "failed", error: "ZCode uses system-encrypted desktop credentials that this native plugin cannot import; use Z.ai or BigModel browser sign-in here instead" }
++        }
++        return { type: "failed", error: "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
++      }
+       const { user, uid, ...s } = own
++      if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
+       const state = { source: "zcode", device: anyDevice, ...s }
+-      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: user, ...(uid ? { uid } : {}) }
++      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: accountIdOf(s.site, uid), uid, name: user }
+     },
+   }
+ }
+@@ -1841,8 +1858,8 @@
+       // send this account's requests as that one, and an expired session
+       // says sign in again (EXPIRED) rather than borrowing another's.
+       const own = ownSignIn()
+-      // (by user id where both have one: another account may share the name)
+-      if (own && own.user === String(auth.accountId ?? "") && (!own.uid || !auth.uid || own.uid === String(auth.uid))) {
++      // Display names can change and IDs can repeat across regions.
++      if (own?.uid && own.site === s.site && own.uid === auth.uid && accountIdOf(own.site, own.uid) === auth.accountId) {
+         const { user, uid: _uid, ...now } = own
+         s = { source: "zcode", device: s.device, plan: s.plan, ...now }
+       }
+@@ -3043,9 +3060,9 @@
+               throw e
+             }
+             if (!s) throw new Error("not signed in to ZCode")
+-            // the account a Start Plan slot belongs to: its user id, which a
+-            // renewed session keeps, before the key or session itself
+-            const gateKey = String(auth?.uid || auth?.accountId || holdKey(s))
++            // A stable regional UID shares slots across devices and profiles,
++            // while equal vendor IDs in separate regions stay independent.
++            const gateKey = auth?.uid ? accountIdOf(s.site, auth.uid) : String(auth?.accountId || holdKey(s))
+             let url = input instanceof Request ? input.url : String(input)
+             const opts = input instanceof Request ? { method: input.method, headers: input.headers, body: input.body, signal: input.signal, duplex: "half", ...init } : { ...init }
+             const { start: alone, gift: known } = await plansOf(s)
 --- a/runtime/vendor/plugins/loomy/index.mjs
 +++ b/runtime/vendor/plugins/loomy/index.mjs
 @@ -350,13 +350,18 @@
@@ -49,102 +165,3 @@ index 6dd991f..d518bf9 100644
    })
  
    return {
-diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
-index aa95673..642912c 100644
---- a/runtime/vendor/plugins/zcode/index.mjs
-+++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -14,7 +14,8 @@
- //
- // The sign-in is kept as OpenCode keeps an OAuth one: `access` is the key,
- // `refresh` the rest of it as JSON (site, base, key, jwt, team project,
--// plan, device id), `accountId` the account's email.
-+// plan, device id), `accountId` the region and official user id, and
-+// `name` the account's display label.
- 
- import { createDecipheriv, createHash } from "node:crypto"
- import { existsSync, readFileSync, readdirSync } from "node:fs"
-@@ -1431,7 +1432,11 @@
- // uidOf is the account's user id, kept beside its name: magpie tells two
- // accounts of one name apart by it, a name being no one's own (wakkana on
- // Discord, WorkBuddy's)
--const uidOf = (u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id).trim())
-+const uidOf = (u) => {
-+  const uid = u?.user_id ?? u?.id
-+  return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
-+}
-+const accountIdOf = (site, uid) => `${site}:${uid}`
- const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
- 
- // authorize opens ZCode's sign-in flow on site; its callback polls it.
-@@ -1476,6 +1481,8 @@
-         if (got.status === "pending" || !got.status) continue
-         if (got.status === "failed") return fail(`the sign-in was declined on ${SITES[site].name}`)
-         if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
-+        const uid = uidOf(got.user)
-+        if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
-         let s
-         try {
-           s = await signedIn(site, token, first(got.token), device, onTeam)
-@@ -1489,8 +1496,9 @@
-           access: s.key || s.jwt || "",
-           // the key doesn't run out; ZCode's token, when it is all there is, does
-           expires: s.key || isTeam(s) ? 0 : jwtExpiry(s.jwt),
--          accountId: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
--          ...(uidOf(got.user) ? { uid: uidOf(got.user) } : {}),
-+          accountId: accountIdOf(site, uid) + (onTeam ? ` (${TEAM})` : ""),
-+          uid,
-+          name: onTeam ? `${who(got.user)} (${TEAM})` : who(got.user),
-         }
-       }
-     },
-@@ -1723,17 +1731,19 @@
-   const jwt = first(first(decrypt(key, store.zcodejwttoken)).replace(/^Bearer /, ""))
-   const team = ownTeam(store, key)
-   if (team) s = { ...team, jwt }
--  else s = { ...s, jwt, base: s.base || ZAI_BASE, site: s.base === BIGMODEL_BASE ? "bigmodel" : "zai" }
-+  else {
-+    const selected = readJSON(join(settingDir(), "setting.json"))?.providerFamilyDomain
-+    const site = s.base ? (s.base === BIGMODEL_BASE ? "bigmodel" : "zai") : selected
-+    // A JWT carries no verified region here. Use the client's selection,
-+    // never another region's profile or a guessed Z.ai default.
-+    if (site !== "zai" && site !== "bigmodel") return null
-+    s = { ...s, jwt, base: s.base || SITES[site].base, site }
-+  }
-   if (!s.key && !s.jwt && !isTeam(s)) return null
-   let info = {}
--  for (const name of ["oauth:zai:user_info", "oauth:bigmodel:user_info"]) {
--    const v = decrypt(key, store[name])
--    if (v && !first(info.email, info.name, info.user_id)) {
--      try {
--        info = JSON.parse(v)
--      } catch {}
--    }
--  }
-+  try {
-+    info = JSON.parse(decrypt(key, store[`oauth:${s.site}:user_info`]) ?? "{}")
-+  } catch {}
-   return { ...s, user: who(info), uid: uidOf(info) }
- }
- 
-@@ -1747,8 +1757,9 @@
-       const own = ownSignIn()
-       if (!own) return { type: "failed", error: "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
-       const { user, uid, ...s } = own
-+      if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
-       const state = { source: "zcode", device: anyDevice, ...s }
--      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: user, ...(uid ? { uid } : {}) }
-+      return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: accountIdOf(s.site, uid), uid, name: user }
-     },
-   }
- }
-@@ -1767,8 +1778,8 @@
-       // send this account's requests as that one, and an expired session
-       // says sign in again (EXPIRED) rather than borrowing another's.
-       const own = ownSignIn()
--      // (by user id where both have one: another account may share the name)
--      if (own && own.user === String(auth.accountId ?? "") && (!own.uid || !auth.uid || own.uid === String(auth.uid))) {
-+      // Display names can change and IDs can repeat across regions.
-+      if (own?.uid && own.site === s.site && own.uid === auth.uid && accountIdOf(own.site, own.uid) === auth.accountId) {
-         const { user, uid: _uid, ...now } = own
-         s = { source: "zcode", device: s.device, plan: s.plan, ...now }
-       }

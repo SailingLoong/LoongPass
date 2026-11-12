@@ -1,30 +1,27 @@
 # Native API identity separate from provider inputs for LoongPass.
-# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
-# Apply after host-usage.patch.
-diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
-index 96998a8..0865506 100644
+# Source: https://github.com/yetone/magpie @ 873b4987e97328071d4aeabd21996a3a8fcfab24
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2592,7 +2592,7 @@ function validate(provider, index, key, value) {
+@@ -2740,7 +2740,7 @@
  // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
  // a sign-in the plugin says is another provider's, a new account of
  // that one). It gives the provider and where the account is kept.
--async function save(provider, key, result, inputs, apiKey) {
-+async function save(provider, key, result, inputs, apiKey, accountId) {
+-async function save(provider, key, result, inputs, apiKey, method) {
++async function save(provider, key, result, inputs, apiKey, method, accountId) {
    const id = result.provider ?? provider
    if (id !== provider) key = freshKey(id)
    if ("refresh" in result) {
-@@ -2600,7 +2600,7 @@ async function save(provider, key, result, inputs, apiKey) {
+@@ -2748,7 +2748,7 @@
      await setAuth(key, { type: "oauth", refresh, access, expires, ...extra })
    } else if ("key" in result || apiKey) {
-     const md = { ...(inputs && Object.keys(inputs).length ? inputs : {}), ...(result.metadata ?? {}) }
+     const md = { ...plainAnswers(provider, method, inputs), ...(result.metadata ?? {}) }
 -    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(Object.keys(md).length ? { metadata: md } : {}) })
 +    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) })
    }
    return { provider: id, account: await settle(id, key) }
  }
-@@ -2679,19 +2679,22 @@ async function callback({ session, code }, signal) {
-   return { ok: true, ...(await save(s.provider, s.key, r, undefined)) }
+@@ -2859,13 +2859,16 @@
+   return null
  }
  
 -async function apiKey({ provider, method, inputs, key, account, proxy }, signal) {
@@ -42,10 +39,12 @@ index 96998a8..0865506 100644
      return { ok: true, provider, account: await settle(provider, at) }
    }
    const r = await signingIn(signal, proxy ?? "", provider, at, () => m.authorize(inputs ?? {}, { signal }))
-   if (signal?.aborted) throw abortedSignIn()
+@@ -2873,7 +2876,7 @@
    if (!r || r.type !== "success") return failed(r)
--  return { ok: true, ...(await save(provider, at, r, inputs, key)) }
-+  return { ok: true, ...(await save(provider, at, r, inputs, key, accountId)) }
+   // nothing to keep: no key typed, and the plugin's authorize gave none
+   if (!("key" in r) && !("refresh" in r) && !key) return { ok: false, error: `${provider}'s sign-in gave no key` }
+-  return { ok: true, ...(await save(provider, at, r, inputs, key, method)) }
++  return { ok: true, ...(await save(provider, at, r, inputs, key, method, accountId)) }
  }
  
  // ---- renewing a sign-in ------------------------------------------------------

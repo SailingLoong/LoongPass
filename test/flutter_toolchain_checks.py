@@ -13,9 +13,12 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tool"))
 
-from verify_flutter import verify_toolchain
+from verify_flutter import verify_toolchain, required_versions
 import verify_flutter
 from make_windows_appcast import verify_windows_bundle
+
+
+PINNED_FLUTTER, PINNED_DART, _ = required_versions(ROOT)
 
 
 def metadata(flutter, dart, channel="stable"):
@@ -50,7 +53,7 @@ class FlutterToolchainChecks(unittest.TestCase):
             return subprocess.CompletedProcess(command, 0)
 
         def machine_output(command, **kwargs):
-            data = json.dumps(metadata("3.47.9", "3.13.7"))
+            data = json.dumps(metadata(PINNED_FLUTTER, PINNED_DART))
             return data if ready else "Resolving dependencies...\nGot dependencies!\n" + data
 
         output = StringIO()
@@ -60,7 +63,7 @@ class FlutterToolchainChecks(unittest.TestCase):
                 patch.object(verify_flutter.subprocess, "check_output", side_effect=machine_output), \
                 redirect_stdout(output):
             verify_flutter.main()
-        self.assertIn("3.47.9 / Dart 3.13.7", output.getvalue())
+        self.assertIn(f"{PINNED_FLUTTER} / Dart {PINNED_DART}", output.getvalue())
 
     def test_vulnerable_sdks_and_mixed_cached_versions_are_refused(self):
         for flutter, dart in [("3.47.1", "3.13.1"), ("3.47.7", "3.13.6"),
@@ -69,8 +72,7 @@ class FlutterToolchainChecks(unittest.TestCase):
                 verify_toolchain(metadata(flutter, dart), ROOT)
 
     def test_patched_and_newer_stable_versions_are_allowed(self):
-        for flutter, dart in [("3.47.9", "3.13.7"),
-                              ("3.50.0", "3.14.0"), ("3.100.0", "3.100.0")]:
+        for flutter, dart in [(PINNED_FLUTTER, PINNED_DART), ("3.100.0", "3.100.0")]:
             with self.subTest(flutter=flutter, dart=dart):
                 verify_toolchain(metadata(flutter, dart), ROOT)
 

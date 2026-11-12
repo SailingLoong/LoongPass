@@ -1,10 +1,8 @@
 # Account admission before native catalog/renewal hooks.
-# Source: https://github.com/yetone/magpie @ 2c31815c591c73d426c5e9da7f07a9929bce756d
-# Cumulative base host SHA256: 3d9d155830dc172c34982363b1c763b4aea2d7ac91327b1e543d70587a1e23bd
-diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+# Source: https://github.com/yetone/magpie @ 873b4987e97328071d4aeabd21996a3a8fcfab24
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2423,19 +2423,23 @@
+@@ -2565,19 +2565,23 @@
  // that gave up (signal) has every hook it would still have asked told, so
  // a timed-out listing stops its vendor reads instead of multiplying them
  // (#4678).
@@ -31,7 +29,7 @@ diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
        const p = await info(id, undefined, false, listWait, true)
        return rowOf(id, a, keys, stored, p, [])
      }
-@@ -2444,7 +2448,7 @@
+@@ -2586,7 +2590,7 @@
      // listWaits back to back took one provider past refreshDeadline twice
      // over (#4065)
      const [p, own] = await Promise.all([

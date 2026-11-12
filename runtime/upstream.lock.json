@@ -14,56 +14,59 @@
     "patches/zcode-binding.patch",
     "patches/workbuddy-desktop-identity.patch",
     "patches/host-auth-snapshot.patch",
-    "patches/host-account-catalog.patch"
+    "patches/host-account-catalog.patch",
+    "patches/zcode-response.patch",
+    "patches/workbuddy-usage.patch",
+    "patches/loomy-models.patch"
   ],
   "sources": {
     "magpie": {
       "url": "https://github.com/yetone/magpie",
-      "commit": "2c31815c591c73d426c5e9da7f07a9929bce756d"
+      "commit": "873b4987e97328071d4aeabd21996a3a8fcfab24"
     },
     "plugins": {
       "url": "https://github.com/magpie-community/plugins",
-      "commit": "e2d15ba653c6c575d2208dd5817ca439bda4b4d4"
+      "commit": "bb3f68a47a06174aecc5b8179bf2edef06e8415f"
     }
   },
   "bun": {
-    "version": "1.4.2",
+    "version": "1.4.4",
     "archives": {
-      "bun-darwin-aarch64.zip": "90987a3a16d7db556d886ac3d551e7b6d3edf0a1cf43acaed622e8676be1d12f",
-      "bun-darwin-x64.zip": "80520d7e17526308c9185d261679ac6d27798d3803a0e9f7ff9121ab8affb012",
-      "bun-windows-x64-baseline.zip": "78c221c2376f79731ccf4e4af0b3bb46d81fefa3296c5abee09ad8a1b21e68c6",
-      "bun-windows-aarch64.zip": "a7a16b876a305fd1029c66dbd27007b4f6112ae896532f675878731a21e50cfd"
+      "bun-darwin-aarch64.zip": "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510",
+      "bun-darwin-x64.zip": "50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e",
+      "bun-windows-aarch64.zip": "2d57a0eec0cb44d95c918c3f9734f60455a1306ae5085d76fc68f44e3ee30d09",
+      "bun-windows-x64-baseline.zip": "0f20ce6674d4f2dbcc8c5d59fdf99f7ba45f8c3b367e0f5781cbfa30a1c78d99"
     }
   },
   "packages": [
     {
       "name": "workbuddy",
-      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.26",
+      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.31",
       "target": "vendor/plugins/workbuddy"
     },
     {
       "name": "qoder",
-      "spec": "@magpie-community/opencode-qoder-auth@0.2.64",
+      "spec": "@magpie-community/opencode-qoder-auth@0.2.67",
       "target": "vendor/plugins/qoder"
     },
     {
       "name": "minimax",
-      "spec": "@magpie-community/opencode-minimax-auth@0.2.3",
+      "spec": "@magpie-community/opencode-minimax-auth@0.2.9",
       "target": "vendor/plugins/minimax"
     },
     {
       "name": "loomy",
-      "spec": "@magpie-community/opencode-loomy-auth@0.1.4",
+      "spec": "@magpie-community/opencode-loomy-auth@0.1.5",
       "target": "vendor/plugins/loomy"
     },
     {
       "name": "trae",
-      "spec": "@magpie-community/opencode-trae-auth@0.2.32",
+      "spec": "@magpie-community/opencode-trae-auth@0.2.34",
       "target": "vendor/plugins/trae"
     },
     {
       "name": "zcode",
-      "spec": "@magpie-community/opencode-zcode-auth@0.1.57",
+      "spec": "@magpie-community/opencode-zcode-auth@0.1.61",
       "target": "vendor/plugins/zcode"
     }
   ],
@@ -72,8 +75,8 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "5c735e6cca198b3cee1cbe8d861c4492e41f5b11237b04e9d3fecfbd34402514",
-      "upstreamSha256": "1c0053cbb85b210a8ed46dde7276aa79acaac7909d5cb565eababb3473e07134"
+      "sha256": "531c010a0bfa8791a7c2eb416eb6169bcdfc7ffa7f697c30018018d0c04b6b10",
+      "upstreamSha256": "e6801c6cb0f61553ca747c2b02209bfe87720183b37bb8840d08bcfb5352c5f3"
     },
     {
       "source": "magpie",
@@ -85,14 +88,14 @@
       "source": "plugins",
       "path": "packages/workbuddy/README.md",
       "target": "vendor/plugins/workbuddy/README.md",
-      "sha256": "db289a91bcafc44c454925715a0b6e438189ad49b5624e8963924fe8373e5681"
+      "sha256": "fc07e873f7897a5dd2fe719404fcd8fc8ac7c01ccd1ba218d5308e9dd69c7e5d"
     },
     {
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "af272230aa18f37ebd0909e80ff87f89f2b090a505e40a96bfbaa05f205b7ced",
-      "upstreamSha256": "44e5610b6bf7cf6dccaed3e71f5a4b7ef12352e14e9d72f110ab7f2900f02ed2"
+      "sha256": "bef89b3141a0e87b409b62d03fca45fa44eb65e07a1493a071b314464150a4f2",
+      "upstreamSha256": "5f76ebebb9c8edc56f647d6906410b56b6a25fd7e4481bf61ce523a622659d34"
     },
     {
       "source": "plugins",
@@ -110,7 +113,7 @@
       "source": "plugins",
       "path": "packages/workbuddy/package.json",
       "target": "vendor/plugins/workbuddy/package.json",
-      "sha256": "594bf7633e1b8f667f4b57278e8f6b03869f7a80e83e764ac7fd29a2722fcf3c"
+      "sha256": "1ab1cd53a0cae011ffbd0fe4bec7a37048aaac5b4a3b2fae6b024f43cf9dafee"
     },
     {
       "source": "plugins",
@@ -128,14 +131,14 @@
       "source": "plugins",
       "path": "packages/qoder/README.md",
       "target": "vendor/plugins/qoder/README.md",
-      "sha256": "11389722e6fe8ab0add8b3cc536732bdac94076fd744bfefc4ec0c70b7bc9599"
+      "sha256": "7d30e67aaf9fb0c9f69a39fb0f4fd1bee77c84effed1a6b93b798e20e2c5741e"
     },
     {
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "b5cef0b81c4b11ae06f9d1707fd4fc54fce5aa6eb1fe7fb90038b3cd003f37ca",
-      "upstreamSha256": "e50c4291bf0dc7be3886ff20c0c85e3515e1f5d305c21f9cc14e50560278d4cb"
+      "sha256": "b99ed0c44d6e44426a1d5ca7c5a0cf2fe200de6cdaa9a53fb2b59a42f75b6342",
+      "upstreamSha256": "7290649066a01dbf14e82d88624bb22d0b57e2e32205c78c78d4deb3909153eb"
     },
     {
       "source": "plugins",
@@ -153,7 +156,7 @@
       "source": "plugins",
       "path": "packages/qoder/package.json",
       "target": "vendor/plugins/qoder/package.json",
-      "sha256": "7bcd9e813ff39d1d3ee3a5e0eaa1433d78383b2be62e40569aaf62a94aaea7ef"
+      "sha256": "8cb68aefe4a6f3d8dc07764e2facefe5a84e893e665b92c1555498e7641a7965"
     },
     {
       "source": "plugins",
@@ -165,20 +168,20 @@
       "source": "plugins",
       "path": "packages/minimax/README.md",
       "target": "vendor/plugins/minimax/README.md",
-      "sha256": "43e2f0091e44b0b93326f6120302f9b7b9a77b5c56091d1f09c22ba47ed126ac"
+      "sha256": "05c9dad88dc487404f1de68c21b061aea9492190842fbaab0708ee531fb0f40f"
     },
     {
       "source": "plugins",
       "path": "packages/minimax/connector-tools.mjs",
       "target": "vendor/plugins/minimax/connector-tools.mjs",
-      "sha256": "4ec7a0062450b5f466f19655def638098e7be0abbfc85040a3e4e2d319719d11"
+      "sha256": "18460bc35304421729791ef35991932dc1fa76440c69293957aa6eba8600bf03"
     },
     {
       "source": "plugins",
       "path": "packages/minimax/index.mjs",
       "target": "vendor/plugins/minimax/index.mjs",
-      "sha256": "71dedc0e5c492a2af1abfcbf20bf4e1ef4d23fd514ae4ac7b57642c364460a26",
-      "upstreamSha256": "bacc7e6cd1aca661583a81fdaba957c91e84bfb2f850f29a4d2c1549d0b145a8"
+      "sha256": "46e08b231b4c0f5b9283ee7ba1b5d0443cf1c8d7e75a2aa18eaca33953b09774",
+      "upstreamSha256": "2db25b05b4dd6e67e070c7d992e872c2ce58855a9fd0e3adde598e6787cbb9a9"
     },
     {
       "source": "plugins",
@@ -190,7 +193,7 @@
       "source": "plugins",
       "path": "packages/minimax/matrix-tools.json",
       "target": "vendor/plugins/minimax/matrix-tools.json",
-      "sha256": "969113a1da9a21f0e337a2b92ba4ee9afc38f8206a4c8c8991b4378d34333b58"
+      "sha256": "1650b31dcd168343c89a0455d3766d0fc10a4bb75e5a035d35a2ae539d366bfd"
     },
     {
       "source": "plugins",
@@ -208,7 +211,7 @@
       "source": "plugins",
       "path": "packages/minimax/package.json",
       "target": "vendor/plugins/minimax/package.json",
-      "sha256": "23983066cc90d54fd59f7d314b97b3ae1115a25ec74d28ed1bfe41c870509e19"
+      "sha256": "fa2b97cfd8adf8ce1015fda7afcba64512b842413dfa06144955bc4932fbd2e3"
     },
     {
       "source": "plugins",
@@ -232,8 +235,8 @@
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "fbe468ba88ecf89c4164b6c768e251b4861aeacce33e6f2b1a7fdff33a6394fa",
-      "upstreamSha256": "333ace640081487b094e2de30bde577fe96463c043d798357499de82be65f65c"
+      "sha256": "520bd1fd3560944d309e924c60058845e2d46491b8b94c671fb002b4b4e29957",
+      "upstreamSha256": "996caaf0da61c1edf92a23ccfde054899cc67a0900518aba11201759d040295e"
     },
     {
       "source": "plugins",
@@ -251,7 +254,7 @@
       "source": "plugins",
       "path": "packages/loomy/package.json",
       "target": "vendor/plugins/loomy/package.json",
-      "sha256": "3ed36984b26622a7cac51ee86eced2c94e8cba357f5fe22d4216b7e820aec802"
+      "sha256": "963f2c7f96e2d4fefd62a695b5a7895fbf406a9d3750801c95207e3260eb61bc"
     },
     {
       "source": "plugins",
@@ -263,14 +266,14 @@
       "source": "plugins",
       "path": "packages/trae/README.md",
       "target": "vendor/plugins/trae/README.md",
-      "sha256": "38122f7d9ad9c307b45f40dc68b8769785bf334730d70752ca5f21ef1d47a2be"
+      "sha256": "82333e488f0109075f60116dfe7f1bdf8c72eb595943327edb01e40d6805663a"
     },
     {
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "3e4258749a7a4add8b714965b954f5d6ff4527da849b4bb128839a6e9834a9be",
-      "upstreamSha256": "60781063c67ec66c1d5d04a30b34c38259605206bd1e4b26e9fb43c1d186b8af"
+      "sha256": "e687e59b89bb8a0c5c91e9377a1e42e122cfd72db2d8a1a3c0dcca969c569766",
+      "upstreamSha256": "254c511fc02701e718fb377988c5e40e75548ff876ae99792bc8d09c5ba42443"
     },
     {
       "source": "plugins",
@@ -288,7 +291,7 @@
       "source": "plugins",
       "path": "packages/trae/package.json",
       "target": "vendor/plugins/trae/package.json",
-      "sha256": "09b5d51609b66dfc41fcadb307deb02ec9dcf42ade8d72d138840103eb136ce6"
+      "sha256": "92fc4f81ca4b549168dfd34cddbb91167fe6e7453d980aed71e2858e0dc5bc7b"
     },
     {
       "source": "plugins",
@@ -300,14 +303,14 @@
       "source": "plugins",
       "path": "packages/zcode/README.md",
       "target": "vendor/plugins/zcode/README.md",
-      "sha256": "268f142406e9240bd2fc1c87382721aca2dc92842c822f472edbf153d9dd9145"
+      "sha256": "360146b1f5a2720d70b39689f57ca2d4edfb2506f99d4fce5939a16d0d1a233f"
     },
     {
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "7afe74673102973a916b01e71ee52c4dbcf5a5cf472a8cf5127ae96b9c591282",
-      "upstreamSha256": "4fa4d8fd8d5c8ce879c5ad840ed1646efc0fda18354a95f5217175d020631cbb"
+      "sha256": "3481695878a5898781db481385eb14439cf20ef574467fc20e21e9fc30a2689c",
+      "upstreamSha256": "b29c486235227c339807755872c020af0b8df61a26812fa160230d74778ef277"
     },
     {
       "source": "plugins",
@@ -325,7 +328,7 @@
       "source": "plugins",
       "path": "packages/zcode/package.json",
       "target": "vendor/plugins/zcode/package.json",
-      "sha256": "419c96845345142bf9bff5254ef4c8becefffa3e58b6ef1b3955e92573d934b8"
+      "sha256": "c3ba49c27df561cec86def92fabccb1b48e2ab93a9401694e5bf54b728c57bc2"
     },
     {
       "source": "plugins",
@@ -338,6 +341,12 @@
       "path": "LICENSE",
       "target": "vendor/plugins/zcode/LICENSE",
       "sha256": "5e8730b694ba31696dd68d693f8bf5e2c75f7e40fd5f6fbc3f067cf9490b24fb"
+    },
+    {
+      "source": "plugins",
+      "path": "packages/minimax/native.mjs",
+      "target": "vendor/plugins/minimax/native.mjs",
+      "sha256": "f4cd190a3dd825b120952f30ae6d81ad7ddcafcc81ab220b5e678f2bbb5f3120"
     }
   ],
   "patches": [
@@ -350,6 +359,9 @@
     "patches/zcode-binding.patch",
     "patches/workbuddy-desktop-identity.patch",
     "patches/host-auth-snapshot.patch",
-    "patches/host-account-catalog.patch"
+    "patches/host-account-catalog.patch",
+    "patches/zcode-response.patch",
+    "patches/workbuddy-usage.patch",
+    "patches/loomy-models.patch"
   ]
 }

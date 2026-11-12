@@ -206,16 +206,15 @@ function normalizePhone(raw) {
 
 // ── chat body adaptation ───────────────────────────────────────────────────
 
-// the thinking levels Loomy's client offers are low/medium/high; a wider
-// level the agent asked is folded into them, off/none and unknowns are left
-// off (agent2api mod.rs reasoning_patch)
+// Preserve native reasoning levels; retain the existing minimal/max aliases.
+// New levels declared by the vendor must not disappear on the request path.
 function foldReasoning(body) {
   let changed = false
   const of = (v) => {
     if (v === "minimal" || v === "low") return "low"
     if (v === "medium") return "medium"
     if (v === "high" || v === "max") return "high"
-    return null
+    return v === "off" ? null : v
   }
   if (typeof body.reasoning_effort === "string") {
     const folded = of(body.reasoning_effort)
@@ -304,9 +303,14 @@ function catalogModel(entry) {
   if (context != null) limit.context = context
   if (output != null) limit.output = output
   if (Object.keys(limit).length) config.limit = limit
-  if (caps.reasoning) config.reasoning = true
-  if (caps.function_calling) config.tool_call = true
-  if (caps.vision) config.modalities = { input: ["text", "image"], output: ["text"] }
+  if (typeof caps.reasoning === "boolean") config.reasoning = caps.reasoning
+  const efforts = Array.isArray(entry?.reasoning_efforts) ? [...new Set(entry.reasoning_efforts.filter((v) => typeof v === "string" && v.trim()).map((v) => v.trim()))] : []
+  if (efforts.length) {
+    config.variants = Object.fromEntries(efforts.map((effort) => [effort, { reasoningEffort: effort }]))
+    if (efforts.includes(entry?.default_reasoning_effort)) config.options = { reasoningEffort: entry.default_reasoning_effort }
+  }
+  if (typeof caps.function_calling === "boolean") config.tool_call = caps.function_calling
+  if (typeof caps.vision === "boolean") config.modalities = { input: caps.vision ? ["text", "image"] : ["text"], output: ["text"] }
   if (rate) config.rate = rate
   return { id, config }
 }
@@ -441,8 +445,12 @@ export async function LoomyAuthPlugin({ client } = {}) {
             const session = (await getAuth())?.access ?? a.access
             if (!session) return errorResponse(401, "Loomy 登录态缺失，请重新登录")
 
-            // the body as Loomy's own client writes it: reasoning folded to
-            // its three levels, and deepseek's images as base64 markers
+            // An explicit body choice wins. The native host also carries a
+            // selected variant in this private header; absence keeps vendor defaults.
+            if (chat.reasoning_effort === undefined && chat.reasoning?.effort === undefined) {
+              const effort = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined)).get("x-magpie-effort")
+              if (effort) chat.reasoning_effort = effort
+            }
             try {
               foldReasoning(chat)
               if (prefersTagFormat(chat.model)) rewriteImagesToTags(chat)
@@ -500,15 +508,19 @@ export async function LoomyAuthPlugin({ client } = {}) {
           // always read as full
           const dailyLimit = toNum(data.dailyLimitPoints)
           const dailyRemaining = toNum(data.dailyRemainingPoints)
-          const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.max(0, dailyLimit - dailyRemaining) : null
 
           // the daily wallet shows from whichever numbers came back: the
           // limit/remaining pair alone is enough (remaining IS its number);
           // with only dailyBalance it is an amount without a limit; with
           // neither, no daily wallet at all — a missing one is not 0
+          // In magpie's window, `used` is the share spent (0–100) and
+          // `amount` the credits spent of `limit` (plugins#889): sent as a
+          // count and as what was left, a percentage cap read 800 spent as
+          // 800% and an amount cap compared the credits left with the cap
+          const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.min(dailyLimit, Math.max(0, dailyLimit - dailyRemaining)) : null
           const dailyWallet =
             dailyLimit != null && dailyRemaining != null
-              ? { name: "每日赠送积分", used: dailyLimit > 0 ? 100 * dailySpent / dailyLimit : undefined, amount: dailySpent, limit: dailyLimit, balance: dailyRemaining, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
+              ? { name: "每日赠送积分", used: dailyLimit > 0 ? (100 * dailySpent) / dailyLimit : 0, amount: dailySpent, limit: dailyLimit, balance: dailyRemaining, unit: "credits", resetsAt: beijingMidnight(), span: 86400 }
               : daily != null
                 ? { name: "每日赠送积分", balance: daily, unit: "credits", display: `${daily} credits`, aside: true }
                 : null
@@ -589,7 +601,28 @@ export async function LoomyAuthPlugin({ client } = {}) {
           for (const entry of entries) {
             const m = catalogModel(entry)
             if (!m) continue
-            p.models[m.id] = m.config
+            // provider.models returns OpenCode's internal model, not its
+            // configuration form: replacing it with config loses API/capabilities.
+            const c = m.config, was = p.models[m.id] ?? {}
+            const kinds = (list) => Object.fromEntries(["text", "image", "audio", "video", "pdf"].map((k) => [k, list.includes(k)]))
+            p.models[m.id] = {
+              ...was,
+              id: m.id, providerID: p.id ?? ID, name: c.name,
+              api: { id: was.api?.id ?? m.id, npm: was.api?.npm ?? p.npm ?? "@ai-sdk/openai-compatible", url: p.api || was.api?.url || modelBase() },
+              cost: was.cost ?? { input: 0, output: 0, cache: { read: 0, write: 0 } },
+              limit: { context: 0, output: 0, ...was.limit, ...c.limit },
+              options: { ...was.options, ...c.options },
+              headers: was.headers ?? {},
+              capabilities: {
+                temperature: true, toolcall: true, input: { text: true }, output: { text: true },
+                ...was.capabilities,
+                ...(c.reasoning !== undefined ? { reasoning: c.reasoning } : {}),
+                ...(c.tool_call !== undefined ? { toolcall: c.tool_call } : {}),
+                ...(c.modalities ? { input: kinds(c.modalities.input), output: kinds(c.modalities.output) } : {}),
+              },
+              variants: c.variants ?? was.variants ?? {},
+              ...(c.rate !== undefined ? { rate: c.rate } : {}),
+            }
           }
           return p.models
         } catch {

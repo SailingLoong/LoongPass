@@ -1,14 +1,15 @@
+
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2479,6 +2479,7 @@
-     icon: iconOf(a),
+@@ -2622,6 +2622,7 @@
      usage: typeof a.auth.usage === "function",
      checkin: typeof a.auth.checkin === "function",
+     calls: typeof a.auth.calls === "function",
 +    checkinStatus: typeof a.auth.checkinStatus === "function",
      // its sign-ins are renewed in the background as they come due, so
      // long before expires (keepSignedIn)
      renews: keepsAlive(a.auth),
-@@ -3068,30 +3069,66 @@
+@@ -3287,30 +3288,66 @@
  // again later that day after a failure, or at until; a hook that throws is
  // a failure.
  // Run in the account's scope, a token it renews is saved to that account.
@@ -81,11 +82,11 @@
 +  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
  }
  
- // sdkHeaders are what the AI SDK package the model is on sends of the key.
-@@ -3292,6 +3329,7 @@
-   load,
+ // ---- calls made outside magpie -------------------------------------------------
+@@ -3559,6 +3596,7 @@
    usage,
    checkin,
+   calls,
 +  checkinStatus,
    keepSignedIn,
    // setOptions takes the user's option values over, as init did: the
@@ -118,7 +119,7 @@
    const paths = ["/v2/billing/meter/daily-checkin"]
    for (let attempt = 0; ; attempt++) {
      let i = 0
-@@ -3620,6 +3623,15 @@
+@@ -3813,6 +3816,15 @@
    // account. Bounded as refusedSystems is.
    const commaSystems = new Set()
    return async ({ client, magpie }) => {
@@ -134,7 +135,7 @@
    // each account's list as last read, for FREE_ONLY: {at, list}
    const lists = new Map()
    const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
-@@ -3737,14 +3749,8 @@
+@@ -3931,14 +3943,8 @@
        // full 30 minutes (magpie-community/plugins#149). checkinOf returns
        // an outcome only for answers it read and classified.
        ...(site.ai ? {} : {
@@ -153,7 +154,7 @@
          {
 --- a/runtime/vendor/plugins/minimax/index.mjs
 +++ b/runtime/vendor/plugins/minimax/index.mjs
-@@ -842,7 +842,7 @@
+@@ -874,7 +874,7 @@
  // hasn't started, or the panel has none), ineligible (the day isn't
  // available); a throw is failed. streak counts the claimed days up to and
  // including today.
@@ -162,7 +163,7 @@
    if (!String(userID ?? "").trim()) userID = (await identity(site, access)).realUserID
    const panel = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/status")
    const days = Array.isArray(panel?.data?.days) ? panel.data.days : null
-@@ -853,6 +853,7 @@
+@@ -885,6 +885,7 @@
    const claimable = sorted.filter((d) => d?.status === 2)
    if (todays.length > 1 || claimable.length > 1) throw new Error("check-in: malformed panel")
    const today = todays[0]
@@ -170,7 +171,7 @@
    if (!today) return { outcome: "inactive" }
    const streakFrom = (i) => {
      let n = 0
-@@ -864,6 +865,7 @@
+@@ -896,6 +897,7 @@
      return { outcome: "done", ...(points ? { credit: points } : {}), streak: streakFrom(sorted.indexOf(today)) }
    }
    if (today.status === 2) {
@@ -178,10 +179,10 @@
      const claim = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/claim", {})
      const r = pos(claim?.data, "claim_result")
      const credit = pos(claim?.data, "points")
-@@ -994,6 +996,34 @@
- function makePlugin(site) {
-   return async ({ client }) => {
+@@ -1028,6 +1030,34 @@
      const fresh = accountSession(site, client)
+     // magpie's host (OpenCode has no magpie): see inputsOf
+     const host = Boolean(magpie)
 +    // Read-only status uses the same authentication and native panel path.
 +    const checkin = async (getAuth, readOnly = false) => {
 +      const auth = await getAuth()
@@ -213,7 +214,7 @@
  
      // one conversation id for requests that come with none of their own
      const session = randomUUID()
-@@ -1144,33 +1174,8 @@
+@@ -1204,33 +1234,8 @@
          // the daily check-in (每日签到): magpie runs it once a day per
          // account, and its Check in now button asks right away; the
          // outcome lands on the account's Usage card.
@@ -251,7 +252,7 @@
              type: "oauth",
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -2883,6 +2883,15 @@
+@@ -2895,6 +2895,15 @@
    return start === undefined ? end : Math.max(end, start + DAY_MS)
  }
  
@@ -267,7 +268,7 @@
  // askAgain is a check-in's until: when to ask again, with room.
  const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
  
-@@ -3510,7 +3519,7 @@
+@@ -3582,7 +3591,7 @@
    // checkin claims the daily credits through the same campaigns page as
    // Qoder's client. A campaign already claimed is done; one not available
    // is inactive, never an error that magpie would retry all day.
@@ -276,7 +277,7 @@
      let cred
      try {
        if ((await getAuth())?.lingma) return { outcome: "inactive", message: "a Lingma 1.0 dedicated domain has no daily credits" }
-@@ -3551,13 +3560,14 @@
+@@ -3623,13 +3632,14 @@
        if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
        const now = Date.now()
        const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
@@ -292,7 +293,7 @@
          }
          // the next day's credits open at a time the list says: ask then,
          // not half an hour later
-@@ -3576,6 +3586,13 @@
+@@ -3648,6 +3658,13 @@
          // say that much, and where the credits can still be claimed.
          return { outcome: "inactive", message: noCampaign(site.name) }
        }
@@ -306,7 +307,7 @@
        const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
        let claim = {}
        let claimRaw = ""
-@@ -3589,7 +3606,7 @@
+@@ -3661,7 +3678,7 @@
        if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
        if (said === "CLAIMED") {
          const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
@@ -315,7 +316,7 @@
        }
        return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
      } catch (e) {
-@@ -3985,7 +4002,7 @@
+@@ -4078,7 +4095,7 @@
        // the daily check-in reads the vendor's desktop device identity and
        // posts it to the campaign endpoint: a site without one (QwenWork)
        // sets checkin: false and gets none
@@ -326,7 +327,7 @@
        config.provider ??= {}
 --- a/runtime/vendor/plugins/trae/index.mjs
 +++ b/runtime/vendor/plugins/trae/index.mjs
-@@ -3311,15 +3311,18 @@
+@@ -3547,15 +3547,18 @@
      return { body }
    }
  
@@ -346,7 +347,7 @@
      const read = async (res) => {
        const text = await res.text()
        let v
-@@ -3685,7 +3688,8 @@
+@@ -3988,7 +3991,8 @@
      auth: {
        provider: site.id,
        usage,

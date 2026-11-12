@@ -15,6 +15,7 @@ def verify(root):
     manifest = json.loads((runtime / 'upstream.lock.json').read_text(encoding='utf-8'))
     if manifest['schema'] != 1:
         raise ValueError('Unknown runtime manifest')
+    verified = {entry['target'] for entry in manifest['files']}
     for entry in manifest['files']:
         path = runtime / entry['target']
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
@@ -47,6 +48,8 @@ def verify(root):
         for path in meta['files']:
             if not (directory / path).is_file():
                 raise ValueError('Missing package file: ' + path)
+            if (directory / path).relative_to(runtime).as_posix() not in verified:
+                raise ValueError('Unverified package file: ' + path)
     assets = re.findall(r'^    - (.+)$', (root / 'pubspec.yaml').read_text(encoding='utf-8'), re.M)
     for path in [runtime / 'upstream.lock.json',
                  *[runtime / p['target'] for p in manifest['files']],
