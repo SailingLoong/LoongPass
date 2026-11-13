@@ -74,7 +74,9 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                       onPress: () => Navigator.pop(context, false),
                     ),
                     FButton(
-                      variant: FButtonVariant.primary,
+                      variant: remove
+                          ? FButtonVariant.destructive
+                          : FButtonVariant.primary,
                       size: FButtonSizeVariant.sm,
                       mainAxisSize: MainAxisSize.min,
                       key: Key(
@@ -194,14 +196,20 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
             ),
           CompactAccountsTable(
             preferenceScope: 'codex',
+            hasCredits: false,
+            hasRewards: false,
+            emptyMessage: '添加官方账号，或导入当前登录。保存后可查看工作区、套餐并切换账号。',
             entries: [
               for (final account in state.accounts)
                 AccountTableEntry(
                   id: account.id,
-                  label:
-                      '${account.email ?? '邮箱未知'}${state.currentId == account.id ? ' · 本机登录记录' : ''}',
+                  label: account.email ?? '邮箱未知',
                   identity: account.workspaceId ?? '工作区未知',
                   balance: '未提供',
+                  hasCredits: false,
+                  hasRewards: false,
+                  accountSummary:
+                      '${account.plan ?? '套餐未知'} · ${account.workspaceId ?? '工作区未知'}',
                   expiringAmount: '—',
                   status: state.currentId == account.id ? '本机登录记录' : '已保存',
                   observedAt: state.observedAt,
@@ -272,7 +280,7 @@ class _CodexAccountDetails extends StatelessWidget {
             runSpacing: 8,
             children: [
               FButton(
-                variant: FButtonVariant.outline,
+                variant: FButtonVariant.primary,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
                 key: Key('codex-switch-$id'),
@@ -280,7 +288,7 @@ class _CodexAccountDetails extends StatelessWidget {
                 onPress: owner.canMutate ? onSwitch : null,
               ),
               FButton(
-                variant: FButtonVariant.ghost,
+                variant: FButtonVariant.destructive,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
                 key: Key('codex-remove-$id'),

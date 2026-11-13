@@ -189,13 +189,6 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
 
   Future<void> _continue() => _run(() async {
     if (_step == _Step.select) {
-      if (_invitationAvailable && !_registrationOpened) {
-        final opened = await _open(widget.registrationUrl);
-        if (mounted && !_ended && opened) {
-          setState(() => _registrationOpened = true);
-        }
-        return;
-      }
       return _next();
     }
     if (_step == _Step.prompt) {
@@ -311,6 +304,12 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     super.dispose();
   }
 
+  Future<void> _register() => _run(() async {
+    final opened = await _open(widget.registrationUrl);
+    if (mounted && !_ended && opened)
+      setState(() => _registrationOpened = true);
+  });
+
   Widget _entry(String label, {bool secret = false, String? placeholder}) =>
       FTextField(
         key: const Key('plugin-auth-input'),
@@ -361,66 +360,103 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                             '将通过官方授权更新 ${_target.label}（${_target.realm} · ${_target.uid}）。',
                           ),
                         if (_step == _Step.select && _target == null) ...[
-                          FSelect<String>.rich(
-                            key: const Key('plugin-auth-provider'),
-                            label: const Text('平台'),
-                            enabled: !_busy,
-                            format: (id) =>
-                                widget.accounts.providers[id]?['name']
-                                    as String? ??
-                                id,
-                            children: [
-                              for (final id in widget.providerIds)
-                                if (widget.accounts.providers.containsKey(id))
-                                  FSelectItem(
-                                    value: id,
-                                    title: Text(
-                                      widget.accounts.providers[id]?['name']
-                                              as String? ??
-                                          id,
+                          if (widget.providerIds
+                                  .where(widget.accounts.providers.containsKey)
+                                  .length >
+                              1)
+                            FSelect<String>.rich(
+                              key: const Key('plugin-auth-provider'),
+                              label: const Text('平台'),
+                              enabled: !_busy,
+                              format: (id) =>
+                                  widget.accounts.providers[id]?['name']
+                                      as String? ??
+                                  id,
+                              children: [
+                                for (final id in widget.providerIds)
+                                  if (widget.accounts.providers.containsKey(id))
+                                    FSelectItem(
+                                      value: id,
+                                      title: Text(
+                                        widget.accounts.providers[id]?['name']
+                                                as String? ??
+                                            id,
+                                      ),
                                     ),
-                                  ),
-                            ],
-                            control: FSelectControl.lifted(
-                              value: _provider,
-                              onChange: (value) => setState(() {
-                                _provider = value;
-                                _selectMethod();
-                              }),
+                              ],
+                              control: FSelectControl.lifted(
+                                value: _provider,
+                                onChange: (value) => setState(() {
+                                  _provider = value;
+                                  _selectMethod();
+                                }),
+                              ),
                             ),
-                          ),
                           const SizedBox(height: 12),
-                          FSelect<int>.rich(
-                            key: const ValueKey('plugin-auth-method'),
-                            label: const Text('授权方式'),
-                            enabled: !_busy,
-                            format: (index) =>
-                                _methods[index]['label'] as String? ??
-                                '授权方式 ${index + 1}',
-                            children: [
-                              for (
-                                var index = 0;
-                                index < _methods.length;
-                                index++
-                              )
-                                if ({
-                                  'oauth',
-                                  'api',
-                                }.contains(_methods[index]['type']))
-                                  FSelectItem(
-                                    value: index,
-                                    title: Text(
-                                      _methods[index]['label'] as String? ??
-                                          '授权方式 ${index + 1}',
+                          if (_methods
+                                  .where(
+                                    (m) => {'oauth', 'api'}.contains(m['type']),
+                                  )
+                                  .length >
+                              1)
+                            FSelect<int>.rich(
+                              key: const ValueKey('plugin-auth-method'),
+                              label: const Text('授权方式'),
+                              enabled: !_busy,
+                              format: (index) =>
+                                  _methods[index]['label'] as String? ??
+                                  '授权方式 ${index + 1}',
+                              children: [
+                                for (
+                                  var index = 0;
+                                  index < _methods.length;
+                                  index++
+                                )
+                                  if ({
+                                    'oauth',
+                                    'api',
+                                  }.contains(_methods[index]['type']))
+                                    FSelectItem(
+                                      value: index,
+                                      title: Text(
+                                        _methods[index]['label'] as String? ??
+                                            '授权方式 ${index + 1}',
+                                      ),
                                     ),
-                                  ),
-                            ],
-                            control: FSelectControl.lifted(
-                              value: _method,
-                              onChange: (value) =>
-                                  setState(() => _method = value),
+                              ],
+                              control: FSelectControl.lifted(
+                                value: _method,
+                                onChange: (value) =>
+                                    setState(() => _method = value),
+                              ),
                             ),
-                          ),
+                          if (_method != null) ...[
+                            Text(
+                              _chosen['type'] == 'api'
+                                  ? '使用平台提供的 API 密钥授权。'
+                                  : '将在官方窗口中完成授权。成功后，账号会保存到 LoongPass。',
+                            ),
+                            if (_methods
+                                    .where(
+                                      (m) =>
+                                          {'oauth', 'api'}.contains(m['type']),
+                                    )
+                                    .length ==
+                                1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  _chosen['label'] as String? ?? '官方授权',
+                                  style: context.theme.typography.body.xs
+                                      .copyWith(
+                                        color: context
+                                            .theme
+                                            .colors
+                                            .mutedForeground,
+                                      ),
+                                ),
+                              ),
+                          ],
                           if (_method == null)
                             const Padding(
                               padding: EdgeInsets.only(top: 12),
@@ -563,8 +599,8 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                     variant: FButtonVariant.ghost,
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
-                    onPress: _busy ? null : () => _run(_next),
-                    child: const Text('已有账号，直接授权'),
+                    onPress: _busy ? null : _register,
+                    child: const Text('邀请注册'),
                   ),
                 if (_step == _Step.failed)
                   FButton(
@@ -582,10 +618,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                     child: Text(
                       _step == _Step.code || _step == _Step.key
                           ? '完成授权'
-                          : _step == _Step.select && _invitationAvailable
+                          : _step == _Step.select
                           ? _registrationOpened
                                 ? '继续授权'
-                                : '邀请注册'
+                                : '开始授权'
                           : '继续',
                     ),
                     onPress: _busy || _target == null && _method == null

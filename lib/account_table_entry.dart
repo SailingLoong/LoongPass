@@ -25,6 +25,12 @@ class AccountTableEntry {
     this.onOpenDetails,
     this.notice,
     this.activationEnabled = true,
+    this.hasCredits = true,
+    this.hasRewards = true,
+    this.accountSummary,
+    this.expiryDetails,
+    this.statusLabel,
+    this.automatic,
   });
   final String id, label, identity, balance, status;
   final Widget details;
@@ -32,6 +38,10 @@ class AccountTableEntry {
   final String? expiringAmount;
   final DateTime? expiryAt;
   final bool needsAttention, activationEnabled;
+  final bool hasCredits, hasRewards;
+  final String? accountSummary, statusLabel;
+  final bool? automatic;
+  final Widget? expiryDetails;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
   final ClaimReceipt? receipt;
@@ -58,6 +68,12 @@ class AccountTableEntry {
     onOpenDetails: onOpenDetails,
     notice: notice,
     activationEnabled: activationEnabled,
+    hasCredits: hasCredits,
+    hasRewards: hasRewards,
+    accountSummary: accountSummary,
+    expiryDetails: expiryDetails,
+    statusLabel: statusLabel,
+    automatic: automatic,
   );
   DateTime? get nextExpiry =>
       expiryAt ?? upcomingCreditBatches(credits).firstOrNull?.expiresAt;

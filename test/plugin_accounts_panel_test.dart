@@ -373,7 +373,7 @@ void main() {
         ),
       );
       expect(find.text('时间未知'), findsOneWidget);
-      expect(findTooltip('已确认领取。最近一次额度查询未完成，请核对授权、权益或网络。'), findsWidgets);
+      expect(find.text('额度查询未完成'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('已确认领取。'), findsOneWidget);
@@ -434,6 +434,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('不会重复发送领取请求'), findsOneWidget);
       expect(find.textContaining('额度授权已失效'), findsOneWidget);
+      await tester.tap(find.text('更多操作'));
+      await tester.pumpAndSettle();
       expect(find.text('核验领取结果'), findsOneWidget);
     },
   );
@@ -580,11 +582,19 @@ void main() {
           ),
         ),
       );
+      expect(find.byKey(const Key('plugin-auth-provider')), findsNothing);
+      expect(find.byKey(const Key('plugin-auth-method')), findsNothing);
+      final primary = tester.widget<FButton>(
+        find
+            .ancestor(of: find.text('开始授权'), matching: find.byType(FButton))
+            .first,
+      );
+      expect(primary.variant, FButtonVariant.primary);
       await tester.tap(find.text('邀请注册'));
       await tester.pumpAndSettle();
       expect(runtime.calls, isEmpty);
       expect(find.textContaining('未能打开浏览器'), findsOneWidget);
-      await tester.tap(find.text('已有账号，直接授权'));
+      await tester.tap(find.text('开始授权'));
       await tester.pump();
       await tester.pump();
       expect(runtime.calls.any((c) => c.$1 == 'authorize'), isTrue);
@@ -614,7 +624,9 @@ void main() {
       ),
     );
     expect(find.text('邀请注册'), findsNothing);
-    await tester.tap(find.text('继续'));
+    await tester.tap(
+      find.text('继续').evaluate().isEmpty ? find.text('开始授权') : find.text('继续'),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('plugin-auth-input')), findsOneWidget);
     expect(runtime.calls.any((c) => c.$1 == 'authorize'), isFalse);
@@ -682,7 +694,11 @@ void main() {
       expect(runtime.calls, isEmpty);
       expect(find.byKey(const ValueKey('plugin-auth-method')), findsNothing);
       frozen['device'] = '22222222-2222-4333-8444-555555555555';
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pump();
       await tester.pump();
       final auth = runtime.calls.singleWhere((c) => c.$1 == 'authorize').$2;
@@ -866,18 +882,30 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('官方账号').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('plugin-auth-prompt-select')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('海外').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pumpAndSettle();
       final input = find.byKey(const Key('plugin-auth-input'));
       expect(tester.widget<FTextField>(input).obscureText, true);
       await tester.enterText(input, 'synthetic-secret');
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('未能打开浏览器'), findsOneWidget);
       expect(find.text('复制授权链接'), findsOneWidget);
@@ -931,7 +959,11 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pump();
       await tester.pump();
       expect(runtime.callback, isNotNull);
@@ -985,7 +1017,11 @@ void main() {
       try {
         await tester.tap(find.text('Open'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('继续'));
+        await tester.tap(
+          find.text('继续').evaluate().isEmpty
+              ? find.text('开始授权')
+              : find.text('继续'),
+        );
         await tester.pump();
         expect(runtime.callback, isNotNull);
         await tester.tap(find.text('取消'));
@@ -1032,7 +1068,11 @@ void main() {
       );
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('继续'));
+      await tester.tap(
+        find.text('继续').evaluate().isEmpty
+            ? find.text('开始授权')
+            : find.text('继续'),
+      );
       await tester.pumpAndSettle();
       final input = find.byKey(const Key('plugin-auth-input'));
       expect(tester.widget<FTextField>(input).obscureText, true);

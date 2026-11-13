@@ -202,7 +202,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                     onPress: () => Navigator.pop(context, false),
                   ),
                   FButton(
-                    variant: FButtonVariant.ghost,
+                    variant: FButtonVariant.destructive,
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
                     child: const Text('移除账号'),
@@ -233,6 +233,160 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
       a.uid.isNotEmpty &&
       a.source != 'desktop';
 
+  bool _supportsRewards(PluginAccount a) =>
+      a.provider == 'zcode' ||
+      widget.accounts.providers[a.provider]?['checkin'] == true ||
+      _reward(a).isNotEmpty;
+
+  Widget _actions(PluginAccount a) {
+    final needsAuthorization =
+        !a.active ||
+        a.error == 'authorization_required' ||
+        a.usage?['signIn'] == 'expired' ||
+        _reward(a)['status'] == 'authorization_required';
+    final primary = needsAuthorization
+        ? 'authorize'
+        : _pending(a)
+        ? 'claim'
+        : _usageFailure(a) != null
+        ? 'refresh'
+        : _canActivate(a)
+        ? 'activate'
+        : _canClaim(a)
+        ? 'claim'
+        : 'refresh';
+    final actions =
+        <({String id, String label, bool enabled, VoidCallback run})>[
+          (
+            id: 'refresh',
+            label: '刷新额度',
+            enabled: !_busy && a.active,
+            run: () => _run(
+              () => _canClaim(a)
+                  ? widget.rewards.refresh(a.key)
+                  : widget.accounts.refresh(),
+              accountKey: a.key,
+            ),
+          ),
+          if (_canClaim(a) || _pending(a))
+            (
+              id: 'claim',
+              label: _pending(a)
+                  ? '核验领取结果'
+                  : a.provider == 'zcode'
+                  ? '核对并领取活动'
+                  : '核对并领取',
+              enabled: !_busy && _canClaim(a),
+              run: () => _claim(a),
+            ),
+          if (_canActivate(a))
+            (
+              id: 'activate',
+              label: '切换客户端账号',
+              enabled: !_busy && a.active,
+              run: () => _activate(a),
+            ),
+          (
+            id: 'authorize',
+            label: '重新授权',
+            enabled: !_busy,
+            run: () => _authorize(a),
+          ),
+          if (a.provider == 'zcode' &&
+              a.uid.isNotEmpty &&
+              widget.accounts.providers[a.provider]?['reauthorize'] == true)
+            (
+              id: 'rebind',
+              label: '重新绑定设备',
+              enabled: !_busy && a.active,
+              run: () => _rebind(a),
+            ),
+          (id: 'remove', label: '移除账号', enabled: !_busy, run: () => _remove(a)),
+        ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final action in actions.where(
+          (v) => v.id == primary || v.id == 'refresh',
+        ))
+          FButton(
+            variant: action.id == primary
+                ? FButtonVariant.primary
+                : FButtonVariant.outline,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: action.enabled ? action.run : null,
+            child: Text(action.label),
+          ),
+        FPopoverMenu(
+          menuAnchor: Alignment.topRight,
+          childAnchor: Alignment.bottomRight,
+          menuBuilder: (context, controller, _) => [
+            FItemGroup(
+              children: [
+                for (final action in actions.where(
+                  (v) => v.id != primary && v.id != 'refresh',
+                ))
+                  FItem(
+                    title: Text(action.label),
+                    enabled: action.enabled,
+                    variant: action.id == 'remove'
+                        ? FItemVariant.destructive
+                        : FItemVariant.primary,
+                    onPress: () async {
+                      await controller.hide();
+                      action.run();
+                    },
+                  ),
+              ],
+            ),
+          ],
+          builder: (context, controller, _) => FButton(
+            variant: FButtonVariant.outline,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: _busy ? null : controller.toggle,
+            suffix: const Icon(FLucideIcons.chevronDown, size: 14),
+            child: const Text('更多操作'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _expiryDetails(PluginAccount a) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('官方额度窗口与活动批次分别列示，不合计重叠额度。'),
+      for (final window in _windows(a))
+        if (_date(window['runsOutAt']) case final at?)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              '${_text(window['name']) ?? '额度窗口'}：${_number(window['runsOut'])} ${_unit(window)} · ${creditTime(at)} 到期',
+            ),
+          ),
+      for (final bucket in _buckets(a))
+        if (bucket.expiresAt != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit} · ${creditTime(DateTime.fromMillisecondsSinceEpoch(bucket.expiresAt! * 1000))} 到期',
+            ),
+          ),
+      if (_millis(_reward(a)['checkedAt'] ?? _reward(a)['observedAt'])
+          case final time?)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Text(
+            '活动额度查询于 ${creditTime(time)}',
+            style: context.theme.typography.body.xs,
+          ),
+        ),
+    ],
+  );
+
   Widget _details(PluginAccount a) {
     final usage = a.usage, reward = _reward(a), buckets = _buckets(a);
     final rewardTime = _millis(reward['checkedAt'] ?? reward['observedAt']);
@@ -240,8 +394,11 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SelectableText(_identity(a)),
+        const SizedBox(height: 6),
         Text(_status(a)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
+        _actions(a),
+        const FDivider(),
         Text('官方套餐与额度', style: context.theme.typography.body.sm),
         if (usage == null)
           const Text('尚无可核实的官方额度快照。')
@@ -306,85 +463,20 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           ),
         ],
         const FDivider(),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FButton(
-              variant: FButtonVariant.outline,
-              size: FButtonSizeVariant.sm,
-              mainAxisSize: MainAxisSize.min,
-              child: const Text('刷新额度'),
-              onPress: _busy || !a.active
-                  ? null
-                  : () => _run(
-                      () => _canClaim(a)
-                          ? widget.rewards.refresh(a.key)
-                          : widget.accounts.refresh(),
-                      accountKey: a.key,
-                    ),
+        if (_supportsRewards(a))
+          FSwitch(
+            value: a.automatic,
+            label: const Text('自动领取'),
+            description: Text(
+              a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
             ),
-            if (_canClaim(a) || _pending(a))
-              FButton(
-                variant: FButtonVariant.outline,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: Text(
-                  _pending(a)
-                      ? '核验领取结果'
-                      : a.provider == 'zcode'
-                      ? '核对并领取活动'
-                      : '核对并领取',
-                ),
-                onPress: _busy || !_canClaim(a) ? null : () => _claim(a),
-              ),
-            if (_canActivate(a))
-              FButton(
-                variant: FButtonVariant.outline,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: const Text('切换客户端账号'),
-                onPress: _busy || !a.active ? null : () => _activate(a),
-              ),
-            FButton(
-              variant: FButtonVariant.ghost,
-              size: FButtonSizeVariant.sm,
-              mainAxisSize: MainAxisSize.min,
-              child: const Text('重新授权'),
-              onPress: _busy ? null : () => _authorize(a),
+            leadingLabel: true,
+            enabled: !(_busy || a.uid.isEmpty),
+            onChange: (value) => _run(
+              () => widget.accounts.setAutomatic(a.key, value),
+              accountKey: a.key,
             ),
-            if (a.provider == 'zcode' &&
-                a.uid.isNotEmpty &&
-                widget.accounts.providers[a.provider]?['reauthorize'] == true)
-              FButton(
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: const Text('重新绑定设备'),
-                onPress: _busy || !a.active ? null : () => _rebind(a),
-              ),
-            FButton(
-              variant: FButtonVariant.ghost,
-              size: FButtonSizeVariant.sm,
-              mainAxisSize: MainAxisSize.min,
-              child: const Text('移除账号'),
-              onPress: _busy ? null : () => _remove(a),
-            ),
-          ],
-        ),
-        FSwitch(
-          value: a.automatic,
-          label: const Text('自动领取'),
-          description: Text(
-            a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
           ),
-          leadingLabel: true,
-          enabled: !(_busy || a.uid.isEmpty),
-          onChange: (value) => _run(
-            () => widget.accounts.setAutomatic(a.key, value),
-            accountKey: a.key,
-          ),
-        ),
       ],
     );
   }
@@ -435,10 +527,14 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
               for (final a in rows)
                 AccountTableEntry(
                   id: a.key,
-                  label: a.label,
+                  label: a.label.isEmpty ? '身份未提供' : a.label,
                   identity: _identity(a),
                   balance: _balance(a),
                   status: _status(a),
+                  statusLabel: _statusLabel(a),
+                  automatic: _supportsRewards(a) ? a.automatic : null,
+                  hasRewards: _supportsRewards(a),
+                  expiryDetails: _expiryDetails(a),
                   details: _details(a),
                   observedAt: a.queriedAt,
                   receipt: _receipt(a),
@@ -563,6 +659,32 @@ String _status(PluginAccount a) {
           : '最近一次查询未完成。',
   };
   return '$reward$failure';
+}
+
+String _statusLabel(PluginAccount a) {
+  if (!a.active ||
+      a.error == 'authorization_required' ||
+      a.usage?['signIn'] == 'expired')
+    return '需要重新授权';
+  if (_pending(a)) return '领取结果待核验';
+  if (_usageFailure(a) != null) return '额度查询未完成';
+  return switch (_reward(a)['status']) {
+    'claimed' => '已确认领取',
+    'done' || 'observedClaimed' => '官方已确认权益',
+    'claimable' => '有可领取活动',
+    'captcha' || 'verificationRequired' => '需要官方验证',
+    'activationRequired' => '需要完成官方活动要求',
+    'authorization_required' => '需要重新授权',
+    'ineligible' => '不符合本次领取条件',
+    'noOffer' || 'inactive' => '暂无可领取活动',
+    'discoveryIncomplete' => '活动信息待核对',
+    _ =>
+      a.error != null
+          ? '最近查询未完成'
+          : a.automatic
+          ? '自动领取已开启'
+          : '已保存',
+  };
 }
 
 ClaimReceipt? _receipt(PluginAccount a) {
