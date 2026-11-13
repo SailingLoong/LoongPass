@@ -184,6 +184,241 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  Future<void> mountAccount(WidgetTester tester, PluginAccount account) async {
+    final accounts = _Accounts(_Runtime(), rows: [account]);
+    addTearDown(accounts.dispose);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: PluginAccountsPanel(
+              accounts: accounts,
+              rewards: _Rewards(accounts),
+              providerIds: {account.provider},
+              title: 'Synthetic',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  PluginAccount observed({
+    Map<String, dynamic>? usage,
+    Map<String, dynamic>? reward,
+    String? error,
+    DateTime? queriedAt,
+  }) => PluginAccount(
+    key: 'fixture#one',
+    active: true,
+    models: const [],
+    usage: usage,
+    error: error,
+    queriedAt: queriedAt,
+    facts: {
+      'provider': 'fixture',
+      'uid': 'synthetic',
+      'realm': 'cn',
+      'label': 'Synthetic account',
+      'registrationId': 'one',
+      if (reward != null) 'reward': reward,
+    },
+  );
+
+  testDesktopWidgets('native text-only balance reaches the list and details', (
+    tester,
+  ) async {
+    await mountAccount(
+      tester,
+      observed(
+        usage: {'balance': '12,224 credits', 'error': '', 'windows': []},
+      ),
+    );
+    expect(find.text('12,224 credits'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+    await tester.pumpAndSettle();
+    expect(find.text('余额：12,224 credits'), findsOneWidget);
+    expect(find.textContaining('尚无已核实余额'), findsNothing);
+  });
+
+  testDesktopWidgets(
+    'display-only native windows retain their official summary',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'balance': '',
+            'error': '',
+            'windows': [
+              {
+                'name': 'Requests',
+                'display': '42 / 100 requests',
+                'amount': null,
+                'limit': null,
+                'used': null,
+                'balance': null,
+                'unit': '',
+              },
+            ],
+          },
+        ),
+      );
+      expect(find.text('Requests：42 / 100 requests'), findsOneWidget);
+      expect(find.textContaining('数值未知'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'native informational windows show guidance instead of a zero share',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'balance': '',
+            'error': '',
+            'windows': [
+              {
+                'name': 'Start Plan',
+                'display': 'Complete official verification',
+                'amount': null,
+                'limit': null,
+                'used': 0,
+                'balance': null,
+                'aside': true,
+                'unit': '',
+              },
+            ],
+          },
+        ),
+      );
+      expect(
+        find.text('Start Plan：Complete official verification'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('使用率 0%'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'a failed quota query stays visible beside a confirmed reward',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {'error': 'Usage query unavailable', 'signIn': 'kept'},
+          error: 'usage_unavailable',
+          reward: {
+            'status': 'claimed',
+            'credit': 100,
+            'unit': 'credits',
+            'observedAt': DateTime.utc(
+              2026,
+              11,
+              13,
+              1,
+              20,
+            ).millisecondsSinceEpoch,
+          },
+        ),
+      );
+      expect(find.text('额度查询未完成'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('已确认领取。'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(FDialog),
+          matching: find.textContaining('核验于'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('时间未知'), findsNothing);
+      expect(find.textContaining('请核对授权、权益或网络'), findsOneWidget);
+      expect(find.text('尚无成功的额度查询。'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
+    'retained quota is labelled with its last successful read time',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'balance': '12224 credits',
+            'error': 'Usage query unavailable',
+            'windows': [],
+          },
+          error: 'usage_unavailable',
+          queriedAt: DateTime.utc(2026, 11, 12, 1, 20),
+        ),
+      );
+      expect(find.text('上次：12224 credits'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('上次成功查询于'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
+    'a pending claim does not mask expired usage authorization',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {'error': 'Usage query unavailable', 'signIn': 'expired'},
+          error: 'authorization_required',
+          reward: {'status': 'pending'},
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('不会重复发送领取请求'), findsOneWidget);
+      expect(find.textContaining('额度授权已失效'), findsOneWidget);
+      expect(find.text('核验领取结果'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
+    'fresh Start Plan quantities are independent of failed native usage',
+    (tester) async {
+      final base = observed();
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#one',
+          active: true,
+          models: const [],
+          error: 'usage_unavailable',
+          usage: {'error': 'Usage query unavailable'},
+          facts: {
+            ...base.facts,
+            'provider': 'zcode',
+            'reward': {
+              'status': 'noOffer',
+              'checkedAt': DateTime.now().millisecondsSinceEpoch,
+              'buckets': [
+                {
+                  'label': 'Gift tokens',
+                  'remaining': 12345678,
+                  'unit': 'tokens',
+                },
+              ],
+            },
+          },
+        ),
+      );
+      expect(
+        find.text('Start Plan · Gift tokens 12345678 tokens'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('上次：Start Plan'), findsNothing);
+    },
+  );
+
   for (final platform in [
     (
       app: ManagedApp.workbuddy,

@@ -246,9 +246,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         if (usage == null)
           const Text('尚无可核实的官方额度快照。')
         else ...[
-          if (usage['plan'] is String) Text('套餐：${usage['plan']}'),
-          if (usage['balance'] is num)
-            Text('余额：${_number(usage['balance'])} ${_unit(usage)}'),
+          if (_text(usage['plan']) case final plan?) Text('套餐：$plan'),
+          if (_usageBalance(usage) case final balance?) Text('余额：$balance'),
           if (_date(usage['until']) != null)
             Text('套餐到期：${creditTime(_date(usage['until'])!)}'),
           if (_windows(a).isNotEmpty) const Text('各额度窗口独立列出，可能重叠，不合计。'),
@@ -275,17 +274,23 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 ],
               ),
             ),
-          if (usage['error'] is String &&
-              (usage['error'] as String).trim().isNotEmpty)
-            const Text('最近一次官方额度查询未完成。'),
         ],
+        if (a.provider == 'zcode' && _usageFailure(a) != null)
+          const Text('若已开通 Coding Plan，请重新授权后核对套餐权益。'),
         Text(
-          a.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(a.queriedAt!)}',
+          a.queriedAt == null
+              ? '尚无成功的额度查询。'
+              : '${_usageFailure(a) == null ? '查询于' : '上次成功查询于'} ${creditTime(a.queriedAt!)}',
         ),
         if (a.provider == 'zcode') ...[
           const FDivider(),
           Text('Start Plan 活动额度', style: context.theme.typography.body.sm),
-          if (buckets.isEmpty) const Text('尚无已核实的活动额度明细。'),
+          if (buckets.isEmpty)
+            Text(
+              reward['checkedAt'] == null
+                  ? '尚无已核实的活动额度明细。'
+                  : '本次查询未返回有效的 Start Plan 活动额度。',
+            ),
           for (final bucket in buckets)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -443,6 +448,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                   needsAttention:
                       !a.active ||
                       a.error != null ||
+                      _usageFailure(a) != null ||
                       _pending(a) ||
                       {
                         'captcha',
@@ -480,6 +486,19 @@ String _number(Object? value) => value is num && value.isFinite
     : '未知';
 DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
+String? _text(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : null;
+String? _usageBalance(Map? usage) => usage?['balance'] is num
+    ? '${_number(usage!['balance'])} ${_unit(usage)}'
+    : _text(usage?['balance']);
+String? _usageFailure(PluginAccount a) {
+  if (a.error == 'authorization_required' || a.usage?['signIn'] == 'expired')
+    return '额度授权已失效，请重新授权后刷新。';
+  if (a.error == 'usage_unavailable' || _text(a.usage?['error']) != null)
+    return '最近一次额度查询未完成，请核对授权、权益或网络。';
+  return null;
+}
+
 DateTime? _millis(Object? value) =>
     value is int && value > 0 && value < 8640000000000000
     ? DateTime.fromMillisecondsSinceEpoch(value)
@@ -496,31 +515,49 @@ List<ZcodeBucket> _buckets(PluginAccount a) => [
 
 String _windowText(Map w) {
   final unit = _unit(w);
+  final name = _text(w['name']) ?? '额度窗口';
+  final display = _text(w['display']);
+  // Native informational rows may carry a zero share without a quantity.
+  if (w['aside'] == true &&
+      display != null &&
+      (w['used'] ?? 0) == 0 &&
+      (w['amount'] ?? 0) == 0 &&
+      (w['limit'] ?? 0) == 0 &&
+      w['balance'] == null)
+    return '$name：$display';
   final values = [
     if (w['balance'] is num) '余额 ${_number(w['balance'])} $unit',
     if (w['amount'] is num) '已用 ${_number(w['amount'])} $unit',
     if (w['limit'] is num) '上限 ${_number(w['limit'])} $unit',
     if (w['used'] is num) '使用率 ${_number(w['used'])}%',
   ];
-  return '${w['name'] is String ? w['name'] : '额度窗口'}：${values.isEmpty ? '数值未知' : values.join(' · ')}';
+  return '$name：${values.isEmpty ? display ?? '数值未知' : values.join(' · ')}';
 }
 
 String _balance(PluginAccount a) {
+  final summary = _usageBalance(a.usage);
+  final usage = [
+    if (summary != null)
+      summary
+    else
+      for (final w in _windows(a)) _windowText(w),
+  ];
   final parts = [
-    if (a.usage?['balance'] is num)
-      '${_number(a.usage!['balance'])} ${_unit(a.usage!)}',
-    for (final w in _windows(a)) _windowText(w),
+    if (usage.isNotEmpty)
+      '${_usageFailure(a) == null ? '' : '上次：'}${usage.join(' / ')}',
     if (a.provider == 'zcode')
       for (final b in _buckets(a))
         'Start Plan · ${b.label} ${_number(b.remaining)} ${b.unit}',
   ];
-  return parts.isEmpty ? '尚无已核实余额' : parts.join(' / ');
+  if (parts.isEmpty) return _usageFailure(a) == null ? '尚无已核实余额' : '额度查询未完成';
+  return parts.join(' / ');
 }
 
 String _status(PluginAccount a) {
-  if (_pending(a)) return '待核验：不会重复发送领取请求。';
+  final failure = _usageFailure(a) ?? '';
+  if (_pending(a)) return '待核验：不会重复发送领取请求。$failure';
   if (!a.active) return '需要重新授权。';
-  return switch (_reward(a)['status']) {
+  final reward = switch (_reward(a)['status']) {
     'claimed' => '已确认领取。',
     'done' || 'observedClaimed' => '官方确认已有权益。',
     'claimable' => '当前有可领取活动。',
@@ -530,8 +567,14 @@ String _status(PluginAccount a) {
     'ineligible' => '本次不符合官方领取条件。',
     'authorization_required' => '授权需要更新，请重新授权。',
     'discoveryIncomplete' => '活动信息暂不完整。',
-    _ => a.error == null ? '等待官方额度与领取检查。' : '最近一次查询未完成。',
+    _ =>
+      failure.isNotEmpty
+          ? ''
+          : a.error == null
+          ? '等待官方额度与领取检查。'
+          : '最近一次查询未完成。',
   };
+  return '$reward$failure';
 }
 
 ClaimReceipt? _receipt(PluginAccount a) {
@@ -545,6 +588,7 @@ ClaimReceipt? _receipt(PluginAccount a) {
         amount: r['credit'] is num ? r['credit'] : null,
         unit: _unit(r),
         confirmedAt: _millis(r['confirmedAt']),
+        observedAt: _millis(r['observedAt']),
         day: r['day'] is String ? r['day'] : null,
       );
   }
