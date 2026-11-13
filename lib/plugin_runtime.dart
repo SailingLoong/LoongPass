@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'plugin_environment.dart';
 import 'plugin_stream.dart';
 export 'plugin_stream.dart'
     show PluginFetch, PluginResponse, PluginRuntimeFailure;
@@ -75,7 +76,12 @@ class PluginRuntime {
       executable,
       [launcherPath, hostPath],
       workingDirectory: directory,
-      environment: {'DO_NOT_TRACK': '1', 'NO_COLOR': '1'},
+      environment: {
+        ...await pluginHostEnvironment(Platform.environment),
+        'DO_NOT_TRACK': '1',
+        'NO_COLOR': '1',
+      },
+      includeParentEnvironment: false,
     );
     final runtime = PluginRuntime._(process);
     try {

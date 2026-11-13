@@ -27,7 +27,6 @@ flutter:
     - assets/branding/loongpass.png
     - runtime/upstream.lock.json
     - runtime/launcher.mjs
-    - runtime/system-proxy.mjs
     - runtime/migrate.mjs
     - runtime/patches/
     - runtime/bridge/
