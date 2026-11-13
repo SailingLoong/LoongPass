@@ -2,6 +2,7 @@
   "schema": 1,
   "localFiles": [
     "launcher.mjs",
+    "system-proxy.mjs",
     "migrate.mjs",
     "bridge/package.json",
     "bridge/index.mjs",

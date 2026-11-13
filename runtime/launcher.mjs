@@ -3,6 +3,7 @@
 import { Database } from 'bun:sqlite';
 import { chmodSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { systemProxyEnvironment } from './system-proxy.mjs';
 
 process.umask(0o077);
 let lease;
@@ -15,4 +16,5 @@ try {
   process.exit(73);
 }
 process.on('exit', () => lease.close());
+Object.assign(process.env, systemProxyEnvironment());
 await import(pathToFileURL(process.argv[2]).href);
