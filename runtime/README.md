@@ -6,6 +6,15 @@ verifies the packaged files and installs an immutable tree; `launcher.mjs` owns
 the exclusive OS lease for native plugin-auth. Credentials are never written by
 the Dart UI, the model bridge, or a second supplier adapter.
 
+At startup, `system-proxy.mjs` supplies the OS manual HTTP/HTTPS proxy when
+the process has no explicit proxy environment. macOS reads `scutil --proxy`;
+Windows reads the current user's Internet Settings. Loopback and existing/system
+bypass entries remain direct. This follows Magpie's `internal/netproxy` startup
+contract (MIT, reference commit `5f01b9d052a1e2d28e36be9b1d000c3cb7018d3e`);
+the pinned host still owns request transport. A proxy change takes effect after
+restarting LoongPass. PAC evaluation and SOCKS-only system settings require an
+HTTP proxy endpoint; this bridge does not implement either mechanism.
+
 The external `bridge/` is a native Magpie plugin. Each local account grant exposes
 its original native model metadata and API model ID. Magpie's internal request
 context is captured before its host removes private headers, then carried through
