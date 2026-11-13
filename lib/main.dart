@@ -255,7 +255,7 @@ class AccountWorkspacePage extends StatelessWidget {
   final bool showTitle;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(20),
     children: [
       if (showTitle) Text(name, style: context.theme.typography.display.xl),
       if (showTitle) const SizedBox(height: 8),

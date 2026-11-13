@@ -34,14 +34,15 @@ class AccountPanelToolbar extends StatelessWidget {
       ],
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.only(bottom: 12),
       child: DefaultTextStyle.merge(
         style: context.theme.typography.body.xs.copyWith(
           color: colors.mutedForeground,
         ),
         child: LayoutBuilder(
           builder: (context, box) {
-            final wide = box.maxWidth >= 640;
+            final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            final wide = box.maxWidth >= 520 * scale;
             final controls = Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -56,9 +57,9 @@ class AccountPanelToolbar extends StatelessWidget {
                 ? Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Expanded(flex: 2, child: identity),
+                      Expanded(child: identity),
                       const SizedBox(width: 16),
-                      Expanded(flex: 3, child: controls),
+                      Flexible(flex: 2, child: controls),
                     ],
                   )
                 : Column(

@@ -147,14 +147,13 @@ class WorkspacePage extends StatelessWidget {
   final List<Widget> children;
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(20),
     children: [
       Text(title, style: context.theme.typography.display.xl),
       const SizedBox(height: 6),
       Text(
         subtitle,
-        style: context.theme.typography.body.md.copyWith(
-          fontSize: 12,
+        style: context.theme.typography.body.xs.copyWith(
           color: context.theme.colors.mutedForeground,
         ),
       ),
@@ -171,7 +170,7 @@ class WorkspaceCard extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 16),
     child: FCard(
-      child: Padding(padding: const EdgeInsets.all(18), child: child),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
     ),
   );
 }

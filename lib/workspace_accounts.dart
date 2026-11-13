@@ -5,6 +5,7 @@ import 'account_workspace_registry.dart';
 import 'compact_accounts_table.dart';
 import 'managed_app.dart';
 import 'workspace_tools.dart';
+import 'account_details.dart';
 
 class WorkspaceAccountsPage extends StatelessWidget {
   const WorkspaceAccountsPage({super.key, required this.registry});
@@ -14,7 +15,7 @@ class WorkspaceAccountsPage extends StatelessWidget {
     listenable: registry,
     builder: (context, _) => WorkspacePage(
       title: '账号与积分',
-      subtitle: '已载入的各平台账号；不同平台与地区的余额分别列示。',
+      subtitle: '按平台查找账号，余额与到期信息分别展示。',
       children: [CompactAccountsTable(entries: registry.entries)],
     ),
   );
@@ -52,41 +53,18 @@ class WorkspaceOverviewPage extends StatelessWidget {
       final attention = accounts.where((a) => a.entry.needsAttention).toList();
       return WorkspacePage(
         title: '总览',
-        subtitle: '优先关注即将到期的积分和需要处理的账号。',
+        subtitle: '先处理需要关注的账号，再查看近期到期额度。',
         children: [
           Wrap(
-            spacing: 12,
-            runSpacing: 12,
+            spacing: 20,
+            runSpacing: 8,
             children: [
-              _SummaryValue('已载入账号', accounts.length),
-              _SummaryValue('7 天内到期', expiring.length),
-              _SummaryValue('待处理', attention.length),
+              Text('${accounts.length} 个已保存账号'),
+              Text('${attention.length} 个待处理'),
+              Text('${expiring.length} 个近期到期'),
             ],
           ),
           const SizedBox(height: 20),
-          WorkspaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '最近到期',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                if (expiring.isEmpty)
-                  const Text('已载入的记录中暂无 7 天内到期信息。缺失明细的账号不代表永久有效。'),
-                for (final account in expiring.take(5))
-                  FItem(
-                    title: Text(
-                      '${account.app.label} · ${account.entry.label}',
-                    ),
-                    subtitle: Text(account.entry.upcomingExpiryText),
-                    suffix: const Icon(FLucideIcons.chevronRight, size: 18),
-                    onPress: () => onOpenApp(account.app),
-                  ),
-              ],
-            ),
-          ),
           if (attention.isNotEmpty)
             WorkspaceCard(
               child: Column(
@@ -103,7 +81,8 @@ class WorkspaceOverviewPage extends StatelessWidget {
                       ),
                       subtitle: Text(account.entry.status),
                       suffix: const Icon(FLucideIcons.chevronRight, size: 18),
-                      onPress: () => onOpenApp(account.app),
+                      onPress: () =>
+                          _openAccount(context, registry, account.entry.id),
                     ),
                 ],
               ),
@@ -113,47 +92,51 @@ class WorkspaceOverviewPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '我的应用',
+                  '最近到期',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final app in ManagedApp.values)
-                      FButton(
-                        variant: FButtonVariant.outline,
-                        size: FButtonSizeVariant.sm,
-                        mainAxisSize: MainAxisSize.min,
-                        child: Text(
-                          '${app.label} · ${registry.entriesFor(app).length} 个已载入',
-                        ),
-                        onPress: () => onOpenApp(app),
-                      ),
-                  ],
-                ),
+                if (expiring.isEmpty)
+                  const Text('暂无已知的 7 天内到期额度。未提供到期明细的账号仍需单独核对。'),
+                for (final account in expiring.take(5))
+                  FItem(
+                    title: Text(
+                      '${account.app.label} · ${account.entry.label}',
+                    ),
+                    subtitle: Text(account.entry.upcomingExpiryText),
+                    suffix: const Icon(FLucideIcons.chevronRight, size: 18),
+                    onPress: () => _openAccount(
+                      context,
+                      registry,
+                      account.entry.id,
+                      expiry: true,
+                    ),
+                  ),
               ],
             ),
           ),
-          WorkspaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '模型服务',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                const Text('在模型服务中查看本机连接设置和可用来源。'),
-                FButton(
-                  variant: FButtonVariant.ghost,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  child: const Text('查看模型服务'),
-                  onPress: onOpenModels,
-                ),
-              ],
+          if (accounts.isEmpty)
+            WorkspaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('从第一个账号开始', style: context.theme.typography.display.lg),
+                  const SizedBox(height: 8),
+                  const Text('选择平台，在官方窗口完成授权。账号与可用额度会显示在这里。'),
+                  const SizedBox(height: 12),
+                  FButton(
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => onOpenApp(ManagedApp.workbuddy),
+                    child: const Text('添加账号'),
+                  ),
+                ],
+              ),
+            ),
+          Text(
+            '自动领取仅在 LoongPass 运行期间执行；各账号的开关与最近结果可在详情中查看。',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
             ),
           ),
         ],
@@ -197,7 +180,7 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
               : y.compareTo(x);
         });
       return WorkspacePage(
-        title: '活动记录',
+        title: '最近领取',
         subtitle: '展示各账号最近一次已确认领取，以及当前待处理状态；不是完整历史流水。',
         children: [
           Wrap(
@@ -251,7 +234,11 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
                             FLucideIcons.chevronRight,
                             size: 18,
                           ),
-                          onPress: () => widget.onOpenApp(account.app),
+                          onPress: () => _openAccount(
+                            context,
+                            widget.registry,
+                            account.entry.id,
+                          ),
                         ),
                     ],
                   ),
@@ -262,32 +249,14 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
   );
 }
 
-class _SummaryValue extends StatelessWidget {
-  const _SummaryValue(this.label, this.value);
-  final String label;
-  final int value;
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 155,
-    child: WorkspaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: context.theme.typography.body.sm.copyWith(
-              color: context.theme.colors.mutedForeground,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$value',
-            style: context.theme.typography.display.xl2.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+void _openAccount(
+  BuildContext context,
+  AccountWorkspaceRegistry registry,
+  String id, {
+  bool expiry = false,
+}) => showAccountDetails(
+  context,
+  listenable: registry,
+  read: () => registry.entries.where((e) => e.id == id).firstOrNull,
+  expiry: expiry,
+);
