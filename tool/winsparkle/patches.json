@@ -1,0 +1,78 @@
+{
+  "include/winsparkle.h": [
+    "f1d7f33d0ebd88b83414c1f4901632d485ab776a859bf5f5dc74d809acb08976",
+    [
+      [
+        "WIN_SPARKLE_API void __cdecl win_sparkle_check_update_without_ui();",
+        "@INLINE_API_DECLARATIONS@WIN_SPARKLE_API void __cdecl win_sparkle_check_update_without_ui();"
+      ]
+    ]
+  ],
+  "src/dll_api.cpp": [
+    "e06b4a56d5058b751b05328a52dabed6d86db6f53ab42d8d1d04cda37f7f1ac5",
+    [
+      [
+        "#include \"ui.h\"",
+        "#include \"ui.h\"\n#include \"inline_ui.h\""
+      ],
+      [
+        "WIN_SPARKLE_API void __cdecl win_sparkle_set_user_run_installer_callback",
+        "@INLINE_API_IMPLEMENTATION@WIN_SPARKLE_API void __cdecl win_sparkle_set_user_run_installer_callback"
+      ]
+    ]
+  ],
+  "src/ui.cpp": [
+    "149bd96ef412bb73268303b482769deb47a94846e1eb4038573079878ad8bca3",
+    [
+      [
+        "#include \"appcontroller.h\"",
+        "#include \"appcontroller.h\"\n#include \"signatureverifier.h\"\n#include \"inline_ui.h\"\n#include <mutex>"
+      ],
+      [
+        "namespace winsparkle\n{",
+        "namespace winsparkle\n{\n#include \"inline_ui.cpp.inc\""
+      ],
+      [
+        "void UI::ShutDown()\n{",
+        "void UI::ShutDown()\n{\n    InlineShutdown();"
+      ],
+      [
+        "void UI::NotifyNoUpdates(bool installAutomatically)\n{",
+        "void UI::NotifyNoUpdates(bool installAutomatically)\n{\n    if (InlineNoUpdates()) return;"
+      ],
+      [
+        "void UI::NotifyUpdateAvailable(const Appcast& info, bool installAutomatically)\n{",
+        "void UI::NotifyUpdateAvailable(const Appcast& info, bool installAutomatically)\n{\n    if (InlineAvailable(info)) return;"
+      ],
+      [
+        "void UI::NotifyDownloadProgress(size_t downloaded, size_t total)\n{",
+        "void UI::NotifyDownloadProgress(size_t downloaded, size_t total)\n{\n    if (InlineProgress(downloaded, total)) return;"
+      ],
+      [
+        "void UI::NotifyUpdateDownloaded(const std::wstring& updateFile, const Appcast &appcast)\n{",
+        "void UI::NotifyUpdateDownloaded(const std::wstring& updateFile, const Appcast &appcast)\n{\n    if (InlineDownloaded(updateFile, appcast)) return;"
+      ],
+      [
+        "void UI::NotifyUpdateError(ErrorCode err)\n{",
+        "void UI::NotifyUpdateError(ErrorCode err)\n{\n    if (InlineError(err)) return;"
+      ],
+      [
+        "bool UpdateDialog::RunInstaller()\n{\n    switch (ApplicationController::UserRunInstallerCallback(m_updateFile.t_str()))\n    {\n        case 0:\n            // carry on with default handling\n            break;\n        case 1:\n            // user callback handled installation\n            return true;\n        case WINSPARKLE_RETURN_ERROR:\n        default:\n            // some error occured (either runtime or unexpected return value)\n            return false;\n    }\n\n    std::wstring wArgs;\n\n    SHELLEXECUTEINFO sei;\n    ::ZeroMemory(&sei, sizeof(SHELLEXECUTEINFO));\n    sei.cbSize = sizeof(SHELLEXECUTEINFO);\n    sei.lpFile = m_updateFile.t_str();\n    sei.nShow = SW_SHOWDEFAULT;\n    sei.fMask = SEE_MASK_FLAG_NO_UI;\t// We display our own dialog box on error\n\n    if (! m_installerArguments.empty())\n    {\n        wArgs = AnsiToWide(m_installerArguments);\n        sei.lpParameters = wArgs.c_str();\n    }\n\n    return ::ShellExecuteEx(&sei) ? true : false;\n}\n",
+        "bool UpdateDialog::RunInstaller()\n{\n    return RunUpdateInstaller(std::wstring(m_updateFile.t_str()), m_installerArguments);\n}\n"
+      ]
+    ]
+  ],
+  "src/updatedownloader.cpp": [
+    "6ac69ea748df2a1e036557c8b4d6a0f3daf608fb33f3bf181fb08b5661c1f1a6",
+    [
+      [
+        "#include \"ui.h\"",
+        "#include \"ui.h\"\n#include \"inline_ui.h\""
+      ],
+      [
+        "      sink.Close();",
+        "      sink.Close();\n      InlinePreparing();"
+      ]
+    ]
+  ]
+}

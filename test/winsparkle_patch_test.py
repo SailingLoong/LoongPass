@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 PATCH = Path(__file__).resolve().parents[1] / "tool/patch_winsparkle.py"
-FILES = ("src/updatechecker.h", "src/dll_api.cpp", "include/winsparkle.h")
+FILES = ("src/ui.cpp", "src/dll_api.cpp", "include/winsparkle.h", "src/updatedownloader.cpp")
 SOURCE = None
 
 
@@ -31,7 +31,8 @@ class PatchChecks(unittest.TestCase):
                               capture_output=True, text=True)
 
     def snapshot(self):
-        return {name: (self.root / name).read_bytes() for name in FILES}
+        return {str(path.relative_to(self.root)): path.read_bytes()
+                for path in self.root.rglob("*") if path.is_file()}
 
     def test_applies_once_and_repeated_execution_preserves_bytes(self):
         original = self.snapshot()
@@ -39,16 +40,12 @@ class PatchChecks(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         patched = self.snapshot()
         self.assertTrue(all(patched[name] != original[name] for name in FILES))
-        checker = patched["src/updatechecker.h"].decode()
-        added = checker.split("class AutomaticInstallUpdateChecker", 1)[1].split("};", 1)[0]
-        self.assertIn(": public OneShotUpdateChecker", added)
-        self.assertIn("ShouldAutomaticallyInstall() const override { return true; }", added)
-        self.assertNotIn("ShouldSkipUpdate", added)
-        api = patched["src/dll_api.cpp"].decode().split(
-            "void __cdecl win_sparkle_check_update_without_ui_and_install()", 1)[1].split("CATCH_ALL_EXCEPTIONS", 1)[0]
-        self.assertIn("new AutomaticInstallUpdateChecker()", api)
-        self.assertIn("check->Start();", api)
-        self.assertNotIn("ShowCheckingUpdates", api)
+        api = patched["src/dll_api.cpp"].decode()
+        self.assertIn("win_sparkle_check_update_inline", api)
+        self.assertIn("InlineCheck(manual != 0)", api)
+        self.assertNotIn("AutomaticInstallUpdateChecker", api)
+        self.assertIn("if (InlineAvailable(info)) return;", patched["src/ui.cpp"].decode())
+        self.assertTrue((self.root / "src/inline_ui.cpp.inc").is_file())
         result = self.run_patch()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.snapshot(), patched)
@@ -65,6 +62,14 @@ class PatchChecks(unittest.TestCase):
         result = self.run_patch()
         self.assertEqual(result.returncode, 0, result.stderr)
         (self.root / FILES[-1]).write_bytes(original[FILES[-1]])
+        before = self.snapshot()
+        self.assertNotEqual(self.run_patch().returncode, 0)
+        self.assertEqual(self.snapshot(), before)
+
+    def test_changed_bridge_addition_is_rejected_without_touching_sources(self):
+        self.assertEqual(self.run_patch().returncode, 0)
+        path = self.root / "src/inline_ui.cpp.inc"
+        path.write_bytes(path.read_bytes() + b"\n// unexpected drift\n")
         before = self.snapshot()
         self.assertNotEqual(self.run_patch().returncode, 0)
         self.assertEqual(self.snapshot(), before)

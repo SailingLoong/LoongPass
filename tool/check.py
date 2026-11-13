@@ -21,6 +21,7 @@ for entitlement in (root / "macos/Runner").glob("*.entitlements"):
     assert not plistlib.loads(entitlement.read_bytes()).get("com.apple.security.app-sandbox"), entitlement
 
 verify_plugin_sources(root)
+run([sys.executable, "tool/update_contract.py", "--check"])
 run([sys.executable, 'test/plugin_sources_test.py'])
 if not os.environ.get('LOONGPASS_BUN'):
     cache = (Path(os.environ['LOCALAPPDATA']) / 'LoongPass/RuntimeTests'
@@ -40,6 +41,12 @@ for check in sorted((root / "test").glob("*checks.py")):
 
 if sys.platform == "darwin":
     with tempfile.TemporaryDirectory(prefix="loongpass-native-checks-") as scratch:
+        sparkle = os.environ.get('SPARKLE_FRAMEWORK_ROOT', str(root / 'build/macos/SourcePackages/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64'))
+        update_driver = str(Path(scratch) / 'update-driver-checks')
+        run(['xcrun', 'swiftc', '-F', sparkle, '-framework', 'Sparkle', '-Xlinker', '-rpath', '-Xlinker', sparkle,
+             'macos/Runner/UpdateContract.swift', 'macos/Runner/AppUpdateUserDriver.swift',
+             'tool/app_update_driver_checks.swift', '-o', update_driver])
+        run([update_driver])
         zcode_context = str(Path(scratch) / "zcode-context-checks")
         run(["xcrun", "swiftc", "macos/Runner/ZcodeRequestContext.swift", "tool/zcode_request_context_checks.swift", "-o", zcode_context])
         run([zcode_context])

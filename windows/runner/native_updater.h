@@ -1,5 +1,4 @@
 #pragma once
-
 #include "native_support.h"
 #include <flutter/binary_messenger.h>
 #include <flutter/method_channel.h>
@@ -17,11 +16,12 @@ class NativeUpdater {
   Json State() const;
   void Publish();
   void Check(bool automatic);
+  bool OwnsCandidate() const;
   HWND window_;
-  bool automatic_ = false;
-  bool beta_ = false;
-  enum class Phase { idle, checking, available };
-  Phase phase_ = Phase::idle;
+  bool automatic_ = false, beta_ = false;
+  std::string phase_, offered_version_, error_;
+  Json progress_ = nullptr;
+  int64_t revision_ = 0;
   std::time_t next_check_ = 0;
   std::unique_ptr<flutter::MethodChannel<Value>> channel_;
 };

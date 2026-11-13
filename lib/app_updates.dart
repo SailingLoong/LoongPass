@@ -1,33 +1,55 @@
-import 'package:flutter/widgets.dart';
-import 'package:forui/forui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Read-only projection of Sparkle's state. Native Sparkle owns scheduling,
-/// preferences, verification and installation; rendering never checks a feed.
+import 'update_contract.dart';
+export 'app_update_view.dart' show AppUpdateCard, AppUpdateBadge;
+export 'update_contract.dart' show UpdatePhase;
+
+/// A one-way projection. Native engines own scheduling, downloads and install.
 class AppUpdates extends ChangeNotifier {
-  static const _channel = MethodChannel('com.sailingloong.loongpass/updates');
-  String? version, error;
+  static const _channel = MethodChannel(UpdateContract.channel);
+  String? version, offeredVersion, error;
+  UpdatePhase phase = UpdatePhase.idle;
+  double? progress;
   bool automaticUpdates = false, receiveBetaUpdates = false;
   bool canCheck = false, canChangeChannel = false, installOnQuit = true;
+  bool _canInstall = false, _canSkip = false;
   bool _disposed = false, _busy = false;
+  int _revision = -1;
   bool get available => version != null && !_busy;
+  bool get canInstall => available && _canInstall && phase == UpdatePhase.ready;
+  bool get canSkip => available && _canSkip;
 
   Future<void> load() async {
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'stateChanged') _apply(call.arguments);
+      if (call.method == UpdateContract.stateChanged) _apply(call.arguments);
     });
-    await _invoke('state');
+    await _invoke(UpdateContract.state);
   }
 
   void _apply(dynamic value) {
     if (_disposed || value is! Map) return;
-    version = value['version'] as String?;
-    automaticUpdates = value['automaticUpdates'] == true;
-    receiveBetaUpdates = value['receiveBetaUpdates'] == true;
-    canCheck = value['canCheck'] == true;
-    installOnQuit = value['installOnQuit'] != false;
-    canChangeChannel = value['canChangeChannel'] == true;
-    error = null;
+    final revision = value[UpdateContract.revision] as int? ?? 0;
+    if (revision < _revision) return;
+    _revision = revision;
+    version = value[UpdateContract.version] as String?;
+    offeredVersion = value[UpdateContract.offeredVersion] as String?;
+    phase = UpdatePhase.values.firstWhere(
+      (phase) => phase.name == value[UpdateContract.phase],
+      orElse: () => UpdatePhase.idle,
+    );
+    final fraction = value[UpdateContract.progress] as num?;
+    progress = fraction != null && fraction.isFinite
+        ? fraction.toDouble().clamp(0, 1)
+        : null;
+    automaticUpdates = value[UpdateContract.automaticUpdates] == true;
+    receiveBetaUpdates = value[UpdateContract.receiveBetaUpdates] == true;
+    canCheck = value[UpdateContract.canCheck] == true;
+    installOnQuit = value[UpdateContract.installOnQuit] != false;
+    canChangeChannel = value[UpdateContract.canChangeChannel] == true;
+    _canInstall = value[UpdateContract.canInstall] == true;
+    _canSkip = value[UpdateContract.canSkip] == true;
+    error = value[UpdateContract.error] as String?;
     notifyListeners();
   }
 
@@ -45,66 +67,21 @@ class AppUpdates extends ChangeNotifier {
     }
   }
 
-  Future<void> check() => _invoke('check');
+  Future<void> check() =>
+      canCheck ? _invoke(UpdateContract.check) : Future.value();
+  Future<void> install() =>
+      canInstall ? _invoke(UpdateContract.install) : Future.value();
+  Future<void> skip() =>
+      canSkip ? _invoke(UpdateContract.skip) : Future.value();
   Future<void> setAutomaticUpdates(bool value) =>
-      _invoke('setAutomaticUpdates', value);
+      _invoke(UpdateContract.setAutomaticUpdates, value);
   Future<void> setReceiveBetaUpdates(bool value) =>
-      _invoke('setReceiveBetaUpdates', value);
+      _invoke(UpdateContract.setReceiveBetaUpdates, value);
+
   @override
   void dispose() {
     _disposed = true;
     _channel.setMethodCallHandler(null);
     super.dispose();
   }
-}
-
-class AppUpdateCard extends StatelessWidget {
-  const AppUpdateCard({super.key, required this.updates});
-  final AppUpdates updates;
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: updates,
-    builder: (context, _) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('应用更新', style: TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        Text(updates.version == null ? '正在读取版本信息' : '当前版本 ${updates.version}'),
-        const Text('更新会保留本机账号和设置。'),
-        FSwitch(
-          value: updates.automaticUpdates,
-          label: const Text('辅助检查并下载更新'),
-          description: Text(
-            updates.installOnQuit
-                ? '按计划检查并下载，校验通过后在退出时安装，也可以主动安装并重启。'
-                : '按计划检查、下载并校验更新后打开安装程序。',
-          ),
-          leadingLabel: true,
-          enabled: updates.available,
-          onChange: updates.setAutomaticUpdates,
-        ),
-        FSwitch(
-          value: updates.receiveBetaUpdates,
-          label: const Text('接收 Beta 版更新'),
-          description: Text(
-            updates.available && !updates.canChangeChannel
-                ? '更新进行中或已下载，安装或跳过后可切换渠道。'
-                : '提前体验新功能，稳定性可能不如正式版。关闭后仅接收正式版。',
-          ),
-          leadingLabel: true,
-          enabled: updates.available && updates.canChangeChannel,
-          onChange: updates.setReceiveBetaUpdates,
-        ),
-        if (updates.error != null) Text(updates.error!),
-        FButton(
-          variant: FButtonVariant.outline,
-          size: FButtonSizeVariant.sm,
-          mainAxisSize: MainAxisSize.min,
-          onPress: updates.available && updates.canCheck ? updates.check : null,
-          prefix: const Icon(FLucideIcons.download, size: 17),
-          child: const Text('检查更新'),
-        ),
-      ],
-    ),
-  );
 }
