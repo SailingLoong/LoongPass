@@ -39,7 +39,15 @@ tampered prepared files, skip-policy/manual override and no-update outcomes. The
 installer callback records the action and never runs an installer. Mac universal
 and Windows package builds, publication verification and their exact results are
 recorded with the delivered Beta artifacts; adding these tests is not itself a
-claim that CI or a user's installed-client upgrade has passed.
+claim that a user's installed-client upgrade has passed.
+
+[Review CI 43366562743](https://github.com/SailingLoong/LoongPass/actions/runs/43366562743)
+passed for implementation commit `8d68f256d5acc5a48a2ff210383d99c563c6184b`:
+macOS source/native-adapter checks, Windows x64 build/packaging and all five
+actual-DLL scenarios above. The complete local suite also passed; the final
+theme/navigation test brings the Flutter total to 256. A later documentation-only
+commit updates these results and the build/update instructions. Universal macOS
+packaging and public release verification run separately from this PR evidence.
 
 Real-client upgrades, Windows and Intel physical devices, OS authorization and
 production account preservation remain separate acceptance layers. No current

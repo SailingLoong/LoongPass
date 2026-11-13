@@ -76,10 +76,10 @@ Codex 使用已安装官方客户端的登录流程，支持现有文件凭据�
 
 设置提供两个独立开关。
 
-- **辅助检查并下载更新**。默认关闭。macOS 验证后可在退出时安装，也可主动安装并重启。Windows 验证后打开安装程序。
+- **自动检查并预下载更新**。新安装默认开启，已有关闭设置继续保留。检查、下载和准备状态直接显示在页面与侧栏，准备好后点击「重启并更新」即可安装。macOS 也会在退出时安装已准备好的更新。
 - **接收 Beta 版更新**。默认关闭。关闭时只接收正式版，开启时也接收测试版。手动检查遵循同一渠道选择。
 
-更新按构建号比较版本，并保留本机账号与设置。beta 29 及后续 macOS 版本可通过应用内更新升级。
+常规检查和下载不另开更新窗口；安装需要系统授权时仍由操作系统提示。更新按构建号比较版本，并保留本机账号与设置。beta 29 及后续 macOS 版本可通过应用内更新升级。
 
 ## 数据与隐私
 
@@ -115,6 +115,7 @@ ZCode 的 `-Trial` 模型仅使用 Start Plan 赠送权益；普通模型沿用�
 
 ```bash
 flutter pub get --enforce-lockfile
+xcodebuild -resolvePackageDependencies -project macos/Runner.xcodeproj -scheme Runner -clonedSourcePackagesDirPath build/macos/SourcePackages
 python3 tool/check.py
 python3 tool/build_macos_release.py
 ```
@@ -133,7 +134,7 @@ flutter build windows --release
 
 安装程序打包使用 Inno Setup 6。正式发布由 GitHub Actions 构建两个平台，检查通过后生成签名更新清单并发布 Release。
 
-WinSparkle SDK 从固定上游提交构建，附带最小的后台下载入口扩展，沿用上游的跳过版本与签名校验。构建输入和 SDK 文件均核对哈希，缓存只保留最终 SDK，编译中间目录完成后清理。
+WinSparkle SDK 从固定上游提交构建，通过自定义界面桥接复用其检查、下载、签名校验、跳过版本与安装流程。构建输入和 SDK 文件均核对哈希，缓存只保留最终 SDK，编译中间目录完成后清理。macOS 的原生接口检查也可通过 `SPARKLE_FRAMEWORK_ROOT` 复用已校验的同版本 SDK，路径指向 `Sparkle.framework` 所在目录。
 
 ## 开源与致谢
 
