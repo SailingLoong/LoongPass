@@ -64,7 +64,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
       icon = ReorderableDelayedDragStartListener(
         key: ValueKey('drag-${app.name}'),
         index: widget.index,
-        child: icon,
+        child: MouseRegion(cursor: SystemMouseCursors.grab, child: icon),
       );
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
@@ -106,11 +106,10 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                         child: ReorderableDragStartListener(
                           key: ValueKey('drag-${app.name}'),
                           index: widget.index,
-                          child: FTooltip(
-                            tipBuilder: (context, controller) =>
-                                Text('拖动排序 · Option + ↑ / ↓'),
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.grab,
                             child: Semantics(
-                              tooltip: '拖动排序 · Option + ↑ / ↓',
+                              label: '拖动排序 · Option + ↑ / ↓',
                               child: Icon(FLucideIcons.gripVertical, size: 16),
                             ),
                           ),
@@ -143,37 +142,40 @@ class SidebarNavigationButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final variant = selected ? FButtonVariant.secondary : FButtonVariant.ghost;
-    return FTooltip(
-      tipBuilder: (context, controller) => Text(label),
-      child: Semantics(
-        tooltip: label,
-        child: compact
-            ? FButton.icon(
-                variant: variant,
-                size: FButtonSizeVariant.sm,
-                selected: selected,
-                semanticsLabel: label,
-                onPress: onPressed,
-                child: icon,
-              )
-            : FButton(
-                variant: variant,
-                size: FButtonSizeVariant.sm,
-                selected: selected,
-                onPress: onPressed,
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.start,
-                prefix: icon,
-                suffix: trailing,
-                child: Expanded(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    final button = Semantics(
+      tooltip: label,
+      child: compact
+          ? FButton.icon(
+              variant: variant,
+              size: FButtonSizeVariant.sm,
+              selected: selected,
+              semanticsLabel: label,
+              onPress: onPressed,
+              child: icon,
+            )
+          : FButton(
+              variant: variant,
+              size: FButtonSizeVariant.sm,
+              selected: selected,
+              onPress: onPressed,
+              mainAxisSize: MainAxisSize.max,
+              mainAxisAlignment: MainAxisAlignment.start,
+              prefix: icon,
+              suffix: trailing,
+              child: Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-      ),
+            ),
     );
+    return compact
+        ? FTooltip(
+            tipBuilder: (context, controller) => Text(label),
+            child: button,
+          )
+        : button;
   }
 }

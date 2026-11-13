@@ -189,14 +189,19 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           itemCount: _preferences.appOrder.length,
                           onReorderItem: _preferences.reorder,
                           proxyDecorator: (child, index, animation) =>
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  color: colors.muted,
-                                  borderRadius:
-                                      context.theme.style.borderRadius.xs,
-                                  boxShadow: context.theme.style.shadow,
+                              MouseRegion(
+                                cursor: SystemMouseCursors.grabbing,
+                                child: IgnorePointer(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: colors.muted,
+                                      borderRadius:
+                                          context.theme.style.borderRadius.xs,
+                                      boxShadow: context.theme.style.shadow,
+                                    ),
+                                    child: child,
+                                  ),
                                 ),
-                                child: child,
                               ),
                           itemBuilder: (context, index) {
                             final app = _preferences.appOrder[index];

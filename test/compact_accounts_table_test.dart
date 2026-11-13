@@ -9,9 +9,69 @@ import 'package:flutter/services.dart';
 
 import '../lib/compact_accounts_table.dart';
 import '../lib/credit_summary.dart';
+import '../lib/claim_receipt.dart';
 import '../lib/ui_preferences.dart';
 
 void main() {
+  testDesktopWidgets(
+    'five account facts fit a desktop content pane without horizontal scrolling',
+    (tester) async {
+      tester.view.physicalSize = const Size(560, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final expiry = DateTime.now().add(const Duration(days: 2));
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CompactAccountsTable(
+                entries: [
+                  AccountTableEntry(
+                    id: 'one',
+                    label: 'Synthetic account',
+                    identity: 'account@example.test',
+                    balance: '3899.96 credits',
+                    status: '已保存',
+                    details: const Text('明细'),
+                    credits: CreditSummary(3899.96, 3800, DateTime.now(), [
+                      CreditExpiry(expiry, 99.96),
+                    ]),
+                    receipt: ClaimReceipt(
+                      amount: 100,
+                      confirmedAt: DateTime(2026, 11, 13, 9, 30),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final labels = ['账号', '即将到期积分', '到期时间', '最近领取时间', '余额'];
+      var previous = -1.0;
+      for (final label in labels) {
+        expect(find.text(label), findsOneWidget);
+        final bounds = tester.getRect(find.text(label));
+        expect(bounds.left, greaterThan(previous));
+        expect(bounds.right, lessThanOrEqualTo(560));
+        previous = bounds.left;
+      }
+      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
+      expect(find.text('09:30').hitTestable(), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is SingleChildScrollView &&
+              w.scrollDirection == Axis.horizontal,
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   Future<void> expiryRows(WidgetTester tester, Brightness brightness) async {
     final now = DateTime.now();
     await tester.pumpWidget(
@@ -44,10 +104,7 @@ void main() {
     'balance and expiry cells retain visible hover and keyboard focus',
     (tester) async {
       await expiryRows(tester, Brightness.light);
-      final balance = find.ancestor(
-        of: find.text('1000 积分').first,
-        matching: find.byType(FButton),
-      );
+      final balance = find.byKey(const Key('balance-near'));
       expect(balance, findsOneWidget);
       expect(
         tester.widget(find.byKey(const Key('expiry-near'))),
@@ -324,7 +381,7 @@ void main() {
   );
 
   testDesktopWidgets(
-    'narrow windows scroll the table and page-size changes reset to the first page',
+    'narrow windows stack all fields and page-size changes reset to the first page',
     (tester) async {
       await mount(tester);
       await tester.tap(findTooltip('下一页'));
@@ -342,9 +399,9 @@ void main() {
         (w) =>
             w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
       );
-      await tester.drag(horizontal, const Offset(-600, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('最近领取').hitTestable(), findsOneWidget);
+      expect(horizontal, findsNothing);
+      expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
+      expect(find.text('余额').first.hitTestable(), findsOneWidget);
     },
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
