@@ -81,6 +81,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
             WorkspaceSection.settings: WorkspaceSettingsPage(
               preferences: _preferences,
+              onOpenApp: selectApp,
             ),
             ...widget.sections,
           };
@@ -106,8 +107,8 @@ class AppWorkspaceState extends State<AppWorkspace> {
                   child: Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 8 : 10,
                           vertical: 14,
                         ),
                         child: Row(

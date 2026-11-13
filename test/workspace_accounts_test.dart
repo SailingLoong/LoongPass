@@ -29,11 +29,7 @@ void main() {
       await tester.pumpWidget(
         DesktopTestApp(
           home: Scaffold(
-            body: WorkspaceOverviewPage(
-              registry: registry,
-              onOpenApp: (_) {},
-              onOpenModels: () {},
-            ),
+            body: WorkspaceOverviewPage(registry: registry, onOpenApp: (_) {}),
           ),
         ),
       );
@@ -126,9 +122,7 @@ void main() {
       ]);
       await tester.pumpWidget(
         DesktopTestApp(
-          home: Scaffold(
-            body: WorkspaceActivityPage(registry: registry, onOpenApp: (_) {}),
-          ),
+          home: Scaffold(body: WorkspaceActivityPage(registry: registry)),
         ),
       );
       expect(find.textContaining('Confirmed'), findsOneWidget);

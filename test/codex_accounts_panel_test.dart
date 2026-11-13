@@ -126,9 +126,25 @@ void main() {
             .every((a) => a.credits == null && a.receipt == null),
         isTrue,
       );
-      await details(tester, 'official-a');
-      expect(find.textContaining('workspace-a'), findsOneWidget);
+      expect(find.text('7 天内到期'), findsNothing);
+      expect(find.text('余额'), findsNothing);
       expect(find.textContaining('plus'), findsOneWidget);
+      await details(tester, 'official-a');
+      expect(
+        find.descendant(
+          of: find.byType(FDialog),
+          matching: find.textContaining('workspace-a'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(FDialog),
+          matching: find.textContaining('plus'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('最近一次成功领取'), findsNothing);
       expect(find.textContaining('切换成功'), findsNothing);
       expect(calls, ['codexAccountsStatus']);
     },

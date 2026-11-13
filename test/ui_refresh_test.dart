@@ -8,6 +8,31 @@ import '../lib/workspace_accounts.dart';
 import 'desktop_test_app.dart';
 
 void main() {
+  testDesktopWidgets('overview keeps account service recovery visible', (
+    tester,
+  ) async {
+    final registry = AccountWorkspaceRegistry();
+    addTearDown(registry.dispose);
+    var retries = 0;
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: WorkspaceOverviewPage(
+            registry: registry,
+            onOpenApp: (_) {},
+            serviceStatus: TextButton(
+              onPressed: () => retries++,
+              child: const Text('服务启动失败，重试'),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('从第一个账号开始'), findsNothing);
+    await tester.tap(find.text('服务启动失败，重试'));
+    expect(retries, 1);
+  });
+
   testDesktopWidgets('empty and single-page lists omit irrelevant controls', (
     tester,
   ) async {
@@ -77,7 +102,6 @@ void main() {
             body: WorkspaceOverviewPage(
               registry: registry,
               onOpenApp: (_) => navigations++,
-              onOpenModels: () {},
             ),
           ),
         ),

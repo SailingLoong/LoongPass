@@ -29,6 +29,8 @@ class AccountTableEntry {
     this.hasRewards = true,
     this.accountSummary,
     this.expiryDetails,
+    this.statusLabel,
+    this.automatic,
   });
   final String id, label, identity, balance, status;
   final Widget details;
@@ -37,7 +39,8 @@ class AccountTableEntry {
   final DateTime? expiryAt;
   final bool needsAttention, activationEnabled;
   final bool hasCredits, hasRewards;
-  final String? accountSummary;
+  final String? accountSummary, statusLabel;
+  final bool? automatic;
   final Widget? expiryDetails;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
@@ -69,6 +72,8 @@ class AccountTableEntry {
     hasRewards: hasRewards,
     accountSummary: accountSummary,
     expiryDetails: expiryDetails,
+    statusLabel: statusLabel,
+    automatic: automatic,
   );
   DateTime? get nextExpiry =>
       expiryAt ?? upcomingCreditBatches(credits).firstOrNull?.expiresAt;

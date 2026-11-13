@@ -26,7 +26,7 @@ void main() {
         find.byWidgetPredicate((widget) => widget is FSelect<ThemeMode>),
         findsOneWidget,
       );
-      expect(find.widgetWithText(FSwitch, '精简应用栏'), findsOneWidget);
+      expect(find.widgetWithText(FSwitch, '精简导航'), findsOneWidget);
       expect(find.byType(FButton), findsWidgets);
       await tester.tap(find.text('跟随系统'));
       await tester.pumpAndSettle();
@@ -73,6 +73,11 @@ void main() {
       preferences.setTheme(ThemeMode.dark);
       await tester.pumpAndSettle();
       expect(context.theme.colors, FTheme.neutral.dark.desktop.colors);
+      await tester.tap(find.byKey(const Key('nav-settings')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('invitation-workbuddy')));
+      await tester.tap(find.text('WorkBuddy 邀请设置'));
+      await tester.pumpAndSettle();
       final invitation = tester.element(
         find.byKey(const Key('workbuddy-invitation-code')),
       );

@@ -8,15 +8,24 @@ import 'workspace_tools.dart';
 import 'account_details.dart';
 
 class WorkspaceAccountsPage extends StatelessWidget {
-  const WorkspaceAccountsPage({super.key, required this.registry});
+  const WorkspaceAccountsPage({
+    super.key,
+    required this.registry,
+    this.serviceStatus,
+  });
   final AccountWorkspaceRegistry registry;
+  final Widget? serviceStatus;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: registry,
     builder: (context, _) => WorkspacePage(
       title: '账号与积分',
       subtitle: '按平台查找账号，余额与到期信息分别展示。',
-      children: [CompactAccountsTable(entries: registry.entries)],
+      children: [
+        if (serviceStatus != null) serviceStatus!,
+        if (serviceStatus == null || registry.entries.isNotEmpty)
+          CompactAccountsTable(entries: registry.entries),
+      ],
     ),
   );
 }
@@ -26,11 +35,11 @@ class WorkspaceOverviewPage extends StatelessWidget {
     super.key,
     required this.registry,
     required this.onOpenApp,
-    required this.onOpenModels,
+    this.serviceStatus,
   });
   final AccountWorkspaceRegistry registry;
+  final Widget? serviceStatus;
   final ValueChanged<ManagedApp> onOpenApp;
-  final VoidCallback onOpenModels;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: registry,
@@ -55,6 +64,7 @@ class WorkspaceOverviewPage extends StatelessWidget {
         title: '总览',
         subtitle: '先处理需要关注的账号，再查看近期到期额度。',
         children: [
+          if (serviceStatus != null) serviceStatus!,
           Wrap(
             spacing: 20,
             runSpacing: 8,
@@ -62,6 +72,10 @@ class WorkspaceOverviewPage extends StatelessWidget {
               Text('${accounts.length} 个已保存账号'),
               Text('${attention.length} 个待处理'),
               Text('${expiring.length} 个近期到期'),
+              if (accounts.any((a) => a.entry.automatic != null))
+                Text(
+                  '${accounts.where((a) => a.entry.automatic == true).length} 个已开启自动领取',
+                ),
             ],
           ),
           const SizedBox(height: 20),
@@ -115,7 +129,7 @@ class WorkspaceOverviewPage extends StatelessWidget {
               ],
             ),
           ),
-          if (accounts.isEmpty)
+          if (accounts.isEmpty && serviceStatus == null)
             WorkspaceCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -149,10 +163,10 @@ class WorkspaceActivityPage extends StatefulWidget {
   const WorkspaceActivityPage({
     super.key,
     required this.registry,
-    required this.onOpenApp,
+    this.serviceStatus,
   });
   final AccountWorkspaceRegistry registry;
-  final ValueChanged<ManagedApp> onOpenApp;
+  final Widget? serviceStatus;
   @override
   State<WorkspaceActivityPage> createState() => _WorkspaceActivityPageState();
 }
@@ -183,6 +197,7 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
         title: '最近领取',
         subtitle: '展示各账号最近一次已确认领取，以及当前待处理状态；不是完整历史流水。',
         children: [
+          if (widget.serviceStatus != null) widget.serviceStatus!,
           Wrap(
             spacing: 8,
             children: [

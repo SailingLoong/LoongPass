@@ -639,6 +639,7 @@ class _AccountName extends StatelessWidget {
                   Text('${e.identity}\n${e.status}'),
               child: FButton(
                 key: ValueKey('account-${e.id}'),
+                semanticsTooltip: '${e.identity}\n${e.status}',
                 variant: FButtonVariant.ghost,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.max,
@@ -664,7 +665,7 @@ class _AccountName extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       Text(
-                        e.status,
+                        e.statusLabel ?? e.status,
                         style: muted.copyWith(
                           color: e.needsAttention
                               ? context.theme.colors.error

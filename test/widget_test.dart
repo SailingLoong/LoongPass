@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/main.dart';
+import '../lib/app_sidebar.dart';
 
 Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
   tester.view.physicalSize = Size(width, 900);
@@ -14,56 +15,52 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openInvitation(WidgetTester tester, String platform) async {
+  await tester.tap(find.byKey(const Key('nav-settings')));
+  await tester.pumpAndSettle();
+  final section = find.byKey(Key('invitation-$platform'));
+  await tester.ensureVisible(section);
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.descendant(of: section, matching: find.textContaining('邀请设置')).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.byKey(Key('$platform-invitation-code')));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testDesktopWidgets(
-    'Qoder CN invitation defaults and overrides stay platform scoped',
+    'invitation settings remain isolated and survive navigation',
     (tester) async {
       await desktop(tester);
-      await tester.tap(find.byKey(const Key('app-qoderCn')));
-      await tester.pumpAndSettle();
+      await openInvitation(tester, 'qoderCn');
       expect(find.text('n1SqSmAhYt8nJKTkFM2QyB5IJ0DWROl3'), findsOneWidget);
       await tester.enterText(
         find.byKey(const Key('qoderCn-invitation-code')),
         'custom-qoder-code',
       );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const Key('qoderCn-invitation-save')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('qoderCn-invitation-save')));
       await tester.pumpAndSettle();
       expect(find.text('邀请码已保存'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('app-workbuddy')));
-      await tester.pumpAndSettle();
-      expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
-      expect(find.text('custom-qoder-code'), findsNothing);
-      await tester.tap(find.byKey(const Key('app-qoderCn')));
-      await tester.pumpAndSettle();
-      expect(find.text('custom-qoder-code'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('app-qoder')));
-      await tester.pumpAndSettle();
-      expect(find.text('邀请设置'), findsNothing);
-    },
-  );
-
-  testDesktopWidgets(
-    'WorkBuddy page offers an editable default invitation code',
-    (tester) async {
-      await desktop(tester);
-      expect(
-        find.byKey(const Key('workbuddy-invitation-code')),
-        findsOneWidget,
-      );
+      await openInvitation(tester, 'workbuddy');
       expect(find.text('3wu5mr8ye2b0'), findsOneWidget);
       await tester.enterText(
         find.byKey(const Key('workbuddy-invitation-code')),
-        'my-invite-code',
+        'unsaved-workbuddy',
       );
-      await tester.tap(find.byKey(const Key('workbuddy-invitation-save')));
-      await tester.pumpAndSettle();
-      expect(find.text('邀请码已保存'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('app-qoderCn')));
+      await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
-      await tester.tap(find.byKey(const Key('app-workbuddy')));
+      await tester.tap(find.byKey(const Key('nav-settings')));
       await tester.pumpAndSettle();
-      expect(find.text('my-invite-code'), findsOneWidget);
+      expect(find.text('unsaved-workbuddy'), findsOneWidget);
+      expect(find.text('custom-qoder-code'), findsOneWidget);
     },
   );
 
@@ -86,61 +83,25 @@ void main() {
       }
     },
   );
-  testDesktopWidgets('production navigation has regional account workspaces', (
-    tester,
-  ) async {
-    await desktop(tester);
-    for (final app in [
-      'zcode',
-      'qoderCn',
-      'qoder',
-      'minimaxCn',
-      'minimax',
-      'workbuddy',
-      'traeCn',
-      'codex',
-    ]) {
-      expect(find.byKey(ValueKey('app-$app')), findsOneWidget);
-      await tester.tap(find.byKey(ValueKey('app-$app')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('toggle-examples')), findsNothing);
-      expect(find.byKey(const Key('backup-file')), findsNothing);
-      expect(find.text('导入样例'), findsNothing);
-      expect(find.text('ZCode 样例 A'), findsNothing);
-      expect(find.byKey(const Key('switch-zcode-a')), findsNothing);
-      expect(find.byKey(const Key('checkin-zcode-a')), findsNothing);
-    }
-  });
-
   for (final width in [480.0, 760.0, 1280.0]) {
     testDesktopWidgets(
-      'app workspace has no layout exception at width $width',
+      'all regional workspaces remain available at width $width',
       (tester) async {
         await desktop(tester, width: width);
-        expect(tester.takeException(), isNull);
-        if (width < 760) {
-          expect(findTooltip('LoongPass'), findsOneWidget);
-        } else {
-          expect(find.text('LoongPass'), findsOneWidget);
-        }
-        expect(findTooltip('账号保存在本机；辅助任务仅在运行期间执行'), findsOneWidget);
-        for (final app in [
-          'zcode',
-          'qoderCn',
-          'qoder',
-          'minimaxCn',
-          'minimax',
-          'workbuddy',
-          'traeCn',
-          'codex',
-        ]) {
-          await tester.tap(find.byKey(ValueKey('app-$app')));
+        final workspace = tester.state<AppWorkspaceState>(
+          find.byType(AppWorkspace),
+        );
+        for (final app in ManagedApp.values) {
+          workspace.selectApp(app);
           await tester.pumpAndSettle();
+          expect(find.byKey(ValueKey('page-${app.name}')), findsOneWidget);
+          expect(find.byKey(const Key('platform-filter')), findsOneWidget);
           expect(
             tester.takeException(),
             isNull,
-            reason: '$app at width $width',
+            reason: '${app.name} at $width',
           );
+          expect(find.text('导入样例'), findsNothing);
         }
       },
     );

@@ -151,29 +151,30 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
-  testDesktopWidgets('near expiry has a readable reminder without an error state in both themes', (
-    tester,
-  ) async {
-    for (final brightness in Brightness.values) {
-      await expiryRows(tester, brightness);
-      Color? color(String id) => tester
-          .widget<Text>(
-            find
-                .descendant(
-                  of: find.byKey(ValueKey('expiry-$id')),
-                  matching: find.byType(Text),
-                )
-                .first,
-          )
-          .style
-          ?.color;
-      final colors = loongPassDesignTheme(brightness).colors;
-      expect(color('near'), colors.foreground);
-      expect(find.text('7 天内到期'), findsNWidgets(2));
-      expect(color('later'), colors.foreground);
-      expect(tester.takeException(), isNull);
-    }
-  });
+  testDesktopWidgets(
+    'near expiry has a readable reminder without an error state in both themes',
+    (tester) async {
+      for (final brightness in Brightness.values) {
+        await expiryRows(tester, brightness);
+        Color? color(String id) => tester
+            .widget<Text>(
+              find
+                  .descendant(
+                    of: find.byKey(ValueKey('expiry-$id')),
+                    matching: find.byType(Text),
+                  )
+                  .first,
+            )
+            .style
+            ?.color;
+        final colors = loongPassDesignTheme(brightness).colors;
+        expect(color('near'), colors.foreground);
+        expect(find.text('7 天内到期'), findsNWidgets(2));
+        expect(color('later'), colors.foreground);
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testDesktopWidgets(
     'favorites survive table recreation and unmatched search offers reset',
@@ -365,7 +366,8 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pumpAndSettle();
         final focus = FocusManager.instance.primaryFocus;
-        if (focus?.context?.findAncestorWidgetOfExactType<FButton>()?.key == const Key('activate-1')) {
+        if (focus?.context?.findAncestorWidgetOfExactType<FButton>()?.key ==
+            const Key('activate-1')) {
           await tester.sendKeyEvent(LogicalKeyboardKey.enter);
           await tester.pumpAndSettle();
         }
@@ -439,14 +441,18 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
-  testDesktopWidgets('switch stays discoverable without hover and acts on its own row', (tester) async {
-    var switches = 0;
-    await mount(tester, activate: () => switches++);
-    final target = find.byKey(const Key('activate-1'));
-    expect(target.hitTestable(), findsOneWidget);
-    await tester.tap(target);
-    await tester.pumpAndSettle();
-    expect(switches, 1);
-    expect(target.hitTestable(), findsOneWidget);
-  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+  testDesktopWidgets(
+    'switch stays discoverable without hover and acts on its own row',
+    (tester) async {
+      var switches = 0;
+      await mount(tester, activate: () => switches++);
+      final target = find.byKey(const Key('activate-1'));
+      expect(target.hitTestable(), findsOneWidget);
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+      expect(switches, 1);
+      expect(target.hitTestable(), findsOneWidget);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
 }

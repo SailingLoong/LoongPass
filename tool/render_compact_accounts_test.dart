@@ -3,7 +3,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:forui/forui.dart';
 
@@ -23,17 +22,12 @@ import '../lib/workspace_accounts.dart';
 
 void main() {
   setUpAll(() async {
-    final font = await File('/System/Library/Fonts/STHeiti Light.ttc')
-        .readAsBytes();
-    for (final name in [
-      'Roboto',
-      'Ahem',
-      '.AppleSystemUIFont',
-      'packages/forui/Inter',
-    ]) {
-      await (FontLoader(
-        name,
-      )..addFont(Future.value(ByteData.sublistView(font)))).load();
+    for (final font in {
+      FTypeface.defaultFontFamily:
+          'packages/forui/assets/fonts/inter/Inter.ttf',
+      'SourceHanSansSC': 'assets/fonts/SourceHanSansSC-VF.ttf',
+    }.entries) {
+      await (FontLoader(font.key)..addFont(rootBundle.load(font.value))).load();
     }
     for (final font in {
       'packages/forui_lucide/ForuiLucideIcons':
@@ -45,7 +39,8 @@ void main() {
     }
   });
   for (final size in [
-    const Size(1024, 720),
+    const Size(1280, 800),
+    const Size(1024, 768),
     const Size(800, 632),
     const Size(480, 800),
   ]) {
@@ -62,10 +57,12 @@ void main() {
         final workspace = GlobalKey<AppWorkspaceState>();
         addTearDown(registry.dispose);
         final entries = [
-          for (var n = 1; n <= 20; n++)
+          for (var n = 1; n <= 4; n++)
             AccountTableEntry(
               id: '$n',
-              label: n == 1 ? '日常开发' : '备用账号 ${n.toString().padLeft(2, '0')}',
+              label: n == 1
+                  ? 'demo@example.test'
+                  : '备用账号 ${n.toString().padLeft(2, '0')}',
               identity: 'demo$n@example.test',
               balance: '${880 + n * 60} 积分',
               credits: CreditSummary(
@@ -73,19 +70,34 @@ void main() {
                 260,
                 DateTime(2026, 11, 6, 10, 20),
                 [
-                  CreditExpiry(DateTime(2026, 11, 7 + n), 120),
-                  CreditExpiry(DateTime(2026, 11, 10 + n), 200),
-                  CreditExpiry(DateTime(2026, 11, 13 + n), 300),
+                  CreditExpiry(DateTime.now().add(Duration(days: n)), 120),
+                  CreditExpiry(DateTime.now().add(Duration(days: n + 7)), 200),
+                  CreditExpiry(DateTime.now().add(Duration(days: n + 14)), 300),
                 ],
               ),
-              status: n == 5 ? '领取结果待核对' : '辅助领取已开启',
-              needsAttention: n == 5,
+              status: n == 2 ? '领取结果待核对' : '辅助领取已开启',
+              needsAttention: n == 2,
               receipt: ClaimReceipt(
                 amount: 100,
                 confirmedAt: DateTime(2026, 11, 6, 9, 30),
               ),
               onActivate: () {},
-              details: const Text('演示账号详情'),
+              automatic: true,
+              details: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('身份：demo$n@example.test'),
+                  const SizedBox(height: 8),
+                  Text(n == 2 ? '领取结果待核验，仅查询官方状态，不会重复发送。' : '已保存的官方账号'),
+                  const SizedBox(height: 16),
+                  FButton(
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () {},
+                    child: Text(n == 2 ? '核验领取结果' : '刷新额度'),
+                  ),
+                ],
+              ),
             ),
         ];
         await tester.pumpWidget(
@@ -103,17 +115,12 @@ void main() {
                       registry: registry,
                       onOpenApp: (app) =>
                           workspace.currentState!.selectApp(app),
-                      onOpenModels: () => workspace.currentState!.selectSection(
-                        WorkspaceSection.models,
-                      ),
                     ),
                     WorkspaceSection.accounts: WorkspaceAccountsPage(
                       registry: registry,
                     ),
                     WorkspaceSection.activity: WorkspaceActivityPage(
                       registry: registry,
-                      onOpenApp: (app) =>
-                          workspace.currentState!.selectApp(app),
                     ),
                   },
                   pages: {
@@ -141,13 +148,13 @@ void main() {
                                   mainAxisSize: MainAxisSize.min,
                                   size: FButtonSizeVariant.sm,
                                   onPress: () {},
-                                  child: const Text('恢复已保存账号'),
+                                  child: const Text('刷新账号与额度'),
                                 ),
                               ],
                             ),
                             const Text(
                               '演示数据 · 客户端当前账号：尚未核对',
-                              style: TextStyle(fontSize: 11),
+                              style: TextStyle(fontSize: 12),
                             ),
                             CompactAccountsTable(entries: entries),
                           ],
@@ -174,21 +181,9 @@ void main() {
           ]);
         });
         await tester.pumpAndSettle();
-        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-        await mouse.addPointer(location: Offset.zero);
-        await mouse.moveTo(
-          tester.getCenter(find.byKey(const Key('activate-1'))),
-        );
+        workspace.currentState!.selectApp(ManagedApp.workbuddy);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        if (size.width == 1024) {
-          expect(tester.getBottomLeft(findTooltip('下一页')).dy, lessThan(700));
-          expect(
-            tester.getTopLeft(find.byKey(const Key('account-2'))).dy -
-                tester.getTopLeft(find.byKey(const Key('account-1'))).dy,
-            36,
-          );
-        }
         Future<void> capture(String name) => tester.runAsync(() async {
           final canvas =
               boundary.currentContext!.findRenderObject()
@@ -208,7 +203,6 @@ void main() {
           image.dispose();
         });
         await capture('accounts');
-        await mouse.moveTo(Offset.zero);
         await tester.tap(find.byKey(const Key('account-1')));
         await tester.pumpAndSettle();
         await capture('details');
@@ -243,7 +237,6 @@ void main() {
           expect(tester.takeException(), isNull);
           await capture(section);
         }
-        await mouse.removePointer();
       }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
     }
   }

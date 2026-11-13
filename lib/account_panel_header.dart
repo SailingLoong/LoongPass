@@ -59,7 +59,7 @@ class AccountPanelToolbar extends StatelessWidget {
                     children: [
                       Expanded(child: identity),
                       const SizedBox(width: 16),
-                      Flexible(flex: 2, child: controls),
+                      Expanded(flex: 2, child: controls),
                     ],
                   )
                 : Column(

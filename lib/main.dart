@@ -18,7 +18,6 @@ import 'plugin_application.dart';
 import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
 import 'invitation_settings.dart';
-import 'invitation_settings_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -180,13 +179,6 @@ class _AccountPageState extends State<_AccountPage> {
                           ? _application!.activateWorkBuddy
                           : null,
                     ),
-              if (widget.invitations[app] != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: InvitationSettingsPanel(
-                    settings: widget.invitations[app]!,
-                  ),
-                ),
             ],
           ),
           showTitle: false,
@@ -225,17 +217,21 @@ class _AccountPageState extends State<_AccountPage> {
           WorkspaceSection.settings: WorkspaceSettingsPage(
             preferences: widget.preferences,
             updates: _updates,
+            invitations: widget.invitations,
+            onOpenApp: _openApp,
           ),
           WorkspaceSection.overview: WorkspaceOverviewPage(
             registry: _registry,
             onOpenApp: _openApp,
-            onOpenModels: () =>
-                _workspace.currentState?.selectSection(WorkspaceSection.models),
+            serviceStatus: _application == null ? _status : null,
           ),
-          WorkspaceSection.accounts: WorkspaceAccountsPage(registry: _registry),
+          WorkspaceSection.accounts: WorkspaceAccountsPage(
+            registry: _registry,
+            serviceStatus: _application == null ? _status : null,
+          ),
           WorkspaceSection.activity: WorkspaceActivityPage(
             registry: _registry,
-            onOpenApp: _openApp,
+            serviceStatus: _application == null ? _status : null,
           ),
         },
       ),
@@ -254,12 +250,15 @@ class AccountWorkspacePage extends StatelessWidget {
   final Widget panel;
   final bool showTitle;
   @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(20),
-    children: [
-      if (showTitle) Text(name, style: context.theme.typography.display.xl),
-      if (showTitle) const SizedBox(height: 8),
-      panel,
-    ],
+  Widget build(BuildContext context) => DefaultTextStyle(
+    style: context.theme.typography.body.sm,
+    child: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        if (showTitle) Text(name, style: context.theme.typography.display.xl),
+        if (showTitle) const SizedBox(height: 8),
+        panel,
+      ],
+    ),
   );
 }

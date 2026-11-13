@@ -31,15 +31,15 @@ class AppNavigationItemState extends State<AppNavigationItem> {
     final app = widget.app;
     Widget icon = ExcludeSemantics(
       child: SizedBox(
-        width: 28,
-        height: 28,
+        width: 20,
+        height: 20,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             Image.asset(
               app.iconAsset,
-              width: 24,
-              height: 24,
+              width: 20,
+              height: 20,
               fit: BoxFit.contain,
             ),
             if (app.regionCode == 'CN')

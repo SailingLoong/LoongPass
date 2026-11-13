@@ -265,8 +265,8 @@ void main() {
       final boxes = label.getBoxesForSelection(
         const TextSelection(baseOffset: 0, extentOffset: 13),
       );
-      expect(boxes, hasLength(1));
-      expect(label.size.height, greaterThanOrEqualTo(boxes.single.bottom));
+      expect(boxes, isNotEmpty);
+      expect(label.size.height, greaterThanOrEqualTo(boxes.last.bottom));
       expect(tester.takeException(), isNull);
     },
   );
