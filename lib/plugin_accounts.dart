@@ -7,6 +7,7 @@ import 'plugin_runtime.dart';
 import 'plugin_credentials.dart';
 import 'account_document_store.dart';
 import 'account_registration.dart';
+import 'plugin_credit_balance.dart';
 
 /// ZCode activity eligibility belongs to the official regional account, even
 /// when the native host exposes separate personal and team profiles.
@@ -44,6 +45,13 @@ class PluginAccount {
   String get realm => facts['realm'] ?? '';
   String get registrationId => facts['registrationId'];
   bool get automatic => facts['automatic'] == true;
+  PluginCreditBalance? get creditBalance =>
+      pluginCreditBalance(provider, usage);
+  PluginCreditExpiry? get creditExpiry => pluginCreditExpiry(
+    usage,
+    facts['reward'] is Map ? facts['reward'] : const {},
+    DateTime.now(),
+  );
 }
 
 /// Data-layer owner of account projections and maintenance. The native host

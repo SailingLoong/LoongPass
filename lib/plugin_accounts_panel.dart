@@ -247,7 +247,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           const Text('尚无可核实的官方额度快照。')
         else ...[
           if (_text(usage['plan']) case final plan?) Text('套餐：$plan'),
-          if (_usageBalance(usage) case final balance?) Text('余额：$balance'),
+          if (_usageBalance(usage) case final balance?) Text('官方额度摘要：$balance'),
           if (_date(usage['until']) != null)
             Text('套餐到期：${creditTime(_date(usage['until'])!)}'),
           if (_windows(a).isNotEmpty) const Text('各额度窗口独立列出，可能重叠，不合计。'),
@@ -443,8 +443,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                   observedAt: a.queriedAt,
                   receipt: _receipt(a),
                   notice: _messageAccount == a.key ? _message : null,
-                  expiryAt: _expiry(a),
-                  expiryText: _expiryText(a),
+                  expiryAt: a.creditExpiry?.at,
+                  expiringAmount: _expiryAmount(a),
                   needsAttention:
                       !a.active ||
                       a.error != null ||
@@ -535,22 +535,10 @@ String _windowText(Map w) {
 }
 
 String _balance(PluginAccount a) {
-  final summary = _usageBalance(a.usage);
-  final usage = [
-    if (summary != null)
-      summary
-    else
-      for (final w in _windows(a)) _windowText(w),
-  ];
-  final parts = [
-    if (usage.isNotEmpty)
-      '${_usageFailure(a) == null ? '' : '上次：'}${usage.join(' / ')}',
-    if (a.provider == 'zcode')
-      for (final b in _buckets(a))
-        'Start Plan · ${b.label} ${_number(b.remaining)} ${b.unit}',
-  ];
-  if (parts.isEmpty) return _usageFailure(a) == null ? '尚无已核实余额' : '额度查询未完成';
-  return parts.join(' / ');
+  final balance = a.creditBalance;
+  return balance == null
+      ? '—'
+      : '${accountPoints(balance.amount)} ${balance.unit}';
 }
 
 String _status(PluginAccount a) {
@@ -605,34 +593,9 @@ ClaimReceipt? _receipt(PluginAccount a) {
   return null;
 }
 
-DateTime? _expiry(PluginAccount a) {
-  final now = DateTime.now();
-  final values = [
-    for (final b in _buckets(a))
-      if (b.expiresAt != null && b.remaining != 0)
-        DateTime.fromMillisecondsSinceEpoch(b.expiresAt! * 1000),
-    for (final w in _windows(a))
-      if (w['runsOut'] != 0 && _date(w['runsOutAt']) != null)
-        _date(w['runsOutAt'])!,
-  ].where((d) => d.isAfter(now)).toList()..sort();
-  return values.firstOrNull;
-}
-
-String? _expiryText(PluginAccount a) {
-  final expiry = _expiry(a);
-  if (expiry == null) return null;
-  // Windows can overlap; preserve their quantities without adding them.
-  final amounts = {
-    for (final b in _buckets(a))
-      if (b.expiresAt != null &&
-          DateTime.fromMillisecondsSinceEpoch(b.expiresAt! * 1000)
-              .isAtSameMomentAs(expiry) &&
-          b.remaining != 0)
-        '${_number(b.remaining)} ${b.unit}',
-    for (final w in _windows(a))
-      if (_date(w['runsOutAt'])?.isAtSameMomentAs(expiry) == true &&
-          w['runsOut'] != 0)
-        '${_number(w['runsOut'])} ${_unit(w)}',
-  };
-  return '${amounts.join(' / ')} · ${creditTime(expiry)} 到期';
+String? _expiryAmount(PluginAccount a) {
+  final amount = a.creditExpiry?.amount;
+  return amount == null
+      ? null
+      : '${accountPoints(amount.amount)} ${amount.unit}';
 }

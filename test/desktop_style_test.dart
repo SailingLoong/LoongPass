@@ -163,6 +163,42 @@ void main() {
     expect(tester.takeException(), isNull);
   });
   testDesktopWidgets(
+    'comfortable density adds space to the two-line account rows',
+    (tester) async {
+      final preferences = UiPreferences();
+      addTearDown(preferences.dispose);
+      await tester.pumpWidget(
+        UiPreferencesScope(
+          preferences: preferences,
+          child: DesktopTestApp(
+            home: const Scaffold(
+              body: CompactAccountsTable(
+                entries: [
+                  AccountTableEntry(
+                    id: 'density',
+                    label: 'Account',
+                    identity: 'synthetic',
+                    balance: '100 credits',
+                    status: 'saved',
+                    details: Text('Details'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final label = find.byKey(const ValueKey('account-density'));
+      final row = find.ancestor(of: label, matching: find.byType(Row)).first;
+      final compactHeight = tester.getSize(row).height;
+      preferences.setComfortable(true);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(row).height, greaterThan(compactHeight));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testDesktopWidgets(
     'account rows and search keep enlarged text vertically visible',
     (tester) async {
       tester.view.physicalSize = const Size(1280, 1200);

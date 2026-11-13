@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+
 import 'credit_summary.dart';
 import 'claim_receipt.dart';
 
@@ -13,7 +14,7 @@ class AccountTableEntry {
     required this.status,
     required this.details,
     this.credits,
-    this.expiryText,
+    this.expiringAmount,
     this.expiryAt,
     this.receipt,
     this.observedAt,
@@ -28,7 +29,7 @@ class AccountTableEntry {
   final String id, label, identity, balance, status;
   final Widget details;
   final CreditSummary? credits;
-  final String? expiryText;
+  final String? expiringAmount;
   final DateTime? expiryAt;
   final bool needsAttention, activationEnabled;
   final VoidCallback? onActivate, onOpenDetails;
@@ -48,7 +49,7 @@ class AccountTableEntry {
     status: status,
     details: details,
     credits: credits,
-    expiryText: expiryText,
+    expiringAmount: expiringAmount,
     expiryAt: expiryAt,
     receipt: receipt,
     observedAt: observedAt,
@@ -60,14 +61,18 @@ class AccountTableEntry {
   );
   DateTime? get nextExpiry =>
       expiryAt ?? upcomingCreditBatches(credits).firstOrNull?.expiresAt;
-  String get upcomingExpiryText {
-    if (expiryText != null) return expiryText!;
+  String get upcomingExpiryText => nextExpiry == null
+      ? '到期信息未知'
+      : '${upcomingExpiryAmount == '—' ? '额度未知' : upcomingExpiryAmount} · ${accountDate(nextExpiry!)} 到期';
+  String get upcomingExpiryAmount {
+    if (expiringAmount != null) return expiringAmount!;
     final batches = upcomingCreditBatches(credits);
-    if (batches.isEmpty)
-      return expiryAt == null
-          ? '到期信息未知'
-          : '额度未知 · ${accountDate(expiryAt!)} 到期';
-    return '${accountPoints(batches.first.remaining)} 积分 · ${accountDate(batches.first.expiresAt)}${batches.length > 1 ? ' +${batches.length - 1}' : ''}';
+    if (batches.isEmpty) return '—';
+    final firstExpiry = batches.first.expiresAt;
+    final amount = batches
+        .where((b) => b.expiresAt.isAtSameMomentAs(firstExpiry))
+        .fold<num>(0, (sum, b) => sum + b.remaining);
+    return '${accountPoints(amount)} 积分';
   }
 }
 
@@ -91,4 +96,9 @@ String accountDate(DateTime time) {
   final d = time.toLocal();
   String two(int v) => v.toString().padLeft(2, '0');
   return '${d.year}-${two(d.month)}-${two(d.day)}';
+}
+
+String accountTime(DateTime time) {
+  final d = time.toLocal();
+  return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }

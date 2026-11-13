@@ -202,7 +202,7 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                       '${account.email ?? '邮箱未知'}${state.currentId == account.id ? ' · 本机登录记录' : ''}',
                   identity: account.workspaceId ?? '工作区未知',
                   balance: '未提供',
-                  expiryText: '未提供',
+                  expiringAmount: '—',
                   status: state.currentId == account.id ? '本机登录记录' : '已保存',
                   observedAt: state.observedAt,
                   onActivate: () => _confirm(account.id),

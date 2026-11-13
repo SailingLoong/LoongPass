@@ -226,7 +226,50 @@ void main() {
     },
   );
 
-  testDesktopWidgets('native text-only balance reaches the list and details', (
+  testDesktopWidgets(
+    'structured total credits show only the remaining balance',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'windows': [
+              {
+                'name': 'Credits',
+                'amount': 0,
+                'limit': 500,
+                'unit': 'credits',
+                'aside': true,
+              },
+              {
+                'name': 'Extra credits',
+                'amount': 0.04,
+                'limit': 3400,
+                'unit': 'credits',
+                'aside': true,
+              },
+              {
+                'name': 'Total credits',
+                'amount': 0.04,
+                'limit': 3900,
+                'unit': 'credits',
+              },
+            ],
+          },
+        ),
+      );
+      expect(find.text('3899.96 credits'), findsOneWidget);
+      expect(find.textContaining('已用'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Extra credits：已用 0.04 credits'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testDesktopWidgets('native text-only summaries stay in details', (
     tester,
   ) async {
     await mountAccount(
@@ -235,10 +278,10 @@ void main() {
         usage: {'balance': '12,224 credits', 'error': '', 'windows': []},
       ),
     );
-    expect(find.text('12,224 credits'), findsOneWidget);
+    expect(find.text('12,224 credits'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
     await tester.pumpAndSettle();
-    expect(find.text('余额：12,224 credits'), findsOneWidget);
+    expect(find.text('官方额度摘要：12,224 credits'), findsOneWidget);
     expect(find.textContaining('尚无已核实余额'), findsNothing);
   });
 
@@ -265,6 +308,9 @@ void main() {
           },
         ),
       );
+      expect(find.text('Requests：42 / 100 requests'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
       expect(find.text('Requests：42 / 100 requests'), findsOneWidget);
       expect(find.textContaining('数值未知'), findsNothing);
     },
@@ -294,6 +340,8 @@ void main() {
           },
         ),
       );
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
       expect(
         find.text('Start Plan：Complete official verification'),
         findsOneWidget,
@@ -324,7 +372,8 @@ void main() {
           },
         ),
       );
-      expect(find.text('额度查询未完成'), findsOneWidget);
+      expect(find.text('时间未知'), findsOneWidget);
+      expect(findTooltip('已确认领取。最近一次额度查询未完成，请核对授权、权益或网络。'), findsWidgets);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('已确认领取。'), findsOneWidget);
@@ -335,7 +384,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.textContaining('时间未知'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(FDialog),
+          matching: find.textContaining('时间未知'),
+        ),
+        findsNothing,
+      );
       expect(find.textContaining('请核对授权、权益或网络'), findsOneWidget);
       expect(find.text('尚无成功的额度查询。'), findsOneWidget);
     },
@@ -348,7 +403,8 @@ void main() {
         tester,
         observed(
           usage: {
-            'balance': '12224 credits',
+            'balance': 12224,
+            'unit': 'credits',
             'error': 'Usage query unavailable',
             'windows': [],
           },
@@ -356,7 +412,7 @@ void main() {
           queriedAt: DateTime.utc(2026, 11, 12, 1, 20),
         ),
       );
-      expect(find.text('上次：12224 credits'), findsOneWidget);
+      expect(find.text('12224 credits'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('上次成功查询于'), findsOneWidget);
@@ -411,8 +467,10 @@ void main() {
           },
         ),
       );
+      await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
+      await tester.pumpAndSettle();
       expect(
-        find.text('Start Plan · Gift tokens 12345678 tokens'),
+        find.textContaining('Gift tokens：剩余 12345678 tokens'),
         findsOneWidget,
       );
       expect(find.textContaining('上次：Start Plan'), findsNothing);
@@ -720,10 +778,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('12345678 tokens / 0.875 credits'), findsNothing);
       expect(
-        find.textContaining(
-          RegExp(r'^12345678 tokens / 0\.875 credits ·.*到期$'),
-        ),
+        find.byKey(const ValueKey('expiry-time-zcode#one')),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));

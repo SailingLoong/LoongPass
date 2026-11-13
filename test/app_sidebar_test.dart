@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 
 import '../lib/app_sidebar.dart';
 import '../lib/ui_preferences.dart';
@@ -51,6 +52,34 @@ void main() {
       expect(find.textContaining('Magpie'), findsWidgets);
       expect(find.textContaining('127.0.0.1'), findsNothing);
     },
+  );
+
+  testDesktopWidgets(
+    'drag handle uses open and closed hand cursors without a floating hint',
+    (tester) async {
+      await mount(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      await mouse.moveTo(tester.getCenter(find.byKey(const Key('drag-qoder'))));
+      await tester.pumpAndSettle();
+      expect(
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.grab,
+      );
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('拖动排序 · Option + ↑ / ↓'), findsNothing);
+      await mouse.down(tester.getCenter(find.byKey(const Key('drag-qoder'))));
+      await mouse.moveBy(const Offset(0, -24));
+      await tester.pumpAndSettle();
+      expect(
+        RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+        SystemMouseCursors.grabbing,
+      );
+      await mouse.up();
+      await mouse.removePointer();
+      await tester.pumpAndSettle();
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
   testDesktopWidgets(

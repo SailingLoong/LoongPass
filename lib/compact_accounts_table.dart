@@ -25,9 +25,7 @@ class CompactAccountsTable extends StatefulWidget {
 }
 
 class _CompactAccountsTableState extends State<CompactAccountsTable> {
-  static const _minimumTableWidth = 760.0;
   final _search = TextEditingController();
-  final _scroll = ScrollController();
   late final _live = ValueNotifier(widget.entries);
   final _favorites = <String>{};
   UiPreferences? _preferences;
@@ -43,7 +41,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     return MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
   }
 
-  double get _rowHeight => (_preferences?.rowHeight ?? 36) * _textScale;
+  double get _rowHeight => ((_preferences?.rowHeight ?? 36) + 16) * _textScale;
   int _page = 0, _size = 10;
   String _filter = '全部', _sort = '默认排序';
   @override
@@ -79,7 +77,6 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   @override
   void dispose() {
     _search.dispose();
-    _scroll.dispose();
     _live.dispose();
     final source = _source;
     if (source != null)
@@ -342,24 +339,14 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
           FCard(
             clipBehavior: Clip.antiAlias,
             child: LayoutBuilder(
-              builder: (context, box) => RawScrollbar(
-                thumbColor: colors.mutedForeground,
-                controller: _scroll,
-                thumbVisibility: box.maxWidth < _minimumTableWidth * _textScale,
-                child: SingleChildScrollView(
-                  controller: _scroll,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: math.max(
-                      _minimumTableWidth * _textScale,
-                      box.maxWidth,
-                    ),
-                    child: Table(
+              builder: (context, box) => box.maxWidth >= 520 * _textScale
+                  ? Table(
                       columnWidths: const {
-                        0: FlexColumnWidth(3.4),
-                        1: FlexColumnWidth(1.65),
-                        2: FlexColumnWidth(2.4),
-                        3: FlexColumnWidth(2.55),
+                        0: FlexColumnWidth(3),
+                        1: FlexColumnWidth(1.6),
+                        2: FlexColumnWidth(1.9),
+                        3: FlexColumnWidth(1.9),
+                        4: FlexColumnWidth(1.8),
                       },
                       defaultVerticalAlignment:
                           TableCellVerticalAlignment.middle,
@@ -367,87 +354,27 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                         TableRow(
                           decoration: BoxDecoration(color: colors.muted),
                           children: [
-                            for (final label in ['账号', '余额', '即将到期', '最近领取'])
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 10,
-                                ),
-                                child: Text(
-                                  label,
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.mutedForeground,
-                                      ),
-                                ),
-                              ),
+                            for (final label in _columns) _heading(label),
                           ],
                         ),
-                        for (final e in visible)
+                        for (final entry in visible)
                           TableRow(
-                            key: ValueKey('row-${e.id}'),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: colors.border.withValues(alpha: .45),
-                                ),
-                              ),
-                            ),
-                            children: [
-                              _AccountName(
-                                entry: e,
-                                height: _rowHeight,
-                                favorite: _favorite(e),
-                                onFavorite: () => setState(() {
-                                  if (_preferences != null) {
-                                    _preferences!.toggleFavorite(
-                                      _preferenceKey(e),
-                                    );
-                                  } else {
-                                    _favorites.contains(e.id)
-                                        ? _favorites.remove(e.id)
-                                        : _favorites.add(e.id);
-                                  }
-                                }),
-                                onDetails: () => _details(e.id),
-                              ),
-                              SizedBox(
-                                height: _rowHeight,
-                                child: FButton(
-                                  key: ValueKey('balance-${e.id}'),
-                                  variant: FButtonVariant.ghost,
-                                  size: FButtonSizeVariant.sm,
-                                  mainAxisSize: MainAxisSize.max,
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  style: const FButtonStyleDelta.delta(
-                                    contentStyle:
-                                        FButtonContentStyleDelta.delta(
-                                          padding:
-                                              EdgeInsetsGeometryDelta.value(
-                                                EdgeInsets.zero,
-                                              ),
-                                        ),
-                                  ),
-                                  onPress: () => _details(e.id),
-                                  child: Expanded(
-                                    child: _cell(
-                                      e.balance,
-                                      tooltip:
-                                          '${e.balance}\n${e.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(e.queriedAt!)}'}',
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              _expiry(e),
-                              _cell(e.latestClaim),
-                            ],
+                            key: ValueKey('row-${entry.id}'),
+                            decoration: _rowDecoration,
+                            children: _fields(entry),
+                          ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        for (final entry in visible)
+                          DecoratedBox(
+                            key: ValueKey('row-${entry.id}'),
+                            decoration: _rowDecoration,
+                            child: _stackedFields(entry, box.maxWidth),
                           ),
                       ],
                     ),
-                  ),
-                ),
-              ),
             ),
           ),
         if (visible.isEmpty)
@@ -544,9 +471,9 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               if (widget.entries.isNotEmpty)
                 FTooltip(
                   tipBuilder: (context, controller) =>
-                      Text('余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细'),
+                      Text('余额按官方单位展示 · — 表示数据未知 · 点击查看明细和查询时间'),
                   child: Semantics(
-                    tooltip: '余额按官方单位分别列示 · 悬停余额可查看查询时间，点击查看明细',
+                    tooltip: '余额按官方单位展示 · — 表示数据未知 · 点击查看明细和查询时间',
                     child: Icon(
                       FLucideIcons.info,
                       size: 14,
@@ -561,48 +488,163 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     );
   }
 
-  Widget _cell(String text, {String? tooltip, Color? color}) => FTooltip(
-    tipBuilder: (context, controller) => Text(tooltip ?? text),
-    child: Semantics(
-      tooltip: tooltip ?? text,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Text(
-          text,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: context.theme.typography.body.sm.copyWith(color: color),
-        ),
+  static const _columns = ['账号', '即将到期积分', '到期时间', '最近领取时间', '余额'];
+
+  BoxDecoration get _rowDecoration => BoxDecoration(
+    border: Border(
+      bottom: BorderSide(
+        color: context.theme.colors.border.withValues(alpha: .45),
       ),
     ),
   );
-  Widget _expiry(AccountTableEntry row) {
-    final batches = upcomingCreditBatches(row.credits);
-    final text = row.upcomingExpiryText;
-    if (batches.isEmpty && row.expiryText == null) return _cell(text);
-    final now = DateTime.now();
-    final urgent =
-        row.nextExpiry != null &&
-        row.nextExpiry!.isAfter(now) &&
-        row.nextExpiry!.isBefore(now.add(const Duration(days: 7)));
-    return SizedBox(
+
+  Widget _heading(String label) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+    child: Text(
+      label,
+      style: context.theme.typography.body.sm.copyWith(
+        fontWeight: FontWeight.w600,
+        color: context.theme.colors.mutedForeground,
+      ),
+    ),
+  );
+
+  Widget _stackedFields(AccountTableEntry entry, double width) {
+    final fields = _fields(entry);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        fields.first,
+        Wrap(
+          children: [
+            for (var i = 1; i < fields.length; i++)
+              SizedBox(
+                width: width / 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [_heading(_columns[i]), fields[i]],
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _fields(AccountTableEntry entry) => [
+    _AccountName(
+      entry: entry,
       height: _rowHeight,
-      child: FButton(
-        key: ValueKey('expiry-${row.id}'),
-        variant: FButtonVariant.ghost,
-        size: FButtonSizeVariant.sm,
-        mainAxisSize: MainAxisSize.max,
-        mainAxisAlignment: MainAxisAlignment.start,
-        style: const FButtonStyleDelta.delta(
-          contentStyle: FButtonContentStyleDelta.delta(
-            padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
+      favorite: _favorite(entry),
+      onFavorite: () => setState(() {
+        if (_preferences != null) {
+          _preferences!.toggleFavorite(_preferenceKey(entry));
+        } else {
+          _favorites.contains(entry.id)
+              ? _favorites.remove(entry.id)
+              : _favorites.add(entry.id);
+        }
+      }),
+      onDetails: () => _details(entry.id),
+    ),
+    _expiry(entry),
+    _expiry(entry, time: true),
+    _claimTime(entry),
+    _actionCell(
+      key: 'balance-${entry.id}',
+      onPress: () => _details(entry.id),
+      child: _cell(
+        entry.balance,
+        tooltip:
+            '${entry.balance}\n${entry.queriedAt == null ? '查询时间未知' : '查询于 ${creditTime(entry.queriedAt!)}'}',
+      ),
+    ),
+  ];
+
+  Widget _cell(String text, {String? tooltip, Color? color}) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Text(
+        text,
+        style: context.theme.typography.body.sm.copyWith(color: color),
+      ),
+    );
+    return tooltip == null
+        ? content
+        : FTooltip(
+            tipBuilder: (context, controller) => Text(tooltip),
+            child: Semantics(tooltip: tooltip, child: content),
+          );
+  }
+
+  Widget _dateCell(DateTime date, {Color? color}) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          accountDate(date),
+          style: context.theme.typography.body.sm.copyWith(color: color),
+        ),
+        Text(
+          accountTime(date),
+          style: context.theme.typography.body.xs.copyWith(
+            color: color ?? context.theme.colors.mutedForeground,
           ),
         ),
-        onPress: () => _details(row.id, expiry: true),
-        child: Expanded(
-          child: _cell(text, color: urgent ? context.theme.colors.error : null),
+      ],
+    ),
+  );
+
+  Widget _claimTime(AccountTableEntry row) {
+    final receipt = row.receipt;
+    if (receipt == null) return _cell('—');
+    return _actionCell(
+      key: 'claim-${row.id}',
+      onPress: () => _details(row.id),
+      child: receipt.confirmedAt != null
+          ? _dateCell(receipt.confirmedAt!)
+          : _cell(receipt.day == null ? '时间未知' : '${receipt.day}\n时间未知'),
+    );
+  }
+
+  Widget _actionCell({
+    required String key,
+    required VoidCallback onPress,
+    required Widget child,
+  }) => ConstrainedBox(
+    constraints: BoxConstraints(minHeight: _rowHeight),
+    child: FButton(
+      key: ValueKey(key),
+      variant: FButtonVariant.ghost,
+      size: FButtonSizeVariant.sm,
+      mainAxisSize: MainAxisSize.max,
+      mainAxisAlignment: MainAxisAlignment.start,
+      style: const FButtonStyleDelta.delta(
+        contentStyle: FButtonContentStyleDelta.delta(
+          padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
         ),
       ),
+      onPress: onPress,
+      child: Expanded(child: child),
+    ),
+  );
+
+  Widget _expiry(AccountTableEntry row, {bool time = false}) {
+    final expiry = row.nextExpiry;
+    if (expiry == null) return _cell('—');
+    final now = DateTime.now();
+    final urgent =
+        expiry.isAfter(now) &&
+        expiry.isBefore(now.add(const Duration(days: 7)));
+    final color = urgent ? context.theme.colors.error : null;
+    return _actionCell(
+      key: '${time ? 'expiry-time' : 'expiry'}-${row.id}',
+      onPress: () => _details(row.id, expiry: true),
+      child: time
+          ? _dateCell(expiry, color: color)
+          : _cell(row.upcomingExpiryAmount, color: color),
     );
   }
 }
