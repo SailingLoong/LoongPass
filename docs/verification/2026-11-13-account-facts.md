@@ -16,7 +16,9 @@ projection looked only for an official claim timestamp.
   process when a usage request fails. Its original timestamp stays attached.
   Consumers receive a sanitized failure and the native sign-in state; private
   provider exception text is not projected or saved. A later successful read
-  replaces the snapshot and clears the error.
+  replaces the snapshot and clears the error. Failed RPCs export a neutral
+  `kept` sign-in signal, preserving UI attention separately rather than replaying
+  a historical `renewed` or `expired` event into Magpie's account routing.
 - Model loading and usage reading have independent failure handling. Identity
   and registration are still verified around native calls; mismatched accounts
   cannot publish cached quantities or proceed to usage hooks.
@@ -57,7 +59,7 @@ display-only windows, independent activity quotas and receipt verification time.
 Release build and installed-client acceptance are separate from these tests.
 
 `python3 tool/check.py` passed locally on the pinned Flutter 3.50.0 / Dart
-3.14.0 and Bun 1.4.4 toolchains: 305 native protocol tests, 266 Flutter tests,
+3.14.0 and Bun 1.4.4 toolchains: 305 native protocol tests, 268 Flutter tests,
 Dart analysis and the repository's Python/Swift checks. New regression cases
 were observed failing before the corresponding repairs. Native protocol source
 pins, dependencies and update-signing configuration are unchanged.

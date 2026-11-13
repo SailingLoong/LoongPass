@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_accounts.dart';
+import '../lib/plugin_model_service.dart';
 import '../lib/plugin_sign_in.dart';
 import 'memory_account_store.dart';
 
@@ -335,7 +336,41 @@ void _identityTests() {
     expect(account.active, true);
     await h.control({'usageThrows': true});
     await h.accounts.refresh();
-    expect(h.accounts.accounts.single.usage!['signIn'], 'expired');
+    expect(h.accounts.accounts.single.error, 'authorization_required');
+    expect(h.accounts.accounts.single.usage!['signIn'], 'kept');
+  });
+
+  test('cached quota failures do not replay a historical renewal in the native catalog', () async {
+    final h = await open(start: false);
+    await h.control({'usageResult': {'signIn': 'renewed', 'windows': [
+      {'name': 'Credits', 'amount': 1.25, 'limit': 100.125, 'unit': 'credits'},
+    ]}});
+    await h.accounts.start();
+    final before = h.accounts.accounts.single;
+    final service = PluginModelService(accounts: h.accounts, store: MemoryAccountStore('models'), port: 0);
+    final client = HttpClient();
+    try {
+      await service.start();
+      await service.enable(h.key, true);
+      await service.setEnabled(true);
+      await h.control({'usageThrows': true});
+      await h.accounts.refresh();
+      final request = await client.getUrl(service.endpoint!.resolve('/plugin/catalog'));
+      request.headers.set('authorization', 'Bearer ${service.grants.single.token}');
+      final response = await request.close();
+      expect(response.statusCode, 200);
+      final catalog = jsonDecode(await utf8.decoder.bind(response).join()) as Map;
+      final usage = catalog['usage'] as Map;
+      expect(usage['signIn'], 'kept');
+      expect(usage['error'], isNotEmpty);
+      expect((usage['windows'] as List).single, containsPair('amount', 1.25));
+      expect((usage['windows'] as List).single, containsPair('limit', 100.125));
+      expect((usage['windows'] as List).single, containsPair('unit', 'credits'));
+      expect(h.accounts.accounts.single.queriedAt, before.queriedAt);
+    } finally {
+      client.close(force: true);
+      await service.close();
+    }
   });
 
   for (final mismatch in ['provider', 'uid', 'realm']) {

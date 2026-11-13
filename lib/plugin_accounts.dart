@@ -261,16 +261,23 @@ class PluginAccounts extends ChangeNotifier {
               _usage[key] = observedUsage;
               _queried[key] = DateTime.now();
             }
+            if (usageFailure != null &&
+                signIn != 'renewed' &&
+                (_errors[key] == 'authorization_required' ||
+                    _usage[key]?['signIn'] == 'expired'))
+              usageFailure = 'authorization_required';
             _errors.remove(key);
             if (catalogFailed) _errors[key] = 'catalog_unavailable';
             if (usageFailure != null) {
               // Keep verified quantities and their original observation time.
               // Error strings may contain private response data; publish only
-              // a stable failure and the native authorization state.
+              // a stable failure and this attempt's native sign-in signal.
+              // UI attention can retain known expiry, but a failed RPC cannot
+              // replay an old renewal/expiry as a new event to Magpie.
               _usage[key] = Map.unmodifiable({
                 ...?_usage[key],
                 'error': 'Usage query unavailable',
-                if (signIn.isNotEmpty) 'signIn': signIn,
+                'signIn': signIn.isEmpty ? 'kept' : signIn,
               });
               _errors[key] = usageFailure;
             }

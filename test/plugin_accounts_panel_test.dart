@@ -271,6 +271,38 @@ void main() {
   );
 
   testDesktopWidgets(
+    'native informational windows show guidance instead of a zero share',
+    (tester) async {
+      await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'balance': '',
+            'error': '',
+            'windows': [
+              {
+                'name': 'Start Plan',
+                'display': 'Complete official verification',
+                'amount': null,
+                'limit': null,
+                'used': 0,
+                'balance': null,
+                'aside': true,
+                'unit': '',
+              },
+            ],
+          },
+        ),
+      );
+      expect(
+        find.text('Start Plan：Complete official verification'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('使用率 0%'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
     'a failed quota query stays visible beside a confirmed reward',
     (tester) async {
       await mountAccount(

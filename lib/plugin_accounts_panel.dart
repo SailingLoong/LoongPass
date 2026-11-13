@@ -515,13 +515,23 @@ List<ZcodeBucket> _buckets(PluginAccount a) => [
 
 String _windowText(Map w) {
   final unit = _unit(w);
+  final name = _text(w['name']) ?? '额度窗口';
+  final display = _text(w['display']);
+  // Native informational rows may carry a zero share without a quantity.
+  if (w['aside'] == true &&
+      display != null &&
+      (w['used'] ?? 0) == 0 &&
+      (w['amount'] ?? 0) == 0 &&
+      (w['limit'] ?? 0) == 0 &&
+      w['balance'] == null)
+    return '$name：$display';
   final values = [
     if (w['balance'] is num) '余额 ${_number(w['balance'])} $unit',
     if (w['amount'] is num) '已用 ${_number(w['amount'])} $unit',
     if (w['limit'] is num) '上限 ${_number(w['limit'])} $unit',
     if (w['used'] is num) '使用率 ${_number(w['used'])}%',
   ];
-  return '${_text(w['name']) ?? '额度窗口'}：${values.isEmpty ? _text(w['display']) ?? '数值未知' : values.join(' · ')}';
+  return '$name：${values.isEmpty ? display ?? '数值未知' : values.join(' · ')}';
 }
 
 String _balance(PluginAccount a) {
