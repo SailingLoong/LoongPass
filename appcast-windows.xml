@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.36</title><sparkle:version>36</sparkle:version><sparkle:shortVersionString>1.0.1-beta.36</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.36
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.37</title><sparkle:version>37</sparkle:version><sparkle:shortVersionString>1.0.1-beta.37</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.37
 
-- 同步固定版本的 Magpie 原生宿主及 WorkBuddy、Qoder、MiniMax、Loomy、TRAE、ZCode 六个完整插件包，复用上游授权续期、模型目录、工具调用与恢复修复。
-- 修正 ZCode 赠送模型非流式回复中的 ToolSearch 工具名，以及跨地区同 UID 的并发额度隔离；保留同一地区不同设备、个人/团队的共享上限。
-- 保留 TRAE 企业金额与积分原始精度，避免匿名多席位混算；修正 WorkBuddy 账号标签大小写导致的限流重置丢失。
-- Loomy 跟随官方模型目录的推理档位与默认值，保留 xhigh；Qoder 不再把明确不可用的企业资源池算作可用额度。
-- 完整打包 MiniMax 新增原生模块。外部 Magpie 视频轮询尚缺少模型上下文，暂不发布或启动视频模型；图像与其他新增能力仍需真实客户端验收。
-- 升级到 Flutter 3.50.0 / Dart 3.14.0、Bun 1.4.4，保留 Forui 桌面设计系统。
+- 检查更新、后台下载、校验和待安装状态改为 Forui 页面内展示，不再为常规检查与下载另开更新窗口。
+- 启动后由原生更新器自动检查并预下载，准备完成后可从侧栏或设置点击「重启并更新」，直接使用已下载并验签的包。
+- 新安装默认开启自动检查与预下载；已有关闭设置继续保留。「接收 Beta 版更新」独立保存。
+- macOS 继续复用 Sparkle，Windows 继续复用 WinSparkle 的下载、验签与安装；Windows 安装前会再次校验已下载文件。
+- 保留 Beta 36 的完整上游插件、Flutter 3.50.0 / Dart 3.14.0、Bun 1.4.4 和 Forui 重构。
 
 安装与升级
 
@@ -17,8 +16,8 @@ ZCode 3.18 新版系统加密凭据暂不能从桌面客户端导入；请在添
 
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
 
-本轮源码与隔离回归范围见 docs/verification/2026-11-12-upstream-sync.md；既有真实账号基线见 VALIDATION.md。新工具/媒体、Intel 与 Windows 真机、真实奖励到账分别验收，不由构建或模拟测试推导。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.36/LoongPass-Windows-x64-Setup.exe" length="13778605" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="gyJTUX74f9FVLwimGV5AAN4SH0/ZO9Oail38X4yHlvONMauVjCdtHiBbsbBCxCHj3fpymI9l0RpDJAiDrpDTDQ==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: XFUZaOeQbNmDAm0J/HDy1P5JFpB5YMSybncTC01oC053D1eLILkn/+OCZbPbaFVuiuHx5gEKMKqT44Dkvq2nCw==
-length: 3011
+本轮更新交互与原生适配验证范围见 docs/verification/2026-11-13-inline-updates.md；既有上游同步范围见 docs/verification/2026-11-12-upstream-sync.md，真实账号基线见 VALIDATION.md。CI、模拟原生更新和真实设备安装分别验收。
+</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.37/LoongPass-Windows-x64-Setup.exe" length="13804584" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="Pqz//gQrugKzfb0k7eVPdJEjYydzxf56EvlIQ9dOsP/CcORBiCe3N6QnZX8l4W4IbArpCf8btfxQmUTN8rxvDA==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: 57sl5HdiDZNJnLXrHDdvbFOo+WftZGcgBCGPLyl4vSZ/mARPk4uoH6SJf9GJoAflflMyfOcOTzP7lX62lqc5BA==
+length: 2755
 -->
