@@ -57,7 +57,17 @@ void main() {
       expect(find.byType(FTheme), findsOneWidget);
       final context = tester.element(find.byKey(const Key('app-sidebar')));
       expect(context.theme.colors, FTheme.neutral.light.desktop.colors);
-      expect(context.theme.typography, FTheme.neutral.light.desktop.typography);
+      expect(
+        context.theme.typography.body.fontFamily,
+        FTypeface.defaultFontFamily,
+      );
+      expect(context.theme.typography.body.fontFamilyFallback, [
+        'SourceHanSansSC',
+      ]);
+      expect(
+        context.theme.typography.body.sm.fontSize,
+        FTheme.neutral.light.desktop.typography.body.sm.fontSize,
+      );
       expect(Localizations.localeOf(context).languageCode, 'zh');
 
       preferences.setTheme(ThemeMode.dark);

@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Interface fonts
+
+Inter is supplied by the pinned Forui package and retains its upstream license.
+The unmodified Source Han Sans SC variable TrueType font is distributed under
+the SIL Open Font License 1.1. Its full notice is included in
+SOURCE-HAN-SANS-LICENSE.txt, both in release materials and the Flutter asset
+bundle. See SOURCE-ORIGIN.md for the fixed Adobe source and checksum.
+
 ## Supported application icons
 
 The product icons in `assets/app_icons/` and their trademarks belong to their

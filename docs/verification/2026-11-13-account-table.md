@@ -1,12 +1,19 @@
 # Account table and exact remaining balances
 
-Beta 39 changes the shared account list to five fields: account, next expiring
+Beta 40 changes the shared account list to five fields: account, next expiring
 quantity, expiry time, latest claim time, and balance. Dates and times occupy
 separate lines. At a 560 logical-pixel content width all five columns fit without
 horizontal scrolling. Narrow windows and enlarged text use labelled fields
 under each account. Search, favourites, paging, details and activation remain
 available. The sidebar grip uses Flutter's grab/grabbing cursors; accessible
 move actions and keyboard reordering remain available without a floating hint.
+
+The desktop theme keeps Forui's bundled Inter and uses the bundled Adobe Source
+Han Sans SC 2.005R variable font for Chinese glyphs. Forui component styles are
+rebuilt from this typography so controls inherit the same families; upstream
+plugin and authentication interfaces are untouched. The 560-pixel table test
+loads both real font assets before checking visible fields. The official font
+bytes, source commit, checksum and OFL notice are recorded in SOURCE-ORIGIN.md.
 
 The account data owner now projects structured remaining quantities. The UI
 does not extract numbers from native display strings or treat usage percentages
