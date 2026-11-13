@@ -37,9 +37,9 @@
 	<key>SUPublicEDKey</key>
 	<string>/a/FT41tq7pZZgqNUyu9Ns32Qo8NHxziqIOFAnwHRb4=</string>
 	<key>SUEnableAutomaticChecks</key>
-	<false/>
+	<true/>
 	<key>SUAutomaticallyUpdate</key>
-	<false/>
+	<true/>
 	<key>SUEnableSystemProfiling</key>
 	<false/>
 	<key>SUVerifyUpdateBeforeExtraction</key>

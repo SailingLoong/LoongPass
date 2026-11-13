@@ -67,3 +67,11 @@ apply_standard_settings(loongpass_authorization_checks)
 target_compile_definitions(loongpass_authorization_checks PRIVATE LOONGPASS_AUTHORIZATION_SELF_TEST)
 target_link_libraries(loongpass_authorization_checks PRIVATE flutter flutter_wrapper_app
   nlohmann_json::nlohmann_json bcrypt ncrypt crypt32 advapi32 shell32 ole32 uuid)
+
+add_executable(loongpass_update_checks EXCLUDE_FROM_ALL "${CMAKE_SOURCE_DIR}/../tool/windows_update_checks.cpp")
+apply_standard_settings(loongpass_update_checks)
+target_compile_definitions(loongpass_update_checks PRIVATE "NOMINMAX")
+target_link_libraries(loongpass_update_checks PRIVATE winsparkle_library advapi32)
+add_custom_command(TARGET loongpass_update_checks POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "$<TARGET_FILE:winsparkle_library>" "$<TARGET_FILE_DIR:loongpass_update_checks>")

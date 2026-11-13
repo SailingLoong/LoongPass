@@ -30,12 +30,14 @@ class AppWorkspace extends StatefulWidget {
     this.enabledApps,
     this.preferences,
     this.sections = const {},
+    this.footerBuilder,
   });
   final Map<ManagedApp, Widget> pages;
   final ManagedApp initialApp;
   final Set<ManagedApp>? enabledApps;
   final UiPreferences? preferences;
   final Map<WorkspaceSection, Widget> sections;
+  final Widget Function(BuildContext, bool compact)? footerBuilder;
   @override
   State<AppWorkspace> createState() => AppWorkspaceState();
 }
@@ -235,6 +237,8 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             padding: const EdgeInsets.symmetric(horizontal: 6),
                             child: sectionButton(section),
                           ),
+                      if (widget.footerBuilder != null)
+                        widget.footerBuilder!(context, compact),
                       if (_preferences.error != null)
                         FButton(
                           variant: FButtonVariant.ghost,

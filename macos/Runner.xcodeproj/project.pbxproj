@@ -21,6 +21,8 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		B71300000000000000000004 /* UpdateContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71300000000000000000003 /* UpdateContract.swift */; };
+		B71300000000000000000002 /* AppUpdateUserDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71300000000000000000001 /* AppUpdateUserDriver.swift */; };
         A82900000000000000000001 /* AppUpdater.swift in Sources */ = {isa = PBXBuildFile; fileRef = A82900000000000000000002 /* AppUpdater.swift */; };
         A82900000000000000000003 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A82900000000000000000005 /* Sparkle */; };
 		D56A2392A0E5481D80A20DD1 /* ZcodeCaptchaWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */; };
@@ -87,6 +89,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B71300000000000000000003 /* UpdateContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateContract.swift; sourceTree = "<group>"; };
+		B71300000000000000000001 /* AppUpdateUserDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateUserDriver.swift; sourceTree = "<group>"; };
         A82900000000000000000002 /* AppUpdater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdater.swift; sourceTree = "<group>"; };
 		73515DDE0F644F1EBA138F75 /* ZcodeCaptchaWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZcodeCaptchaWindow.swift; sourceTree = "<group>"; };
 		BBDDEF012345678900000000 /* WorkBuddyVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkBuddyVault.swift; sourceTree = "<group>"; };
@@ -223,6 +227,8 @@
 			children = (
 				33CC10F02044A3C60003C045 /* AppDelegate.swift */,
                 A82900000000000000000002 /* AppUpdater.swift */,
+                B71300000000000000000003 /* UpdateContract.swift */,
+                B71300000000000000000001 /* AppUpdateUserDriver.swift */,
 				ABCDEF012345678900000000 /* AccountDocumentBridge.swift */,
 				E7A300000000000000000000 /* TraeLocalAuthorization.swift */,
 				E7A310000000000000000000 /* WorkBuddyDesktopBridge.swift */,
@@ -474,6 +480,8 @@
 				3172ABCDEF00000000000100 /* ZcodeSwitchBridge.swift in Sources */,
 				33CC10F12044A3C60003C045 /* AppDelegate.swift in Sources */,
                 A82900000000000000000001 /* AppUpdater.swift in Sources */,
+                B71300000000000000000004 /* UpdateContract.swift in Sources */,
+                B71300000000000000000002 /* AppUpdateUserDriver.swift in Sources */,
 				335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

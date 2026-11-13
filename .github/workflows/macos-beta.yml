@@ -56,6 +56,8 @@ jobs:
           from tool.release_version import read_release_version
           assert os.environ['RELEASE_TAG'] == 'v' + read_release_version(pathlib.Path('.')).name, 'Tag must match pubspec.yaml'
           PY
+      - name: Resolve pinned native update SDK
+        run: xcodebuild -resolvePackageDependencies -project macos/Runner.xcodeproj -scheme Runner -clonedSourcePackagesDirPath build/macos/SourcePackages
       - name: Verify source behavior
         run: python3 tool/check.py
       - name: Build universal macOS app
@@ -134,6 +136,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Dart analysis failed' }
           flutter test --no-pub --reporter expanded
           if ($LASTEXITCODE -ne 0) { throw 'Flutter behavior checks failed' }
+          python tool/update_contract.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'Update contract checks failed' }
           python test/flutter_toolchain_checks.py
           if ($LASTEXITCODE -ne 0) { throw 'Flutter SDK gate checks failed' }
       - name: Check authorization and reward protocols with synthetic accounts
@@ -154,18 +158,20 @@ jobs:
         id: winsparkle
         with:
           path: ${{ env.WINSPARKLE_SDK }}
-          key: winsparkle-x64-${{ steps.toolchain.outputs.version }}-${{ hashFiles('tool/patch_winsparkle.py', 'tool/build_winsparkle.ps1') }}
+          key: winsparkle-x64-${{ steps.toolchain.outputs.version }}-${{ hashFiles('tool/patch_winsparkle.py', 'tool/winsparkle/**', 'tool/build_winsparkle.ps1') }}
       - name: Build pinned Windows update SDK
         if: steps.winsparkle.outputs.cache-hit != 'true'
         run: tool/build_winsparkle.ps1 -Destination $env:WINSPARKLE_SDK
       - name: Build Windows application and native checks
         run: |
           flutter build windows --release
-          cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks
+          cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks loongpass_update_checks
           & build/windows/x64/runner/Release/loongpass_storage_checks.exe
           if ($LASTEXITCODE -ne 0) { throw 'Windows native storage checks failed' }
           & build/windows/x64/runner/Release/loongpass_authorization_checks.exe
           if ($LASTEXITCODE -ne 0) { throw 'Windows native authorization checks failed' }
+          & $env:LOONGPASS_BUN test/winsparkle_integration_test.mjs build/windows/x64/runner/Release/loongpass_update_checks.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native update integration checks failed' }
       - name: Package source-matched Windows app
         run: tool/package_windows.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

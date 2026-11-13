@@ -1,4 +1,4 @@
-# Build the pinned upstream SDK with LoongPass's minimal automatic-install API.
+# Build the pinned upstream SDK with LoongPass's bounded custom UI bridge.
 # CI owns cache reuse: this script never trusts or overwrites an existing SDK.
 #Requires -Version 7.0
 param([Parameter(Mandatory = $true)][string]$Destination)
@@ -77,11 +77,16 @@ try {
     $relative = [IO.Path]::GetRelativePath($stage, $_.FullName).Replace('\', '/')
     $hashes[$relative] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   }
+  $bridgeHashes = [ordered]@{}
+  Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'winsparkle') -File | Sort-Object Name | ForEach-Object {
+    $bridgeHashes[$_.Name] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
   $provenance = [ordered]@{
     repository = $repository
     commit = $commit
     submodules = $submodules
-    extension = 'win_sparkle_check_update_without_ui_and_install'
+    extension = 'inline-ui'
+    bridgeSHA256 = $bridgeHashes
     patchSHA256 = (Get-FileHash -LiteralPath $patch -Algorithm SHA256).Hash.ToLowerInvariant()
     buildScriptSHA256 = (Get-FileHash -LiteralPath $PSCommandPath -Algorithm SHA256).Hash.ToLowerInvariant()
     msbuildVersion = @(Invoke-Checked $msbuild @('-version', '-nologo'))

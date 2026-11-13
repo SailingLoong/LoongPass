@@ -211,6 +211,12 @@ class _AccountPageState extends State<_AccountPage> {
         key: _workspace,
         preferences: widget.preferences,
         initialApp: ManagedApp.workbuddy,
+        footerBuilder: (context, compact) => AppUpdateBadge(
+          updates: _updates,
+          compact: compact,
+          onOpen: () =>
+              _workspace.currentState?.selectSection(WorkspaceSection.settings),
+        ),
         pages: _pages,
         sections: {
           WorkspaceSection.models: _application == null

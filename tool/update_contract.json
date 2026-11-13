@@ -1,0 +1,6 @@
+{
+  "channel": "com.sailingloong.loongpass/updates",
+  "fields": ["revision", "version", "phase", "offeredVersion", "progress", "error", "automaticUpdates", "receiveBetaUpdates", "canCheck", "canChangeChannel", "canInstall", "canSkip", "installOnQuit"],
+  "methods": ["state", "stateChanged", "check", "install", "skip", "setAutomaticUpdates", "setReceiveBetaUpdates"],
+  "phases": ["idle", "checking", "downloading", "preparing", "ready", "installing", "upToDate", "error"]
+}

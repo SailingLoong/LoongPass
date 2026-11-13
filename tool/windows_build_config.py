@@ -15,7 +15,10 @@ if len(sys.argv) > 2:
     provenance = json.loads((sdk / 'provenance.json').read_text())
     assert provenance['commit'] == UPSTREAM_COMMIT, 'Unexpected WinSparkle source'
     assert provenance['platform'] == 'x64' and provenance['configuration'] == 'Release'
-    assert provenance['extension'] == 'win_sparkle_check_update_without_ui_and_install'
+    assert provenance['extension'] == 'inline-ui'
+    expected_bridge = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                       for p in (root / 'tool/winsparkle').iterdir() if p.is_file()}
+    assert provenance['bridgeSHA256'] == expected_bridge, 'Rebuild WinSparkle SDK for current bridge sources'
     for field, name in [('patchSHA256', 'patch_winsparkle.py'), ('buildScriptSHA256', 'build_winsparkle.ps1')]:
         assert provenance[field] == hashlib.sha256((root / 'tool' / name).read_bytes()).hexdigest(), 'Rebuild WinSparkle SDK for current inputs'
     for name, digest in provenance['files'].items():
