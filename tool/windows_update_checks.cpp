@@ -48,7 +48,7 @@ std::filesystem::path TemporaryPayload(const std::wstring& registry) {
   if (RegGetValueW(HKEY_CURRENT_USER, registry.c_str(), L"UpdateTempDir", RRF_RT_REG_SZ,
                   nullptr, value, &size) != ERROR_SUCCESS) return {};
   std::filesystem::path path(value);
-  Require(path.parent_path() == std::filesystem::temp_directory_path(), "Unexpected SDK temporary parent");
+  Require(std::filesystem::equivalent(path.parent_path(), std::filesystem::temp_directory_path()), "Unexpected SDK temporary parent");
   Require(path.filename().wstring().find(L"Update-") == 0, "Unexpected SDK temporary name");
   return path;
 }

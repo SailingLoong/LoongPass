@@ -31,7 +31,7 @@ class PatchChecks(unittest.TestCase):
                               capture_output=True, text=True)
 
     def snapshot(self):
-        return {str(path.relative_to(self.root)): path.read_bytes()
+        return {path.relative_to(self.root).as_posix(): path.read_bytes()
                 for path in self.root.rglob("*") if path.is_file()}
 
     def test_applies_once_and_repeated_execution_preserves_bytes(self):

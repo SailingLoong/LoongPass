@@ -34,10 +34,23 @@ import Sparkle
     driver.fail("signature fixture failure")
     precondition(driver.phase == .error && !driver.canInstall && !driver.install() && installed == 2)
     var acknowledged = 0
-    driver.showUpdateNotFoundWithError(NSError(domain: "fixture", code: 1), acknowledgement: { acknowledged += 1 })
+    driver.showUpdateNotFoundWithError(NSError(domain: "fixture", code: 1, userInfo: [SPUNoUpdateFoundReasonKey: SPUNoUpdateFoundReason.onLatestVersion.rawValue]), acknowledgement: { acknowledged += 1 })
     precondition(driver.phase == .upToDate && acknowledged == 1)
     driver.showUpdaterError(NSError(domain: "fixture", code: 2), acknowledgement: { acknowledged += 1 })
     precondition(driver.phase == .error && acknowledged == 2)
+    driver.showUpdateNotFoundWithError(NSError(domain: "fixture", code: 1,
+      userInfo: [SPUNoUpdateFoundReasonKey: SPUNoUpdateFoundReason.hardwareDoesNotSupportARM64.rawValue]), acknowledgement: {})
+    if driver.phase != .error || driver.error == nil {
+      print("FAIL unsupported hardware was reported as already up-to-date")
+      exit(1)
+    }
+    driver.showDownloadDidStartExtractingUpdate()
+    driver.dismissUpdateInstallation()
+    driver.finishCycle(error: NSError(domain: "fixture", code: Int(SUError.installationAuthorizeLaterError.rawValue)))
+    if !driver.ownsCandidate || driver.phase != .error {
+      print("FAIL deferred authorization lost the retained native candidate")
+      exit(1)
+    }
     driver.automaticUpdates = { false }
     driver.show(SPUUpdatePermissionRequest(systemProfile: []), reply: { response in
       precondition(!response.automaticUpdateChecks && !response.sendSystemProfile)

@@ -28,7 +28,7 @@ late method replies from overwriting newer download/ready events.
 
 Local source verification used Flutter 3.50.0 / Dart 3.14.0 and the official
 Sparkle 2.10.1 SPM binary verified against its upstream package checksum. The
-complete source suite passed (305 native protocol tests and 255 Flutter tests),
+complete source suite passed (305 native protocol tests and 256 Flutter tests),
 as did the Sparkle user-driver lifecycle checks and atomic/idempotent SDK patch
 checks. The actual user application and all account data were untouched.
 

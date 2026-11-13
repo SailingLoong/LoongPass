@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/app_updates.dart';
+import '../lib/app_theme.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -228,4 +229,24 @@ void main() {
       expect(find.text('正在检查更新'), findsNothing);
     },
   );
+
+  testDesktopWidgets('update badge fits expanded and collapsed navigation in both themes', (tester) async {
+    native.addAll({'phase': 'preparing', 'canCheck': false});
+    final updates = AppUpdates();
+    await updates.load();
+    addTearDown(updates.dispose);
+    for (final brightness in Brightness.values) {
+      for (final width in [64.0, 196.0]) {
+        await tester.pumpWidget(DesktopTestApp(
+          theme: loongPassTheme(brightness),
+          home: Center(child: SizedBox(width: width, child: AppUpdateBadge(
+            updates: updates, compact: width == 64, onOpen: () {},
+          ))),
+        ));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      }
+    }
+    expect(calls.map((call) => call.method), ['state']);
+  });
 }

@@ -16,22 +16,26 @@ final class AppUpdateUserDriver: NSObject, SPUUserDriver {
   private var skipHandler: (() -> Void)?
   // Automatic Sparkle installations retain their driver via the delegate.
   private var automaticInstallation = false
+  private(set) var preparationDeferred = false
   var canInstall: Bool { phase == .ready && installHandler != nil }
   var canSkip: Bool { phase == .ready && skipHandler != nil }
-  var ownsCandidate: Bool { [.downloading, .preparing, .ready, .installing].contains(phase) }
+  var ownsCandidate: Bool { preparationDeferred || [.downloading, .preparing, .ready, .installing].contains(phase) }
 
   func transition(_ phase: UpdatePhase, version: String? = nil, progress: Double? = nil) {
     self.phase = phase
+    preparationDeferred = false
+    if [.checking, .upToDate, .idle].contains(phase) { offeredVersion = nil }
     if let version { offeredVersion = version }
     self.progress = progress
     error = nil
     changed?()
   }
 
-  func fail(_ message: String) {
+  func fail(_ message: String, retainedCandidate: Bool = false) {
     installHandler = nil
     skipHandler = nil
     automaticInstallation = false
+    preparationDeferred = retainedCandidate
     error = message
     phase = .error
     progress = nil
@@ -92,12 +96,35 @@ final class AppUpdateUserDriver: NSObject, SPUUserDriver {
   func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {}
   func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
   func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
-    transition(.upToDate)
+    noUpdate(error)
     acknowledgement()
   }
+  func noUpdate(_ error: Error) {
+    offeredVersion = nil
+    let value = (error as NSError).userInfo[SPUNoUpdateFoundReasonKey] as? NSNumber
+    let reason = value.flatMap { SPUNoUpdateFoundReason(rawValue: $0.int32Value) }
+    switch reason {
+    case .onLatestVersion, .onNewerThanLatestVersion: transition(.upToDate)
+    case .systemIsTooOld: fail("新版需要更新的 macOS，当前系统暂不支持。")
+    case .systemIsTooNew: fail("新版暂不支持当前 macOS。")
+    case .hardwareDoesNotSupportARM64: fail("此更新仅支持 Apple Silicon，当前 Intel Mac 无法安装。")
+    default: fail(error.localizedDescription)
+    }
+  }
   func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-    fail(error.localizedDescription)
+    reportError(error)
     acknowledgement()
+  }
+  func reportError(_ error: Error) {
+    let deferred = (error as NSError).code == Int(SUError.installationAuthorizeLaterError.rawValue)
+    fail(deferred ? "安装需要授权，请点击检查更新继续。" : error.localizedDescription, retainedCandidate: deferred)
+  }
+  func finishCycle(error: Error?) {
+    // Sparkle intentionally suppresses didAbort/showUpdaterError for this case.
+    // The cycle-finish delegate is its actual retained-download notification.
+    if let error, (error as NSError).code == Int(SUError.installationAuthorizeLaterError.rawValue) {
+      reportError(error)
+    }
   }
   func showDownloadInitiated(cancellation: @escaping () -> Void) {
     expected = 0
@@ -139,7 +166,7 @@ final class AppUpdateUserDriver: NSObject, SPUUserDriver {
     guard !automaticInstallation else { return }
     installHandler = nil
     skipHandler = nil
-    if ownsCandidate { offeredVersion = nil; transition(.idle) }
+    if phase != .error && ownsCandidate { offeredVersion = nil; transition(.idle) }
   }
   func showUpdateInFocus() {} // The application already shows status inline.
 }

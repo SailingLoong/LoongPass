@@ -13,7 +13,9 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
   private let betaPreference = "LoongPassReceiveBetaUpdates"
   private var receiveBetaUpdates: Bool { UserDefaults.standard.bool(forKey: betaPreference) }
   private var canChangeChannel: Bool { !updater.sessionInProgress && !driver.ownsCandidate }
-  private var canCheck: Bool { updater.canCheckForUpdates && !driver.ownsCandidate }
+  private var canCheck: Bool {
+    updater.canCheckForUpdates && (!driver.ownsCandidate || driver.preparationDeferred)
+  }
 
   func register(with messenger: FlutterBinaryMessenger) {
     guard updater == nil else { return }
@@ -94,6 +96,11 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
   func feedURLString(for updater: SPUUpdater) -> String? {
     Bundle.main.object(forInfoDictionaryKey: receiveBetaUpdates ? "SUFeedURL" : "LoongPassStableFeedURL") as? String
   }
+  func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
+    // Includes scheduled/reset cycles, which do not call the user-driver's
+    // manual-check callback. Scheduling itself remains entirely in Sparkle.
+    driver.transition(.checking)
+  }
   func updater(_ updater: SPUUpdater, shouldProceedWithUpdate item: SUAppcastItem,
                updateCheck: SPUUpdateCheck) throws {
     if !receiveBetaUpdates && item.displayVersionString.contains("-") {
@@ -110,12 +117,15 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
   func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
     driver.transition(.preparing, version: item.displayVersionString)
   }
-  func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) { driver.transition(.upToDate) }
+  func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: Error) { driver.noUpdate(error) }
   func updater(_ updater: SPUUpdater, didAbortWithError error: Error) {
     let code = (error as NSError).code
-    if code != Int(SUError.noUpdateError.rawValue) && code != Int(SUError.installationAuthorizeLaterError.rawValue) {
-      driver.fail(error.localizedDescription)
+    if code != Int(SUError.noUpdateError.rawValue) {
+      driver.reportError(error)
     }
+  }
+  func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+    driver.finishCycle(error: error)
   }
   func updater(_ updater: SPUUpdater, willInstallUpdateOnQuit item: SUAppcastItem,
                immediateInstallationBlock immediateInstallHandler: @escaping () -> Void) -> Bool {
