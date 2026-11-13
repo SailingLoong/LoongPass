@@ -1,5 +1,18 @@
 # Source provenance
 
+## Interface fonts
+
+English text uses Forui 0.27.7's bundled Inter family. Chinese text uses the
+unmodified [Adobe Source Han Sans 2.005R](https://github.com/adobe-fonts/source-han-sans/tree/6c709ca72d3d7c46ab42ebecc1a26e7d69595a37)
+file `Variable/TTF/SourceHanSansSC-VF.ttf`, copied to
+`assets/fonts/SourceHanSansSC-VF.ttf`. SHA-256:
+`68f866374d8ff04d2103c5b2907f1cab2dbec91ac0fb6ad0b801c6db0c1faa80`.
+The official LICENSE.txt is retained as SOURCE-HAN-SANS-LICENSE.txt. Fonts are
+bundled for offline use; upstream authentication/plugin/SDK interfaces retain
+their own fonts.
+
+## Application and native components
+
 LoongPass uses Flutter for its desktop interface. Current supplier authorization,
 renewal, model and request behavior runs the complete native Magpie community
 packages through the pinned Magpie Bun host. The exact source commits, package

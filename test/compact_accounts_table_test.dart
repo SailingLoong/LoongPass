@@ -16,6 +16,15 @@ void main() {
   testDesktopWidgets(
     'five account facts fit a desktop content pane without horizontal scrolling',
     (tester) async {
+      await tester.runAsync(() async {
+        final inter = FontLoader(FTypeface.defaultFontFamily)
+          ..addFont(
+            rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'),
+          );
+        final sourceHan = FontLoader('SourceHanSansSC')
+          ..addFont(rootBundle.load('assets/fonts/SourceHanSansSC-VF.ttf'));
+        await Future.wait([inter.load(), sourceHan.load()]);
+      });
       tester.view.physicalSize = const Size(560, 700);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);

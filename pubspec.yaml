@@ -1,6 +1,6 @@
 name: loongpass
 description: A desktop tool for AI accounts, reward collection and credit expiry.
-version: 1.0.1-beta.39+39
+version: 1.0.1-beta.40+40
 publish_to: none
 environment:
   sdk: '>=3.14.0 <4.0.0'
@@ -17,7 +17,12 @@ dev_dependencies:
     sdk: flutter
 flutter:
   uses-material-design: true
+  fonts:
+    - family: SourceHanSansSC
+      fonts:
+        - asset: assets/fonts/SourceHanSansSC-VF.ttf
   assets:
+    - SOURCE-HAN-SANS-LICENSE.txt
     - assets/app_icons/
     - assets/branding/loongpass.png
     - runtime/upstream.lock.json

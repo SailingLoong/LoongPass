@@ -31,25 +31,39 @@ void main() {
                     items: {'列表选项': 1},
                     control: FSelectControl.managed(initial: 1),
                   ),
+                  const FTextField(
+                    label: Text('字段标签'),
+                    description: Text('字段说明'),
+                  ),
+                  const FTextField(error: Text('字段错误')),
                 ],
               ),
             ),
           ),
         );
+        await tester.pumpAndSettle();
         final reference = loongPassDesignTheme(brightness).typography;
         final styles = [
           DefaultTextStyle.of(tester.element(find.text('账号标题'))).style,
-          tester.widget<EditableText>(find.byType(EditableText)).style,
+          tester.widget<EditableText>(find.byType(EditableText).first).style,
         ];
         for (final style in styles) {
           expect(style.fontSize, reference.body.sm.fontSize);
           expect(style.fontFamily, reference.body.sm.fontFamily);
+          expect(style.fontFamily, FTypeface.defaultFontFamily);
+          expect(style.fontFamilyFallback, ['SourceHanSansSC']);
           expect(style.letterSpacing, reference.body.sm.letterSpacing);
         }
         expect(
           DefaultTextStyle.of(tester.element(find.text('账号说明'))).style.fontSize,
           reference.body.xs.fontSize,
         );
+        for (final label in ['字段标签', '字段说明', '字段错误']) {
+          final style = DefaultTextStyle.of(tester.element(find.text(label)))
+              .style;
+          expect(style.fontFamily, FTypeface.defaultFontFamily);
+          expect(style.fontFamilyFallback, ['SourceHanSansSC']);
+        }
         expect(tester.takeException(), isNull);
       },
     );
