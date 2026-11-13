@@ -6,6 +6,16 @@ verifies the packaged files and installs an immutable tree; `launcher.mjs` owns
 the exclusive OS lease for native plugin-auth. Credentials are never written by
 the Dart UI, the model bridge, or a second supplier adapter.
 
+Before starting Bun, `pluginHostEnvironment` supplies the OS manual HTTP/HTTPS proxy when
+the process has no explicit proxy environment. macOS reads `scutil --proxy`;
+Windows reads the current user's Internet Settings. Loopback and existing/system
+bypass entries remain direct. This follows Magpie's `internal/netproxy` startup
+contract and `internal/plugin/host.go` environment mapping (MIT, version owned by
+`upstream.lock.json`). Proxy variables are passed only as `MAGPIE_*_PROXY`, so the
+pinned host owns direct/LAN routing as well as forwarding. A proxy change takes effect after
+restarting LoongPass. PAC evaluation and SOCKS-only system settings require an
+HTTP proxy endpoint; this bridge does not implement either mechanism.
+
 The external `bridge/` is a native Magpie plugin. Each local account grant exposes
 its original native model metadata and API model ID. Magpie's internal request
 context is captured before its host removes private headers, then carried through
