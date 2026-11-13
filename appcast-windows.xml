@@ -1,25 +1,27 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.40</title><sparkle:version>40</sparkle:version><sparkle:shortVersionString>1.0.1-beta.40</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.40
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.41</title><sparkle:version>41</sparkle:version><sparkle:shortVersionString>1.0.1-beta.41</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.41
 
-- 账号列表按「账号、即将到期积分、到期时间、最近领取时间、余额」排列，到期数量与时间分列，日期与时分分行显示。
-- 常用桌面宽度直接显示全部五列；窄窗口和大字号自动改为账号下方排列字段，不再横向滚动表格。
-- 余额只显示可核实的剩余数值与官方单位。原始额度摘要、使用率和上限移入详情；重叠额度不重复合计，未知值显示「—」。
-- 最近领取时间只展示实际保存的领取时间，核验时间保留在详情。额度失败提醒、上次成功查询时间和原始明细继续保留。
-- 侧栏拖动手柄悬停时显示张手、拖动时显示握手，去掉遮挡界面的排序浮层；键盘排序继续可用。
-- 自研界面统一使用 Inter 与思源黑体，字体随安装包提供，离线和不同系统使用相同字体。
-- 保留页面内自动检查、预下载与重启更新，以及完整上游插件、Flutter 3.50.0 / Dart 3.14.0、Bun 1.4.4 和 Forui 界面。
+- 补齐 DeepSeek Harness Agent Teams 与 Superagent 的模型接入指南：父子会话共用 LoongPass 授权来源，模型选择与团队协作由 DSH 负责，路由和协议转换由 Magpie 负责。
+- 修复从桌面启动后原生插件宿主遗漏系统代理、导致模型调用超时的问题。
+- 在启动 Bun 前按 Magpie 原生约定传递代理设置，保留显式代理、绕过列表和本机直连，避免隐式代理抢占宿主的请求路由。
+
+接入与范围
+
+在 LoongPass 启用模型账号并连接 Magpie，再在 DSH 根会话选择「Use Agent Teams」。子 agent 可按 DSH 允许的模型列表选择不同模型。详见 [接入指南](https://github.com/SailingLoong/LoongPass/blob/v1.0.1-beta.41/docs/dsh-multi-agent.md) 与 [验收范围](https://github.com/SailingLoong/LoongPass/blob/v1.0.1-beta.41/docs/verification/2026-11-14-dsh-multi-agent.md)。
+
+已在 macOS Apple Silicon 上通过 WorkBuddy DeepSeek 与 MiniMax 的双子 agent 并行、真实工具调用、任务板完成和会话恢复验收。自动检查包括 305 项原生运行时测试和 286 项 Flutter 测试；Windows / Intel 真机模型调用仍需单独验收。
+
+Superagent 仍是上游研究原型；本版提供独立 profile 的模型接入路径，不含 GitHub / 飞书机器人与常驻服务部署。模型调用沿用 Magpie 原生恢复策略，恢复可能额外消耗额度。
+
+系统手动 HTTP/HTTPS 代理在 LoongPass 启动时读取，修改后需重启。PAC 或仅 SOCKS 的设置需要先提供 HTTP 代理端点。
 
 安装与升级
 
 macOS 使用 LoongPass-macOS-universal.zip。Windows 日常使用 LoongPass-Windows-x64-Setup.exe，便携使用 LoongPass-Windows-x64.zip。应用内更新需开启「接收 Beta 版更新」。升级保留本机账号与领取记录。
 
-ZCode 3.18 新版系统加密凭据暂不能从桌面客户端导入；请在添加账号时使用 BigModel 或 Z.ai 官方网页登录。已有可用授权保留。桌面切换的受限能力不会因本次同步而自动开放。
-
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
-
-本轮表格与余额口径见 docs/verification/2026-11-13-account-table.md；额度查询修复见 docs/verification/2026-11-13-account-facts.md，页面内更新见 docs/verification/2026-11-13-inline-updates.md。CI、模拟协议测试和真实账号验收分别记录。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.40/LoongPass-Windows-x64-Setup.exe" length="28566511" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="tRBwajP+S1qyLTG8exs7V6Vswfjijf7+KZPOJcanNM66lFT2Y9Ae38MRMZg6Gq2awB4SE1g7ViRYfEYwhpkVDQ==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: /10i42uKe9zCsGBoFiIFvd/NeCOUyd9fx454aij676/xP70nZmvkkincJezCbjhe3yXCvaAx1gSoFvPLjoxrAQ==
-length: 3123
+</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.41/LoongPass-Windows-x64-Setup.exe" length="28575402" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="f2wU2j2CmPjZLp3VF83dfiEAQeLzDGBHpt9IMoTWouNX6PHE3sn8wrPRDF1d8whKknsi7e3g8P4l6IiXFKQxCg==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: iLoGynYCYbuYHZk2YOmdl8WpPBEvfHeZHPhys5xIIzfCo1S7MD1o2aqGQ/aEW+0umSsbt8A2Kp74EXdMvSHiCA==
+length: 3131
 -->
