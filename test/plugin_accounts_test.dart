@@ -161,12 +161,15 @@ class _IdentityHarness {
             note('load');
             const a=await getAuth();
             if(control().load) await client.auth.set({path:{id:options.provider},body:{...a,...control().load}});
+            if(control().loadThrows) throw new Error('private-loader-detail');
             return {baseURL:'https://fixture.invalid/v1',apiKey:'fake'};
           },
           usage:async getAuth => {
             note('usage');
             const a=await getAuth();
             if(control().usage) await client.auth.set({path:{id:options.provider},body:{...a,...control().usage}});
+            if(control().usageThrows) throw new Error('private-transport-detail');
+            if(control().usageResult) return control().usageResult;
             return {windows:[{name:'Credits',amount:1.25,limit:100.125,unit:'credits'}]};
           },
         },
@@ -257,6 +260,83 @@ void _identityTests() {
     'registrationId': 'original-registration',
     'automatic': true,
   };
+
+  for (final failure in ['reply', 'transport']) {
+    test(
+      'failed $failure usage read preserves the last verified quantities and time',
+      () async {
+        final h = await open();
+        final before = h.accounts.accounts.single;
+        await h.control(
+          failure == 'reply'
+              ? {
+                  'usageResult': {
+                    'error': 'private-provider-detail',
+                    'signIn': 'kept',
+                  },
+                }
+              : {'usageThrows': true},
+        );
+        await h.accounts.refresh();
+        final failed = h.accounts.accounts.single;
+        expect(failed.error, 'usage_unavailable');
+        expect(failed.active, true);
+        expect(failed.models, before.models);
+        expect(failed.queriedAt, before.queriedAt);
+        expect(
+          (failed.usage!['windows'] as List).single,
+          containsPair('amount', 1.25),
+        );
+        expect(
+          (failed.usage!['windows'] as List).single,
+          containsPair('limit', 100.125),
+        );
+        expect(
+          (failed.usage!['windows'] as List).single,
+          containsPair('unit', 'credits'),
+        );
+        expect(failed.usage!['error'], isNotEmpty);
+        expect(jsonEncode(failed.usage), isNot(contains('private-')));
+        expect(jsonEncode(h.store.data), isNot(contains('private-')));
+
+        await h.control({});
+        await h.accounts.refresh();
+        final recovered = h.accounts.accounts.single;
+        expect(recovered.error, isNull);
+        expect(recovered.usage!['error'], '');
+        expect(recovered.queriedAt!.isAfter(before.queriedAt!), true);
+      },
+    );
+  }
+
+  test('model loader failure does not suppress an independent official quota read', () async {
+    final h = await open(start: false);
+    await h.control({'loadThrows': true});
+    await h.accounts.start();
+    final account = h.accounts.accounts.single;
+    expect((account.usage!['windows'] as List).single, containsPair('amount', 1.25));
+    expect(account.error, 'catalog_unavailable');
+    expect(account.queriedAt, isNotNull);
+    expect(account.active, true);
+    expect(account.models, isEmpty);
+  });
+
+  test('expired native usage authorization is actionable without fabricating a successful snapshot', () async {
+    final h = await open(start: false);
+    await h.control({
+      'usageResult': {'error': 'expired-private-detail', 'signIn': 'expired'},
+    });
+    await h.accounts.start();
+    final account = h.accounts.accounts.single;
+    expect(account.error, 'authorization_required');
+    expect(account.queriedAt, isNull);
+    expect(account.usage!['signIn'], 'expired');
+    expect(account.models, isNotEmpty);
+    expect(account.active, true);
+    await h.control({'usageThrows': true});
+    await h.accounts.refresh();
+    expect(h.accounts.accounts.single.usage!['signIn'], 'expired');
+  });
 
   for (final mismatch in ['provider', 'uid', 'realm']) {
     test(

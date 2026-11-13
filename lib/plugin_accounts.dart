@@ -32,6 +32,8 @@ class PluginAccount {
   final Map<String, dynamic> facts;
   final List<Map<String, dynamic>> models;
   final Map<String, dynamic>? usage;
+
+  /// Time of the last successful official usage read, never a failed attempt.
   final DateTime? queriedAt;
   final String? error;
   final String? source;
@@ -174,8 +176,7 @@ class PluginAccounts extends ChangeNotifier {
       final rows = await runtime.call('providers', {
         'off': [
           for (final id in runtime.providerIds)
-            if (!enabledProviders.contains(id) || !connected.contains(id))
-              id,
+            if (!enabledProviders.contains(id) || !connected.contains(id)) id,
         ],
         'offAccounts': offAccounts,
       }) as List;
@@ -200,14 +201,21 @@ class PluginAccounts extends ChangeNotifier {
           try {
             final expected = Map<String, dynamic>.from(_row(key)!);
             await _live(key, expected);
-            final loaded = await runtime.call('load', {
-              'provider': provider['id'],
-              'account': key,
-            }) as Map;
+            Map? loaded;
+            var catalogFailed = account['fellBack'] == true;
+            try {
+              loaded = await runtime.call('load', {
+                'provider': provider['id'],
+                'account': key,
+              }) as Map;
+            } catch (_) {
+              catalogFailed = true;
+            }
             await _live(key, expected);
             final own = account['models'] as List?;
             List<Map<String, dynamic>>? models;
-            if (account['fellBack'] != true || !_catalogs.containsKey(key)) {
+            if (loaded != null &&
+                (account['fellBack'] != true || !_catalogs.containsKey(key))) {
               models = List.unmodifiable([
                 for (final model in provider['models'] as List)
                   if (own == null || own.contains(model['id']))
@@ -222,23 +230,50 @@ class PluginAccounts extends ChangeNotifier {
               ]);
             }
             Map<String, dynamic>? observedUsage;
+            String? usageFailure;
+            var signIn = '';
             if (provider['usage'] == true) {
-              final usage = await runtime.call('usage', {
-                'provider': provider['id'],
-                'account': key,
-              });
-              if (usage is Map)
-                observedUsage = Map.unmodifiable(
-                  Map<String, dynamic>.from(usage),
-                );
+              try {
+                final usage = await runtime.call('usage', {
+                  'provider': provider['id'],
+                  'account': key,
+                });
+                if (usage is! Map) throw const FormatException('Invalid usage');
+                signIn = usage['signIn'] is String ? usage['signIn'] : '';
+                if (signIn == 'expired' ||
+                    usage['error'] is String &&
+                        (usage['error'] as String).trim().isNotEmpty) {
+                  usageFailure = signIn == 'expired'
+                      ? 'authorization_required'
+                      : 'usage_unavailable';
+                } else {
+                  observedUsage = Map.unmodifiable(
+                    Map<String, dynamic>.from(usage),
+                  );
+                }
+              } catch (_) {
+                usageFailure = 'usage_unavailable';
+              }
             }
             await _live(key, expected);
             if (models != null) _catalogs[key] = models;
-            if (observedUsage != null) _usage[key] = observedUsage;
-            _queried[key] = DateTime.now();
+            if (observedUsage != null) {
+              _usage[key] = observedUsage;
+              _queried[key] = DateTime.now();
+            }
             _errors.remove(key);
-            if (account['fellBack'] == true)
-              _errors[key] = 'catalog_unavailable';
+            if (catalogFailed) _errors[key] = 'catalog_unavailable';
+            if (usageFailure != null) {
+              // Keep verified quantities and their original observation time.
+              // Error strings may contain private response data; publish only
+              // a stable failure and the native authorization state.
+              _usage[key] = Map.unmodifiable({
+                ...?_usage[key],
+                'error': 'Usage query unavailable',
+                if (signIn.isNotEmpty) 'signIn': signIn,
+              });
+              _errors[key] = usageFailure;
+            }
           } catch (_) {
             _errors.putIfAbsent(key, () => 'account_unavailable');
           }

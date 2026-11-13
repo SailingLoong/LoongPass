@@ -6,11 +6,12 @@ class ClaimReceipt {
     this.unit = '积分',
     this.amountLabel = '',
     this.confirmedAt,
+    this.observedAt,
     this.day,
   });
   final num? amount;
   final String unit, amountLabel;
-  final DateTime? confirmedAt;
+  final DateTime? confirmedAt, observedAt;
   final String? day;
   String get display {
     final value = amount;
@@ -18,6 +19,8 @@ class ClaimReceipt {
         ? '已领取 · 金额未知'
         : '$amountLabel+${value == value.roundToDouble() ? value.toStringAsFixed(0) : value} $unit';
     final time = confirmedAt?.toLocal();
+    if (time == null && observedAt != null)
+      return '$quantity · 核验于 ${observedAt!.toLocal().toString().substring(0, 16)}';
     return '$quantity · ${time == null ? '${day == null ? '' : '$day '}时间未知' : time.toString().substring(0, 16)}';
   }
 }
