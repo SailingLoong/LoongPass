@@ -270,4 +270,70 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testDesktopWidgets(
+    '480px at 200 percent keeps exact balances and actions reachable',
+    (tester) async {
+      tester.view.physicalSize = const Size(480, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var activations = 0;
+      const identity = 'long-account-name-for-accessibility@example.test';
+      await tester.pumpWidget(
+        DesktopTestApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: SingleChildScrollView(
+                child: CompactAccountsTable(
+                  entries: [
+                    AccountTableEntry(
+                      id: 'narrow',
+                      label: identity,
+                      identity: identity,
+                      balance: '3899.96 credits',
+                      status: '需要重新授权',
+                      onActivate: () => activations++,
+                      details: const Text('精确余额：3899.96 credits'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('account-search')),
+        'long-account',
+      );
+      await tester.pumpAndSettle();
+      final amount = find.text('3899.96 credits');
+      await tester.ensureVisible(amount);
+      await tester.pumpAndSettle();
+      final paragraph = tester.renderObject<RenderParagraph>(amount);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(amount.hitTestable(), findsOneWidget);
+      final activate = find.byKey(const Key('activate-narrow'));
+      await tester.ensureVisible(activate);
+      await tester.pumpAndSettle();
+      await tester.tap(activate);
+      await tester.pumpAndSettle();
+      expect(activations, 1);
+      final account = find.byKey(const Key('account-narrow'));
+      await tester.ensureVisible(account);
+      await tester.tap(account);
+      await tester.pumpAndSettle();
+      expect(find.text('精确余额：3899.96 credits').hitTestable(), findsOneWidget);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
