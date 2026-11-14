@@ -1,0 +1,28 @@
+{
+  "package": "dsh-lark-channel",
+  "version": "0.0.7",
+  "repository": "https://github.com/omdsh-dev/dsh-lark",
+  "commit": "632807d9abafbb866a5e208a0298eff21c7856d1",
+  "license": "BSD-3-Clause",
+  "integrity": "sha512-jLuzsoVxlyNMjk3wCrYrDMWNvLOpGlmcffGLWcebFS86Z9bPnMGuWhczII1cUxztHlK3MFAVtzd7lJARBuU16w==",
+  "verifiedHost": "0.2.2-rc.2",
+  "originalFiles": {
+    "lib/cli.js": "efc09c27baabc210aa2b6d6271c49bfd03666c8b5731ee1d55d970622bd5c3e7",
+    "lib/index.js": "58cc54dcb783a168146b255c74f9748f0a47a36438d82f3caedc4dc7b88ec913",
+    "lib/types/host.d.ts": "2bc875ba7b10e3755b1bbf0e3b61b0511bc10280e1f0526f4cc081310970ae0f",
+    "src/bridge.ts": "1473c958582383d8199324f3c9aef3b69d6fb0f1f3361c732bdaddfd80213faa",
+    "src/commands.ts": "64089dd66b1311eda95eaec65092c644051405d8a945fa973b4543be32b0f88d",
+    "src/host.ts": "ab7da607a85331e683816a3fba99acd3484796ec34c74639b1a5c189c39d0102",
+    "src/provision.ts": "ad41e195d6a48037f902655e71861f4f0fe5c7767b202fe547463052cc3c402a"
+  },
+  "patchedFiles": {
+    "lib/cli.js": "d37ca857d80f56835e70fafb283a17c5bfe58f70b4158de91965a34d503fdef3",
+    "lib/index.js": "194ac384678c91d2933f655e7787f15ce6495ef9e0707b81521941fba07790b0",
+    "lib/types/host.d.ts": "a62aea8ae15765244321bd9b9ac592c1caa810d0da95be24ed64168731bebd76",
+    "src/bridge.ts": "5007a7d830101ec2d63d14f4ba83d536baae9aacc1ce8009ed56bd7b9a507cb4",
+    "src/commands.ts": "b37e7819d137b779b8c1b19e3085bb03d619233142f0e8a3b65c8bbc12f9c9ae",
+    "src/host.ts": "03bad06254d1529457ab471f645ad12ea7a250fea8a40418f5cbbfaaf199ccf0",
+    "src/provision.ts": "a4e19b21b6f1e1bf14290f8da97362a1e36d44cfc21d9cc2f78c91dcd58f9088"
+  },
+  "patchSha256": "a304b06d517b4878d9cc1c8b3ff1c42c160f92078ecfee5abec4f6e08872a080"
+}

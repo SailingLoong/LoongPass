@@ -1,0 +1,324 @@
+diff --git a/lib/cli.js b/lib/cli.js
+--- a/lib/cli.js
++++ b/lib/cli.js
+@@ -324,6 +324,14 @@
+ function serviceEnvironment(spec) {
+ 	const variables = [["PATH", servicePath(spec.dsh)]];
+ 	if (spec.dshHome !== void 0) variables.push(["DSH_HOME", spec.dshHome]);
++	for (const key of [
++		"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
++		"http_proxy", "https_proxy", "all_proxy", "no_proxy",
++		"NODE_USE_ENV_PROXY", "NODE_USE_SYSTEM_CA"
++	]) {
++		const value = process.env[key];
++		if (value !== void 0 && value !== "") variables.push([key, value]);
++	}
+ 	if (spec.credentials !== void 0) variables.push(["LARK_APP_ID", spec.credentials.appId], ["LARK_APP_SECRET", spec.credentials.appSecret]);
+ 	return variables;
+ }
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -4118,7 +4118,7 @@
+ /** List what this chat accepts. Not a host command: the list is per surface. */
+ const HELP_COMMAND = "help";
+ /** The cause recorded when a chat cancels its own turn. */
+-const CANCEL_CAUSE = "user";
++const CANCEL_CAUSE = { kind: "user" };
+ /** Leading slash plus the command name, the only part this module parses. */
+ const COMMAND_LINE = /^\/([a-zA-Z][\w-]*)/;
+ /**
+@@ -6120,7 +6120,15 @@
+ 		await ctx.get("loader")?.await();
+ 		const presets = ctx.get("agentPresets");
+ 		const presetId = presets === void 0 ? void 0 : (await presets.resolve(config.preset)).id;
+-		const toolScope = presets === void 0 || presetId === void 0 ? void 0 : await presets.standingKeyFor(presetId);
++		let toolScope;
++		if (presets !== void 0 && presetId !== void 0) {
++			if (presets.standingKeyFor !== void 0) toolScope = await presets.standingKeyFor(presetId);
++			else {
++				const scope = await presets.acquireScope(presetId);
++				toolScope = scope.key;
++				ctx.effect(() => () => scope[Symbol.asyncDispose](), "lark:preset-scope");
++			}
++		}
+ 		return {
+ 			...presetId === void 0 ? {} : { presetId },
+ 			presentCall: createCallPresenter(ctx.get("tools"), toolScope),
+@@ -7532,20 +7540,26 @@
+ 		targetByMessageId.delete(id);
+ 		aimAt(sessionId, binding, claimed);
+ 	});
++	const chatBindingForAgent = (agent) => {
++		const direct = bySession.get(agent.session.id);
++		if (direct !== void 0) return direct;
++		try {
++			const root = ctx.get("subagents")?.rootOf(agent);
++			return root === void 0 ? void 0 : bySession.get(root.session.id);
++		} catch {
++			return void 0;
++		}
++	};
+ 	ctx.on("session/event", (session, event) => {
+ 		const binding = bySession.get(session.id);
+-		if (binding === void 0) return;
+-		if (isTurnStartEvent(event)) aimAt(session.id, binding, void 0);
+-		else if (isUserMessageEvent(event)) {
+-			const claimed = event.data.id === void 0 ? void 0 : targetByMessageId.get(event.data.id);
+-			if (claimed !== void 0 && event.data.id !== void 0) {
+-				targetByMessageId.delete(event.data.id);
+-				aimAt(session.id, binding, claimed);
+-			}
+-		} else if (isToolCallEvent(event)) {
++		if (binding === void 0) {
++			const agent = agents.get(session.id);
++			if (agent === void 0 || chatBindingForAgent(agent) === void 0) return;
++		}
++		if (isToolCallEvent(event)) {
+ 			let calls = callSnapshots.get(session.id);
+ 			if (calls === void 0) {
+-				calls = /* @__PURE__ */ new Map();
++				calls = new Map();
+ 				callSnapshots.set(session.id, calls);
+ 			}
+ 			calls.set(event.data.callId, {
+@@ -7558,6 +7572,16 @@
+ 				for (const [callId, record] of calls) if (record.turn === event.data.turn) calls.delete(callId);
+ 				if (calls.size === 0) callSnapshots.delete(session.id);
+ 			}
++		}
++		if (binding === void 0) return;
++		if (isTurnStartEvent(event)) aimAt(session.id, binding, void 0);
++		else if (isUserMessageEvent(event)) {
++			const claimed = event.data.id === void 0 ? void 0 : targetByMessageId.get(event.data.id);
++			if (claimed !== void 0 && event.data.id !== void 0) {
++				targetByMessageId.delete(event.data.id);
++				aimAt(session.id, binding, claimed);
++			}
++		} else if (isTurnEndEvent(event)) {
+ 			runningBySession.set(session.id, false);
+ 		} else if (isStepStartEvent(event)) runningBySession.set(session.id, true);
+ 		try {
+@@ -7569,7 +7593,7 @@
+ 		if (isTurnEndEvent(event)) aimAt(session.id, binding, void 0);
+ 	});
+ 	ctx.on("approval/request", (request, next) => {
+-		const binding = bySession.get(request.agent.session.id);
++		const binding = chatBindingForAgent(request.agent);
+ 		if (binding === void 0) return next();
+ 		return askViaCard(binding, request, next);
+ 	}, { prepend: true });
+diff --git a/lib/types/host.d.ts b/lib/types/host.d.ts
+--- a/lib/types/host.d.ts
++++ b/lib/types/host.d.ts
+@@ -197,7 +197,7 @@
+      * Clear queued work and abort the active turn. A no-op when nothing is
+      * active, so a chat may offer it unconditionally.
+      */
+-    cancel(cause: string): void;
++    cancel(cause: { readonly kind: 'user' }): void;
+     /**
+      * Resolve once the agent has no driver or maintenance task running.
+      * Optional here because the contract reaches this plugin as an object rather
+@@ -261,6 +261,11 @@
+         readonly setup?: (agentCtx: Context) => Promise<void>;
+     }): Promise<HostAgentHandle>;
+ }
++/** Native ancestry lookup keeps child approvals attached to their root chat. */
++export interface HostSubagents {
++    rootOf(agent: HostAgent): HostAgent;
++}
++
+ /**
+  * The `tools` registry, as this plugin's per-agent composition uses it
+  * (subset of the host `ToolRegistry`).
+@@ -374,7 +379,9 @@
+      * registrations in — the view that holds its tools, since a roster keeps
+      * every model-facing row off the global layer.
+      */
+-    standingKeyFor(id?: string): Promise<unknown>;
++    standingKeyFor?(id?: string): Promise<unknown>;
++    /** Lease the current native preset scope until its presentation reader closes. */
++    acquireScope(id?: string): Promise<{ readonly key: unknown } & AsyncDisposable>;
+ }
+ /** One workspace record (subset of the host `Workspace` entity). */
+ export interface HostWorkspace {
+diff --git a/src/bridge.ts b/src/bridge.ts
+--- a/src/bridge.ts
++++ b/src/bridge.ts
+@@ -48,6 +48,7 @@
+   HostCommands,
+   HostContentBlock,
+   HostSystemPrompt,
++  HostSubagents,
+   HostTools,
+   HostUserMessage,
+   HostWorkspace,
+@@ -1059,9 +1060,17 @@
+     const presetId = presets === undefined ? undefined : (await presets.resolve(config.preset)).id
+     // A roster keeps every tool off the global layer, so its standing key is
+     // the view that can describe this agent's calls.
+-    const toolScope = presets === undefined || presetId === undefined
+-      ? undefined
+-      : await presets.standingKeyFor(presetId)
++    let toolScope: unknown
++    if (presets !== undefined && presetId !== undefined) {
++      if (presets.standingKeyFor !== undefined) {
++        toolScope = await presets.standingKeyFor(presetId)
++      } else {
++        const scope = await presets.acquireScope(presetId)
++        toolScope = scope.key
++        // The renderer retains this view until the channel closes.
++        ctx.effect(() => () => scope[Symbol.asyncDispose](), 'lark:preset-scope')
++      }
++    }
+     return {
+       ...presetId === undefined ? {} : { presetId },
+       presentCall: createCallPresenter(ctx.get('tools') as HostTools | undefined, toolScope),
+@@ -2865,11 +2874,45 @@
+     aimAt(sessionId, binding, claimed)
+   })
+ 
++  const chatBindingForAgent = (agent: HostAgent): ChatBinding | undefined => {
++    const direct = bySession.get(agent.session.id)
++    if (direct !== undefined) return direct
++    try {
++      const root = (ctx.get('subagents') as HostSubagents | undefined)?.rootOf(agent)
++      return root === undefined ? undefined : bySession.get(root.session.id)
++    } catch {
++      // Native ancestry rejects callers whose runtime owner has already closed.
++      return undefined
++    }
++  }
++
+   // Outbound: the owned chat's renderer decides what reaches the chat. The
+   // bridge additionally remembers each call's arguments for the approval card,
+   // and forgets the turn's calls once it closes.
+   ctx.on('session/event', (session, event: HostSessionEvent) => {
+     const binding = bySession.get(session.id)
++    if (binding === undefined) {
++      const agent = agents.get(session.id)
++      if (agent === undefined || chatBindingForAgent(agent) === undefined) return
++    }
++    // Child calls supply their own approval evidence without rendering their
++    // transcript as the root's conversation.
++    if (isToolCallEvent(event)) {
++      let calls = callSnapshots.get(session.id)
++      if (calls === undefined) {
++        calls = new Map()
++        callSnapshots.set(session.id, calls)
++      }
++      calls.set(event.data.callId, { turn: event.data.turn, arguments: event.data.arguments })
++    } else if (isTurnEndEvent(event)) {
++      const calls = callSnapshots.get(session.id)
++      if (calls !== undefined) {
++        for (const [callId, record] of calls) {
++          if (record.turn === event.data.turn) calls.delete(callId)
++        }
++        if (calls.size === 0) callSnapshots.delete(session.id)
++      }
++    }
+     if (binding === undefined) return
+     if (isTurnStartEvent(event)) {
+       // Fail closed: a turn that claims none of our messages sends its answer
+@@ -2888,26 +2931,9 @@
+         targetByMessageId.delete(event.data.id)
+         aimAt(session.id, binding, claimed)
+       }
+-    } else if (isToolCallEvent(event)) {
+-      let calls = callSnapshots.get(session.id)
+-      if (calls === undefined) {
+-        calls = new Map()
+-        callSnapshots.set(session.id, calls)
+-      }
+-      calls.set(event.data.callId, { turn: event.data.turn, arguments: event.data.arguments })
+     } else if (isTurnEndEvent(event)) {
+       // The turn's writer is done, so a queued preset switch may take its own
+       // turn at the log now.
+-      // Only THIS session's THIS turn: call ids are known unique per turn, so
+-      // keeping exactly the live turn's entries is what makes an id lookup
+-      // unambiguous — and other sessions' in-flight turns are none of ours.
+-      const calls = callSnapshots.get(session.id)
+-      if (calls !== undefined) {
+-        for (const [callId, record] of calls) {
+-          if (record.turn === event.data.turn) calls.delete(callId)
+-        }
+-        if (calls.size === 0) callSnapshots.delete(session.id)
+-      }
+       runningBySession.set(session.id, false)
+     } else if (isStepStartEvent(event)) {
+       runningBySession.set(session.id, true)
+@@ -2939,7 +2965,7 @@
+   // merits too: the human who typed the request is in the chat, and this
+   // listener still delegates every session it does not own.
+   ctx.on('approval/request', (request, next) => {
+-    const binding = bySession.get(request.agent.session.id)
++    const binding = chatBindingForAgent(request.agent)
+     if (binding === undefined) return next()
+     return askViaCard(binding, request, next)
+   }, { prepend: true })
+diff --git a/src/commands.ts b/src/commands.ts
+--- a/src/commands.ts
++++ b/src/commands.ts
+@@ -25,7 +25,7 @@
+ 
+ 
+ /** The cause recorded when a chat cancels its own turn. */
+-const CANCEL_CAUSE = 'user'
++const CANCEL_CAUSE = { kind: 'user' } as const
+ 
+ /** Leading slash plus the command name, the only part this module parses. */
+ const COMMAND_LINE = /^\/([a-zA-Z][\w-]*)/
+diff --git a/src/host.ts b/src/host.ts
+--- a/src/host.ts
++++ b/src/host.ts
+@@ -184,7 +184,7 @@
+    * Clear queued work and abort the active turn. A no-op when nothing is
+    * active, so a chat may offer it unconditionally.
+    */
+-  cancel(cause: string): void
++  cancel(cause: { readonly kind: 'user' }): void
+   /**
+    * Resolve once the agent has no driver or maintenance task running.
+    * Optional here because the contract reaches this plugin as an object rather
+@@ -251,6 +251,11 @@
+   }): Promise<HostAgentHandle>
+ }
+ 
++/** Native ancestry lookup keeps child approvals attached to their root chat. */
++export interface HostSubagents {
++  rootOf(agent: HostAgent): HostAgent
++}
++
+ /**
+  * The `tools` registry, as this plugin's per-agent composition uses it
+  * (subset of the host `ToolRegistry`).
+@@ -355,7 +360,9 @@
+    * registrations in — the view that holds its tools, since a roster keeps
+    * every model-facing row off the global layer.
+    */
+-  standingKeyFor(id?: string): Promise<unknown>
++  standingKeyFor?(id?: string): Promise<unknown>
++  /** Lease the current native preset scope until its presentation reader closes. */
++  acquireScope(id?: string): Promise<{ readonly key: unknown } & AsyncDisposable>
+ }
+ 
+ /** One workspace record (subset of the host `Workspace` entity). */
+diff --git a/src/provision.ts b/src/provision.ts
+--- a/src/provision.ts
++++ b/src/provision.ts
+@@ -377,6 +377,14 @@
+ function serviceEnvironment(spec: ServiceSpec): ReadonlyArray<readonly [string, string]> {
+   const variables: Array<readonly [string, string]> = [['PATH', servicePath(spec.dsh)]]
+   if (spec.dshHome !== undefined) variables.push(['DSH_HOME', spec.dshHome])
++  for (const key of [
++    'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
++    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
++    'NODE_USE_ENV_PROXY', 'NODE_USE_SYSTEM_CA',
++  ]) {
++    const value = process.env[key]
++    if (value !== undefined && value !== '') variables.push([key, value])
++  }
+   if (spec.credentials !== undefined) {
+     variables.push(['LARK_APP_ID', spec.credentials.appId], ['LARK_APP_SECRET', spec.credentials.appSecret])
+   }
