@@ -94,8 +94,7 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
                   children: [
                     Text(
                       metric.$1,
-                      style: context.theme.typography.body.lg.copyWith(
-                        fontSize: 20,
+                      style: context.theme.typography.display.xl.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
                     ),

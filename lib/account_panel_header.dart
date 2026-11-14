@@ -26,7 +26,6 @@ class AccountPanelToolbar extends StatelessWidget {
         Text(
           title,
           style: context.theme.typography.display.xl.copyWith(
-            fontSize: 20,
             fontWeight: FontWeight.w600,
           ),
         ),
