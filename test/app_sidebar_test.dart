@@ -48,6 +48,88 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testDesktopWidgets('models navigation can expand before the catalog loads', (
+    tester,
+  ) async {
+    await mount(tester);
+    await tester.tap(find.byKey(const Key('nav-models')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('toggle-models')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('toggle-models')));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无模型'), findsOneWidget);
+    expect(find.text('Magpie models'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final width in [480.0, 1024.0]) {
+    testDesktopWidgets('model selection uses the supplied order at $width', (
+      tester,
+    ) async {
+      tester.view.physicalSize = Size(width, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      String? stored;
+      final preferences = UiPreferences(write: (value) async => stored = value);
+      final selection = ValueNotifier<String?>(null);
+      addTearDown(preferences.dispose);
+      addTearDown(selection.dispose);
+      preferences.setAppsExpanded(false);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: ValueListenableBuilder<String?>(
+              valueListenable: selection,
+              builder: (context, selected, _) => AppWorkspace(
+                preferences: preferences,
+                modelIds: const ['auto', 'MiniMax-M3', 'deepseek-flash'],
+                selectedModelId: selected,
+                onSelectModel: (id) => selection.value = id,
+                pages: const {ManagedApp.qoder: TextField(key: Key('draft'))},
+                sections: {
+                  WorkspaceSection.accounts: const Text('All accounts'),
+                  WorkspaceSection.models: Text(
+                    'Selection ${selected ?? 'all'}',
+                  ),
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('toggle-models')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.byKey(const Key('model-nav-MiniMax-M3'))).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const Key('model-nav-deepseek-flash')))
+              .dy,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
+      await tester.pumpAndSettle();
+      expect(selection.value, 'deepseek-flash');
+      expect(find.text('Selection deepseek-flash'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      expect(find.text('All accounts'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
+      expect(selection.value, isNull);
+      expect(find.text('Selection all'), findsOneWidget);
+      await preferences.saved;
+      final restored = UiPreferences(read: () async => stored);
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(restored.modelsExpanded, width >= 760);
+      expect(restored.appsExpanded, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testDesktopWidgets(
     'application navigation exposes buttons to the macOS accessibility bridge',
     (tester) async {

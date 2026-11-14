@@ -7,7 +7,7 @@ import 'managed_app.dart';
 import 'workspace_tools.dart';
 import 'account_details.dart';
 
-class WorkspaceAccountsPage extends StatelessWidget {
+class WorkspaceAccountsPage extends StatefulWidget {
   const WorkspaceAccountsPage({
     super.key,
     required this.registry,
@@ -16,15 +16,25 @@ class WorkspaceAccountsPage extends StatelessWidget {
   final AccountWorkspaceRegistry registry;
   final Widget? serviceStatus;
   @override
+  State<WorkspaceAccountsPage> createState() => WorkspaceAccountsPageState();
+}
+
+class WorkspaceAccountsPageState extends State<WorkspaceAccountsPage> {
+  final _table = GlobalKey<CompactAccountsTableState>();
+
+  bool revealAccount(String id) =>
+      _table.currentState?.revealAccount(id) ?? false;
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: registry,
+    listenable: widget.registry,
     builder: (context, _) => WorkspacePage(
       title: '账号与积分',
       subtitle: '按平台查找账号，余额与到期信息分别展示。',
       children: [
-        if (serviceStatus != null) serviceStatus!,
-        if (serviceStatus == null || registry.entries.isNotEmpty)
-          CompactAccountsTable(entries: registry.entries),
+        if (widget.serviceStatus != null) widget.serviceStatus!,
+        if (widget.serviceStatus == null || widget.registry.entries.isNotEmpty)
+          CompactAccountsTable(key: _table, entries: widget.registry.entries),
       ],
     ),
   );

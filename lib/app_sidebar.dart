@@ -3,6 +3,7 @@ import 'package:forui/forui.dart';
 
 import 'app_navigation_item.dart';
 import 'accounts_navigation.dart';
+import 'models_navigation.dart';
 import 'managed_app.dart';
 import 'ui_preferences.dart';
 import 'workspace_tools.dart';
@@ -31,6 +32,9 @@ class AppWorkspace extends StatefulWidget {
     this.preferences,
     this.sections = const {},
     this.footerBuilder,
+    this.modelIds = const [],
+    this.selectedModelId,
+    this.onSelectModel,
   });
   final Map<ManagedApp, Widget> pages;
   final ManagedApp initialApp;
@@ -38,6 +42,9 @@ class AppWorkspace extends StatefulWidget {
   final UiPreferences? preferences;
   final Map<WorkspaceSection, Widget> sections;
   final Widget Function(BuildContext, bool compact)? footerBuilder;
+  final List<String> modelIds;
+  final String? selectedModelId;
+  final ValueChanged<String?>? onSelectModel;
   @override
   State<AppWorkspace> createState() => AppWorkspaceState();
 }
@@ -68,6 +75,11 @@ class AppWorkspaceState extends State<AppWorkspace> {
       if (section == WorkspaceSection.accounts) _all = true;
       _section = section;
     });
+  }
+
+  void selectModel(String? id) {
+    widget.onSelectModel?.call(id);
+    selectSection(WorkspaceSection.models);
   }
 
   void _hideApp(ManagedApp app) {
@@ -160,6 +172,16 @@ class AppWorkspaceState extends State<AppWorkspace> {
                                         onOpen: () => selectSection(section),
                                         onSelectApp: selectApp,
                                         onHideApp: _hideApp,
+                                      )
+                                    : section == WorkspaceSection.models
+                                    ? ModelsNavigation(
+                                        preferences: _preferences,
+                                        compact: compact,
+                                        active: _section == section,
+                                        modelIds: widget.modelIds,
+                                        selectedModelId: widget.selectedModelId,
+                                        onOpen: () => selectModel(null),
+                                        onSelectModel: selectModel,
                                       )
                                     : SliverToBoxAdapter(
                                         child: SidebarNavigationButton(

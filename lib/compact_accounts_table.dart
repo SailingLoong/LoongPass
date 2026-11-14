@@ -25,11 +25,13 @@ class CompactAccountsTable extends StatefulWidget {
   final String preferenceScope, emptyMessage;
   final bool hasCredits, hasRewards;
   @override
-  State<CompactAccountsTable> createState() => _CompactAccountsTableState();
+  State<CompactAccountsTable> createState() => CompactAccountsTableState();
 }
 
-class _CompactAccountsTableState extends State<CompactAccountsTable> {
+class CompactAccountsTableState extends State<CompactAccountsTable> {
   final _search = TextEditingController();
+  GlobalKey _revealedAccount = GlobalKey();
+  String? _highlightedId, _pendingReveal;
   late final _live = ValueNotifier(widget.entries);
   final _favorites = <String>{};
   UiPreferences? _preferences;
@@ -54,6 +56,20 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       : widget.entries.any((e) => e.hasRewards);
   int _page = 0, _size = 10;
   String _filter = '全部', _sort = '默认排序';
+
+  /// A view-only deep link. Exact IDs remain scoped by the owning platform.
+  bool revealAccount(String id) {
+    if (!widget.entries.any((entry) => entry.id == id)) return false;
+    setState(() {
+      _search.clear();
+      _filter = '全部';
+      _highlightedId = id;
+      _revealedAccount = GlobalKey();
+      _pendingReveal = id;
+    });
+    return true;
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -148,6 +164,19 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
             : x.compareTo(y);
       });
     if (_sort == '账号名称') rows.sort((a, b) => a.label.compareTo(b.label));
+    if (_pendingReveal != null) {
+      final index = rows.indexWhere((entry) => entry.id == _pendingReveal);
+      _pendingReveal = null;
+      if (index >= 0) {
+        _page = index ~/ _size;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final target = _revealedAccount.currentContext;
+          if (mounted && target != null) {
+            Scrollable.ensureVisible(target, alignment: 0.25);
+          }
+        });
+      }
+    }
     final pages = math.max(1, (rows.length / _size).ceil());
     final page = math.min(_page, pages - 1);
     final visible = rows.skip(page * _size).take(_size).toList();
@@ -274,7 +303,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                         for (final entry in visible)
                           TableRow(
                             key: ValueKey('row-${entry.id}'),
-                            decoration: _rowDecoration,
+                            decoration: _rowDecoration(entry),
                             children: _fields(entry),
                           ),
                       ],
@@ -284,7 +313,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                         for (final entry in visible)
                           DecoratedBox(
                             key: ValueKey('row-${entry.id}'),
-                            decoration: _rowDecoration,
+                            decoration: _rowDecoration(entry),
                             child: _stackedFields(entry, box.maxWidth),
                           ),
                       ],
@@ -408,7 +437,8 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     if (!_hasCredits) '套餐 / 工作区',
   ];
 
-  BoxDecoration get _rowDecoration => BoxDecoration(
+  BoxDecoration _rowDecoration(AccountTableEntry entry) => BoxDecoration(
+    color: entry.id == _highlightedId ? context.theme.colors.secondary : null,
     border: Border(
       bottom: BorderSide(
         color: context.theme.colors.border.withValues(alpha: .45),
@@ -450,20 +480,24 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   }
 
   List<Widget> _fields(AccountTableEntry entry) => [
-    _AccountName(
-      entry: entry,
-      height: _rowHeight,
-      favorite: _favorite(entry),
-      onFavorite: () => setState(() {
-        if (_preferences != null) {
-          _preferences!.toggleFavorite(_preferenceKey(entry));
-        } else {
-          _favorites.contains(entry.id)
-              ? _favorites.remove(entry.id)
-              : _favorites.add(entry.id);
-        }
-      }),
-      onDetails: () => _details(entry.id),
+    Semantics(
+      key: entry.id == _highlightedId ? _revealedAccount : null,
+      selected: entry.id == _highlightedId,
+      child: _AccountName(
+        entry: entry,
+        height: _rowHeight,
+        favorite: _favorite(entry),
+        onFavorite: () => setState(() {
+          if (_preferences != null) {
+            _preferences!.toggleFavorite(_preferenceKey(entry));
+          } else {
+            _favorites.contains(entry.id)
+                ? _favorites.remove(entry.id)
+                : _favorites.add(entry.id);
+          }
+        }),
+        onDetails: () => _details(entry.id),
+      ),
     ),
     if (_hasCredits) ...[
       entry.hasCredits ? _expiry(entry) : _cell('不适用'),
