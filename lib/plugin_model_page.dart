@@ -1,14 +1,25 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'plugin_accounts.dart';
 import 'plugin_application.dart';
+import 'plugin_model_accounts.dart';
+import 'plugin_model_list.dart';
 import 'model_connection_panel.dart';
-import 'managed_app.dart';
 import 'workspace_tools.dart' show WorkspacePage, WorkspaceCard;
 
 class PluginModelServicesPage extends StatefulWidget {
-  const PluginModelServicesPage({super.key, required this.application});
+  const PluginModelServicesPage({
+    super.key,
+    required this.application,
+    this.selectedModelId,
+    this.onSelectModel,
+    this.onOpenAccount,
+  });
   final PluginApplication application;
+  final String? selectedModelId;
+  final ValueChanged<String?>? onSelectModel;
+  final ValueChanged<PluginAccount>? onOpenAccount;
   @override
   State<PluginModelServicesPage> createState() =>
       _PluginModelServicesPageState();
@@ -16,7 +27,9 @@ class PluginModelServicesPage extends StatefulWidget {
 
 class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   bool _busy = false;
-  final _expandedModels = <String>{};
+  final _expanded = <int>{};
+  final _search = TextEditingController();
+  String? _localSelection;
   String? _message;
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -27,10 +40,24 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
     try {
       await action();
     } catch (_) {
-      if (mounted) setState(() => _message = '服务或账号设置未保存。请确认本地服务端口可用后重试。');
+      if (mounted) setState(() => _message = '设置保存失败，请重试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  void _select(String? id) {
+    if (widget.onSelectModel != null) {
+      widget.onSelectModel!(id);
+    } else {
+      setState(() => _localSelection = id);
+    }
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   @override
@@ -38,141 +65,174 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
     final app = widget.application, service = app.models;
     return ListenableBuilder(
       listenable: service,
-      builder: (context, _) => WorkspacePage(
-        title: '模型连接',
-        children: [
-          WorkspaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FSwitch(
-                  value: service.enabled,
-                  label: const Text('本机模型服务'),
-                  description: Text(
-                    service.running
-                        ? '运行中 · 可接受本机连接'
-                        : service.enabled
-                        ? '启动未完成'
-                        : '已关闭',
+      builder: (context, _) {
+        final catalog = service.catalog;
+        final selectedId = widget.onSelectModel == null
+            ? widget.selectedModelId ?? _localSelection
+            : widget.selectedModelId;
+        final selected = catalog.where((m) => m.id == selectedId).firstOrNull;
+        final query = _search.text.trim().toLowerCase();
+        final visible = catalog
+            .where(
+              (m) =>
+                  '${m.id} ${m.name} ${m.bindings.map((b) => '${b.nativeId} ${b.account.label} ${b.account.provider}').join(' ')}'
+                      .toLowerCase()
+                      .contains(query),
+            )
+            .toList();
+        return WorkspacePage(
+          title: selected?.name ?? 'loongpass/auto',
+          subtitle: '同会话、同模型优先复用账号。新会话优先使用最早到期的剩余额度。',
+          children: [
+            if (_message != null) WorkspaceCard(child: Text(_message!)),
+            if (selectedId != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FButton(
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    prefix: const Icon(FLucideIcons.arrowLeft, size: 16),
+                    onPress: () => _select(null),
+                    child: const Text('全部模型'),
                   ),
-                  leadingLabel: true,
-                  enabled: !_busy,
-                  onChange: (value) => _run(() => service.setEnabled(value)),
                 ),
-                if (_message != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(_message!),
-                  ),
-                if (service.error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '本地服务尚未启动，请核对端口占用后重新开启。',
-                      style: TextStyle(color: context.theme.colors.error),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          ModelConnectionPanel(connection: app.connection, enabled: !_busy),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '账号来源 · ${service.grants.length}',
-              style: context.theme.typography.body.sm.copyWith(
-                fontWeight: FontWeight.w600,
               ),
-            ),
-          ),
-          if (service.grants.isEmpty)
-            const WorkspaceCard(
-              child: Text('还没有账号来源。先在账号页添加官方授权，再选择可供 Magpie 使用的账号。'),
-            ),
-          if (service.grants.isNotEmpty)
-            WorkspaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final (index, grant) in service.grants.indexed) ...[
-                    if (index > 0) const SizedBox(height: 12),
-                    FSwitch(
-                      value: grant.enabled,
-                      label: Text(grant.account.label),
-                      description: Text(_sourceName(grant.account.provider)),
-                      leadingLabel: true,
-                      enabled: !(_busy || !grant.account.active),
-                      onChange: (value) =>
-                          _run(() => service.enable(grant.account.key, value)),
+            if (selected != null) ...[
+              WorkspaceCard(
+                child: FSwitch(
+                  value: selected.enabled,
+                  enabled: !_busy,
+                  leadingLabel: true,
+                  label: const Text('启用此模型'),
+                  description: Text(
+                    selected.official
+                        ? selected.publicId
+                        : '标准名称待核实 · ${selected.id}',
+                  ),
+                  onChange: (value) =>
+                      _run(() => service.setModelEnabled(selected.id, value)),
+                ),
+              ),
+              PluginModelAccounts(
+                model: selected,
+                busy: _busy,
+                onOpenAccount: widget.onOpenAccount,
+                onEnable: (key, value) => _run(
+                  () => service.setModelAccountEnabled(selected.id, key, value),
+                ),
+                onAuthorize: (key, value) =>
+                    _run(() => service.enable(key, value)),
+              ),
+            ] else ...[
+              WorkspaceCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'loongpass/auto 按下列顺序选择已确认标准名称的模型。拖动或使用上下箭头调整。',
+                      style: context.theme.typography.body.sm,
                     ),
-                    if (!grant.account.active)
-                      Text(
-                        '账号需要重新授权。',
-                        style: TextStyle(color: context.theme.colors.error),
+                    const SizedBox(height: 12),
+                    FTextField(
+                      key: const Key('model-search'),
+                      hint: '搜索模型、别名或账号',
+                      size: FTextFieldSizeVariant.sm,
+                      prefixBuilder: (context, style, variants) =>
+                          const Icon(FLucideIcons.search, size: 16),
+                      control: FTextFieldControl.managed(
+                        controller: _search,
+                        onChange: (_) => setState(() {}),
                       ),
-                    FAccordion(
-                      control: FAccordionControl.lifted(
-                        expanded: (_) =>
-                            _expandedModels.contains(grant.account.key),
-                        onChange: (_, value) => setState(() {
-                          value
-                              ? _expandedModels.add(grant.account.key)
-                              : _expandedModels.remove(grant.account.key);
-                        }),
+                    ),
+                    if (visible.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Text('暂无匹配模型。可在账号与积分添加账号，或修改搜索条件。'),
                       ),
+                    PluginModelList(
+                      models: visible,
+                      busy: _busy,
+                      filtered: query.isNotEmpty,
+                      onSelect: _select,
+                      onEnable: (id, value) =>
+                          _run(() => service.setModelEnabled(id, value)),
+                      onReorder: (from, to) {
+                        final order = catalog.map((m) => m.id).toList();
+                        order.insert(to, order.removeAt(from));
+                        _run(() => service.reorderModels(order));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            WorkspaceCard(
+              child: FAccordion(
+                control: FAccordionControl.lifted(
+                  expanded: _expanded.contains,
+                  onChange: (index, value) => setState(() {
+                    value ? _expanded.add(index) : _expanded.remove(index);
+                  }),
+                ),
+                children: [
+                  FAccordionItem(
+                    title: Text(
+                      '连接设置 · ${service.running ? '本机服务运行中' : '本机服务已关闭'}',
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        FAccordionItem(
-                          key: ValueKey('models-${grant.account.key}'),
-                          title: Text('查看 ${grant.account.models.length} 个模型'),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '来源：${grant.account.provider} · ${grant.account.realm}',
-                                style: context.theme.typography.body.xs
-                                    .copyWith(
-                                      color:
-                                          context.theme.colors.mutedForeground,
-                                    ),
-                              ),
-                              if (grant.account.provider == 'zcode')
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: Text(
-                                    '-Trial 仅使用赠送额度；普通模型优先使用赠送权益，再使用账号已有套餐。不会购买或充值。',
-                                  ),
-                                ),
-                              if (grant.account.models.isEmpty)
-                                const Text('当前账号尚未提供模型目录。'),
-                              for (final model in grant.account.models)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    '${model['name'] ?? model['id']}${grant.account.provider == 'zcode'
-                                        ? (model['id'] as String).toLowerCase().endsWith('-trial')
-                                              ? ' · 仅赠送'
-                                              : ' · 赠送优先，可转套餐'
-                                        : ''}',
-                                  ),
-                                ),
-                            ],
-                          ),
+                        FSwitch(
+                          value: service.enabled,
+                          label: const Text('本机模型服务'),
+                          leadingLabel: true,
+                          enabled: !_busy,
+                          onChange: (value) =>
+                              _run(() => service.setEnabled(value)),
+                        ),
+                        if (service.error != null)
+                          const Text('服务启动未完成，请检查本机端口。'),
+                        const SizedBox(height: 12),
+                        ModelConnectionPanel(
+                          connection: app.connection,
+                          enabled: !_busy,
                         ),
                       ],
                     ),
-                  ],
+                  ),
+                  FAccordionItem(
+                    title: Text('账号授权 · ${service.grants.length} 个账号'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final grant in service.grants)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: FSwitch(
+                              value: grant.enabled,
+                              enabled: !_busy && grant.account.active,
+                              leadingLabel: true,
+                              label: Text(grant.account.label),
+                              description: Text(
+                                modelSourceName(grant.account.provider),
+                              ),
+                              onChange: (value) => _run(
+                                () => service.enable(grant.account.key, value),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
-}
-
-String _sourceName(String provider) {
-  final app = ManagedApp.values
-      .where((a) => a.nativeProviders.contains(provider))
-      .firstOrNull;
-  return app == null ? provider : '${app.label} · ${app.region}';
 }
