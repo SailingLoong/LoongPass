@@ -8,6 +8,7 @@ import 'managed_app.dart';
 import 'app_navigation_item.dart';
 import 'invitation_settings.dart';
 import 'invitation_settings_panel.dart';
+import 'select_field_semantics.dart';
 
 class WorkspaceSettingsPage extends StatefulWidget {
   const WorkspaceSettingsPage({
@@ -69,6 +70,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                 builder: (context, box) {
                   final fields = [
                     FSelect<ThemeMode>(
+                      builder: selectFieldSemantics,
                       key: const Key('appearance-theme'),
                       label: const Text('主题'),
                       size: FTextFieldSizeVariant.sm,
@@ -85,6 +87,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                       ),
                     ),
                     FSelect<bool>(
+                      builder: selectFieldSemantics,
                       key: const Key('account-row-density'),
                       label: const Text('账号行距'),
                       size: FTextFieldSizeVariant.sm,

@@ -48,6 +48,29 @@ void main() {
   }
 
   testDesktopWidgets(
+    'application navigation exposes buttons to the macOS accessibility bridge',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await mount(tester);
+        final app = find.bySemanticsLabel('WorkBuddy');
+        final before = tester.getSemantics(app).getSemanticsData();
+        expect(before.flagsCollection.isTextField, isFalse);
+        expect(before.flagsCollection.isButton, isTrue);
+        tester.semantics.tap(find.semantics.byLabel(before.label));
+        await tester.pumpAndSettle();
+        expect(find.text('WorkBuddy 尚未接入'), findsOneWidget);
+        final after = tester.getSemantics(app).getSemanticsData();
+        expect(after.flagsCollection.isTextField, isFalse);
+        expect(after.flagsCollection.isButton, isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+
+  testDesktopWidgets(
     'nested application navigation preserves regional choices and unfinished input',
     (tester) async {
       await mount(tester);

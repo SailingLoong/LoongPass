@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'plugin_accounts.dart';
 import 'plugin_sign_in.dart';
+import 'select_field_semantics.dart';
 
 class PluginSignInDialog extends StatefulWidget {
   const PluginSignInDialog({
@@ -365,6 +366,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                                   .length >
                               1)
                             FSelect<String>.rich(
+                              builder: selectFieldSemantics,
                               key: const Key('plugin-auth-provider'),
                               label: const Text('平台'),
                               enabled: !_busy,
@@ -400,6 +402,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                                   .length >
                               1)
                             FSelect<int>.rich(
+                              builder: selectFieldSemantics,
                               key: const ValueKey('plugin-auth-method'),
                               label: const Text('授权方式'),
                               enabled: !_busy,
@@ -475,6 +478,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                         if (_step == _Step.prompt)
                           if (_prompt!['type'] == 'select')
                             FSelect<String>.rich(
+                              builder: selectFieldSemantics,
                               key: const Key('plugin-auth-prompt-select'),
                               label: Text(
                                 _prompt!['message'] as String? ?? '请选择',
