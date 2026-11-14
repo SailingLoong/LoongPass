@@ -5,16 +5,19 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.1</title>
-            <pubDate>Sat, 14 Nov 2026 17:06:06 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.47</link>
-            <sparkle:version>47</sparkle:version>
-            <sparkle:shortVersionString>1.0.1-beta.47</sparkle:shortVersionString>
+            <pubDate>Sat, 14 Nov 2026 18:06:27 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.48</link>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>1.0.1-beta.48</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.1-beta.47
+            <description sparkle:format="markdown">LoongPass 1.0.1-beta.48
 
-- 删除左上角整栏折叠按钮及设置中的「精简导航」；侧栏随窗口宽度自适应，Logo 仅用于展示。
-- 点击「账号与积分」直接查看全部账号，删除应用列表里的重复「全部」入口。
-- 应用列表的展开与收起由独立箭头按钮控制，可点击区域为 32 × 32；点击文字和箭头各自执行对应操作。
+- 统一侧栏图标和文字对齐，完整显示 MiniMax CN 等应用名称。应用列表独立滚动，总览、模型连接、最近领取和设置更容易到达。
+- 账号列表改用可排序表头，统一列宽和信息层级。窄窗口提供可见的横向滚动条，按账号、即将到期额度、到期时间、最近领取时间、余额的顺序展示。
+- 总览支持查看全部待处理和近期到期账号。设置、模型连接、账号详情和授权弹窗统一字号、间距与操作布局。
+- 整合主线导航简化，账号汇总和应用列表展开分别操作，保留飞书 DSH 接入。
+- 优化大字号、深色和窄窗口显示，macOS 初始窗口扩大到适合桌面使用的尺寸。
+- 保留应用排序与显示偏好、Magpie、DSH、社区插件、账号授权、领取、模型和客户端切换能力，以及 beta 44 的选择器无障碍崩溃修复。
 
 安装与升级
 
@@ -22,10 +25,10 @@ macOS 使用 LoongPass-macOS-universal.zip；Windows 使用安装版或便携包
 
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.47/LoongPass-macOS-universal.zip" length="48420993" type="application/octet-stream" sparkle:edSignature="tZi5XapW4X6zWrGd6taRWVtYrN15nfeM1aq4NzAum/mHUZoX0U+1hfRZ5/1Pod6dmU94ebc1St/+FWS6cOfTBw=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.48/LoongPass-macOS-universal.zip" length="48429557" type="application/octet-stream" sparkle:edSignature="4a1vK196XbeLETWXZuBi1Qs4CZyiSu5NTVwRto0BwWBEXmTwwsWVmS3IC5zmtjKzWaNiqfPnPltTgckqMeKZCQ=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: y+3XyQFaCp6Y9pDj/5GBJS/fFgZG6cwViUs4RpJra0hcT4BbUgO8GjlKrkoYY11b6ionyy5KpOkpv3pRP1+QDw==
-length: 2088
+edSignature: /cBapZ0XpKKBtrR4MONgPeR+Z4NxY1Ko9AYKAsIWgpWCsgHUWDjBMnkWZXd0yz0CeLthIzzHlv3qVOLxpGvAAw==
+length: 2622
 -->
