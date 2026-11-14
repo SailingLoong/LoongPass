@@ -37,7 +37,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
     listenable: preferences,
     builder: (context, _) => WorkspacePage(
       title: '设置',
-      subtitle: '外观、平台偏好、运行与更新。',
       children: [
         if (preferences.error != null)
           WorkspaceCard(
@@ -65,11 +64,15 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, box) {
-                  final fields = [
-                    FSelect<ThemeMode>(
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 16,
+                runSpacing: 12,
+                children: [
+                  SizedBox(
+                    width:
+                        180 * MediaQuery.textScalerOf(context).scale(14) / 14,
+                    child: FSelect<ThemeMode>(
                       builder: selectFieldSemantics,
                       key: const Key('appearance-theme'),
                       label: const Text('主题'),
@@ -86,7 +89,11 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                         },
                       ),
                     ),
-                    FSelect<bool>(
+                  ),
+                  SizedBox(
+                    width:
+                        180 * MediaQuery.textScalerOf(context).scale(14) / 14,
+                    child: FSelect<bool>(
                       builder: selectFieldSemantics,
                       key: const Key('account-row-density'),
                       label: const Text('账号行距'),
@@ -99,31 +106,14 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                         },
                       ),
                     ),
-                  ];
-                  return box.maxWidth >=
-                          440 * MediaQuery.textScalerOf(context).scale(14) / 14
-                      ? Row(
-                          children: [
-                            Expanded(child: fields[0]),
-                            const SizedBox(width: 20),
-                            Expanded(child: fields[1]),
-                          ],
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            fields[0],
-                            const SizedBox(height: 16),
-                            fields[1],
-                          ],
-                        );
-                },
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               FSwitch(
                 value: preferences.collapsed,
                 label: const Text('精简导航'),
-                description: const Text('只显示任务图标，悬停可查看名称。'),
+                description: const Text('仅显示图标，悬停查看名称。'),
                 leadingLabel: true,
                 onChange: preferences.setCollapsed,
               ),
@@ -210,20 +200,25 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
             ],
           ),
         ),
+        if (updates != null)
+          WorkspaceCard(child: AppUpdateCard(updates: updates!)),
         const WorkspaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: FAccordion(
             children: [
-              Text('运行与数据', style: TextStyle(fontWeight: FontWeight.w600)),
-              SizedBox(height: 8),
-              Text('自动签到与活动领取仅在 LoongPass 运行期间执行。各账号详情保留独立开关和最近结果。'),
-              SizedBox(height: 8),
-              Text('授权以明文保存在本机应用私有目录。界面偏好单独保存，不包含凭据、余额或领取记录。'),
+              FAccordionItem(
+                title: Text('运行与数据'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('自动签到与活动领取仅在 LoongPass 运行期间执行。可在各账号详情管理开关并查看最近结果。'),
+                    SizedBox(height: 8),
+                    Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
-        if (updates != null)
-          WorkspaceCard(child: AppUpdateCard(updates: updates!)),
       ],
     ),
   );
@@ -233,10 +228,11 @@ class WorkspacePage extends StatelessWidget {
   const WorkspacePage({
     super.key,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.children,
   });
-  final String title, subtitle;
+  final String title;
+  final String? subtitle;
   final List<Widget> children;
   @override
   Widget build(BuildContext context) => DefaultTextStyle(
@@ -244,15 +240,23 @@ class WorkspacePage extends StatelessWidget {
     child: ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text(title, style: context.theme.typography.display.xl),
-        const SizedBox(height: 6),
         Text(
-          subtitle,
-          style: context.theme.typography.body.xs.copyWith(
-            color: context.theme.colors.mutedForeground,
+          title,
+          style: context.theme.typography.display.xl.copyWith(
+            fontWeight: FontWeight.w600,
+            height: 1.4,
           ),
         ),
-        const SizedBox(height: 20),
+        if (subtitle != null && subtitle!.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle!,
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
         ...children,
       ],
     ),
@@ -264,9 +268,12 @@ class WorkspaceCard extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 16),
+    padding: const EdgeInsets.only(bottom: 12),
     child: FCard(
-      child: Padding(padding: const EdgeInsets.all(16), child: child),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: child,
+      ),
     ),
   );
 }
