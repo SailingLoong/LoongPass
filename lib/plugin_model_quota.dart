@@ -2,21 +2,32 @@ import 'plugin_credit_balance.dart';
 
 enum ModelQuotaStatus { available, unknown, exhausted, expired }
 
-String _modelKey(String value) => value.toLowerCase().split('@').first;
+String? _bareModelId(String value) {
+  final at = value.lastIndexOf('@');
+  return at > 0 ? value.substring(0, at) : null;
+}
 
 /// The native usage contract's model substring plus exact allow/deny lists.
 bool modelWindowApplies(Map window, String model) {
-  final id = _modelKey(model);
+  final id = model.toLowerCase();
   final word = window['model'];
   if (word is String && word.isNotEmpty && !id.contains(word.toLowerCase()))
     return false;
   final included = (window['models'] as List? ?? const [])
       .whereType<String>()
-      .map(_modelKey);
+      .map((id) => id.toLowerCase());
   final excluded = (window['notModels'] as List? ?? const [])
       .whereType<String>()
-      .map(_modelKey);
-  return (included.isEmpty || included.contains(id)) && !excluded.contains(id);
+      .map((id) => id.toLowerCase());
+  // Matches pinned Magpie's idSet.has. A bare ID covers its context sizes,
+  // while two explicitly sized IDs remain distinct. An allowlist wins.
+  bool contains(Iterable<String> values) => values.any(
+    (candidate) =>
+        candidate == id ||
+        candidate == _bareModelId(id) ||
+        _bareModelId(candidate) == id,
+  );
+  return included.isNotEmpty ? contains(included) : !contains(excluded);
 }
 
 class PluginModelQuota {
@@ -40,6 +51,8 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
     final runsOut = window['runsOut'];
     final spent = window['used'];
     final reset = DateTime.tryParse(window['resetsAt'] as String? ?? '');
+    final resetElapsed = reset != null && !reset.isAfter(now);
+    final empty = balance != null && balance <= 0;
     final expired =
         at != null &&
         !at.isAfter(now) &&
@@ -49,20 +62,21 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
         runsOut >= balance &&
         balance > 0;
     final exhausted =
-        (balance != null && balance <= 0) ||
-        (spent is num && spent >= 100 && (reset == null || reset.isAfter(now)));
+        !resetElapsed && (empty || (spent is num && spent >= 100));
     if (window['aside'] != true) {
       if (expired) {
         status = ModelQuotaStatus.expired;
       } else if (exhausted) {
         status = ModelQuotaStatus.exhausted;
-      } else if (status == ModelQuotaStatus.unknown &&
+      } else if (!resetElapsed &&
+          status == ModelQuotaStatus.unknown &&
           (balance != null || spent is num)) {
         status = ModelQuotaStatus.available;
       }
     }
     if (at != null &&
         at.isAfter(now) &&
+        !empty &&
         !exhausted &&
         ((runsOut is num && runsOut.isFinite && runsOut > 0) ||
             (runsOut == null && balance != null && balance > 0))) {
@@ -97,27 +111,20 @@ Map<String, dynamic>? modelRoutingUsage(
     if (quota.status == ModelQuotaStatus.available) gifts[id] = trial;
   }
   if (gifts.isEmpty) return usage;
-  return {
-    ...usage,
-    'windows': [
-      for (final raw in usage['windows'] as List? ?? const [])
-        if (raw is Map)
-          {
-            ...raw,
-            'notModels': [
-              ...raw['notModels'] as List? ?? const [],
-              for (final entry in gifts.entries)
-                if (modelWindowApplies(raw, entry.key) &&
-                    !modelWindowApplies(raw, entry.value))
-                  entry.key,
-            ],
-            if (raw['models'] is List && (raw['models'] as List).isNotEmpty)
-              'models': [
-                ...raw['models'] as List,
-                for (final entry in gifts.entries)
-                  if (modelWindowApplies(raw, entry.value)) entry.key,
-              ],
-          },
-    ],
-  };
+  final windows = <Map<String, dynamic>>[];
+  for (final raw in usage['windows'] as List? ?? const []) {
+    if (raw is! Map) continue;
+    final applicable = ids
+        .where((id) => modelWindowApplies(raw, gifts[id] ?? id))
+        .toList();
+    if (applicable.isEmpty) continue;
+    // Resolve the freeFirst projection to one native allowlist. Empty lists
+    // mean unrestricted upstream, so windows with no applicable model are omitted.
+    windows.add(
+      {...raw, 'models': applicable}
+        ..remove('model')
+        ..remove('notModels'),
+    );
+  }
+  return {...usage, 'windows': windows};
 }

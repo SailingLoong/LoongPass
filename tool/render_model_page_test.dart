@@ -28,6 +28,7 @@ void main() {
   });
   for (final (size, scale) in [
     (const Size(1024, 768), 1.0),
+    (const Size(800, 628), 1.0),
     (const Size(480, 800), 2.0),
   ]) {
     for (final brightness in Brightness.values) {
