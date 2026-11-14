@@ -14,7 +14,7 @@ import '../lib/ui_preferences.dart';
 
 void main() {
   testDesktopWidgets(
-    'five account facts fit a desktop content pane without horizontal scrolling',
+    'narrow account tables keep readable columns with a visible horizontal scrollbar',
     (tester) async {
       await tester.runAsync(() async {
         final inter = FontLoader(FTypeface.defaultFontFamily)
@@ -58,17 +58,17 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final labels = ['账号', '即将到期积分', '到期时间', '最近领取时间', '余额'];
+      final labels = ['账号', '即将到期额度', '到期时间', '最近领取时间', '余额'];
       var previous = -1.0;
       for (final label in labels) {
         expect(find.text(label), findsOneWidget);
         final bounds = tester.getRect(find.text(label));
         expect(bounds.left, greaterThan(previous));
-        expect(bounds.right, lessThanOrEqualTo(560));
+        expect(bounds.height, lessThan(30));
         previous = bounds.left;
       }
       for (final (label, key) in [
-        ('即将到期积分', 'expiry-one'),
+        ('即将到期额度', 'expiry-one'),
         ('到期时间', 'expiry-time-one'),
         ('最近领取时间', 'claim-one'),
         ('余额', 'balance-one'),
@@ -78,17 +78,149 @@ void main() {
         expect(heading.left, greaterThanOrEqualTo(cell.left));
         expect(heading.right, lessThanOrEqualTo(cell.right));
       }
-      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
-      expect(find.text('09:30').hitTestable(), findsOneWidget);
+      final horizontal = find.byKey(const Key('account-table-scroll'));
+      final controller = tester
+          .widget<SingleChildScrollView>(horizontal)
+          .controller!;
+      expect(controller.position.maxScrollExtent, greaterThan(0));
       expect(
         find.byWidgetPredicate(
-          (w) =>
-              w is SingleChildScrollView &&
-              w.scrollDirection == Axis.horizontal,
+          (widget) =>
+              widget is RawScrollbar &&
+              widget.controller == controller &&
+              widget.thumbVisibility == true,
         ),
-        findsNothing,
+        findsOneWidget,
       );
+      await tester.drag(horizontal, const Offset(-500, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
+      expect(find.text('09:30').hitTestable(), findsOneWidget);
+      expect(find.text('最近领取时间').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'table headers sort in both directions and restore the default order',
+    (tester) async {
+      var operations = 0;
+      final now = DateTime.now();
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: CompactAccountsTable(
+              entries: [
+                for (final record in [('Gamma', 3), ('Alpha', 1), ('Beta', 0)])
+                  AccountTableEntry(
+                    id: record.$1,
+                    label: record.$1,
+                    identity: record.$1,
+                    balance: '3899.96 credits',
+                    expiringAmount: '99.96 credits',
+                    expiryAt: record.$2 == 0
+                        ? null
+                        : now.add(Duration(days: record.$2)),
+                    receipt: record.$2 == 0
+                        ? null
+                        : ClaimReceipt(
+                            confirmedAt: now.subtract(
+                              Duration(days: record.$2),
+                            ),
+                          ),
+                    status: '已保存',
+                    onOpenDetails: () => operations++,
+                    details: const Text('Details'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      List<String> order() => tester
+          .widget<Table>(find.byType(Table))
+          .children
+          .skip(1)
+          .map((row) => (row.key! as ValueKey<String>).value)
+          .toList();
+      Future<void> sort(String name) async {
+        await tester.tap(find.byKey(ValueKey('account-sort-$name')));
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.byKey(const Key('account-sort')), findsNothing);
+      await sort('name');
+      expect(order(), ['row-Alpha', 'row-Beta', 'row-Gamma']);
+      await sort('name');
+      expect(order(), ['row-Gamma', 'row-Beta', 'row-Alpha']);
+      await sort('name');
+      expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
+      await sort('expiry');
+      expect(order(), ['row-Alpha', 'row-Gamma', 'row-Beta']);
+      await sort('expiry');
+      expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
+      await sort('claim');
+      expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
+      await sort('claim');
+      expect(order(), ['row-Alpha', 'row-Gamma', 'row-Beta']);
+      expect(find.text('3899.96 credits'), findsNWidgets(3));
+      expect(find.text('99.96 credits'), findsNWidgets(2));
+      expect(operations, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'desktop widths and enlarged text preserve column geometry',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      for (final width in [800.0, 1024.0, 1280.0]) {
+        for (final scale in [1.0, 2.0]) {
+          tester.view.physicalSize = Size(width, 700);
+          await tester.pumpWidget(
+            DesktopTestApp(
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: const Scaffold(
+                body: SingleChildScrollView(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 40),
+                    child: CompactAccountsTable(
+                      entries: [
+                        AccountTableEntry(
+                          id: 'layout',
+                          label: 'a.long.account.address@example.test',
+                          identity: 'synthetic',
+                          sourceLabel: 'WorkBuddy 国内版',
+                          balance: '3899.96 credits',
+                          status: '额度查询未完成',
+                          needsAttention: true,
+                          details: Text('Details'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final heading = tester.widget<Text>(find.text('即将到期额度'));
+          expect(heading.maxLines, 1);
+          expect(heading.softWrap, isFalse);
+          expect(find.text('3899.96 credits'), findsOneWidget);
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '$width at scale $scale',
+          );
+        }
+      }
     },
   );
 
@@ -389,7 +521,7 @@ void main() {
   );
 
   testDesktopWidgets(
-    'narrow windows stack all fields and page-size changes reset to the first page',
+    'narrow windows scroll all columns and page-size changes reset to the first page',
     (tester) async {
       await mount(tester);
       await tester.ensureVisible(findTooltip('下一页'));
@@ -412,9 +544,14 @@ void main() {
         (w) =>
             w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
       );
-      expect(horizontal, findsNothing);
+      expect(horizontal, findsOneWidget);
+      await tester.drag(horizontal, const Offset(-600, 0));
+      await tester.pumpAndSettle();
       expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
       expect(find.text('余额').first.hitTestable(), findsOneWidget);
+      await tester.drag(horizontal, const Offset(600, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('账号').first.hitTestable(), findsOneWidget);
     },
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );

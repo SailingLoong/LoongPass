@@ -15,10 +15,18 @@ FThemeData loongPassDesignTheme(Brightness brightness) {
   );
   // Rebuild global and component styles from the typography, as required by
   // Forui's theme contract. Retained styles would keep old form-field fonts.
-  return FThemeData(
+  final theme = FThemeData(
     colors: base.colors,
     touch: false,
     typography: FTypography(display: typeface, body: typeface),
+  );
+  return theme.copyWith(
+    accordionStyle: const FAccordionStyleDelta.delta(
+      titlePadding: EdgeInsetsGeometryDelta.value(
+        EdgeInsets.symmetric(vertical: 10),
+      ),
+      childPadding: EdgeInsetsGeometryDelta.value(EdgeInsets.only(bottom: 12)),
+    ),
   );
 }
 

@@ -94,7 +94,15 @@ class AppWorkspaceState extends State<AppWorkspace> {
       listenable: _preferences,
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 760 || _preferences.collapsed;
+          final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
+              .clamp(1.0, double.infinity);
+          final automaticCompact = constraints.maxWidth < 900 * textScale;
+          final compact = automaticCompact || _preferences.collapsed;
+          final toggleLabel = automaticCompact
+              ? '放大窗口以展开导航'
+              : compact
+              ? '展开导航'
+              : '收起导航';
           final colors = context.theme.colors;
           final sections = {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
@@ -122,13 +130,13 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 color: colors.muted,
                 child: SizedBox(
                   key: const Key('app-sidebar'),
-                  width: compact ? 56 : 192,
+                  width: compact ? 56 : 208 * textScale,
                   child: Column(
                     children: [
                       Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: compact ? 8 : 10,
-                          vertical: 14,
+                          horizontal: 8,
+                          vertical: 12,
                         ),
                         child: Row(
                           children: [
@@ -145,13 +153,13 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             ],
                             FTooltip(
                               tipBuilder: (context, controller) =>
-                                  Text(compact ? '展开导航' : '收起导航'),
+                                  Text(toggleLabel),
                               child: FButton.icon(
                                 key: const Key('toggle-sidebar'),
                                 variant: FButtonVariant.ghost,
                                 size: FButtonSizeVariant.sm,
-                                semanticsLabel: compact ? '展开导航' : '收起导航',
-                                onPress: constraints.maxWidth < 760
+                                semanticsLabel: toggleLabel,
+                                onPress: automaticCompact
                                     ? null
                                     : () => _preferences.setCollapsed(
                                         !_preferences.collapsed,
@@ -168,35 +176,46 @@ class AppWorkspaceState extends State<AppWorkspace> {
                         ),
                       ),
                       Expanded(
-                        child: CustomScrollView(
-                          slivers: [
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                             for (final section in order)
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                                sliver: section == WorkspaceSection.accounts
-                                    ? AccountsNavigation(
-                                        preferences: _preferences,
-                                        compact: compact,
-                                        active: _section == section,
-                                        selectedApp: _all ? null : _selected,
-                                        enabledApps: widget.enabledApps,
-                                        onOpen: () => selectSection(section),
-                                        onSelectAll: _selectAll,
-                                        onSelectApp: selectApp,
-                                        onHideApp: _hideApp,
-                                      )
-                                    : SliverToBoxAdapter(
-                                        child: SidebarNavigationButton(
-                                          key: ValueKey('nav-${section.name}'),
-                                          label: section.label,
-                                          icon: Icon(section.icon, size: 18),
-                                          compact: compact,
-                                          selected: _section == section,
-                                          onPressed: () =>
-                                              selectSection(section),
-                                        ),
-                                      ),
-                              ),
+                              if (section == WorkspaceSection.accounts)
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    child: AccountsNavigation(
+                                      preferences: _preferences,
+                                      compact: compact,
+                                      active: _section == section,
+                                      selectedApp: _all ? null : _selected,
+                                      enabledApps: widget.enabledApps,
+                                      onOpen: () => selectSection(section),
+                                      onSelectAll: _selectAll,
+                                      onSelectApp: selectApp,
+                                      onHideApp: _hideApp,
+                                    ),
+                                  ),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    8,
+                                    0,
+                                    8,
+                                    4,
+                                  ),
+                                  child: SidebarNavigationButton(
+                                    key: ValueKey('nav-${section.name}'),
+                                    label: section.label,
+                                    icon: Icon(section.icon, size: 18),
+                                    compact: compact,
+                                    selected: _section == section,
+                                    onPressed: () => selectSection(section),
+                                  ),
+                                ),
                           ],
                         ),
                       ),

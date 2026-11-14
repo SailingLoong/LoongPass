@@ -6,6 +6,7 @@ import '../lib/model_connection.dart';
 import '../lib/plugin_application.dart';
 import '../lib/plugin_model_service.dart';
 import '../lib/plugin_model_page.dart';
+import '../lib/app_theme.dart';
 import 'desktop_test_app.dart';
 
 class _Service extends ChangeNotifier implements PluginModelService {
@@ -93,6 +94,48 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('GLM Trial · 仅赠送').hitTestable(), findsOneWidget);
       expect(find.text('GLM 1 · 赠送优先，可转套餐'), findsOneWidget);
+      expect(service.changes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'long model names remain readable in a narrow large-text layout',
+    (tester) async {
+      tester.view.physicalSize = const Size(604, 632);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = _Service();
+      const name =
+          'Long model name with native reasoning and tool support from the upstream catalog';
+      service.grants.single.account.models.add({
+        'id': 'long-model',
+        'name': name,
+      });
+      final app = _Application(service);
+      addTearDown(service.dispose);
+      addTearDown(app.connection.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          theme: loongPassTheme(Brightness.dark),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(body: PluginModelServicesPage(application: app)),
+        ),
+      );
+      await tester.ensureVisible(find.text('查看 21 个模型'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查看 21 个模型'));
+      await tester.pumpAndSettle();
+      service.publish();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('$name · 赠送优先，可转套餐'));
+      await tester.pumpAndSettle();
+      expect(find.text('$name · 赠送优先，可转套餐').hitTestable(), findsOneWidget);
       expect(service.changes, 0);
       expect(tester.takeException(), isNull);
     },

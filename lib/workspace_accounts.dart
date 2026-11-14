@@ -20,7 +20,7 @@ class WorkspaceAccountsPage extends StatelessWidget {
     listenable: registry,
     builder: (context, _) => WorkspacePage(
       title: '账号与积分',
-      subtitle: '按平台查找账号，余额与到期信息分别展示。',
+      subtitle: '${registry.entries.length} 个账号',
       children: [
         if (serviceStatus != null) serviceStatus!,
         if (serviceStatus == null || registry.entries.isNotEmpty)
@@ -30,7 +30,7 @@ class WorkspaceAccountsPage extends StatelessWidget {
   );
 }
 
-class WorkspaceOverviewPage extends StatelessWidget {
+class WorkspaceOverviewPage extends StatefulWidget {
   const WorkspaceOverviewPage({
     super.key,
     required this.registry,
@@ -40,6 +40,13 @@ class WorkspaceOverviewPage extends StatelessWidget {
   final AccountWorkspaceRegistry registry;
   final Widget? serviceStatus;
   final ValueChanged<ManagedApp> onOpenApp;
+  @override
+  State<WorkspaceOverviewPage> createState() => _WorkspaceOverviewPageState();
+}
+
+class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
+  bool _allAttention = false, _allExpiring = false;
+  AccountWorkspaceRegistry get registry => widget.registry;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: registry,
@@ -60,21 +67,39 @@ class WorkspaceOverviewPage extends StatelessWidget {
               (a, b) => a.entry.nextExpiry!.compareTo(b.entry.nextExpiry!),
             );
       final attention = accounts.where((a) => a.entry.needsAttention).toList();
+      final secondary = context.theme.typography.body.xs.copyWith(
+        color: context.theme.colors.mutedForeground,
+      );
       return WorkspacePage(
         title: '总览',
-        subtitle: '先处理需要关注的账号，再查看近期到期额度。',
+        subtitle: '',
         children: [
-          if (serviceStatus != null) serviceStatus!,
+          if (widget.serviceStatus != null) widget.serviceStatus!,
           Wrap(
-            spacing: 20,
-            runSpacing: 8,
+            spacing: 32,
+            runSpacing: 12,
             children: [
-              Text('${accounts.length} 个已保存账号'),
-              Text('${attention.length} 个待处理'),
-              Text('${expiring.length} 个近期到期'),
-              if (accounts.any((a) => a.entry.automatic != null))
-                Text(
-                  '${accounts.where((a) => a.entry.automatic == true).length} 个已开启自动领取',
+              for (final metric in [
+                ('${accounts.length}', '已保存账号'),
+                ('${attention.length}', '待处理'),
+                ('${expiring.length}', '7 天内到期'),
+                if (accounts.any((a) => a.entry.automatic != null))
+                  (
+                    '${accounts.where((a) => a.entry.automatic == true).length}',
+                    '自动领取已开启',
+                  ),
+              ])
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      metric.$1,
+                      style: context.theme.typography.display.xl.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(metric.$2, style: secondary),
+                  ],
                 ),
             ],
           ),
@@ -88,15 +113,31 @@ class WorkspaceOverviewPage extends StatelessWidget {
                     '需要处理',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  for (final account in attention.take(5))
+                  const SizedBox(height: 8),
+                  for (final account
+                      in _allAttention ? attention : attention.take(5))
                     FItem(
-                      title: Text(
-                        '${account.app.label} · ${account.entry.label}',
+                      title: Text(account.entry.label),
+                      subtitle: Text(
+                        '${account.app.label} · ${account.entry.statusLabel ?? account.entry.status}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text(account.entry.status),
-                      suffix: const Icon(FLucideIcons.chevronRight, size: 18),
+                      suffix: const Icon(FLucideIcons.chevronRight, size: 16),
                       onPress: () =>
                           _openAccount(context, registry, account.entry.id),
+                    ),
+                  if (attention.length > 5)
+                    FButton(
+                      key: const Key('overview-all-attention'),
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () =>
+                          setState(() => _allAttention = !_allAttention),
+                      child: Text(
+                        _allAttention ? '收起' : '查看全部 ${attention.length} 个账号',
+                      ),
                     ),
                 ],
               ),
@@ -110,15 +151,15 @@ class WorkspaceOverviewPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 8),
-                if (expiring.isEmpty)
-                  const Text('暂无已知的 7 天内到期额度。未提供到期明细的账号仍需单独核对。'),
-                for (final account in expiring.take(5))
+                if (expiring.isEmpty) Text('暂无已知的 7 天内到期额度', style: secondary),
+                for (final account
+                    in _allExpiring ? expiring : expiring.take(5))
                   FItem(
-                    title: Text(
-                      '${account.app.label} · ${account.entry.label}',
+                    title: Text(account.entry.label),
+                    subtitle: Text(
+                      '${account.app.label} · ${account.entry.upcomingExpiryText}',
                     ),
-                    subtitle: Text(account.entry.upcomingExpiryText),
-                    suffix: const Icon(FLucideIcons.chevronRight, size: 18),
+                    suffix: const Icon(FLucideIcons.chevronRight, size: 16),
                     onPress: () => _openAccount(
                       context,
                       registry,
@@ -126,10 +167,21 @@ class WorkspaceOverviewPage extends StatelessWidget {
                       expiry: true,
                     ),
                   ),
+                if (expiring.length > 5)
+                  FButton(
+                    key: const Key('overview-all-expiring'),
+                    variant: FButtonVariant.ghost,
+                    size: FButtonSizeVariant.sm,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () => setState(() => _allExpiring = !_allExpiring),
+                    child: Text(
+                      _allExpiring ? '收起' : '查看全部 ${expiring.length} 个账号',
+                    ),
+                  ),
               ],
             ),
           ),
-          if (accounts.isEmpty && serviceStatus == null)
+          if (accounts.isEmpty && widget.serviceStatus == null)
             WorkspaceCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,18 +193,12 @@ class WorkspaceOverviewPage extends StatelessWidget {
                   FButton(
                     size: FButtonSizeVariant.sm,
                     mainAxisSize: MainAxisSize.min,
-                    onPress: () => onOpenApp(ManagedApp.workbuddy),
+                    onPress: () => widget.onOpenApp(ManagedApp.workbuddy),
                     child: const Text('添加账号'),
                   ),
                 ],
               ),
             ),
-          Text(
-            '自动领取仅在 LoongPass 运行期间执行；各账号的开关与最近结果可在详情中查看。',
-            style: context.theme.typography.body.xs.copyWith(
-              color: context.theme.colors.mutedForeground,
-            ),
-          ),
         ],
       );
     },
@@ -195,7 +241,7 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
         });
       return WorkspacePage(
         title: '最近领取',
-        subtitle: '展示各账号最近一次已确认领取，以及当前待处理状态；不是完整历史流水。',
+        subtitle: '各账号最近一次已确认的领取记录',
         children: [
           if (widget.serviceStatus != null) widget.serviceStatus!,
           Wrap(
@@ -231,23 +277,20 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
                     children: [
                       for (final account in records)
                         FItem(
-                          title: Text(
-                            '${account.app.label} · ${account.entry.label}',
-                          ),
+                          title: Text(account.entry.label),
                           subtitle: Text(
-                            _attention
-                                ? account.entry.status
-                                : account.entry.receipt!.display,
+                            '${account.app.label} · ${_attention ? account.entry.statusLabel ?? account.entry.status : account.entry.receipt!.display}',
                           ),
                           prefix: Icon(
                             _attention
                                 ? FLucideIcons.info
                                 : FLucideIcons.circleCheck,
-                            size: 20,
+                            size: 16,
+                            color: context.theme.colors.mutedForeground,
                           ),
                           suffix: const Icon(
                             FLucideIcons.chevronRight,
-                            size: 18,
+                            size: 16,
                           ),
                           onPress: () => _openAccount(
                             context,

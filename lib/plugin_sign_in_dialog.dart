@@ -316,6 +316,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         key: const Key('plugin-auth-input'),
         control: FTextFieldControl.managed(controller: _input),
         label: Text(label),
+        size: FTextFieldSizeVariant.sm,
         hint: placeholder,
         enabled: !_busy,
         obscureText: secret,
@@ -334,9 +335,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     },
     child: FDialog(
       animation: widget.animation,
-      constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+      constraints: const BoxConstraints(minWidth: 280, maxWidth: 520),
       builder: (context, style) => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -364,11 +365,12 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                           if (widget.providerIds
                                   .where(widget.accounts.providers.containsKey)
                                   .length >
-                              1)
+                              1) ...[
                             FSelect<String>.rich(
                               builder: selectFieldSemantics,
                               key: const Key('plugin-auth-provider'),
                               label: const Text('平台'),
+                              size: FTextFieldSizeVariant.sm,
                               enabled: !_busy,
                               format: (id) =>
                                   widget.accounts.providers[id]?['name']
@@ -394,17 +396,22 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                                 }),
                               ),
                             ),
-                          const SizedBox(height: 12),
+                            const SizedBox(height: 12),
+                          ],
                           if (_methods
                                   .where(
-                                    (m) => {'oauth', 'api'}.contains(m['type']),
+                                    (method) => {
+                                      'oauth',
+                                      'api',
+                                    }.contains(method['type']),
                                   )
                                   .length >
-                              1)
+                              1) ...[
                             FSelect<int>.rich(
                               builder: selectFieldSemantics,
                               key: const ValueKey('plugin-auth-method'),
                               label: const Text('授权方式'),
+                              size: FTextFieldSizeVariant.sm,
                               enabled: !_busy,
                               format: (index) =>
                                   _methods[index]['label'] as String? ??
@@ -433,6 +440,8 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                                     setState(() => _method = value),
                               ),
                             ),
+                            const SizedBox(height: 12),
+                          ],
                           if (_method != null) ...[
                             Text(
                               _chosen['type'] == 'api'
@@ -441,8 +450,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                             ),
                             if (_methods
                                     .where(
-                                      (m) =>
-                                          {'oauth', 'api'}.contains(m['type']),
+                                      (method) => {
+                                        'oauth',
+                                        'api',
+                                      }.contains(method['type']),
                                     )
                                     .length ==
                                 1)
@@ -483,6 +494,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               label: Text(
                                 _prompt!['message'] as String? ?? '请选择',
                               ),
+                              size: FTextFieldSizeVariant.sm,
                               enabled: !_busy,
                               format: (value) {
                                 final options =
@@ -533,6 +545,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                             const SizedBox(height: 12),
                             Wrap(
                               spacing: 8,
+                              runSpacing: 8,
                               children: [
                                 FButton(
                                   variant: FButtonVariant.ghost,
@@ -583,7 +596,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
