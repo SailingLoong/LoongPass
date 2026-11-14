@@ -58,7 +58,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final labels = ['账号', '余额', '即将到期积分', '到期时间', '最近领取时间'];
+      final labels = ['账号', '即将到期积分', '到期时间', '最近领取时间', '余额'];
       var previous = -1.0;
       for (final label in labels) {
         expect(find.text(label), findsOneWidget);
@@ -66,6 +66,17 @@ void main() {
         expect(bounds.left, greaterThan(previous));
         expect(bounds.right, lessThanOrEqualTo(560));
         previous = bounds.left;
+      }
+      for (final (label, key) in [
+        ('即将到期积分', 'expiry-one'),
+        ('到期时间', 'expiry-time-one'),
+        ('最近领取时间', 'claim-one'),
+        ('余额', 'balance-one'),
+      ]) {
+        final heading = tester.getRect(find.text(label));
+        final cell = tester.getRect(find.byKey(ValueKey(key)));
+        expect(heading.left, greaterThanOrEqualTo(cell.left));
+        expect(heading.right, lessThanOrEqualTo(cell.right));
       }
       expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
       expect(find.text('09:30').hitTestable(), findsOneWidget);

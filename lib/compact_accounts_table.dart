@@ -402,8 +402,9 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
 
   List<String> get _columns => [
     '账号',
-    if (_hasCredits) ...['余额', '即将到期积分', '到期时间'],
+    if (_hasCredits) ...['即将到期积分', '到期时间'],
     if (_hasRewards) '最近领取时间',
+    if (_hasCredits) '余额',
     if (!_hasCredits) '套餐 / 工作区',
   ];
 
@@ -465,6 +466,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       onDetails: () => _details(entry.id),
     ),
     if (_hasCredits) ...[
+      entry.hasCredits ? _expiry(entry) : _cell('不适用'),
+      entry.hasCredits ? _expiry(entry, time: true) : _cell('不适用'),
+    ],
+    if (_hasRewards) entry.hasRewards ? _claimTime(entry) : _cell('不适用'),
+    if (_hasCredits)
       entry.hasCredits
           ? _actionCell(
               key: 'balance-${entry.id}',
@@ -488,10 +494,6 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               ),
             )
           : _cell('不适用'),
-      entry.hasCredits ? _expiry(entry) : _cell('不适用'),
-      entry.hasCredits ? _expiry(entry, time: true) : _cell('不适用'),
-    ],
-    if (_hasRewards) entry.hasRewards ? _claimTime(entry) : _cell('不适用'),
     if (!_hasCredits) _cell(entry.accountSummary ?? entry.identity),
   ];
 
