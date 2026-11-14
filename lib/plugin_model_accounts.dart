@@ -108,7 +108,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
     );
     final status = !widget.model.enabled
         ? '模型停用'
-        : !account.active
+        : binding.grant.authorizationRequired
         ? '需要授权'
         : !binding.grant.enabled
         ? '尚未授权'
@@ -141,7 +141,10 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
       key: ValueKey('model-account-${account.key}'),
       semanticsLabel: '参与此模型路由 ${account.label}',
       value: binding.grant.enabled && binding.enabled,
-      enabled: !widget.busy && account.active && binding.grant.enabled,
+      enabled:
+          !widget.busy &&
+          !binding.grant.authorizationRequired &&
+          binding.grant.enabled,
       onChange: (value) => widget.onEnable(account.key, value),
     );
     final expiry = binding.expiry;
@@ -220,7 +223,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
               style: muted,
             ),
           ],
-          if (!binding.grant.enabled && account.active)
+          if (!binding.grant.enabled && !binding.grant.authorizationRequired)
             FSwitch(
               value: false,
               enabled: !widget.busy,

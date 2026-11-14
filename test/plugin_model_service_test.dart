@@ -8,6 +8,31 @@ import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_service.dart';
 import 'memory_account_store.dart';
 
+// Inject the account owner's published authorization state while retaining the
+// real native fixture, registration lifetime, and local HTTP admission path.
+class _Accounts extends PluginAccounts {
+  _Accounts({
+    required super.runtime,
+    required super.directory,
+    required super.store,
+    required super.enabledProviders,
+  });
+  String? authorizationError;
+  @override
+  List<PluginAccount> get accounts => [
+    for (final account in super.accounts)
+      PluginAccount(
+        key: account.key,
+        facts: account.facts,
+        active: account.active,
+        models: account.models,
+        usage: account.usage,
+        queriedAt: account.queriedAt,
+        error: authorizationError ?? account.error,
+      ),
+  ];
+}
+
 void main() {
   test('native account grants preserve context and errors and revoke by lifetime', () async {
     final dir = await Directory.systemTemp.createTemp(
@@ -26,7 +51,7 @@ void main() {
         },
       ],
     );
-    final accounts = PluginAccounts(
+    final accounts = _Accounts(
       runtime: runtime,
       directory: dir.path,
       store: MemoryAccountStore('accounts'),
@@ -187,6 +212,18 @@ void main() {
         'fixture#a',
         true,
       );
+      accounts.authorizationError = 'authorization_required';
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        429,
+      );
+      expect(service.catalog.first.availableAccounts, 0);
+      accounts.authorizationError = 'usage_unavailable';
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        200,
+      );
+      accounts.authorizationError = null;
       await service.reorderModels(['fixture/image', 'fixture/fixture-model']);
       expect(service.catalog.first.id, 'fixture/image');
       expect(modelStore.data['routing']['order'], [

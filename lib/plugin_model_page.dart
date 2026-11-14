@@ -95,7 +95,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                 child: Text('Magpie 连接配置尚未同步完成。已连接的配置会自动重试，也可展开连接设置重新连接。'),
               ),
             if (_message != null) WorkspaceCard(child: Text(_message!)),
-            if (selectedId != null)
+            if (selected != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Align(
@@ -223,7 +223,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                             padding: const EdgeInsets.symmetric(vertical: 8),
                             child: FSwitch(
                               value: grant.enabled,
-                              enabled: !_busy && grant.account.active,
+                              enabled: !_busy && !grant.authorizationRequired,
                               leadingLabel: true,
                               label: Text(grant.account.label),
                               description: Text(

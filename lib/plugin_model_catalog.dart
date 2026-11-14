@@ -14,6 +14,9 @@ class PluginModelGrant {
   final PluginAccount account;
   final String token;
   final bool enabled;
+  bool get authorizationRequired =>
+      !account.active || account.error == 'authorization_required';
+  bool get available => enabled && !authorizationRequired;
 }
 
 class PluginModelBinding {
@@ -31,8 +34,7 @@ class PluginModelBinding {
   PluginCreditExpiry? get expiry => quota.expiry;
   bool get available =>
       enabled &&
-      grant.enabled &&
-      account.active &&
+      grant.available &&
       !{ModelQuotaStatus.exhausted, ModelQuotaStatus.expired}.contains(status);
 }
 

@@ -41,17 +41,21 @@ class _Models extends ChangeNotifier implements PluginModelService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-PluginModelGrant _grant(String key, {String token = 'synthetic'}) =>
-    PluginModelGrant(
-      PluginAccount(
-        key: key,
-        active: true,
-        facts: {'registrationId': key, 'provider': 'qoder'},
-        models: [],
-      ),
-      token,
-      true,
-    );
+PluginModelGrant _grant(
+  String key, {
+  String token = 'synthetic',
+  String? error,
+}) => PluginModelGrant(
+  PluginAccount(
+    key: key,
+    active: true,
+    facts: {'registrationId': key, 'provider': 'qoder'},
+    models: [],
+    error: error,
+  ),
+  token,
+  true,
+);
 
 String _listing(List<String> ids) {
   final value = magpiePluginList(ids);
@@ -101,6 +105,16 @@ void main() {
       models.changed();
       await Future<void>.delayed(const Duration(milliseconds: 220));
       expect(commands.length, count);
+      models.grants = [
+        _grant('one', token: 'replacement', error: 'authorization_required'),
+      ];
+      models.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(connection.selectedAccounts, 0);
+      expect(
+        commands.where((c) => c.length > 1 && c[1] == 'options'),
+        hasLength(3),
+      );
     },
   );
   test(
