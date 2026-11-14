@@ -35,6 +35,9 @@ void main() {
             .selectedModelId,
         'deepseek-flash',
       );
+      expect(find.text('60 credits'), findsOneWidget);
+      expect(find.text('48 credits'), findsOneWidget);
+      expect(find.text('32.5 credits'), findsOneWidget);
       await tester.tap(find.text('日常账号 14').hitTestable());
       await tester.pumpAndSettle();
       expect(
