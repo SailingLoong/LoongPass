@@ -164,7 +164,7 @@ void main() {
   );
 
   testDesktopWidgets(
-    'task navigation retains platform scope and unfinished input',
+    'account summary navigation preserves unfinished platform input',
     (tester) async {
       final workspace = GlobalKey<AppWorkspaceState>();
       await tester.pumpWidget(
@@ -202,6 +202,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      expect(find.text('All accounts'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
       await tester.pumpAndSettle();
       expect(find.text('keep this'), findsOneWidget);
       expect(tester.takeException(), isNull);

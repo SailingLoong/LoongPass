@@ -1,0 +1,16 @@
+{
+  "package": "@deepseek-ai/dsh-atomic-write",
+  "version": "0.2.2-rc.3",
+  "hostVersion": "0.2.2-rc.3",
+  "license": "MIT",
+  "repository": "https://github.com/deepseek-ai/deepseek-harness",
+  "directory": "packages/util/atomic-write",
+  "source": "Official macOS desktop app.asar, dsh/node_modules/@deepseek-ai/dsh-atomic-write",
+  "asarSha256": "c0ce89f77d25e98e11952728d1fc054b6e2300db17402af83a1a225c8b36e843",
+  "files": {
+    "index.ts": "dfcdf7ab738f1cc9c5fcbc583dd4b96c5f299f4c707e1a47ffdeb7fcbe18ad2e",
+    "LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be"
+  },
+  "changes": "None. The Bun worker imports the upstream TypeScript source directly.",
+  "scope": "withFileLock(package.json) and writeFileAtomic coordinate profile edits with native configEditor."
+}

@@ -64,15 +64,9 @@ class AppWorkspaceState extends State<AppWorkspace> {
   }
 
   void selectSection(WorkspaceSection section) {
-    if (section == WorkspaceSection.accounts)
-      _preferences.setAppsExpanded(true);
-    setState(() => _section = section);
-  }
-
-  void _selectAll() {
     setState(() {
-      _all = true;
-      _section = WorkspaceSection.accounts;
+      if (section == WorkspaceSection.accounts) _all = true;
+      _section = section;
     });
   }
 
@@ -96,13 +90,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
         builder: (context, constraints) {
           final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
               .clamp(1.0, double.infinity);
-          final automaticCompact = constraints.maxWidth < 900 * textScale;
-          final compact = automaticCompact || _preferences.collapsed;
-          final toggleLabel = automaticCompact
-              ? '放大窗口以展开导航'
-              : compact
-              ? '展开导航'
-              : '收起导航';
+          final compact = constraints.maxWidth < 900 * textScale;
           final colors = context.theme.colors;
           final sections = {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
@@ -118,6 +106,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
           final platformPage = _section == WorkspaceSection.accounts && !_all;
           final brand = Image.asset(
             'assets/branding/loongpass.png',
+            key: const Key('app-brand'),
             width: 24,
             height: 24,
             excludeFromSemantics: true,
@@ -139,9 +128,12 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           vertical: 12,
                         ),
                         child: Row(
+                          mainAxisAlignment: compact
+                              ? MainAxisAlignment.center
+                              : MainAxisAlignment.start,
                           children: [
+                            brand,
                             if (!compact) ...[
-                              brand,
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
@@ -151,27 +143,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
                                 ),
                               ),
                             ],
-                            FTooltip(
-                              tipBuilder: (context, controller) =>
-                                  Text(toggleLabel),
-                              child: FButton.icon(
-                                key: const Key('toggle-sidebar'),
-                                variant: FButtonVariant.ghost,
-                                size: FButtonSizeVariant.sm,
-                                semanticsLabel: toggleLabel,
-                                onPress: automaticCompact
-                                    ? null
-                                    : () => _preferences.setCollapsed(
-                                        !_preferences.collapsed,
-                                      ),
-                                child: compact
-                                    ? brand
-                                    : const Icon(
-                                        FLucideIcons.panelLeft,
-                                        size: 16,
-                                      ),
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -193,7 +164,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
                                       selectedApp: _all ? null : _selected,
                                       enabledApps: widget.enabledApps,
                                       onOpen: () => selectSection(section),
-                                      onSelectAll: _selectAll,
                                       onSelectApp: selectApp,
                                       onHideApp: _hideApp,
                                     ),

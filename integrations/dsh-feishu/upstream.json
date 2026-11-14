@@ -1,0 +1,42 @@
+{
+  "package": "dsh-lark-channel",
+  "version": "0.0.7",
+  "repository": "https://github.com/omdsh-dev/dsh-lark",
+  "commit": "632807d9abafbb866a5e208a0298eff21c7856d1",
+  "license": "BSD-3-Clause",
+  "integrity": "sha512-jLuzsoVxlyNMjk3wCrYrDMWNvLOpGlmcffGLWcebFS86Z9bPnMGuWhczII1cUxztHlK3MFAVtzd7lJARBuU16w==",
+  "verifiedHost": "0.2.2-rc.3",
+  "originalFiles": {
+    "lib/cli.js": "efc09c27baabc210aa2b6d6271c49bfd03666c8b5731ee1d55d970622bd5c3e7",
+    "lib/index.js": "58cc54dcb783a168146b255c74f9748f0a47a36438d82f3caedc4dc7b88ec913",
+    "lib/instance-aP5Zi2Pi.js": "8f9cef7dd0d9520dcc95d34ced54e37f72da8605b2b8825260d23c2243ee73b2",
+    "lib/types/config.d.ts": "070806f750e5bf00fd05df9176dba9d9b1e9acb72bbe38bd30533ba1800e9039",
+    "lib/types/host.d.ts": "2bc875ba7b10e3755b1bbf0e3b61b0511bc10280e1f0526f4cc081310970ae0f",
+    "lib/types/instance.d.ts": "9aa51bea78d0e1724b7f27ca94189829bbe8b019f4dca2e0d68fe63feb79f59c",
+    "lib/types/runtime.d.ts": "2cd10b88062535a49bc59d6e29379a64b38d17a1e4de0814665903c959638568",
+    "src/bridge.ts": "1473c958582383d8199324f3c9aef3b69d6fb0f1f3361c732bdaddfd80213faa",
+    "src/commands.ts": "64089dd66b1311eda95eaec65092c644051405d8a945fa973b4543be32b0f88d",
+    "src/config.ts": "2dfff8dde99f39d4b906bea74d38b2d18e47acd2693b474e0af5e009b26fdc1f",
+    "src/host.ts": "ab7da607a85331e683816a3fba99acd3484796ec34c74639b1a5c189c39d0102",
+    "src/instance.ts": "e2d884c33401c227984508dfed14c28b55fb7e8b17c2130503a7a3ab37213dc3",
+    "src/provision.ts": "ad41e195d6a48037f902655e71861f4f0fe5c7767b202fe547463052cc3c402a",
+    "src/runtime.ts": "16a7cd7a6c35de9fb46bfc844a1ddedf277f22d3d4e2a35bcf4f60516f933ebc"
+  },
+  "patchedFiles": {
+    "lib/cli.js": "c16e5dfd30128f34596bb3f5e9fdf996913c924befcddfc48ea50026c1185880",
+    "lib/index.js": "6637562f0c2b7bb1289bb6c95433f13d0cde75e5c28c696cb3ee6178338826f9",
+    "lib/instance-aP5Zi2Pi.js": "5525c028250f9af8de31948f0bac5fbb5332a68ade4e471f2f608ff40f43c617",
+    "lib/types/config.d.ts": "014b881652f12a5d673b863e43ae4c43305bf46bd96df524d6872525f4f3c29d",
+    "lib/types/host.d.ts": "9b8202b6a2e244644a0e227ee814e3366406b69d47ddbc7f7c37bc45f048e632",
+    "lib/types/instance.d.ts": "1af4701538f0c97be025629ccfe74fdc4d6e253560d59725bd301e7f70e0be27",
+    "lib/types/runtime.d.ts": "4ed1927b14ab536fd158abf312e1f7705849154bd50c63c942e7eca65eda0617",
+    "src/bridge.ts": "5007a7d830101ec2d63d14f4ba83d536baae9aacc1ce8009ed56bd7b9a507cb4",
+    "src/commands.ts": "b37e7819d137b779b8c1b19e3085bb03d619233142f0e8a3b65c8bbc12f9c9ae",
+    "src/config.ts": "52218460efeb4670f9ac63fbe401c2387a1478d30f7a257adc783b13bbb2987d",
+    "src/host.ts": "10dedf3ba57d5ef7469714dd5fca97253349ea2f4c90cbe48381206662c7709e",
+    "src/instance.ts": "49963b3ad9dc51dd2224f9d09d41f68ffe2d261a9b9627eda1bfed414b1ad25f",
+    "src/provision.ts": "06b4f94a0b94c06c7b873b5e435934d82c29a52e5f199aa3f3509ba059bde698",
+    "src/runtime.ts": "36fdc7d47df1c887b7a7df801088480a552ded86195dda7018b54db9d1172e3b"
+  },
+  "patchSha256": "5656254c97f3501af32584a19f2505be70fc342ef312f451732266383f748f84"
+}

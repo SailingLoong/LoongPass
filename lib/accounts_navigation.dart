@@ -13,7 +13,6 @@ class AccountsNavigation extends StatelessWidget {
     required this.active,
     required this.selectedApp,
     required this.onOpen,
-    required this.onSelectAll,
     required this.onSelectApp,
     required this.onHideApp,
     this.enabledApps,
@@ -23,7 +22,7 @@ class AccountsNavigation extends StatelessWidget {
   final bool compact, active;
   final ManagedApp? selectedApp;
   final Set<ManagedApp>? enabledApps;
-  final VoidCallback onOpen, onSelectAll;
+  final VoidCallback onOpen;
   final ValueChanged<ManagedApp> onSelectApp, onHideApp;
 
   @override
@@ -33,49 +32,51 @@ class AccountsNavigation extends StatelessWidget {
         .toList();
     final visible = apps.where(preferences.isAppVisible).toList();
     final hidden = apps.where((app) => !preferences.isAppVisible(app)).toList();
+    final navigation = SidebarNavigationButton(
+      key: const Key('nav-accounts'),
+      label: '账号与积分',
+      icon: const Icon(FLucideIcons.wallet, size: 18),
+      compact: compact,
+      selected: active && selectedApp == null,
+      onPressed: onOpen,
+    );
+    final disclosure = Semantics(
+      expanded: preferences.appsExpanded,
+      child: SizedBox.square(
+        dimension: 32,
+        child: FButton.icon(
+          key: const Key('toggle-account-apps'),
+          variant: FButtonVariant.ghost,
+          size: FButtonSizeVariant.sm,
+          semanticsLabel: preferences.appsExpanded ? '收起应用列表' : '展开应用列表',
+          onPress: () => preferences.setAppsExpanded(!preferences.appsExpanded),
+          child: Icon(
+            preferences.appsExpanded
+                ? FLucideIcons.chevronDown
+                : FLucideIcons.chevronRight,
+            size: 16,
+          ),
+        ),
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          expanded: preferences.appsExpanded,
-          child: SidebarNavigationButton(
-            key: const Key('nav-accounts'),
-            label: '账号与积分',
-            icon: const Icon(FLucideIcons.wallet, size: 18),
-            compact: compact,
-            selected: active && !preferences.appsExpanded,
-            trailing: Icon(
-              preferences.appsExpanded
-                  ? FLucideIcons.chevronDown
-                  : FLucideIcons.chevronRight,
-              size: 14,
-            ),
-            onPressed: () {
-              if (active) {
-                preferences.setAppsExpanded(!preferences.appsExpanded);
-              } else {
-                onOpen();
-              }
-            },
-          ),
-        ),
+        compact
+            ? Column(children: [navigation, disclosure])
+            : Row(
+                children: [
+                  Expanded(child: navigation),
+                  const SizedBox(width: 4),
+                  disclosure,
+                ],
+              ),
         Expanded(
           child: preferences.appsExpanded
               ? Column(
                   key: const Key('account-apps'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, bottom: 2),
-                      child: SidebarNavigationButton(
-                        key: const Key('app-all'),
-                        label: '全部',
-                        icon: const Icon(FLucideIcons.layoutGrid, size: 18),
-                        compact: compact,
-                        selected: active && selectedApp == null,
-                        onPressed: onSelectAll,
-                      ),
-                    ),
                     Expanded(
                       child: CustomScrollView(
                         key: const PageStorageKey('account-app-scroll'),

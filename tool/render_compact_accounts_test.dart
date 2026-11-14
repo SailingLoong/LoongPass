@@ -242,14 +242,24 @@ void main() {
           await capture('empty-search');
           await tester.tap(find.text('清除搜索和筛选'));
           await tester.pumpAndSettle();
-          if (size.width == 1024) {
-            await tester.tap(find.byKey(const Key('toggle-sidebar')));
-            await tester.pumpAndSettle();
-            await capture('collapsed');
-            await tester.tap(find.byKey(const Key('toggle-sidebar')));
-            await tester.pumpAndSettle();
-          }
+          await tester.tap(find.byKey(const Key('nav-accounts')));
+          await tester.pumpAndSettle();
+          await capture('account-summary');
+          await tester.tap(find.byKey(const Key('toggle-account-apps')));
+          await tester.pumpAndSettle();
+          await capture('apps-hidden');
+          await tester.tap(find.byKey(const Key('toggle-account-apps')));
+          await tester.pumpAndSettle();
           for (final section in ['overview', 'activity', 'settings']) {
+            await tester.scrollUntilVisible(
+              find.byKey(ValueKey('nav-$section')),
+              section == 'overview' ? -200 : 200,
+              scrollable: find.descendant(
+                of: find.byKey(const Key('app-sidebar')),
+                matching: find.byType(Scrollable),
+              ),
+            );
+            await tester.pumpAndSettle();
             await tester.tap(find.byKey(ValueKey('nav-$section')));
             await tester.pumpAndSettle();
             expect(tester.takeException(), isNull);
