@@ -26,7 +26,7 @@ void main() {
         find.byWidgetPredicate((widget) => widget is FSelect<ThemeMode>),
         findsOneWidget,
       );
-      expect(find.widgetWithText(FSwitch, '精简导航'), findsOneWidget);
+      expect(find.text('精简导航'), findsNothing);
       expect(find.byType(FButton), findsWidgets);
       await tester.tap(find.text('跟随系统'));
       await tester.pumpAndSettle();

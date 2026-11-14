@@ -24,7 +24,7 @@ class UiPreferences extends ChangeNotifier {
   bool _appsExpanded = true;
   final Set<String> _favorites = {};
   final Map<String, int> _pageSizes = {};
-  bool _collapsed = false, _comfortable = false, _disposed = false;
+  bool _comfortable = false, _disposed = false;
   ThemeMode _themeMode = ThemeMode.system;
   int _revision = 0;
   Future<void> _pending = Future.value();
@@ -32,7 +32,6 @@ class UiPreferences extends ChangeNotifier {
   List<ManagedApp> get appOrder => List.unmodifiable(_order);
   bool get appsExpanded => _appsExpanded;
   bool isAppVisible(ManagedApp app) => !_hiddenApps.contains(app);
-  bool get collapsed => _collapsed;
   bool get comfortable => _comfortable;
   double get rowHeight => _comfortable ? 44 : 36;
   ThemeMode get themeMode => _themeMode;
@@ -65,7 +64,6 @@ class UiPreferences extends ChangeNotifier {
           ),
         );
       _appsExpanded = json['appsExpanded'] != false;
-      _collapsed = json['collapsed'] == true;
       _comfortable = json['comfortable'] == true;
       _themeMode =
           ThemeMode.values.where((v) => v.name == json['theme']).firstOrNull ??
@@ -114,11 +112,6 @@ class UiPreferences extends ChangeNotifier {
     _changed();
   }
 
-  void setCollapsed(bool value) {
-    _collapsed = value;
-    _changed();
-  }
-
   void setComfortable(bool value) {
     _comfortable = value;
     _changed();
@@ -150,7 +143,6 @@ class UiPreferences extends ChangeNotifier {
       'appOrder': _order.map((a) => a.name).toList(),
       'hiddenApps': _hiddenApps.map((app) => app.name).toList(),
       'appsExpanded': _appsExpanded,
-      'collapsed': _collapsed,
       'comfortable': _comfortable,
       'theme': _themeMode.name,
       'favorites': _favorites.toList(),
