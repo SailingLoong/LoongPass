@@ -128,9 +128,7 @@ class MagpieConnection {
     Set<String> legacyKeys = const {},
     Future<void> Function(List<Map<String, dynamic>>)? saveBackup,
   }) async {
-    final selected = grants
-        .where((g) => g.enabled && g.account.active)
-        .toList();
+    final selected = grants.where((g) => g.available).toList();
     if (selected.isEmpty) throw StateError('No enabled account');
     final command =
         _command ??

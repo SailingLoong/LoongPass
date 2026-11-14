@@ -12,6 +12,7 @@ PluginModelGrant grant(
   List<Map<String, dynamic>> models, {
   List<Map<String, dynamic>> windows = const [],
   bool enabled = true,
+  String? error,
 }) => PluginModelGrant(
   PluginAccount(
     key: key,
@@ -19,12 +20,63 @@ PluginModelGrant grant(
     active: true,
     models: models,
     usage: {'windows': windows},
+    error: error,
   ),
   'synthetic',
   enabled,
 );
 
 void main() {
+  test('confirmed expired authorization excludes a positive cached balance while a failed usage query retains it', () {
+    final catalog = pluginModelCatalog(
+      [
+        grant(
+          'expired',
+          'qoder',
+          [
+            {'id': 'dfmodel'},
+          ],
+          error: 'authorization_required',
+          windows: [
+            {
+              'balance': 12.25,
+              'unit': 'credits',
+              'runsOutAt': '2026-11-15T03:00:00Z',
+              'runsOut': 12.25,
+            },
+          ],
+        ),
+        grant(
+          'cached',
+          'qoder',
+          [
+            {'id': 'dfmodel'},
+          ],
+          error: 'usage_unavailable',
+          windows: [
+            {
+              'balance': 10.0625,
+              'unit': 'credits',
+              'runsOutAt': '2026-11-16T03:00:00Z',
+              'runsOut': 10.0625,
+            },
+          ],
+        ),
+      ],
+      {},
+      now,
+    );
+    expect(catalog.single.preferred!.account.key, 'cached');
+    expect(catalog.single.availableAccounts, 1);
+    final expired = catalog.single.bindings.singleWhere(
+      (b) => b.account.key == 'expired',
+    );
+    expect(expired.account.active, isTrue);
+    expect(expired.grant.authorizationRequired, isTrue);
+    expect(expired.available, isFalse);
+    expect(expired.expiry!.amount!.amount, 12.25);
+    expect(expired.expiry!.amount!.unit, 'credits');
+  });
   test(
     'official API names group known channel context and snapshot aliases only',
     () {

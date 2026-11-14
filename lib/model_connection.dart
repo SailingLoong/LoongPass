@@ -34,7 +34,7 @@ class ModelConnection extends ChangeNotifier {
   Timer? _scheduled;
 
   List<PluginModelGrant> get _selected =>
-      models.grants.where((g) => g.enabled && g.account.active).toList();
+      models.grants.where((g) => g.available).toList();
   int get selectedAccounts => _selected.length;
   int? get savedAccounts => inspection?.accountIds == null
       ? null
@@ -54,7 +54,7 @@ class ModelConnection extends ChangeNotifier {
     _source,
     models.routingSettings,
     for (final g in models.grants)
-      [g.account.key, g.account.models, g.account.usage],
+      [g.account.key, g.account.models, g.account.usage, g.account.error],
   ]);
 
   void start() {
