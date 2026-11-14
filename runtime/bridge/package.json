@@ -1,10 +1,11 @@
 {
   "name": "@loongpass/magpie-bridge",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "LoongPass account grants and native model snapshots for Magpie",
   "type": "module",
   "main": "./index.mjs",
   "exports": { ".": "./index.mjs", "./server": "./index.mjs" },
-  "files": ["index.mjs"],
+  "files": ["index.mjs", "routing.mjs"],
+  "magpie": { "middleware": "./routing.mjs" },
   "license": "MIT"
 }

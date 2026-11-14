@@ -18,7 +18,7 @@ class PluginInstallation {
   Future<void> publishBridge() async {
     final directory = Directory(bridgePath);
     await directory.create(recursive: true);
-    for (final name in ['package.json', 'index.mjs']) {
+    for (final name in ['routing.mjs', 'index.mjs', 'package.json']) {
       final bytes = await File('$codePath/bridge/$name').readAsBytes();
       final target = File('$bridgePath/$name');
       if (await target.exists() &&

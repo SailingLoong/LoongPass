@@ -524,10 +524,21 @@ export async function LoomyAuthPlugin({ client } = {}) {
               : daily != null
                 ? { name: "每日赠送积分", balance: daily, unit: "credits", display: `${daily} credits`, aside: true }
                 : null
+          if (dailyWallet) {
+            dailyWallet.runsOutAt = dailyWallet.resetsAt ?? beijingMidnight()
+            dailyWallet.runsOut = dailyWallet.balance
+            // Both wallets are spendable. A spent daily wallet cannot hold
+            // the account while its permanent credits remain.
+            dailyWallet.aside = true
+          }
           const windows = [
             ...(dailyWallet ? [dailyWallet] : []),
             ...(permanent != null ? [{ name: "永久积分", balance: permanent, unit: "credits", display: `${permanent} credits`, aside: true }] : []),
           ]
+          if (dailyWallet?.balance != null && permanent != null) {
+            windows.push({ name: "可用积分", balance: dailyWallet.balance + permanent, unit: "credits",
+              runsOutAt: dailyWallet.runsOutAt, runsOut: dailyWallet.balance })
+          }
           // no `signIn` on a clean read: that absence is how magpie takes an
           // expired mark back off the account (Loomy has no renewal, so a
           // "kept" here would leave a transient 401's lapse on forever)

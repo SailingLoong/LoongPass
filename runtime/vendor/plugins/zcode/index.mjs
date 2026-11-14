@@ -670,7 +670,13 @@ async function giftOf(s) {
       w.display = `${compact(used)} / ${compact(total)}`
     }
     if (w._spent) w.used = Math.max(100, w.used)
-    if (exp > 0) w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
+    if (exp > 0) {
+      w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
+      // expires_at is this remaining bucket's end, independently of renewal.
+      w.runsOutAt = w.resetsAt
+      const remaining = left ?? (total !== undefined ? Math.max(0, total - used) : undefined)
+      if (remaining !== undefined) w.runsOut = remaining
+    }
     let span = 0
     for (const p of plans) {
       if (!same(x, p)) continue

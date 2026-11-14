@@ -114,7 +114,7 @@ class PluginApplication {
         accounts,
         models,
         rewards,
-        ModelConnection(models, installation.bridgePath),
+        ModelConnection(models, installation.bridgePath)..start(),
       );
     } catch (_) {
       await rewards?.close();
