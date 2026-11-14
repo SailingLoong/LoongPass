@@ -343,7 +343,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             ),
           ],
           builder: (context, controller, _) => FButton(
-            variant: FButtonVariant.outline,
+            variant: FButtonVariant.ghost,
             size: FButtonSizeVariant.sm,
             mainAxisSize: MainAxisSize.min,
             onPress: _busy ? null : controller.toggle,
@@ -390,16 +390,23 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   Widget _details(PluginAccount a) {
     final usage = a.usage, reward = _reward(a), buckets = _buckets(a);
     final rewardTime = _millis(reward['checkedAt'] ?? reward['observedAt']);
+    final secondary = context.theme.typography.body.xs.copyWith(
+      color: context.theme.colors.mutedForeground,
+    );
+    final heading = context.theme.typography.body.sm.copyWith(
+      fontWeight: FontWeight.w600,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SelectableText(_identity(a)),
         const SizedBox(height: 6),
-        Text(_status(a)),
+        Text(_status(a), style: secondary),
         const SizedBox(height: 14),
         _actions(a),
         const FDivider(),
-        Text('官方套餐与额度', style: context.theme.typography.body.sm),
+        Text('官方套餐与额度', style: heading),
+        const SizedBox(height: 8),
         if (usage == null)
           const Text('尚无可核实的官方额度快照。')
         else ...[
@@ -407,7 +414,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           if (_usageBalance(usage) case final balance?) Text('官方额度摘要：$balance'),
           if (_date(usage['until']) != null)
             Text('套餐到期：${creditTime(_date(usage['until'])!)}'),
-          if (_windows(a).isNotEmpty) const Text('各额度窗口独立列出，可能重叠，不合计。'),
+          if (_windows(a).isNotEmpty)
+            Text('各额度窗口独立列出，可能重叠，不合计。', style: secondary),
           for (final window in _windows(a))
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
@@ -417,10 +425,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                   Text(_windowText(window)),
                   if (window['display'] is String &&
                       (window['display'] as String).isNotEmpty)
-                    Text(
-                      '官方摘要：${window['display']}',
-                      style: context.theme.typography.body.xs,
-                    ),
+                    Text('官方摘要：${window['display']}', style: secondary),
                   if (window['aside'] == true) const Text('参考额度'),
                   if (_date(window['resetsAt']) != null)
                     Text('窗口重置：${creditTime(_date(window['resetsAt'])!)}'),
@@ -438,10 +443,12 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           a.queriedAt == null
               ? '尚无成功的额度查询。'
               : '${_usageFailure(a) == null ? '查询于' : '上次成功查询于'} ${creditTime(a.queriedAt!)}',
+          style: secondary,
         ),
         if (a.provider == 'zcode') ...[
           const FDivider(),
-          Text('Start Plan 活动额度', style: context.theme.typography.body.sm),
+          Text('Start Plan 活动额度', style: heading),
+          const SizedBox(height: 8),
           if (buckets.isEmpty)
             Text(
               reward['checkedAt'] == null
@@ -460,6 +467,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             rewardTime == null
                 ? '活动额度查询时间未知'
                 : '活动额度查询于 ${creditTime(rewardTime)}',
+            style: secondary,
           ),
         ],
         const FDivider(),

@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../lib/app_sidebar.dart';
@@ -67,7 +69,22 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('需要重新授权').hitTestable(), findsOneWidget);
-    expect(find.textContaining('11-14 09:30').hitTestable(), findsOneWidget);
+    final balance = find.byKey(const Key('balance-one'));
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    await mouse.moveTo(tester.getCenter(balance));
+    await tester.pump(
+      tester.element(balance).theme.tooltipStyle.hoverEnterDuration,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('2026-11-14 09:30 查询 · 查看账号详情').hitTestable(),
+      findsOneWidget,
+    );
+    expect(activations, 0);
+    await mouse.moveTo(Offset.zero);
+    await mouse.removePointer();
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('account-page-size')), findsNothing);
     await tester.tap(find.byKey(const Key('activate-one')).hitTestable());
     await tester.pumpAndSettle();
@@ -106,7 +123,19 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Qoder CN · same'));
+      final cnAccount = find.ancestor(
+        of: find.text('Qoder CN · 待核验'),
+        matching: find.byType(FItem),
+      );
+      final globalAccount = find.ancestor(
+        of: find.text('Qoder · 待核验'),
+        matching: find.byType(FItem),
+      );
+      expect(cnAccount, findsOneWidget);
+      expect(globalAccount, findsOneWidget);
+      await tester.tap(
+        find.descendant(of: cnAccount, matching: find.text('same')),
+      );
       await tester.pumpAndSettle();
       expect(find.text('CN detail'), findsOneWidget);
       expect(find.text('Global detail'), findsNothing);
@@ -122,6 +151,15 @@ void main() {
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
       expect(find.text('总览'), findsOneWidget);
+      await tester.tap(
+        find.descendant(of: globalAccount, matching: find.text('same')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Global detail'), findsOneWidget);
+      expect(find.text('Updated CN detail'), findsNothing);
+      expect(navigations, 0);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
     },
   );
 

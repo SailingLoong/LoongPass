@@ -163,7 +163,12 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                 ),
             ],
           ),
-          const Text('“本机登录记录”仅表示最近观察到的认证记录；请在 Codex 中核对实际登录账号。'),
+          Text(
+            '请在 Codex 中核对实际登录账号，“本机登录记录”为最近观察到的认证记录。',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
           if (!owner.hasSnapshot)
             const Padding(
               padding: EdgeInsets.only(top: 8),
@@ -273,8 +278,14 @@ class _CodexAccountDetails extends StatelessWidget {
           Text('邮箱：${account.email ?? '未知'}'),
           Text('工作区：${account.workspaceId ?? '未知'}'),
           Text('套餐：${account.plan ?? '未知'}'),
-          Text(state.currentId == id ? '本机登录记录；请在 Codex 中核对实际账号。' : '已保存的官方登录'),
           const SizedBox(height: 8),
+          Text(
+            state.currentId == id ? '本机登录记录，请在 Codex 中核对实际账号。' : '已保存的官方登录',
+            style: context.theme.typography.body.xs.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -288,7 +299,7 @@ class _CodexAccountDetails extends StatelessWidget {
                 onPress: owner.canMutate ? onSwitch : null,
               ),
               FButton(
-                variant: FButtonVariant.destructive,
+                variant: FButtonVariant.ghost,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
                 key: Key('codex-remove-$id'),

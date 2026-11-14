@@ -40,7 +40,6 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
       listenable: service,
       builder: (context, _) => WorkspacePage(
         title: '模型连接',
-        subtitle: '通过 Magpie 使用已保存账号的原生模型、分组和恢复能力。',
         children: [
           WorkspaceCard(
             child: Column(
@@ -57,7 +56,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                         : '已关闭',
                   ),
                   leadingLabel: true,
-                  enabled: !(_busy),
+                  enabled: !_busy,
                   onChange: (value) => _run(() => service.setEnabled(value)),
                 ),
                 if (_message != null)
@@ -65,7 +64,14 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(_message!),
                   ),
-                if (service.error != null) const Text('本地服务尚未启动，请核对端口占用后重新开启。'),
+                if (service.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '本地服务尚未启动，请核对端口占用后重新开启。',
+                      style: TextStyle(color: context.theme.colors.error),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -83,77 +89,78 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
             const WorkspaceCard(
               child: Text('还没有账号来源。先在账号页添加官方授权，再选择可供 Magpie 使用的账号。'),
             ),
-          for (final grant in service.grants)
+          if (service.grants.isNotEmpty)
             WorkspaceCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FSwitch(
-                    value: grant.enabled,
-                    label: Text(grant.account.label),
-                    description: Text(
-                      '${_sourceName(grant.account.provider)} · ${grant.account.models.length} 个模型',
+                  for (final (index, grant) in service.grants.indexed) ...[
+                    if (index > 0) const SizedBox(height: 12),
+                    FSwitch(
+                      value: grant.enabled,
+                      label: Text(grant.account.label),
+                      description: Text(_sourceName(grant.account.provider)),
+                      leadingLabel: true,
+                      enabled: !(_busy || !grant.account.active),
+                      onChange: (value) =>
+                          _run(() => service.enable(grant.account.key, value)),
                     ),
-                    leadingLabel: true,
-                    enabled: !(_busy || !grant.account.active),
-                    onChange: (value) =>
-                        _run(() => service.enable(grant.account.key, value)),
-                  ),
-                  if (!grant.account.active) const Text('账号需要重新授权。'),
-                  FAccordion(
-                    control: FAccordionControl.lifted(
-                      expanded: (_) =>
-                          _expandedModels.contains(grant.account.key),
-                      onChange: (_, value) => setState(() {
-                        value
-                            ? _expandedModels.add(grant.account.key)
-                            : _expandedModels.remove(grant.account.key);
-                      }),
-                    ),
-                    children: [
-                      FAccordionItem(
-                        key: ValueKey('models-${grant.account.key}'),
-                        title: Text('查看 ${grant.account.models.length} 个模型'),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '来源：${grant.account.provider} · ${grant.account.realm}',
-                              style: context.theme.typography.body.xs.copyWith(
-                                color: context.theme.colors.mutedForeground,
-                              ),
-                            ),
-                            if (grant.account.provider == 'zcode')
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 10),
-                                child: Text(
-                                  '-Trial 仅使用赠送额度；普通模型优先使用赠送权益，再使用账号已有套餐。不会购买或充值。',
-                                ),
-                              ),
-                            if (grant.account.models.isEmpty)
-                              const Text('当前账号尚未提供模型目录。'),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: [
-                                for (final model in grant.account.models)
-                                  FBadge(
-                                    variant: FBadgeVariant.secondary,
-                                    child: Text(
-                                      '${model['name'] ?? model['id']}${grant.account.provider == 'zcode'
-                                          ? (model['id'] as String).toLowerCase().endsWith('-trial')
-                                                ? ' · 仅赠送'
-                                                : ' · 赠送优先，可转套餐'
-                                          : ''}',
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
+                    if (!grant.account.active)
+                      Text(
+                        '账号需要重新授权。',
+                        style: TextStyle(color: context.theme.colors.error),
                       ),
-                    ],
-                  ),
+                    FAccordion(
+                      control: FAccordionControl.lifted(
+                        expanded: (_) =>
+                            _expandedModels.contains(grant.account.key),
+                        onChange: (_, value) => setState(() {
+                          value
+                              ? _expandedModels.add(grant.account.key)
+                              : _expandedModels.remove(grant.account.key);
+                        }),
+                      ),
+                      children: [
+                        FAccordionItem(
+                          key: ValueKey('models-${grant.account.key}'),
+                          title: Text('查看 ${grant.account.models.length} 个模型'),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '来源：${grant.account.provider} · ${grant.account.realm}',
+                                style: context.theme.typography.body.xs
+                                    .copyWith(
+                                      color:
+                                          context.theme.colors.mutedForeground,
+                                    ),
+                              ),
+                              if (grant.account.provider == 'zcode')
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Text(
+                                    '-Trial 仅使用赠送额度；普通模型优先使用赠送权益，再使用账号已有套餐。不会购买或充值。',
+                                  ),
+                                ),
+                              if (grant.account.models.isEmpty)
+                                const Text('当前账号尚未提供模型目录。'),
+                              for (final model in grant.account.models)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    '${model['name'] ?? model['id']}${grant.account.provider == 'zcode'
+                                        ? (model['id'] as String).toLowerCase().endsWith('-trial')
+                                              ? ' · 仅赠送'
+                                              : ' · 赠送优先，可转套餐'
+                                        : ''}',
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

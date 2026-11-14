@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PointerDeviceKind, SemanticsAction;
 
 import 'desktop_test_app.dart';
 
@@ -230,23 +231,91 @@ void main() {
     },
   );
 
-  testDesktopWidgets('update badge fits expanded and collapsed navigation in both themes', (tester) async {
-    native.addAll({'phase': 'preparing', 'canCheck': false});
-    final updates = AppUpdates();
-    await updates.load();
-    addTearDown(updates.dispose);
-    for (final brightness in Brightness.values) {
-      for (final width in [64.0, 196.0]) {
-        await tester.pumpWidget(DesktopTestApp(
-          theme: loongPassTheme(brightness),
-          home: Center(child: SizedBox(width: width, child: AppUpdateBadge(
-            updates: updates, compact: width == 64, onOpen: () {},
-          ))),
-        ));
-        await tester.pump();
-        expect(tester.takeException(), isNull);
+  testDesktopWidgets(
+    'update badge fits each state and preserves labels and actions',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        for (final (phase, label) in [
+          (UpdatePhase.error, '更新未完成，可稍后重试'),
+          (UpdatePhase.ready, '重启并更新'),
+          (UpdatePhase.downloading, '正在后台下载更新'),
+          (UpdatePhase.preparing, '正在校验并准备更新'),
+        ]) {
+          native.addAll({
+            'phase': phase.name,
+            'canCheck': phase == UpdatePhase.error,
+            'canInstall': phase == UpdatePhase.ready,
+          });
+          final updates = AppUpdates();
+          await updates.load();
+          addTearDown(updates.dispose);
+          var opens = 0;
+          for (final brightness in Brightness.values) {
+            for (final width in [56.0, 64.0, 176.0, 208.0]) {
+              for (final scale in [1.0, 2.0]) {
+                await tester.pumpWidget(
+                  DesktopTestApp(
+                    theme: loongPassTheme(brightness),
+                    builder: (context, child) => MediaQuery(
+                      data: MediaQuery.of(context)
+                          .copyWith(textScaler: TextScaler.linear(scale)),
+                      child: child!,
+                    ),
+                    home: Center(
+                      child: SizedBox(
+                        width: width,
+                        child: AppUpdateBadge(
+                          updates: updates,
+                          compact: width <= 64,
+                          onOpen: () => opens++,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+                await tester.pump();
+                expect(tester.takeException(), isNull);
+                final labeledButton = find.descendant(
+                  of: find.byType(FButton),
+                  matching: find.byWidgetPredicate(
+                    (widget) =>
+                        widget is Semantics && widget.properties.label == label,
+                  ),
+                );
+                expect(labeledButton, findsOneWidget);
+                final data = tester
+                    .getSemantics(labeledButton)
+                    .getSemanticsData();
+                expect(data.label, label);
+                expect(data.flagsCollection.isButton, isTrue);
+                expect(data.hasAction(SemanticsAction.tap), isTrue);
+                expect(find.byType(FTooltip), findsOneWidget);
+              }
+            }
+          }
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: Offset.zero);
+          await mouse.moveTo(tester.getCenter(find.byType(FButton)));
+          await tester.pump(const Duration(seconds: 1));
+          await tester.pumpAndSettle();
+          expect(find.text(label), findsNWidgets(2));
+          await mouse.removePointer();
+          await tester.pumpAndSettle();
+          final callsBeforePress = calls.length;
+          await tester.tap(find.byType(FButton));
+          await tester.pumpAndSettle();
+          expect(opens, phase == UpdatePhase.ready ? 0 : 1);
+          expect(
+            calls.skip(callsBeforePress).map((call) => call.method),
+            phase == UpdatePhase.ready ? ['install'] : isEmpty,
+          );
+        }
+      } finally {
+        semantics.dispose();
       }
-    }
-    expect(calls.map((call) => call.method), ['state']);
-  });
+    },
+  );
 }

@@ -82,6 +82,16 @@ class AppWorkspaceState extends State<AppWorkspace> {
     selectSection(WorkspaceSection.models);
   }
 
+  Widget _modelsNavigation(bool compact) => ModelsNavigation(
+    preferences: _preferences,
+    compact: compact,
+    active: _section == WorkspaceSection.models,
+    modelIds: widget.modelIds,
+    selectedModelId: widget.selectedModelId,
+    onOpen: () => selectModel(null),
+    onSelectModel: selectModel,
+  );
+
   void _hideApp(ManagedApp app) {
     if (_selected == app) setState(() => _all = true);
     _preferences.setAppVisible(app, false);
@@ -100,7 +110,9 @@ class AppWorkspaceState extends State<AppWorkspace> {
       listenable: _preferences,
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 760;
+          final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
+              .clamp(1.0, double.infinity);
+          final compact = constraints.maxWidth < 900 * textScale;
           final colors = context.theme.colors;
           final sections = {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
@@ -129,13 +141,13 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 color: colors.muted,
                 child: SizedBox(
                   key: const Key('app-sidebar'),
-                  width: compact ? 56 : 192,
+                  width: compact ? 56 : 208 * textScale,
                   child: Column(
                     children: [
                       Padding(
                         padding: EdgeInsets.symmetric(
-                          horizontal: compact ? 8 : 10,
-                          vertical: 14,
+                          horizontal: 8,
+                          vertical: 12,
                         ),
                         child: Row(
                           mainAxisAlignment: compact
@@ -157,44 +169,65 @@ class AppWorkspaceState extends State<AppWorkspace> {
                         ),
                       ),
                       Expanded(
-                        child: CustomScrollView(
-                          slivers: [
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                             for (final section in order)
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                                sliver: section == WorkspaceSection.accounts
-                                    ? AccountsNavigation(
-                                        preferences: _preferences,
-                                        compact: compact,
-                                        active: _section == section,
-                                        selectedApp: _all ? null : _selected,
-                                        enabledApps: widget.enabledApps,
-                                        onOpen: () => selectSection(section),
-                                        onSelectApp: selectApp,
-                                        onHideApp: _hideApp,
-                                      )
-                                    : section == WorkspaceSection.models
-                                    ? ModelsNavigation(
-                                        preferences: _preferences,
-                                        compact: compact,
-                                        active: _section == section,
-                                        modelIds: widget.modelIds,
-                                        selectedModelId: widget.selectedModelId,
-                                        onOpen: () => selectModel(null),
-                                        onSelectModel: selectModel,
-                                      )
-                                    : SliverToBoxAdapter(
-                                        child: SidebarNavigationButton(
-                                          key: ValueKey('nav-${section.name}'),
-                                          label: section.label,
-                                          icon: Icon(section.icon, size: 18),
-                                          compact: compact,
-                                          selected: _section == section,
-                                          onPressed: () =>
-                                              selectSection(section),
-                                        ),
+                              if (section == WorkspaceSection.accounts)
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                    ),
+                                    child: AccountsNavigation(
+                                      preferences: _preferences,
+                                      compact: compact,
+                                      active: _section == section,
+                                      selectedApp: _all ? null : _selected,
+                                      enabledApps: widget.enabledApps,
+                                      onOpen: () => selectSection(section),
+                                      onSelectApp: selectApp,
+                                      onHideApp: _hideApp,
+                                    ),
+                                  ),
+                                )
+                              else if (section == WorkspaceSection.models)
+                                if (!compact && _preferences.modelsExpanded)
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
                                       ),
-                              ),
+                                      child: _modelsNavigation(compact),
+                                    ),
+                                  )
+                                else
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      8,
+                                      0,
+                                      8,
+                                      4,
+                                    ),
+                                    child: _modelsNavigation(compact),
+                                  )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    8,
+                                    0,
+                                    8,
+                                    4,
+                                  ),
+                                  child: SidebarNavigationButton(
+                                    key: ValueKey('nav-${section.name}'),
+                                    label: section.label,
+                                    icon: Icon(section.icon, size: 18),
+                                    compact: compact,
+                                    selected: _section == section,
+                                    onPressed: () => selectSection(section),
+                                  ),
+                                ),
                           ],
                         ),
                       ),

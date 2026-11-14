@@ -53,62 +53,61 @@ class ModelsNavigation extends StatelessWidget {
       ),
     );
     if (compact) {
-      return SliverToBoxAdapter(
-        child: Column(
-          children: [
-            navigation,
-            FPopoverMenu(
-              menuAnchor: Alignment.topLeft,
-              childAnchor: Alignment.topRight,
-              menuBuilder: (context, controller, _) => [
-                FItemGroup(
-                  children: [
-                    if (modelIds.isEmpty)
-                      FItem(title: const Text('暂无模型'), enabled: false),
-                    for (final id in modelIds)
-                      FItem(
-                        key: ValueKey('model-nav-$id'),
-                        title: Text(id),
-                        suffix: active && id == selectedModelId
-                            ? const Icon(FLucideIcons.check, size: 16)
-                            : null,
-                        onPress: () {
-                          onSelectModel(id);
-                          controller.hide();
-                        },
-                      ),
-                  ],
-                ),
-              ],
-              builder: (context, controller, _) => disclosure(
-                controller.toggle,
-                controller.status.isForwardOrCompleted,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          navigation,
+          FPopoverMenu(
+            menuAnchor: Alignment.topLeft,
+            childAnchor: Alignment.topRight,
+            menuBuilder: (context, controller, _) => [
+              FItemGroup(
+                children: [
+                  if (modelIds.isEmpty)
+                    FItem(title: const Text('暂无模型'), enabled: false),
+                  for (final id in modelIds)
+                    FItem(
+                      key: ValueKey('model-nav-$id'),
+                      title: Text(id),
+                      suffix: active && id == selectedModelId
+                          ? const Icon(FLucideIcons.check, size: 16)
+                          : null,
+                      onPress: () {
+                        onSelectModel(id);
+                        controller.hide();
+                      },
+                    ),
+                ],
               ),
+            ],
+            builder: (context, controller, _) => disclosure(
+              controller.toggle,
+              controller.status.isForwardOrCompleted,
+            ),
+          ),
+        ],
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: navigation),
+            const SizedBox(width: 4),
+            disclosure(
+              () => preferences.setModelsExpanded(!preferences.modelsExpanded),
+              preferences.modelsExpanded,
             ),
           ],
         ),
-      );
-    }
-    return SliverMainAxisGroup(
-      slivers: [
-        SliverToBoxAdapter(
-          child: Row(
-            children: [
-              Expanded(child: navigation),
-              const SizedBox(width: 4),
-              disclosure(
-                () =>
-                    preferences.setModelsExpanded(!preferences.modelsExpanded),
-                preferences.modelsExpanded,
-              ),
-            ],
-          ),
-        ),
         if (preferences.modelsExpanded)
-          SliverPadding(
-            key: const Key('model-list'),
-            padding: const EdgeInsets.only(left: 12, top: 4, bottom: 8),
-            sliver: SliverList.list(
+          Expanded(
+            child: ListView(
+              key: const PageStorageKey('model-list'),
+              primary: false,
+              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 8),
               children: [
                 if (modelIds.isEmpty)
                   Padding(
