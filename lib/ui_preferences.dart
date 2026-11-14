@@ -20,6 +20,8 @@ class UiPreferences extends ChangeNotifier {
   final Future<String?> Function()? read;
   final Future<void> Function(String)? write;
   List<ManagedApp> _order = [...ManagedApp.values];
+  final Set<ManagedApp> _hiddenApps = {};
+  bool _appsExpanded = true;
   final Set<String> _favorites = {};
   final Map<String, int> _pageSizes = {};
   bool _collapsed = false, _comfortable = false, _disposed = false;
@@ -28,6 +30,8 @@ class UiPreferences extends ChangeNotifier {
   Future<void> _pending = Future.value();
   String? error;
   List<ManagedApp> get appOrder => List.unmodifiable(_order);
+  bool get appsExpanded => _appsExpanded;
+  bool isAppVisible(ManagedApp app) => !_hiddenApps.contains(app);
   bool get collapsed => _collapsed;
   bool get comfortable => _comfortable;
   double get rowHeight => _comfortable ? 44 : 36;
@@ -52,6 +56,15 @@ class UiPreferences extends ChangeNotifier {
           ...ManagedApp.values,
         }.toList();
       }
+      final hidden = json['hiddenApps'];
+      _hiddenApps
+        ..clear()
+        ..addAll(
+          ManagedApp.values.where(
+            (app) => hidden is List && hidden.contains(app.name),
+          ),
+        );
+      _appsExpanded = json['appsExpanded'] != false;
       _collapsed = json['collapsed'] == true;
       _comfortable = json['comfortable'] == true;
       _themeMode =
@@ -90,6 +103,17 @@ class UiPreferences extends ChangeNotifier {
     _changed();
   }
 
+  void setAppVisible(ManagedApp app, bool visible) {
+    final changed = visible ? _hiddenApps.remove(app) : _hiddenApps.add(app);
+    if (changed) _changed();
+  }
+
+  void setAppsExpanded(bool value) {
+    if (_appsExpanded == value) return;
+    _appsExpanded = value;
+    _changed();
+  }
+
   void setCollapsed(bool value) {
     _collapsed = value;
     _changed();
@@ -124,6 +148,8 @@ class UiPreferences extends ChangeNotifier {
     if (write == null) return;
     final payload = jsonEncode({
       'appOrder': _order.map((a) => a.name).toList(),
+      'hiddenApps': _hiddenApps.map((app) => app.name).toList(),
+      'appsExpanded': _appsExpanded,
       'collapsed': _collapsed,
       'comfortable': _comfortable,
       'theme': _themeMode.name,

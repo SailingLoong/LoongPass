@@ -144,11 +144,24 @@ void main() {
         ),
       );
       expect(find.byKey(const Key('app-order')), findsNothing);
-      expect(find.byKey(const Key('platform-filter')), findsOneWidget);
+      expect(find.byKey(const Key('account-apps')), findsOneWidget);
+      expect(find.byKey(const Key('platform-filter')), findsNothing);
       workspace.currentState!.selectApp(ManagedApp.qoder);
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('draft')), 'keep this');
+      await tester.ensureVisible(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
+      expect(find.text('Models'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('nav-accounts')),
+        -200,
+        scrollable: find.descendant(
+          of: find.byKey(const Key('app-sidebar')),
+          matching: find.byType(Scrollable),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();

@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'app_navigation_item.dart';
-import 'select_field_semantics.dart';
+import 'accounts_navigation.dart';
 import 'managed_app.dart';
 import 'ui_preferences.dart';
 import 'workspace_tools.dart';
@@ -54,6 +54,8 @@ class AppWorkspaceState extends State<AppWorkspace> {
   void selectApp(ManagedApp app) {
     if (widget.enabledApps != null && !widget.enabledApps!.contains(app))
       return;
+    _preferences.setAppVisible(app, true);
+    _preferences.setAppsExpanded(true);
     setState(() {
       _selected = app;
       _all = false;
@@ -61,8 +63,24 @@ class AppWorkspaceState extends State<AppWorkspace> {
     });
   }
 
-  void selectSection(WorkspaceSection section) =>
-      setState(() => _section = section);
+  void selectSection(WorkspaceSection section) {
+    if (section == WorkspaceSection.accounts)
+      _preferences.setAppsExpanded(true);
+    setState(() => _section = section);
+  }
+
+  void _selectAll() {
+    setState(() {
+      _all = true;
+      _section = WorkspaceSection.accounts;
+    });
+  }
+
+  void _hideApp(ManagedApp app) {
+    if (_selected == app) setState(() => _all = true);
+    _preferences.setAppVisible(app, false);
+  }
+
   @override
   void dispose() {
     if (widget.preferences == null) _preferences.dispose();
@@ -150,20 +168,34 @@ class AppWorkspaceState extends State<AppWorkspace> {
                         ),
                       ),
                       Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          children: [
+                        child: CustomScrollView(
+                          slivers: [
                             for (final section in order)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 4),
-                                child: SidebarNavigationButton(
-                                  key: ValueKey('nav-${section.name}'),
-                                  label: section.label,
-                                  icon: Icon(section.icon, size: 18),
-                                  compact: compact,
-                                  selected: _section == section,
-                                  onPressed: () => selectSection(section),
-                                ),
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                                sliver: section == WorkspaceSection.accounts
+                                    ? AccountsNavigation(
+                                        preferences: _preferences,
+                                        compact: compact,
+                                        active: _section == section,
+                                        selectedApp: _all ? null : _selected,
+                                        enabledApps: widget.enabledApps,
+                                        onOpen: () => selectSection(section),
+                                        onSelectAll: _selectAll,
+                                        onSelectApp: selectApp,
+                                        onHideApp: _hideApp,
+                                      )
+                                    : SliverToBoxAdapter(
+                                        child: SidebarNavigationButton(
+                                          key: ValueKey('nav-${section.name}'),
+                                          label: section.label,
+                                          icon: Icon(section.icon, size: 18),
+                                          compact: compact,
+                                          selected: _section == section,
+                                          onPressed: () =>
+                                              selectSection(section),
+                                        ),
+                                      ),
                               ),
                           ],
                         ),
@@ -206,70 +238,24 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 ),
               ),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: IndexedStack(
+                  index: platformPage
+                      ? _selected.index
+                      : ManagedApp.values.length + order.indexOf(_section),
+                  sizing: StackFit.expand,
                   children: [
-                    if (_section == WorkspaceSection.accounts)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 320),
-                            child: FSelect<String>(
-                              builder: selectFieldSemantics,
-                              key: const Key('platform-filter'),
-                              size: FTextFieldSizeVariant.sm,
-                              items: {
-                                if (widget.sections.containsKey(
-                                  WorkspaceSection.accounts,
-                                ))
-                                  '全部平台': 'all',
-                                for (final app in _preferences.appOrder)
-                                  if (widget.enabledApps == null ||
-                                      widget.enabledApps!.contains(app))
-                                    '${app.label} · ${app.region}': app.name,
-                              },
-                              control: FSelectControl.lifted(
-                                value: _all ? 'all' : _selected.name,
-                                onChange: (value) {
-                                  if (value == 'all')
-                                    setState(() => _all = true);
-                                  else if (value != null)
-                                    selectApp(
-                                      ManagedApp.values.firstWhere(
-                                        (a) => a.name == value,
-                                      ),
-                                    );
-                                },
-                              ),
-                            ),
-                          ),
-                        ),
+                    for (final app in ManagedApp.values)
+                      KeyedSubtree(
+                        key: ValueKey('page-${app.name}'),
+                        child:
+                            widget.pages[app] ??
+                            Center(child: Text('${app.label} 尚未接入')),
                       ),
-                    Expanded(
-                      child: IndexedStack(
-                        index: platformPage
-                            ? _selected.index
-                            : ManagedApp.values.length +
-                                  order.indexOf(_section),
-                        sizing: StackFit.expand,
-                        children: [
-                          for (final app in ManagedApp.values)
-                            KeyedSubtree(
-                              key: ValueKey('page-${app.name}'),
-                              child:
-                                  widget.pages[app] ??
-                                  Center(child: Text('${app.label} 尚未接入')),
-                            ),
-                          for (final section in order)
-                            KeyedSubtree(
-                              key: ValueKey('section-${section.name}'),
-                              child: sections[section]!,
-                            ),
-                        ],
+                    for (final section in order)
+                      KeyedSubtree(
+                        key: ValueKey('section-${section.name}'),
+                        child: sections[section]!,
                       ),
-                    ),
                   ],
                 ),
               ),

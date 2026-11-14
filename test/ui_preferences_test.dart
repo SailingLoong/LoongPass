@@ -18,6 +18,8 @@ void main() {
       preferences.setPageSize('workbuddy', 5);
       preferences.setCollapsed(true);
       preferences.setTheme(ThemeMode.dark);
+      preferences.setAppVisible(ManagedApp.qoder, false);
+      preferences.setAppsExpanded(false);
       await preferences.saved;
       final restored = UiPreferences(read: () async => stored);
       await restored.load();
@@ -38,6 +40,11 @@ void main() {
       expect(restored.pageSize('qoder'), 10);
       expect(restored.collapsed, isTrue);
       expect(restored.themeMode, ThemeMode.dark);
+      expect(restored.isAppVisible(ManagedApp.qoder), isFalse);
+      expect(restored.isAppVisible(ManagedApp.qoderCn), isTrue);
+      expect(restored.appsExpanded, isFalse);
+      restored.setAppVisible(ManagedApp.qoder, true);
+      expect(restored.appOrder.indexOf(ManagedApp.qoder), 3);
     },
   );
   test(
@@ -64,6 +71,8 @@ void main() {
       ]);
       expect(preferences.pageSize('qoder'), 10);
       expect(preferences.themeMode, ThemeMode.system);
+      expect(ManagedApp.values.every(preferences.isAppVisible), isTrue);
+      expect(preferences.appsExpanded, isTrue);
       final corrupt = UiPreferences(read: () async => '{bad json');
       await corrupt.load();
       expect(corrupt.appOrder, ManagedApp.values);

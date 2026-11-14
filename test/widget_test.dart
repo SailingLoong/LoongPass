@@ -95,7 +95,8 @@ void main() {
           workspace.selectApp(app);
           await tester.pumpAndSettle();
           expect(find.byKey(ValueKey('page-${app.name}')), findsOneWidget);
-          expect(find.byKey(const Key('platform-filter')), findsOneWidget);
+          expect(find.byKey(const Key('account-apps')), findsOneWidget);
+          expect(find.byKey(const Key('platform-filter')), findsNothing);
           expect(
             tester.takeException(),
             isNull,
