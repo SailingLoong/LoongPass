@@ -32,7 +32,9 @@ python3 tool/configure_dsh_feishu.py \
   --model magpie/loongpass/workbuddy/deepseek-v4.1-flash
 ```
 
-工具维护专属配置块，保留 Magpie 配置。遇到已有的 Teams 或飞书自定义行会报告冲突并保留原文件。`workspaceRoots` 默认限定到所选工作目录，实际工具读写权限由 DSH 的权限预设和沙箱决定。
+配置工具复用 LoongPass 已准备的 Bun 运行时。首次使用前启动 LoongPass 完成运行时初始化，也可用 `LOONGPASS_BUN` 指定已准备的 Bun。
+
+工具维护专属配置块，接受 DSH 原生写出的 YAML，保留凭据引用、聊天状态和 Magpie 配置。遇到已有的 Teams 或飞书自定义行会报告冲突并保留原文件。写入与 DSH 配置编辑器共用原生文件锁。`workspaceRoots` 默认限定到所选工作目录，实际工具读写权限由 DSH 的权限预设和沙箱决定。
 
 在 Magpie 中确认新 profile 已包含模型来源。Magpie 原生同步负责维护该来源。首次消息前先验证普通模型请求与终端工具。[Magpie DSH 接入实现](https://github.com/yetone/magpie/blob/main/internal/agent/dsh.go)
 
@@ -48,7 +50,7 @@ node "${DSH_HOME:-$HOME/.dsh}/profiles/loongpass-feishu/node_modules/dsh-lark-ch
 
 首次启动显示飞书官方绑定页面和二维码。扫码页面可以创建专用机器人或重新授权已有应用。扫码人需要完成飞书侧的确认，凭据由 DSH 原生 credentials/settings 服务保存。已有应用可在配置工具中传 `--app-id`。
 
-扫码完成后，日志会显示注册者在该应用下的 `open_id`。用它收窄私聊和审批范围，再重启服务。
+扫码完成后，核对注册者在该应用下的 `open_id`。注册回执可能直接返回该身份；回执缺少时，先由本人私聊机器人，再用此应用的机器人身份读取该聊天消息的发送者 `open_id`。用已核实的身份收窄私聊和审批范围，再重启服务。
 
 ```sh
 python3 tool/configure_dsh_feishu.py \
@@ -74,6 +76,6 @@ node "${DSH_HOME:-$HOME/.dsh}/profiles/loongpass-feishu/node_modules/dsh-lark-ch
 
 ## 验证范围
 
-本次兼容修正覆盖 DSH 0.2.2-rc.2 的工具展示作用域、子 agent 审批归属、停止原因格式和后台代理继承。安装前后校验上游文件，升级通过更新固定来源和复测完成。
+本次兼容修正覆盖工具展示作用域、子 agent 审批归属、停止原因格式、后台代理继承，以及新版 DSH 原生设置与凭据保存。凭据通过原生存储持有，profile 保存引用和聊天状态。安装前后校验上游文件，升级通过更新固定来源和复测完成。各版本的实际覆盖见验证记录。
 
 上游的消息去重缓存保存在进程内。重启后可能收到重复事件，长连接中断期间的消息也没有补拉保证。涉及外部写入的任务需要核对实际结果后再重发。会话历史恢复与消息投递保证分别验收。[验证记录](verification/2026-11-14-dsh-feishu.md)

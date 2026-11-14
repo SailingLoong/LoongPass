@@ -1,7 +1,15 @@
 diff --git a/lib/cli.js b/lib/cli.js
+index 3c7f120..9d7d2fd 100755
 --- a/lib/cli.js
 +++ b/lib/cli.js
-@@ -324,6 +324,14 @@
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env node
+-import { n as refuseInstanceName, r as ownVersion, t as instanceIdentity } from "./instance-aP5Zi2Pi.js";
++import { c as credentialsReadyMessage, n as refuseInstanceName, r as ownVersion, t as instanceIdentity } from "./instance-aP5Zi2Pi.js";
+ import { delimiter, dirname, join, resolve, sep } from "node:path";
+ import { accessSync, chmodSync, constants, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+ import { open } from "node:fs/promises";
+@@ -324,6 +324,14 @@ function servicePath(dsh, execPath = process.execPath, inherited = process.env.P
  function serviceEnvironment(spec) {
  	const variables = [["PATH", servicePath(spec.dsh)]];
  	if (spec.dshHome !== void 0) variables.push(["DSH_HOME", spec.dshHome]);
@@ -16,10 +24,132 @@ diff --git a/lib/cli.js b/lib/cli.js
  	if (spec.credentials !== void 0) variables.push(["LARK_APP_ID", spec.credentials.appId], ["LARK_APP_SECRET", spec.credentials.appSecret]);
  	return variables;
  }
+@@ -729,17 +737,25 @@ function filterConsole(chunk, state) {
+ 	}
+ 	return kept.length === 0 ? "" : `${kept.join("\n")}\n`;
+ }
+-async function relayNewOutput(offset, filter) {
++async function relayNewOutput(offset, filter, onOutput) {
+ 	const size = logSize();
+ 	let from = offset;
+-	if (size < from) from = 0;
++	if (size < from) {
++		from = 0;
++		if (filter !== void 0) {
++			filter.partial = "";
++			filter.suppressing = false;
++		}
++	}
+ 	if (size === from) return from;
+ 	const handle = await open(logPath(), "r");
+ 	try {
+ 		const buffer = Buffer.alloc(size - from);
+ 		const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
+ 		const text = buffer.subarray(0, bytesRead).toString("utf8");
+-		process.stdout.write(filter === void 0 ? text : filterConsole(text, filter));
++		const output = filter === void 0 ? text : filterConsole(text, filter);
++		onOutput?.(output);
++		process.stdout.write(output);
+ 		return from + bytesRead;
+ 	} finally {
+ 		await handle.close();
+@@ -751,14 +767,19 @@ async function relayNewOutput(offset, filter) {
+ * dug out of a log file.
+ * @param from - byte offset to start relaying at, so earlier runs stay hidden.
+ * @param deadline - epoch milliseconds after which to stop waiting.
+-* @returns true when a scan landed, false when the deadline passed first.
++* @returns true when this run resolved credentials or legacy storage is present, false on timeout.
+ */
+ async function relayUntilOnboarded(from, deadline, instance) {
+ 	let offset = from;
++	let ready = false;
++	const readyMessage = credentialsReadyMessage(instance);
++	const observe = (output) => {
++		ready ||= output.split("\n").some((line) => line.replace(/^\[\d{4}-\d{2}-\d{2} [^\]\r\n]+\] /, "") === readyMessage);
++	};
+ 	const filter = newConsoleFilter();
+ 	while (Date.now() < deadline) {
+-		offset = await relayNewOutput(offset, filter);
+-		if (isOnboarded(instance)) {
++		offset = await relayNewOutput(offset, filter, observe);
++		if (ready || isOnboarded(instance)) {
+ 			await setTimeout(750);
+ 			await relayNewOutput(offset, filter);
+ 			return true;
+@@ -839,9 +860,9 @@ async function addBot(requested, name) {
+ 		process.stderr.write(`dsh-lark-channel: bot ${name} is live — DM it or @-mention it in a group\n`);
+ 		return;
+ 	}
+-	process.stderr.write(`dsh-lark-channel: scan the QR code below in Feishu to create bot ${name}; Ctrl-C leaves it running\n\n`);
++	process.stderr.write(`dsh-lark-channel: starting bot ${name}; scan a Feishu QR code if requested; Ctrl-C leaves it running\n\n`);
+ 	const scanned = await relayUntilOnboarded(from, Date.now() + ONBOARDING_WATCH_MS, name);
+-	process.stderr.write(scanned ? `\ndsh-lark-channel: bot ${name} is live — it has its own settings, credential, and sessions\n` : `\ndsh-lark-channel: still waiting for a scan; the bot keeps issuing codes, follow ${logPath()}\n`);
++	process.stderr.write(scanned ? `\ndsh-lark-channel: bot ${name} is live — it has its own settings, credential, and sessions\n` : `\ndsh-lark-channel: still waiting for credentials, follow ${logPath()}\n`);
+ }
+ /**
+ * Take one bot's row back out and restart. Its settings section and credential
+@@ -1061,9 +1082,9 @@ async function start(profile, workspace) {
+ 		await noteNewerRelease();
+ 		return;
+ 	}
+-	process.stderr.write("dsh-lark-channel: scan the QR code below in Feishu; Ctrl-C leaves the bot running\n\n");
++	process.stderr.write("dsh-lark-channel: starting the bot; credentials load from the profile, or a Feishu QR code appears for binding; Ctrl-C leaves the bot running\n\n");
+ 	const scanned = await relayUntilOnboarded(from, Date.now() + ONBOARDING_WATCH_MS);
+-	process.stderr.write(scanned ? "\ndsh-lark-channel: bound — the bot is live; manage it with stop, restart, and status\n" : `\ndsh-lark-channel: still waiting for a scan; the bot keeps issuing codes, follow ${logPath()}\n`);
++	process.stderr.write(scanned ? "\ndsh-lark-channel: bound — the bot is live; manage it with stop, restart, and status\n" : `\ndsh-lark-channel: still waiting for credentials, follow ${logPath()}\n`);
+ }
+ /**
+ * Stop the bot and remove its unit. Removal is the point: a booted-out launchd
 diff --git a/lib/index.js b/lib/index.js
+index db41a37..ca6fb7a 100644
 --- a/lib/index.js
 +++ b/lib/index.js
-@@ -4118,7 +4118,7 @@
+@@ -1,4 +1,4 @@
+-import { r as ownVersion, t as instanceIdentity } from "./instance-aP5Zi2Pi.js";
++import { c as credentialsReadyMessage, r as ownVersion, t as instanceIdentity } from "./instance-aP5Zi2Pi.js";
+ import z from "@deepseek-ai/schemastery";
+ import { createLarkChannel, registerApp } from "@larksuite/channel";
+ import { createHash, randomUUID } from "node:crypto";
+@@ -103,16 +103,16 @@ const DEFAULT_DENY_TOOLS = [];
+ /** Loader-visible configuration schema and defaults. */
+ const Config = z.object({
+ 	instance: z.string(),
+-	appId: z.string(),
+-	appSecret: z.string().role("secret"),
+-	appSecretRef: z.string(),
++	appId: z.string().volatile(),
++	appSecret: z.string().role("secret").volatile(),
++	appSecretRef: z.string().volatile(),
+ 	domain: z.string(),
+ 	cwd: z.string(),
+ 	workspaceRoots: z.array(String),
+-	chatWorkspaces: z.dict(String).default({}),
+-	chatModels: z.dict(String).default({}),
+-	chatEpochs: z.dict(String).default({}),
+-	chatSessions: z.dict(String).default({}),
++	chatWorkspaces: z.dict(String).default({}).volatile(),
++	chatModels: z.dict(String).default({}).volatile(),
++	chatEpochs: z.dict(String).default({}).volatile(),
++	chatSessions: z.dict(String).default({}).volatile(),
+ 	provider: z.string(),
+ 	model: z.string(),
+ 	preset: z.string(),
+@@ -140,10 +140,12 @@ const Config = z.object({
+ });
+ /**
+ * Resolve the same defaults for direct callers that bypass Cordis Loader.
+-* @param config - Serialized configuration with the required credentials.
++* @param input - Serialized configuration or Loader output with live state references.
+ * @returns Configuration with all schema defaults applied.
+ */
+-function resolveConfig(config) {
++function resolveConfig(input) {
++	// Schemastery's native serializer unwraps volatile references and omits defaults.
++	const config = Config.simplify(input) ?? {};
+ 	return {
+ 		...config,
+ 		workspaceRoots: config.workspaceRoots ?? [],
+@@ -4118,7 +4120,7 @@ const STOP_COMMAND = "stop";
  /** List what this chat accepts. Not a host command: the list is per surface. */
  const HELP_COMMAND = "help";
  /** The cause recorded when a chat cancels its own turn. */
@@ -28,7 +158,7 @@ diff --git a/lib/index.js b/lib/index.js
  /** Leading slash plus the command name, the only part this module parses. */
  const COMMAND_LINE = /^\/([a-zA-Z][\w-]*)/;
  /**
-@@ -6120,7 +6120,15 @@
+@@ -6120,7 +6122,15 @@ function installBridge(ctx, config, port, notify, authorization, persistState =
  		await ctx.get("loader")?.await();
  		const presets = ctx.get("agentPresets");
  		const presetId = presets === void 0 ? void 0 : (await presets.resolve(config.preset)).id;
@@ -45,7 +175,7 @@ diff --git a/lib/index.js b/lib/index.js
  		return {
  			...presetId === void 0 ? {} : { presetId },
  			presentCall: createCallPresenter(ctx.get("tools"), toolScope),
-@@ -7532,20 +7540,26 @@
+@@ -7532,20 +7542,26 @@ function installBridge(ctx, config, port, notify, authorization, persistState =
  		targetByMessageId.delete(id);
  		aimAt(sessionId, binding, claimed);
  	});
@@ -82,7 +212,7 @@ diff --git a/lib/index.js b/lib/index.js
  				callSnapshots.set(session.id, calls);
  			}
  			calls.set(event.data.callId, {
-@@ -7558,6 +7572,16 @@
+@@ -7558,6 +7574,16 @@ function installBridge(ctx, config, port, notify, authorization, persistState =
  				for (const [callId, record] of calls) if (record.turn === event.data.turn) calls.delete(callId);
  				if (calls.size === 0) callSnapshots.delete(session.id);
  			}
@@ -99,7 +229,7 @@ diff --git a/lib/index.js b/lib/index.js
  			runningBySession.set(session.id, false);
  		} else if (isStepStartEvent(event)) runningBySession.set(session.id, true);
  		try {
-@@ -7569,7 +7593,7 @@
+@@ -7569,7 +7595,7 @@ function installBridge(ctx, config, port, notify, authorization, persistState =
  		if (isTurnEndEvent(event)) aimAt(session.id, binding, void 0);
  	});
  	ctx.on("approval/request", (request, next) => {
@@ -108,19 +238,169 @@ diff --git a/lib/index.js b/lib/index.js
  		if (binding === void 0) return next();
  		return askViaCard(binding, request, next);
  	}, { prepend: true });
+@@ -8049,6 +8075,7 @@ function apply(ctx, config) {
+ 		const authorization = resolveAuthorization(resolved);
+ 		internals.notify(describeAuthorization(authorization));
+ 		installBridge(ctx, resolved, internals.createPort(resolved, authorization), internals.notify, authorization, persistState, internals.reconnectDeadlineMs === void 0 ? void 0 : { deadlineMs: internals.reconnectDeadlineMs });
++		internals.notify(credentialsReadyMessage(resolved.instance));
+ 	};
+ 	const bootstrap = async () => {
+ 		await ctx.get("loader")?.await();
+@@ -8059,18 +8086,30 @@ function apply(ctx, config) {
+ 		const credentials = ctx.get("credentials");
+ 		const settings = ctx.get("settings");
+ 		if (settings !== void 0) try {
+-			const scope = settings.register(identity.settingsNamespace, Config, { base: config });
+-			resolved = resolveConfig(scope.get());
+-			persistState = async (patch) => {
+-				await scope.update(patch);
+-				return true;
+-			};
++			if (typeof settings.register === "function") {
++				const scope = settings.register(identity.settingsNamespace, Config, { base: Config.simplify(config) ?? {} });
++				resolved = resolveConfig(scope.get());
++				persistState = async (patch) => {
++					await scope.update(patch);
++					return true;
++				};
++			} else if (typeof settings.update === "function") {
++				const entryId = ctx.fiber.entry?.options.id;
++				if (entryId === void 0) throw new Error("Native settings require a Loader-owned plugin row");
++				const update = settings.update.bind(settings);
++				persistState = async (patch) => {
++					await update(entryId, patch);
++					return true;
++				};
++			} else {
++				throw new Error("No supported settings persistence API is composed");
++			}
+ 			persist = async (app) => {
+ 				const stored = await internals.storeSecret(credentials, app.appSecret, internals.notify, identity.secretRef);
+ 				return persistState({
+-					...app,
++					appId: app.appId,
+ 					...stored.ref === void 0 ? {} : { appSecretRef: stored.ref },
+-					...stored.inSettings ? {} : { appSecret: "" }
++					appSecret: stored.inSettings ? app.appSecret : ""
+ 				});
+ 			};
+ 		} catch (error) {
+diff --git a/lib/instance-aP5Zi2Pi.js b/lib/instance-aP5Zi2Pi.js
+index a4a1ed4..5d90dc7 100644
+--- a/lib/instance-aP5Zi2Pi.js
++++ b/lib/instance-aP5Zi2Pi.js
+@@ -66,4 +66,8 @@ function instanceIdentity(name) {
+ 	};
+ }
+ //#endregion
+-export { refuseInstanceName as n, ownVersion as r, instanceIdentity as t };
++/** Console handoff emitted once this row has resolved its app credentials. */
++function credentialsReadyMessage(name) {
++	return `lark-channel: credentials ready [${instanceIdentity(name).settingsNamespace}]`;
++}
++export { credentialsReadyMessage as c, refuseInstanceName as n, ownVersion as r, instanceIdentity as t };
+diff --git a/lib/types/config.d.ts b/lib/types/config.d.ts
+index 729fe9f..a1fc4fd 100644
+--- a/lib/types/config.d.ts
++++ b/lib/types/config.d.ts
+@@ -273,11 +273,76 @@ export interface ResolvedConfig {
+     approvers: string[];
+ }
+ /** Loader-visible configuration schema and defaults. */
+-export declare const Config: z<Config>;
++export declare const Config: z<Schemastery.ObjectS<NoInfer<{
++    instance: z<string, string, "plain">;
++    appId: z<string, string, "volatile">;
++    appSecret: z<string, string, "volatile">;
++    appSecretRef: z<string, string, "volatile">;
++    domain: z<string, string, "plain">;
++    cwd: z<string, string, "plain">;
++    workspaceRoots: z<string[], string[], "plain">;
++    chatWorkspaces: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatModels: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatEpochs: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatSessions: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    provider: z<string, string, "plain">;
++    model: z<string, string, "plain">;
++    preset: z<string, string, "plain">;
++    sessionScope: z<"chat" | "chat-thread" | "chat-sender", "chat" | "chat-thread" | "chat-sender", "defined">;
++    output: z<"cot" | "stream", "cot" | "stream", "defined">;
++    showProcess: z<boolean, boolean, "defined">;
++    attachImages: z<boolean, boolean, "defined">;
++    receiveFiles: z<boolean, boolean, "defined">;
++    maxReceiveFileBytes: z<number, number, "defined">;
++    sendFiles: z<boolean, boolean, "defined">;
++    maxSendFileBytes: z<number, number, "defined">;
++    hideProcessWhenDone: z<boolean, boolean, "defined">;
++    syncSlashCommands: z<boolean, boolean, "defined">;
++    denyTools: z<string[], string[], "defined">;
++    botPeers: z<string[], string[], "defined">;
++    botHops: z<number, number, "defined">;
++    requireMention: z<boolean, boolean, "defined">;
++    senderAllowlist: z<string[], string[], "plain">;
++    groupAllowlist: z<string[], string[], "plain">;
++    approvers: z<string[], string[], "plain">;
++}>>, Schemastery.ObjectT<NoInfer<{
++    instance: z<string, string, "plain">;
++    appId: z<string, string, "volatile">;
++    appSecret: z<string, string, "volatile">;
++    appSecretRef: z<string, string, "volatile">;
++    domain: z<string, string, "plain">;
++    cwd: z<string, string, "plain">;
++    workspaceRoots: z<string[], string[], "plain">;
++    chatWorkspaces: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatModels: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatEpochs: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    chatSessions: z<NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, NoInfer<import("@deepseek-ai/cosmokit").Dict<string, string>>, "volatile-defined">;
++    provider: z<string, string, "plain">;
++    model: z<string, string, "plain">;
++    preset: z<string, string, "plain">;
++    sessionScope: z<"chat" | "chat-thread" | "chat-sender", "chat" | "chat-thread" | "chat-sender", "defined">;
++    output: z<"cot" | "stream", "cot" | "stream", "defined">;
++    showProcess: z<boolean, boolean, "defined">;
++    attachImages: z<boolean, boolean, "defined">;
++    receiveFiles: z<boolean, boolean, "defined">;
++    maxReceiveFileBytes: z<number, number, "defined">;
++    sendFiles: z<boolean, boolean, "defined">;
++    maxSendFileBytes: z<number, number, "defined">;
++    hideProcessWhenDone: z<boolean, boolean, "defined">;
++    syncSlashCommands: z<boolean, boolean, "defined">;
++    denyTools: z<string[], string[], "defined">;
++    botPeers: z<string[], string[], "defined">;
++    botHops: z<number, number, "defined">;
++    requireMention: z<boolean, boolean, "defined">;
++    senderAllowlist: z<string[], string[], "plain">;
++    groupAllowlist: z<string[], string[], "plain">;
++    approvers: z<string[], string[], "plain">;
++}>>, "plain">;
++/** Loader output keeps live references for the channel's persisted state. */
++export type RuntimeConfig = ReturnType<typeof Config>;
+ /**
+  * Resolve the same defaults for direct callers that bypass Cordis Loader.
+- * @param config - Serialized configuration with the required credentials.
++ * @param input - Serialized configuration or Loader output with live state references.
+  * @returns Configuration with all schema defaults applied.
+  */
+-export declare function resolveConfig(config: Config): ResolvedConfig;
+-//# sourceMappingURL=config.d.ts.map
+\ No newline at end of file
++export declare function resolveConfig(input: Config | RuntimeConfig): ResolvedConfig;
 diff --git a/lib/types/host.d.ts b/lib/types/host.d.ts
+index 66f0eee..42f973c 100644
 --- a/lib/types/host.d.ts
 +++ b/lib/types/host.d.ts
-@@ -197,7 +197,7 @@
+@@ -197,7 +197,9 @@ export interface HostAgent {
       * Clear queued work and abort the active turn. A no-op when nothing is
       * active, so a chat may offer it unconditionally.
       */
 -    cancel(cause: string): void;
-+    cancel(cause: { readonly kind: 'user' }): void;
++    cancel(cause: {
++        readonly kind: 'user';
++    }): void;
      /**
       * Resolve once the agent has no driver or maintenance task running.
       * Optional here because the contract reaches this plugin as an object rather
-@@ -261,6 +261,11 @@
+@@ -261,6 +263,10 @@ export interface HostAgentRegistry {
          readonly setup?: (agentCtx: Context) => Promise<void>;
      }): Promise<HostAgentHandle>;
  }
@@ -128,25 +408,86 @@ diff --git a/lib/types/host.d.ts b/lib/types/host.d.ts
 +export interface HostSubagents {
 +    rootOf(agent: HostAgent): HostAgent;
 +}
-+
  /**
   * The `tools` registry, as this plugin's per-agent composition uses it
   * (subset of the host `ToolRegistry`).
-@@ -374,7 +379,9 @@
+@@ -374,7 +380,11 @@ export interface HostAgentPresets {
       * registrations in — the view that holds its tools, since a roster keeps
       * every model-facing row off the global layer.
       */
 -    standingKeyFor(id?: string): Promise<unknown>;
 +    standingKeyFor?(id?: string): Promise<unknown>;
 +    /** Lease the current native preset scope until its presentation reader closes. */
-+    acquireScope(id?: string): Promise<{ readonly key: unknown } & AsyncDisposable>;
++    acquireScope(id?: string): Promise<{
++        readonly key: unknown;
++    } & AsyncDisposable>;
  }
  /** One workspace record (subset of the host `Workspace` entity). */
  export interface HostWorkspace {
+@@ -446,15 +456,17 @@ export interface HostSettingsScope {
+     /** Deep-merge a patch into the user section and persist it through the provider. */
+     update(patch: object): Promise<unknown>;
+ }
+-/** The `settings` user-settings service (subset of `SettingsProvider`). */
++/** Host persistence over legacy settings namespaces or current Loader rows. */
+ export interface HostSettings {
+     /**
+      * Register a namespace schema; the registration is an effect on the calling
+      * fiber. Duplicate namespaces and stored sections the schema rejects fail loud.
+      */
+-    register(ns: string, schema: unknown, options?: {
++    register?(ns: string, schema: unknown, options?: {
+         base?: unknown;
+     }): HostSettingsScope;
++    /** Persist live Config fields through the active Loader row on current hosts. */
++    update?(entryId: string, patch: object): Promise<void>;
+ }
+ /**
+  * The `sessionProjections` registry, narrowed to reading one session's cut.
+@@ -709,4 +721,3 @@ declare module '@deepseek-ai/cordis' {
+         'approval/request'(request: HostApprovalRequest, next: () => Promise<HostApprovalOutcome>): Promise<HostApprovalOutcome>;
+     }
+ }
+-//# sourceMappingURL=host.d.ts.map
+\ No newline at end of file
+diff --git a/lib/types/instance.d.ts b/lib/types/instance.d.ts
+index 9d91fc4..642765c 100644
+--- a/lib/types/instance.d.ts
++++ b/lib/types/instance.d.ts
+@@ -39,4 +39,5 @@ export declare function refuseInstanceName(name: string): string | undefined;
+  * @throws {Error} when a name is given that cannot be used.
+  */
+ export declare function instanceIdentity(name?: string): InstanceIdentity;
+-//# sourceMappingURL=instance.d.ts.map
+\ No newline at end of file
++/** Console handoff emitted once this row has resolved its app credentials. */
++export declare function credentialsReadyMessage(name?: string): string;
+diff --git a/lib/types/runtime.d.ts b/lib/types/runtime.d.ts
+index 8a305a7..ce191ad 100644
+--- a/lib/types/runtime.d.ts
++++ b/lib/types/runtime.d.ts
+@@ -5,7 +5,7 @@
+ import type { LarkChannelOptions } from '@larksuite/channel';
+ import type { Context } from '@deepseek-ai/cordis';
+ import { Config } from './config.ts';
+-import type { ResolvedConfig } from './config.ts';
++import type { ResolvedConfig, RuntimeConfig } from './config.ts';
+ import { type ChannelPort } from './bridge.ts';
+ import { storeAppSecret } from './credentials.ts';
+ import type { LarkCredentials, RegisterAppPort } from './onboarding.ts';
+@@ -51,5 +51,4 @@ export declare const internals: {
+  * @param ctx - Scoped plugin context; requires the `agents` service.
+  * @param config - Configuration resolved by Cordis from the exported schema.
+  */
+-export declare function apply(ctx: Context, config: Config): void;
+-//# sourceMappingURL=runtime.d.ts.map
+\ No newline at end of file
++export declare function apply(ctx: Context, config: Config | RuntimeConfig): void;
 diff --git a/src/bridge.ts b/src/bridge.ts
+index 905f760..d83ffb2 100644
 --- a/src/bridge.ts
 +++ b/src/bridge.ts
-@@ -48,6 +48,7 @@
+@@ -48,6 +48,7 @@ import type {
    HostCommands,
    HostContentBlock,
    HostSystemPrompt,
@@ -154,7 +495,7 @@ diff --git a/src/bridge.ts b/src/bridge.ts
    HostTools,
    HostUserMessage,
    HostWorkspace,
-@@ -1059,9 +1060,17 @@
+@@ -1059,9 +1060,17 @@ export function installBridge(
      const presetId = presets === undefined ? undefined : (await presets.resolve(config.preset)).id
      // A roster keeps every tool off the global layer, so its standing key is
      // the view that can describe this agent's calls.
@@ -175,7 +516,7 @@ diff --git a/src/bridge.ts b/src/bridge.ts
      return {
        ...presetId === undefined ? {} : { presetId },
        presentCall: createCallPresenter(ctx.get('tools') as HostTools | undefined, toolScope),
-@@ -2865,11 +2874,45 @@
+@@ -2865,11 +2874,45 @@ export function installBridge(
      aimAt(sessionId, binding, claimed)
    })
  
@@ -221,7 +562,7 @@ diff --git a/src/bridge.ts b/src/bridge.ts
      if (binding === undefined) return
      if (isTurnStartEvent(event)) {
        // Fail closed: a turn that claims none of our messages sends its answer
-@@ -2888,26 +2931,9 @@
+@@ -2888,26 +2931,9 @@ export function installBridge(
          targetByMessageId.delete(event.data.id)
          aimAt(session.id, binding, claimed)
        }
@@ -248,7 +589,7 @@ diff --git a/src/bridge.ts b/src/bridge.ts
        runningBySession.set(session.id, false)
      } else if (isStepStartEvent(event)) {
        runningBySession.set(session.id, true)
-@@ -2939,7 +2965,7 @@
+@@ -2939,7 +2965,7 @@ export function installBridge(
    // merits too: the human who typed the request is in the chat, and this
    // listener still delegates every session it does not own.
    ctx.on('approval/request', (request, next) => {
@@ -258,9 +599,10 @@ diff --git a/src/bridge.ts b/src/bridge.ts
      return askViaCard(binding, request, next)
    }, { prepend: true })
 diff --git a/src/commands.ts b/src/commands.ts
+index 610e666..362101a 100644
 --- a/src/commands.ts
 +++ b/src/commands.ts
-@@ -25,7 +25,7 @@
+@@ -25,7 +25,7 @@ export const HELP_COMMAND = 'help'
  
  
  /** The cause recorded when a chat cancels its own turn. */
@@ -269,10 +611,62 @@ diff --git a/src/commands.ts b/src/commands.ts
  
  /** Leading slash plus the command name, the only part this module parses. */
  const COMMAND_LINE = /^\/([a-zA-Z][\w-]*)/
+diff --git a/src/config.ts b/src/config.ts
+index c13d069..ff84b9f 100644
+--- a/src/config.ts
++++ b/src/config.ts
+@@ -291,18 +291,18 @@ export interface ResolvedConfig {
+ }
+ 
+ /** Loader-visible configuration schema and defaults. */
+-export const Config: z<Config> = z.object({
++export const Config = z.object({
+   instance: z.string(),
+-  appId: z.string(),
+-  appSecret: z.string().role('secret'),
+-  appSecretRef: z.string(),
++  appId: z.string().volatile(),
++  appSecret: z.string().role('secret').volatile(),
++  appSecretRef: z.string().volatile(),
+   domain: z.string(),
+   cwd: z.string(),
+   workspaceRoots: z.array(String),
+-  chatWorkspaces: z.dict(String).default({}),
+-  chatModels: z.dict(String).default({}),
+-  chatEpochs: z.dict(String).default({}),
+-  chatSessions: z.dict(String).default({}),
++  chatWorkspaces: z.dict(String).default({}).volatile(),
++  chatModels: z.dict(String).default({}).volatile(),
++  chatEpochs: z.dict(String).default({}).volatile(),
++  chatSessions: z.dict(String).default({}).volatile(),
+   provider: z.string(),
+   model: z.string(),
+   preset: z.string(),
+@@ -325,12 +325,17 @@ export const Config: z<Config> = z.object({
+   approvers: z.array(String),
+ })
+ 
++/** Loader output keeps live references for the channel's persisted state. */
++export type RuntimeConfig = ReturnType<typeof Config>
++
+ /**
+  * Resolve the same defaults for direct callers that bypass Cordis Loader.
+- * @param config - Serialized configuration with the required credentials.
++ * @param input - Serialized configuration or Loader output with live state references.
+  * @returns Configuration with all schema defaults applied.
+  */
+-export function resolveConfig(config: Config): ResolvedConfig {
++export function resolveConfig(input: Config | RuntimeConfig): ResolvedConfig {
++  // Schemastery's native serializer unwraps volatile references and omits defaults.
++  const config = (Config.simplify(input) ?? {}) as Config
+   return {
+     ...config,
+     workspaceRoots: config.workspaceRoots ?? [],
 diff --git a/src/host.ts b/src/host.ts
+index e8b737b..244e9a3 100644
 --- a/src/host.ts
 +++ b/src/host.ts
-@@ -184,7 +184,7 @@
+@@ -184,7 +184,7 @@ export interface HostAgent {
     * Clear queued work and abort the active turn. A no-op when nothing is
     * active, so a chat may offer it unconditionally.
     */
@@ -281,7 +675,7 @@ diff --git a/src/host.ts b/src/host.ts
    /**
     * Resolve once the agent has no driver or maintenance task running.
     * Optional here because the contract reaches this plugin as an object rather
-@@ -251,6 +251,11 @@
+@@ -251,6 +251,11 @@ export interface HostAgentRegistry {
    }): Promise<HostAgentHandle>
  }
  
@@ -293,7 +687,7 @@ diff --git a/src/host.ts b/src/host.ts
  /**
   * The `tools` registry, as this plugin's per-agent composition uses it
   * (subset of the host `ToolRegistry`).
-@@ -355,7 +360,9 @@
+@@ -355,7 +360,9 @@ export interface HostAgentPresets {
     * registrations in — the view that holds its tools, since a roster keeps
     * every model-facing row off the global layer.
     */
@@ -304,10 +698,51 @@ diff --git a/src/host.ts b/src/host.ts
  }
  
  /** One workspace record (subset of the host `Workspace` entity). */
+@@ -436,13 +443,15 @@ export interface HostSettingsScope {
+   update(patch: object): Promise<unknown>
+ }
+ 
+-/** The `settings` user-settings service (subset of `SettingsProvider`). */
++/** Host persistence over legacy settings namespaces or current Loader rows. */
+ export interface HostSettings {
+   /**
+    * Register a namespace schema; the registration is an effect on the calling
+    * fiber. Duplicate namespaces and stored sections the schema rejects fail loud.
+    */
+-  register(ns: string, schema: unknown, options?: { base?: unknown }): HostSettingsScope
++  register?(ns: string, schema: unknown, options?: { base?: unknown }): HostSettingsScope
++  /** Persist live Config fields through the active Loader row on current hosts. */
++  update?(entryId: string, patch: object): Promise<void>
+ }
+ 
+ /**
+diff --git a/src/instance.ts b/src/instance.ts
+index 08b80ce..548577a 100644
+--- a/src/instance.ts
++++ b/src/instance.ts
+@@ -63,3 +63,8 @@ export function instanceIdentity(name?: string): InstanceIdentity {
+     sessionPrefix: `lark-${name}-`,
+   }
+ }
++
++/** Console handoff emitted once this row has resolved its app credentials. */
++export function credentialsReadyMessage(name?: string): string {
++  return `lark-channel: credentials ready [${instanceIdentity(name).settingsNamespace}]`
++}
 diff --git a/src/provision.ts b/src/provision.ts
+index 986ea4d..22ae472 100644
 --- a/src/provision.ts
 +++ b/src/provision.ts
-@@ -377,6 +377,14 @@
+@@ -32,7 +32,7 @@ import { homedir, userInfo } from 'node:os'
+ import { delimiter, dirname, join, resolve, sep } from 'node:path'
+ import { setTimeout as delay } from 'node:timers/promises'
+ import { ownVersion } from './version.ts'
+-import { instanceIdentity, refuseInstanceName } from './instance.ts'
++import { credentialsReadyMessage, instanceIdentity, refuseInstanceName } from './instance.ts'
+ 
+ /** Profile created when the operator names none. */
+ export const DEFAULT_PROFILE = 'lark'
+@@ -377,6 +377,14 @@ export function servicePath(dsh: string, execPath = process.execPath, inherited
  function serviceEnvironment(spec: ServiceSpec): ReadonlyArray<readonly [string, string]> {
    const variables: Array<readonly [string, string]> = [['PATH', servicePath(spec.dsh)]]
    if (spec.dshHome !== undefined) variables.push(['DSH_HOME', spec.dshHome])
@@ -322,3 +757,164 @@ diff --git a/src/provision.ts b/src/provision.ts
    if (spec.credentials !== undefined) {
      variables.push(['LARK_APP_ID', spec.credentials.appId], ['LARK_APP_SECRET', spec.credentials.appSecret])
    }
+@@ -803,17 +811,25 @@ export function filterConsole(chunk: string, state: ConsoleFilter): string {
+   return kept.length === 0 ? '' : `${kept.join('\n')}\n`
+ }
+ 
+-async function relayNewOutput(offset: number, filter?: ConsoleFilter): Promise<number> {
++async function relayNewOutput(offset: number, filter?: ConsoleFilter, onOutput?: (text: string) => void): Promise<number> {
+   const size = logSize()
+   let from = offset
+-  if (size < from) from = 0 // The log was truncated or replaced.
++  if (size < from) {
++    from = 0 // The log was truncated or replaced.
++    if (filter !== undefined) {
++      filter.partial = ''
++      filter.suppressing = false
++    }
++  }
+   if (size === from) return from
+   const handle = await open(logPath(), 'r')
+   try {
+     const buffer = Buffer.alloc(size - from)
+     const { bytesRead } = await handle.read(buffer, 0, buffer.length, from)
+     const text = buffer.subarray(0, bytesRead).toString('utf8')
+-    process.stdout.write(filter === undefined ? text : filterConsole(text, filter))
++    const output = filter === undefined ? text : filterConsole(text, filter)
++    onOutput?.(output)
++    process.stdout.write(output)
+     return from + bytesRead
+   } finally {
+     await handle.close()
+@@ -826,16 +842,22 @@ async function relayNewOutput(offset: number, filter?: ConsoleFilter): Promise<n
+  * dug out of a log file.
+  * @param from - byte offset to start relaying at, so earlier runs stay hidden.
+  * @param deadline - epoch milliseconds after which to stop waiting.
+- * @returns true when a scan landed, false when the deadline passed first.
++ * @returns true when this run resolved credentials or legacy storage is present, false on timeout.
+  */
+ async function relayUntilOnboarded(from: number, deadline: number, instance?: string): Promise<boolean> {
+   let offset = from
++  let ready = false
++  const readyMessage = credentialsReadyMessage(instance)
++  const observe = (output: string): void => {
++    ready ||= output.split('\n').some(line =>
++      line.replace(/^\[\d{4}-\d{2}-\d{2} [^\]\r\n]+\] /, '') === readyMessage)
++  }
+   // Only this channel's own lines: the QR code was being buried by the
+   // transport library's connection chatter.
+   const filter = newConsoleFilter()
+   while (Date.now() < deadline) {
+-    offset = await relayNewOutput(offset, filter)
+-    if (isOnboarded(instance)) {
++    offset = await relayNewOutput(offset, filter, observe)
++    if (ready || isOnboarded(instance)) {
+       // Give the host a beat to print its connected line, then drain it too.
+       await delay(750)
+       await relayNewOutput(offset, filter)
+@@ -937,11 +959,11 @@ async function addBot(requested: string | undefined, name: string): Promise<void
+     process.stderr.write(`dsh-lark-channel: bot ${name} is live — DM it or @-mention it in a group\n`)
+     return
+   }
+-  process.stderr.write(`dsh-lark-channel: scan the QR code below in Feishu to create bot ${name}; Ctrl-C leaves it running\n\n`)
++  process.stderr.write(`dsh-lark-channel: starting bot ${name}; scan a Feishu QR code if requested; Ctrl-C leaves it running\n\n`)
+   const scanned = await relayUntilOnboarded(from, Date.now() + ONBOARDING_WATCH_MS, name)
+   process.stderr.write(scanned
+     ? `\ndsh-lark-channel: bot ${name} is live — it has its own settings, credential, and sessions\n`
+-    : `\ndsh-lark-channel: still waiting for a scan; the bot keeps issuing codes, follow ${logPath()}\n`)
++    : `\ndsh-lark-channel: still waiting for credentials, follow ${logPath()}\n`)
+ }
+ 
+ /**
+@@ -1187,11 +1209,11 @@ async function start(profile: string, workspace: string): Promise<void> {
+     return
+   }
+ 
+-  process.stderr.write('dsh-lark-channel: scan the QR code below in Feishu; Ctrl-C leaves the bot running\n\n')
++  process.stderr.write('dsh-lark-channel: starting the bot; credentials load from the profile, or a Feishu QR code appears for binding; Ctrl-C leaves the bot running\n\n')
+   const scanned = await relayUntilOnboarded(from, Date.now() + ONBOARDING_WATCH_MS)
+   process.stderr.write(scanned
+     ? '\ndsh-lark-channel: bound — the bot is live; manage it with stop, restart, and status\n'
+-    : `\ndsh-lark-channel: still waiting for a scan; the bot keeps issuing codes, follow ${logPath()}\n`)
++    : `\ndsh-lark-channel: still waiting for credentials, follow ${logPath()}\n`)
+ }
+ 
+ /**
+diff --git a/src/runtime.ts b/src/runtime.ts
+index 5b792f9..0515b5f 100644
+--- a/src/runtime.ts
++++ b/src/runtime.ts
+@@ -7,11 +7,11 @@ import { createLarkChannel, registerApp } from '@larksuite/channel'
+ import type { LarkChannelOptions, PolicyConfig } from '@larksuite/channel'
+ import type { Context } from '@deepseek-ai/cordis'
+ import { Config, resolveConfig } from './config.ts'
+-import type { ResolvedConfig } from './config.ts'
++import type { ResolvedConfig, RuntimeConfig } from './config.ts'
+ import { installBridge, type ChannelPort } from './bridge.ts'
+ import { migrateAppSecret, resolveAppSecret, storeAppSecret } from './credentials.ts'
+ import type { HostCredentials } from './credentials.ts'
+-import { instanceIdentity } from './instance.ts'
++import { credentialsReadyMessage, instanceIdentity } from './instance.ts'
+ import type { CotEvent, CotHandle } from './cot.ts'
+ import type { PanelCommand } from './slash-panel.ts'
+ import { beginOnboarding } from './onboarding.ts'
+@@ -182,7 +182,7 @@ export const internals: {
+  * @param ctx - Scoped plugin context; requires the `agents` service.
+  * @param config - Configuration resolved by Cordis from the exported schema.
+  */
+-export function apply(ctx: Context, config: Config): void {
++export function apply(ctx: Context, config: Config | RuntimeConfig): void {
+   let active = true
+   let started = false
+   ctx.effect(() => () => { active = false }, 'lark:lifetime')
+@@ -211,6 +211,7 @@ export function apply(ctx: Context, config: Config): void {
+       persistState,
+       internals.reconnectDeadlineMs === undefined ? undefined : { deadlineMs: internals.reconnectDeadlineMs },
+     )
++    internals.notify(credentialsReadyMessage(resolved.instance))
+   }
+ 
+   const bootstrap = async (): Promise<void> => {
+@@ -228,23 +229,35 @@ export function apply(ctx: Context, config: Config): void {
+     const settings = ctx.get('settings') as HostSettings | undefined
+     if (settings !== undefined) {
+       try {
+-        const scope = settings.register(identity.settingsNamespace, Config, { base: config })
+-        resolved = resolveConfig(scope.get() as Config)
+-        persistState = async (patch) => {
+-          await scope.update(patch)
+-          return true
++        if (typeof settings.register === 'function') {
++          const scope = settings.register(identity.settingsNamespace, Config, { base: Config.simplify(config) ?? {} })
++          resolved = resolveConfig(scope.get() as Config)
++          persistState = async (patch) => {
++            await scope.update(patch)
++            return true
++          }
++        } else if (typeof settings.update === 'function') {
++          const entryId = (ctx.fiber as { entry?: { options: { id: string } } }).entry?.options.id
++          if (entryId === undefined) throw new Error('Native settings require a Loader-owned plugin row')
++          const update = settings.update.bind(settings)
++          persistState = async (patch) => {
++            await update(entryId, patch)
++            return true
++          }
++        } else {
++          throw new Error('No supported settings persistence API is composed')
+         }
+         // Onboarding hands the secret to the credentials seam and records only
+         // the reference, so the settings document never learns it.
+         persist = async (app) => {
+           const stored = await internals.storeSecret(credentials, app.appSecret, internals.notify, identity.secretRef)
+           return persistState({
+-            ...app,
++            appId: app.appId,
+             ...stored.ref === undefined ? {} : { appSecretRef: stored.ref },
+             // Blanked rather than omitted: the patch deep-merges, so a key is
+             // overwritten and never removed, and an empty secret is an absent
+             // one everywhere here.
+-            ...stored.inSettings ? {} : { appSecret: '' },
++            appSecret: stored.inSettings ? app.appSecret : '',
+           })
+         }
+       } catch (error) {

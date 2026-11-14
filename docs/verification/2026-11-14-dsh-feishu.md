@@ -2,17 +2,21 @@
 
 ## 固定来源
 
-- 官方 DeepSeek Harness 0.2.2-rc.2，macOS Apple Silicon。
+- 官方 DeepSeek Harness 0.2.2-rc.2 与 0.2.2-rc.3，macOS Apple Silicon。前者覆盖首次原生 Teams、恢复、停止与审批，后者覆盖本轮新版设置接口与凭据持久化回归。
 - 社区 `dsh-lark-channel` 0.0.7，提交 `632807d9abafbb866a5e208a0298eff21c7856d1`，BSD-3-Clause。
 - 飞书传输 SDK `@larksuite/channel` 0.4.1。
-- 上游兼容补丁 SHA-256 为 `a304b06d517b4878d9cc1c8b3ff1c42c160f92078ecfee5abec4f6e08872a080`。原文件与补丁后文件校验保存在 `integrations/dsh-feishu/upstream.json`。
+- 上游兼容补丁 SHA-256 为 `5656254c97f3501af32584a19f2505be70fc342ef312f451732266383f748f84`。原文件与补丁后文件校验保存在 `integrations/dsh-feishu/upstream.json`。
 
 ## 已验证行为
 
 | 场景 | 方法与结果 |
 | --- | --- |
-| 原生插件安装 | 通过官方 DSH 插件管理器安装固定包，pnpm patchedDependencies 应用补丁。七个目标文件逐一匹配预期哈希，重复安装通过 |
+| 原生插件安装 | 通过官方 DSH 插件管理器安装固定包，pnpm patchedDependencies 应用补丁。十四个目标文件逐一匹配预期哈希，原包完整性与补丁重新应用通过 |
 | profile 配置 | 隔离目录测试与官方 `--dump-config` 核对 Teams、工作目录、模型、名单，保留已有 Magpie 行 |
+| 原生配置继续编辑 | 官方编辑器将配置重排为多行 YAML 后，配置工具仍可更新名单和模型，保留凭据引用与四类聊天状态；无变更时保留原文件字节与 inode |
+| 跨运行时写入协调 | 配置工具复用官方 `withFileLock(package.json)` 与原子写入。Electron 原生写入持锁时，Bun 工具等待或报告占用；持有者退出后可恢复 |
+| 新版原生持久化 | 实际 DSH 0.2.2-rc.3 保存扫码结果，profile 仅保留密钥引用，原生凭据文件为 0600。连续 `/new`、`/cd` 和 `/model` 保存四类状态，重启逐值恢复，注册次数保持为一次。飞书传输使用内存替身 |
+| 原生 CLI 完成判据 | 当前启动的 runtime 发出凭据就绪消息后，CLI 结束等待。源码与发布入口覆盖已保存凭据、扫码完成、命名实例隔离、旧日志偏移、截断和旧版设置存储 |
 | 两个子 agent | 实际 DSH 与实际 LoongPass／Magpie 推理，飞书边界采用内存传输。WorkBuddy DeepSeek-V4.1-Flash 和 MiniMax M3.1-Flash 各完成一个任务，并发重叠 10.768 秒 |
 | 任务板与结果 | 父 agent 创建并核对两项完成任务，实际工具读取 `5050` 与 `42`，工具计算总和 `5092`，回复发到触发消息对应的频道 |
 | 重启恢复 | 停止并重启 DSH，原聊天恢复同一 session，再读取任务板和文件，返回 `5092` |
@@ -26,12 +30,14 @@
 
 ## 飞书租户验收
 
-机器人身份与目标范围等待使用者绑定确认。真实飞书入站、回复及卡片点击仍待该步骤完成。
+已创建专用机器人。真实飞书 `/status` 卡片显示正确的本机工作目录、模型与 Teams 状态。本人私聊“请计算 21×2”，飞书服务端返回新应用发送的 `21 × 2 = 42`，回复关联原消息，原生 session 记录任务完成。
+
+首次真实绑定暴露了旧版 `settings.register` 接口导致凭据未持久化的问题。本轮补丁已沿原生设置与凭据接口修正，真实租户重新授权后的重启恢复、名单收窄与卡片点击继续单独验收。
 
 上游使用进程内消息去重缓存。跨重启重复事件去重和断线期间消息补拉没有保证。上述恢复检查覆盖会话历史与任务板。
 
-配置和安装工具的回归在 macOS 运行。Windows 操作系统锁分支待 Windows 实机验证。
+配置和安装工具的回归在 macOS 运行。Windows 本机配置与飞书实机验证待完成。
 
 ## 职责与实现
 
-本仓的 Python 工具准备固定依赖和专用 profile。TypeScript 补丁修改上游频道的宿主接口适配，符合必要集成桥接的语言豁免。工具、权限、会话和 Teams 由 DSH 拥有，模型路由由 Magpie 拥有，账号授权由 LoongPass 拥有。
+本仓的 Python 工具准备固定依赖和专用 profile，配置 worker 复用 LoongPass 的 Bun。原生原子写入工具保留固定源码、MIT 许可和文件校验。TypeScript 补丁修改上游频道的宿主接口适配，符合必要集成桥接的语言豁免。工具、权限、会话和 Teams 由 DSH 拥有，模型路由由 Magpie 拥有，账号授权由 LoongPass 拥有。

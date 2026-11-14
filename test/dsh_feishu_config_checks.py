@@ -1,12 +1,13 @@
 """Exercise profile preparation against isolated native-profile fixtures."""
 from pathlib import Path
+import hashlib
 import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
-from types import SimpleNamespace
+import time
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,9 @@ TOOL = ROOT / "tool/configure_dsh_feishu.py"
 SPEC = importlib.util.spec_from_file_location("configure_dsh_feishu", TOOL)
 CONFIGURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CONFIGURE)
+ATOMIC_WRITE = ROOT / "integrations/dsh-feishu/atomic-write/index.ts"
+BEGIN = "- id: agent-team # LoongPass DSH Feishu BEGIN"
+END = "  # LoongPass DSH Feishu END"
 
 
 class DshFeishuConfigChecks(unittest.TestCase):
@@ -35,6 +39,7 @@ class DshFeishuConfigChecks(unittest.TestCase):
         self.patch.write_text("# Native profile patch\n[]\n")
         self.workspace = self.root / "workspace"
         self.workspace.mkdir()
+        self.bun = CONFIGURE.find_bun()
 
     def run_tool(self, *extra, profile="test-feishu", workspace=None, model="magpie/loongpass/model"):
         return subprocess.run([
@@ -45,15 +50,21 @@ class DshFeishuConfigChecks(unittest.TestCase):
 
     def configs(self):
         lines = self.patch.read_text().splitlines()
-        owned = lines[lines.index(CONFIGURE.BEGIN):lines.index(CONFIGURE.END)]
-        return [json.loads(line.split(":", 1)[1]) for line in owned
-                if line.startswith("  config: {")]
+        owned = "\n".join(lines[lines.index(BEGIN):lines.index(END)])
+        result = subprocess.run([self.bun, "-e",
+                                 "console.log(JSON.stringify(Bun.YAML.parse(await Bun.stdin.text())))"],
+                                input=owned, capture_output=True, text=True, check=True)
+        return [row["config"] for row in json.loads(result.stdout)]
 
-    def arguments(self):
-        return SimpleNamespace(profile="test-feishu", workspace=str(self.workspace),
-                               model="magpie/loongpass/model", app_id=None,
-                               workspace_roots=None, sender_allowlist=None,
-                               approvers=None, group_allowlist=None)
+    def write_native_block(self, team, config):
+        result = subprocess.run([self.bun, "-e", """
+const rows = JSON.parse(await Bun.stdin.text());
+console.log(Bun.YAML.stringify(rows, null, 2).trimEnd());
+"""], input=json.dumps([{"id": "agent-team", "config": team},
+                         {"id": "lark-channel", "config": config}]),
+                                capture_output=True, text=True, check=True)
+        block = result.stdout.replace("- id: agent-team", BEGIN, 1)
+        self.patch.write_text(block + END + "\n")
 
     def assert_rejected_unchanged(self, result, before):
         self.assertNotEqual(result.returncode, 0)
@@ -61,23 +72,24 @@ class DshFeishuConfigChecks(unittest.TestCase):
         self.assert_no_temporary_files()
 
     def assert_no_temporary_files(self):
-        self.assertEqual(sorted(path.name for path in self.profile.iterdir()
-                                if path.name != ".loongpass-feishu-config.lock"),
+        self.assertEqual(sorted(path.name for path in self.profile.iterdir()),
                          ["cordis.patch.yml", "package.json"])
 
     def hold_profile_lock(self):
-        script = """
-import importlib.util
-from pathlib import Path
-import sys
-spec = importlib.util.spec_from_file_location('configure', sys.argv[1])
-configure = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(configure)
-with configure.profile_lock(Path(sys.argv[2])):
-    print('locked', flush=True)
-    sys.stdin.read()
-"""
-        process = subprocess.Popen([sys.executable, "-B", "-c", script, str(TOOL), str(self.patch)],
+        script = self.root / "native-lock-holder.mjs"
+        script.write_text("import { withFileLock, writeFileAtomic } from " + json.dumps(ATOMIC_WRITE.as_uri()) + ";\n" + """
+import { readFile } from 'node:fs/promises';
+const packagePath = process.argv[2], patchPath = process.argv[3];
+await withFileLock(packagePath, async () => {
+  console.log('locked');
+  const command = await Bun.stdin.text();
+  if (command.trim() === 'edit') {
+    const before = await readFile(patchPath, 'utf8');
+    await writeFileAtomic(patchPath, before + '- id: native-plugin\\n  config: {answer: 42}\\n', {mode: 0o600});
+  }
+});
+""")
+        process = subprocess.Popen([self.bun, str(script), str(self.profile / "package.json"), str(self.patch)],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         def cleanup():
             if process.poll() is None:
@@ -86,6 +98,27 @@ with configure.profile_lock(Path(sys.argv[2])):
         self.addCleanup(cleanup)
         self.assertEqual(process.stdout.readline().strip(), "locked")
         return process
+
+    def test_native_block_reformat_and_runtime_state_remain_configurable(self):
+        self.assertEqual(self.run_tool("--app-id", "cli_synthetic").returncode, 0)
+        team, config = self.configs()
+        config.update(appSecretRef="synthetic-reference", appSecret="synthetic-private-value",
+                      chatWorkspaces={"oc_chat": str(self.workspace), "oc_reset": ""},
+                      chatModels={"oc_chat": "magpie/loongpass/model", "oc_reset": ""},
+                      chatEpochs={"oc_chat": "7"},
+                      chatSessions={"oc_chat": "session-one", "oc_reset": ""})
+        self.write_native_block(team, config)
+        before = self.patch.read_bytes(), self.patch.stat().st_ino, self.patch.stat().st_mtime_ns
+        result = self.run_tool()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.patch.read_bytes(), self.patch.stat().st_ino,
+                          self.patch.stat().st_mtime_ns), before)
+        result = self.run_tool("--approvers", "ou_owner", model="magpie/loongpass/new-model")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config.update(model="loongpass/new-model", approvers=["ou_owner"])
+        self.assertEqual(self.configs(), [team, config])
+        self.assertNotIn("synthetic-private-value", result.stdout + result.stderr)
+        self.assert_no_temporary_files()
 
     def test_prepares_native_rows_and_identical_rerun_keeps_file_identity(self):
         result = self.run_tool("--app-id", "cli_synthetic")
@@ -187,6 +220,37 @@ with configure.profile_lock(Path(sys.argv[2])):
                     patch.object(CONFIGURE.Path, "home", return_value=self.root):
                 self.assertEqual(CONFIGURE.profile_patch("test-feishu").resolve(), self.patch)
 
+    def test_cached_bun_requires_the_pinned_archive_and_executable_receipt(self):
+        pin = json.loads((ROOT / "runtime/upstream.lock.json").read_bytes())["bun"]
+        archive = "bun-darwin-aarch64"
+        candidate = (self.root / "Library/Caches/LoongPass/native-plugin-runtime/bun" /
+                     pin["version"] / archive / ("bun.exe" if os.name == "nt" else "bun"))
+        candidate.parent.mkdir(parents=True)
+        candidate.write_bytes(b"synthetic runtime fixture")
+        candidate.chmod(0o700)
+        receipt = candidate.with_name("verified.json")
+        verified = {"archive": pin["archives"][archive + ".zip"],
+                    "executable": hashlib.sha256(candidate.read_bytes()).hexdigest()}
+        receipt.write_text(json.dumps(verified))
+        with patch.dict(os.environ, {"LOONGPASS_BUN": ""}), \
+                patch.object(CONFIGURE.shutil, "which", return_value=None), \
+                patch.object(CONFIGURE.Path, "home", return_value=self.root), \
+                patch.object(CONFIGURE.sys, "platform", "darwin"), \
+                patch.object(CONFIGURE.platform, "machine", return_value="arm64"):
+            self.assertEqual(CONFIGURE.find_bun(), str(candidate))
+            for invalid in ({**verified, "archive": "incorrect archive"},
+                            {**verified, "executable": "incorrect executable"}, {}):
+                receipt.write_text(json.dumps(invalid))
+                with self.assertRaisesRegex(ValueError, "checksum verification failed"):
+                    CONFIGURE.find_bun()
+
+    def test_native_writer_source_matches_its_recorded_upstream_files(self):
+        source = ATOMIC_WRITE.parent
+        metadata = json.loads((source / "upstream.json").read_bytes())
+        self.assertEqual(metadata["package"], "@deepseek-ai/dsh-atomic-write")
+        for name, expected in metadata["files"].items():
+            self.assertEqual(hashlib.sha256((source / name).read_bytes()).hexdigest(), expected)
+
     def test_refuses_non_native_yaml_layout_without_reformatting(self):
         for content in ('  - id: other\n    config: {}\n',
                         '---\n  - id: other\n    config: {}\n',
@@ -234,9 +298,9 @@ with configure.profile_lock(Path(sys.argv[2])):
         original = self.patch.read_text()
         variants = [
             original + original,
-            original.replace(CONFIGURE.END, ""),
-            original.replace('"defaultEnabled": true', '"defaultEnabled": false'),
-            original.replace('"senderAllowlist": []', '"appSecret": "synthetic-private-value", "senderAllowlist": []'),
+            original.replace(END, ""),
+            original.replace('- id: lark-channel', '- id: other-plugin'),
+            original.replace('"senderAllowlist":[]', '"senderAllowlist": "synthetic-private-value"'),
             original + "  disabled: true\n",
         ]
         for content in variants:
@@ -260,27 +324,9 @@ with configure.profile_lock(Path(sys.argv[2])):
         self.assertNotEqual(self.run_tool(profile="alias").returncode, 0)
         self.assertEqual(elsewhere.read_bytes(), before)
 
-    def test_atomic_write_failure_keeps_original_and_cleans_temporary_files(self):
-        before = self.patch.read_bytes()
-        with patch.dict(os.environ, {"DSH_HOME": str(self.home)}), \
-                patch.object(CONFIGURE.os, "replace", side_effect=OSError("simulated write failure")):
-            with self.assertRaises(OSError):
-                CONFIGURE.configure(self.arguments())
-        self.assertEqual(self.patch.read_bytes(), before)
-        self.assert_no_temporary_files()
-
-    def test_detects_native_edit_before_atomic_replace(self):
-        native_update = b"- id: native-plugin\n  config: {enabled: true}\n"
-        with patch.dict(os.environ, {"DSH_HOME": str(self.home)}), \
-                patch.object(CONFIGURE.os, "fsync", side_effect=lambda _: self.patch.write_bytes(native_update)):
-            with self.assertRaisesRegex(ValueError, "changed during configuration"):
-                CONFIGURE.configure(self.arguments())
-        self.assertEqual(self.patch.read_bytes(), native_update)
-        self.assert_no_temporary_files()
-
-    def test_concurrent_tool_writer_is_rejected_without_removing_its_lock(self):
+    def test_native_writer_contention_preserves_the_live_lock_and_profile(self):
         holder = self.hold_profile_lock()
-        lock = self.profile / ".loongpass-feishu-config.lock"
+        lock = self.profile / "package.json.lock"
         inode = lock.stat().st_ino
         before = self.patch.read_bytes()
         self.assertNotEqual(self.run_tool().returncode, 0)
@@ -288,6 +334,26 @@ with configure.profile_lock(Path(sys.argv[2])):
         self.assertEqual(lock.stat().st_ino, inode)
         self.assertIsNone(holder.poll())
         holder.communicate(timeout=5)
+        self.assert_no_temporary_files()
+
+    def test_waiting_for_native_writer_reads_its_committed_profile(self):
+        self.assertEqual(self.run_tool().returncode, 0)
+        holder = self.hold_profile_lock()
+        contender = subprocess.Popen([
+            sys.executable, "-B", str(TOOL), "--profile", "test-feishu",
+            "--workspace", str(self.workspace), "--model", "magpie/loongpass/new-model",
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            env=dict(os.environ, DSH_HOME=str(self.home)))
+        self.addCleanup(lambda: contender.kill() if contender.poll() is None else None)
+        time.sleep(0.15)
+        self.assertIsNone(contender.poll())
+        holder.communicate(input="edit", timeout=5)
+        output, errors = contender.communicate(timeout=5)
+        self.assertEqual(contender.returncode, 0, errors)
+        self.assertIn("updated", output)
+        self.assertTrue(self.patch.read_text().endswith('- id: native-plugin\n  config: {answer: 42}\n'))
+        self.assertEqual(self.configs()[1]["model"], "loongpass/new-model")
+        self.assert_no_temporary_files()
 
     def test_abrupt_process_exit_releases_profile_lock_for_retry(self):
         holder = self.hold_profile_lock()
