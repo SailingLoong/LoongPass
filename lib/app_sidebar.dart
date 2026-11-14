@@ -122,7 +122,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 color: colors.muted,
                 child: SizedBox(
                   key: const Key('app-sidebar'),
-                  width: compact ? 56 : 176,
+                  width: compact ? 56 : 192,
                   child: Column(
                     children: [
                       Padding(
