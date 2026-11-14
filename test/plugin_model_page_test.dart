@@ -5,6 +5,7 @@ import '../lib/plugin_accounts.dart';
 import '../lib/model_connection.dart';
 import '../lib/plugin_application.dart';
 import '../lib/plugin_model_service.dart';
+import '../lib/plugin_model_catalog.dart';
 import '../lib/plugin_model_page.dart';
 import 'desktop_test_app.dart';
 
@@ -33,17 +34,46 @@ class _Service extends ChangeNotifier implements PluginModelService {
           'registrationId': 'one',
         },
         models: [
-          for (var i = 1; i <= 20; i++)
-            {
-              'id': i == 20 ? 'GLM-Trial' : 'GLM-$i',
-              'name': i == 20 ? 'GLM Trial' : 'GLM $i',
-            },
+          {'id': 'GLM-5.3-Flash', 'name': 'GLM-5.3-Flash'},
+          {'id': 'GLM-5.3-Flash-Trial', 'name': 'GLM-5.3-Flash Trial'},
+          {'id': 'deepseek-v4.1-flash-1017', 'name': 'DeepSeek Flash'},
         ],
       ),
       'synthetic',
       true,
     ),
   ];
+  Map<String, dynamic> settings = {};
+  @override
+  List<PluginModel> get catalog =>
+      pluginModelCatalog(grants, settings, DateTime.now());
+  @override
+  Future<void> setModelAccountEnabled(
+    String id,
+    String account,
+    bool value,
+  ) async {
+    changes++;
+    settings['accounts'] = {
+      id: {account: value},
+    };
+    publish();
+  }
+
+  @override
+  Future<void> setModelEnabled(String id, bool value) async {
+    changes++;
+    settings['models'] = {id: value};
+    publish();
+  }
+
+  @override
+  Future<void> reorderModels(List<String> order) async {
+    changes++;
+    settings['order'] = order;
+    publish();
+  }
+
   @override
   Future<void> enable(String key, bool enabled) async {
     changes++;
@@ -70,31 +100,72 @@ class _Application implements PluginApplication {
 
 void main() {
   testDesktopWidgets(
-    'all upstream models and entitlement labels remain accessible without connecting',
+    'canonical list searches aliases and preserves account identity',
     (tester) async {
       final service = _Service();
       final app = _Application(service);
+      PluginAccount? opened;
       addTearDown(service.dispose);
       addTearDown(app.connection.dispose);
       await tester.pumpWidget(
         DesktopTestApp(
-          home: Scaffold(body: PluginModelServicesPage(application: app)),
+          home: Scaffold(
+            body: PluginModelServicesPage(
+              application: app,
+              onOpenAccount: (a) => opened = a,
+            ),
+          ),
         ),
       );
-      expect(find.text('GLM Trial · 仅赠送').hitTestable(), findsNothing);
-      final expand = find.byKey(const Key('models-zcode#one'));
-      await tester.scrollUntilVisible(expand, 250);
+      expect(find.text('glm-5.3-flash'), findsOneWidget);
+      expect(find.text('deepseek-flash'), findsOneWidget);
+      expect(service.changes, 0);
+      await tester.enterText(find.byKey(const Key('model-search')), '1017');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('查看 20 个模型'));
+      expect(find.text('glm-5.3-flash'), findsNothing);
+      expect(find.text('deepseek-flash'), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('model-search')), '');
       await tester.pumpAndSettle();
+      await tester.tap(find.text('glm-5.3-flash'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('来源与额度详情'));
+      await tester.pumpAndSettle();
+      expect(find.text('GLM-5.3-Flash-Trial · 仅赠送'), findsOneWidget);
+      expect(find.text('GLM-5.3-Flash · 赠送优先，可转套餐'), findsOneWidget);
       service.publish();
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('GLM Trial · 仅赠送'));
-      await tester.pumpAndSettle();
-      expect(find.text('GLM Trial · 仅赠送').hitTestable(), findsOneWidget);
-      expect(find.text('GLM 1 · 赠送优先，可转套餐'), findsOneWidget);
+      await tester.tap(find.text('Demo account').hitTestable());
+      expect(identical(opened, service.grants.first.account), isTrue);
       expect(service.changes, 0);
+      final semantics = tester.ensureSemantics();
+      expect(
+        find.bySemanticsLabel(RegExp('参与此模型路由 Demo account')),
+        findsWidgets,
+      );
+      semantics.dispose();
+      await tester.tap(find.byKey(const ValueKey('model-account-zcode#one')));
+      await tester.pumpAndSettle();
+      expect(service.catalog.first.bindings.every((b) => !b.enabled), isTrue);
+      expect(service.catalog.last.bindings.every((b) => b.enabled), isTrue);
       expect(tester.takeException(), isNull);
     },
   );
+  testDesktopWidgets('model priority changes by keyboard-accessible action', (
+    tester,
+  ) async {
+    final service = _Service();
+    final app = _Application(service);
+    addTearDown(service.dispose);
+    addTearDown(app.connection.dispose);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(body: PluginModelServicesPage(application: app)),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('上移 deepseek-flash'));
+    await tester.pumpAndSettle();
+    expect(service.catalog.first.id, 'deepseek-flash');
+    expect(service.changes, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
