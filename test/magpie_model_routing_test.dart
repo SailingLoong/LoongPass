@@ -7,6 +7,27 @@ import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
 
 void main() {
+  test('removing all routes deletes the referencing auto group before its children', () async {
+    final present = {'loongpass-model', 'loongpass-auto'};
+    final removed = <String>[];
+    final client = MagpieConnection(
+      run: (args, {input}) async {
+        if (args.join(' ') == 'plugin list --json') return '[]';
+        if (args.first == 'group' && args[1] == 'rm') {
+          if (args[2] != 'loongpass-auto' &&
+              present.contains('loongpass-auto')) {
+            throw StateError('The child is still referenced by auto');
+          }
+          present.remove(args[2]);
+          removed.add(args[2]);
+        }
+        return '';
+      },
+    );
+    await client.syncRouting('/bridge', [], previousGroups: Set.of(present));
+    expect(present, isEmpty);
+    expect(removed, ['loongpass-auto', 'loongpass-model']);
+  });
   test('empty routing removes only owned groups and tolerates an already removed group', () async {
     final calls = <List<String>>[];
     final client = MagpieConnection(

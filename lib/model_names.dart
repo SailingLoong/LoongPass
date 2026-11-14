@@ -3,6 +3,7 @@
 /// Sources checked 2026-11-15:
 /// api-docs.deepseek.com/quick_start/pricing/
 /// platform.minimax.io/docs/api-reference/text-anthropic-api
+/// platform.minimax.io/docs/release-notes/models
 /// docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash
 /// help.aliyun.com/zh/model-studio/newly-released-models
 /// platform.kimi.com/docs/models
@@ -79,6 +80,12 @@ const _officialModels = [
   'gemini-2.5-flash-lite',
   'MiniMax-M3',
   'MiniMax-M3.1-Flash',
+  'MiniMax-M2.7',
+  'MiniMax-M2.7-highspeed',
+  'MiniMax-M2.5',
+  'MiniMax-M2.5-highspeed',
+  'MiniMax-M2.1',
+  'MiniMax-M2',
   'kimi-k3',
   'kimi-k3.1-pro',
   'kimi-k3.1-pro-highspeed',
@@ -125,6 +132,7 @@ const _deepseekFlashAliases = {
   'deepseek-v4-flash-1017',
   'deepseek-v4-1-flash-261017',
   'deepseek-v4-flash-vision-exp',
+  'deepseek-flash-1017',
 };
 
 String? officialModelId(String provider, Map<String, dynamic> model) {
@@ -147,6 +155,9 @@ String? officialModelId(String provider, Map<String, dynamic> model) {
   if (_deepseekFlashAliases.contains(id)) return 'deepseek-flash';
   if (id == 'deepseek-v4-pro-0813') return 'deepseek-v4-pro';
   const aliases = {
+    'minimax-m3.1-flash-preview': 'MiniMax-M3.1-Flash',
+    'qwen3.8-max-0902': 'qwen3.8-max',
+    'qwen3.8-max-2026-09-02': 'qwen3.8-max',
     'claude-opus-4-5-20251101': 'claude-opus-4-5',
     'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5',
     'claude-haiku-4-5-20251001': 'claude-haiku-4-5',

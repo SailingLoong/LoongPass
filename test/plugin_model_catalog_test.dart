@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
+import '../lib/model_names.dart';
 
 final now = DateTime.utc(2026, 11, 15, 2);
 
@@ -24,6 +25,27 @@ PluginModelGrant grant(
 );
 
 void main() {
+  test(
+    'official API names group known channel context and snapshot aliases only',
+    () {
+      for (final entry in <(String, String, String)>[
+        ('workbuddy', 'claude-opus-5.5', 'claude-opus-5-5'),
+        ('workbuddy', 'claude-opus-4.8-1m', 'claude-opus-4-8'),
+        ('trae', 'gemini-3.1-pro-max', 'gemini-3.1-pro-preview'),
+        ('trae', 'gpt-5.4-max', 'gpt-5.4'),
+        ('minimax-code', 'MiniMax-M3.1-Flash-Preview', 'MiniMax-M3.1-Flash'),
+        ('loomy', 'Kimi-k2.6', 'kimi-k2.6'),
+      ]) {
+        expect(officialModelId(entry.$1, {'id': entry.$2}), entry.$3);
+      }
+      expect(
+        officialModelId('qoder', {'id': 'ultimate', 'name': 'Ultimate'}),
+        isNull,
+      );
+      expect(officialModelId('other', {'id': 'dfmodel'}), isNull);
+      expect(officialModelId('trae', {'id': 'gpt-5.4-unverified'}), isNull);
+    },
+  );
   test('ZCode ordinary freeFirst model uses a live gift expiry and keeps its paid fallback', () {
     final models = pluginModelCatalog(
       [
