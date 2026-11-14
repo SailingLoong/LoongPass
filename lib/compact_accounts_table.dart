@@ -12,6 +12,8 @@ import 'select_field_semantics.dart';
 import 'ui_preferences.dart';
 import 'account_workspace_registry.dart';
 
+enum _AccountSort { name, expiry, claim }
+
 class CompactAccountsTable extends StatefulWidget {
   const CompactAccountsTable({
     super.key,
@@ -30,6 +32,7 @@ class CompactAccountsTable extends StatefulWidget {
 
 class _CompactAccountsTableState extends State<CompactAccountsTable> {
   final _search = TextEditingController();
+  final _horizontalScroll = ScrollController();
   late final _live = ValueNotifier(widget.entries);
   final _favorites = <String>{};
   UiPreferences? _preferences;
@@ -45,7 +48,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     return MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
   }
 
-  double get _rowHeight => ((_preferences?.rowHeight ?? 36) + 32) * _textScale;
+  double get _rowHeight => ((_preferences?.rowHeight ?? 36) + 18) * _textScale;
   bool get _hasCredits => widget.entries.isEmpty
       ? widget.hasCredits
       : widget.entries.any((e) => e.hasCredits);
@@ -53,7 +56,9 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       ? widget.hasRewards
       : widget.entries.any((e) => e.hasRewards);
   int _page = 0, _size = 10;
-  String _filter = '全部', _sort = '默认排序';
+  String _filter = '全部';
+  _AccountSort? _sort;
+  bool _descending = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -87,6 +92,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
   @override
   void dispose() {
     _search.dispose();
+    _horizontalScroll.dispose();
     _live.dispose();
     final source = _source;
     if (source != null)
@@ -102,6 +108,25 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     read: () => _live.value.where((e) => e.id == id).firstOrNull,
     expiry: expiry,
   );
+
+  void _sortBy(_AccountSort sort) => setState(() {
+    if (_sort != sort) {
+      _sort = sort;
+      _descending = false;
+    } else if (!_descending) {
+      _descending = true;
+    } else {
+      _sort = null;
+      _descending = false;
+    }
+    _page = 0;
+  });
+
+  int _compareDates(DateTime? a, DateTime? b) {
+    if (a == null) return b == null ? 0 : 1;
+    if (b == null) return -1;
+    return _descending ? b.compareTo(a) : a.compareTo(b);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -125,29 +150,22 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               matches(e, _filter),
         )
         .toList();
-    if (_sort == '默认排序') {
-      final positions = {
-        for (var i = 0; i < widget.entries.length; i++) widget.entries[i].id: i,
+    final positions = {
+      for (var i = 0; i < widget.entries.length; i++) widget.entries[i].id: i,
+    };
+    rows.sort((a, b) {
+      final order = switch (_sort) {
+        _AccountSort.name =>
+          _descending ? b.label.compareTo(a.label) : a.label.compareTo(b.label),
+        _AccountSort.expiry => _compareDates(a.nextExpiry, b.nextExpiry),
+        _AccountSort.claim => _compareDates(
+          a.receipt?.confirmedAt,
+          b.receipt?.confirmedAt,
+        ),
+        null => (_favorite(b) ? 1 : 0).compareTo(_favorite(a) ? 1 : 0),
       };
-      rows.sort((a, b) {
-        final favorites = (_favorite(b) ? 1 : 0).compareTo(
-          _favorite(a) ? 1 : 0,
-        );
-        return favorites != 0
-            ? favorites
-            : positions[a.id]!.compareTo(positions[b.id]!);
-      });
-    }
-    if (_sort == '到期优先')
-      rows.sort((a, b) {
-        final x = a.nextExpiry, y = b.nextExpiry;
-        return x == null
-            ? (y == null ? 0 : 1)
-            : y == null
-            ? -1
-            : x.compareTo(y);
-      });
-    if (_sort == '账号名称') rows.sort((a, b) => a.label.compareTo(b.label));
+      return order != 0 ? order : positions[a.id]!.compareTo(positions[b.id]!);
+    });
     final pages = math.max(1, (rows.length / _size).ceil());
     final page = math.min(_page, pages - 1);
     final visible = rows.skip(page * _size).take(_size).toList();
@@ -157,7 +175,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       children: [
         if (widget.entries.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.only(bottom: 10, top: 4),
             child: LayoutBuilder(
               builder: (context, box) {
                 final search = FTextField(
@@ -171,81 +189,55 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                     onChange: (_) => setState(() => _page = 0),
                   ),
                 );
-                final sort = FSelect<String>(
-                  builder: selectFieldSemantics,
-                  key: const Key('account-sort'),
-                  size: FTextFieldSizeVariant.sm,
-                  items: {
-                    '默认排序': '默认排序',
-                    if (_hasCredits) '到期优先': '到期优先',
-                    '账号名称': '账号名称',
-                  },
-                  control: FSelectControl.lifted(
-                    value: _sort,
-                    onChange: (value) {
-                      if (value != null)
-                        setState(() {
-                          _sort = value;
-                          _page = 0;
-                        });
-                    },
-                  ),
-                );
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                final filters = Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
                   children: [
-                    if (box.maxWidth >= 380 * _textScale)
-                      Row(
-                        children: [
-                          Expanded(child: search),
-                          const SizedBox(width: 12),
-                          SizedBox(width: 132 * _textScale, child: sort),
-                        ],
-                      )
-                    else ...[
-                      search,
-                      const SizedBox(height: 8),
-                      sort,
-                    ],
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        for (final f in [
-                          '全部',
-                          '常用',
-                          if (_hasCredits) '7 天内到期',
-                          '待处理',
-                        ])
-                          FButton(
-                            variant: _filter == f
-                                ? FButtonVariant.secondary
-                                : FButtonVariant.ghost,
-                            selected: _filter == f,
-                            size: FButtonSizeVariant.sm,
-                            mainAxisSize: MainAxisSize.min,
-                            onPress: () => setState(() {
-                              _filter = f;
-                              _page = 0;
-                            }),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(f),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${widget.entries.where((e) => matches(e, f)).length}',
-                                  style: context.theme.typography.body.xs
-                                      .copyWith(color: colors.mutedForeground),
-                                ),
-                              ],
+                    for (final f in [
+                      '全部',
+                      '常用',
+                      if (_hasCredits) '7 天内到期',
+                      '待处理',
+                    ])
+                      FButton(
+                        variant: _filter == f
+                            ? FButtonVariant.secondary
+                            : FButtonVariant.ghost,
+                        selected: _filter == f,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: () => setState(() {
+                          _filter = f;
+                          _page = 0;
+                        }),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(f),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${widget.entries.where((e) => matches(e, f)).length}',
+                              style: context.theme.typography.body.xs.copyWith(
+                                color: colors.mutedForeground,
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
+                          ],
+                        ),
+                      ),
                   ],
                 );
+                return box.maxWidth >= 760 * _textScale
+                    ? Row(
+                        children: [
+                          SizedBox(width: 260 * _textScale, child: search),
+                          const SizedBox(width: 12),
+                          Expanded(child: filters),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [search, const SizedBox(height: 8), filters],
+                      );
               },
             ),
           ),
@@ -253,42 +245,53 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
           FCard(
             clipBehavior: Clip.antiAlias,
             child: LayoutBuilder(
-              builder: (context, box) => box.maxWidth >= 520 * _textScale
-                  ? Table(
-                      columnWidths: const {
-                        0: FlexColumnWidth(3.4),
-                        1: FlexColumnWidth(2),
-                        2: FlexColumnWidth(1.6),
-                        3: FlexColumnWidth(1.9),
-                        4: FlexColumnWidth(1.9),
-                      },
-                      defaultVerticalAlignment:
-                          TableCellVerticalAlignment.middle,
-                      children: [
-                        TableRow(
-                          decoration: BoxDecoration(color: colors.muted),
-                          children: [
-                            for (final label in _columns) _heading(label),
-                          ],
-                        ),
-                        for (final entry in visible)
+              builder: (context, box) {
+                final columns = _columns;
+                final minimumWidth =
+                    columns.fold(0.0, (sum, column) => sum + column.width) *
+                    _textScale;
+                final scrolls = box.maxWidth < minimumWidth;
+                return RawScrollbar(
+                  controller: _horizontalScroll,
+                  thumbVisibility: scrolls,
+                  scrollbarOrientation: ScrollbarOrientation.top,
+                  thickness: 5,
+                  radius: const Radius.circular(3),
+                  thumbColor: colors.mutedForeground.withValues(alpha: .5),
+                  child: SingleChildScrollView(
+                    key: const Key('account-table-scroll'),
+                    controller: _horizontalScroll,
+                    scrollDirection: Axis.horizontal,
+                    padding: EdgeInsets.only(top: scrolls ? 10 : 0),
+                    child: SizedBox(
+                      width: math.max(box.maxWidth, minimumWidth),
+                      child: Table(
+                        columnWidths: {
+                          0: const FlexColumnWidth(),
+                          for (var i = 1; i < columns.length; i++)
+                            i: FixedColumnWidth(columns[i].width * _textScale),
+                        },
+                        defaultVerticalAlignment:
+                            TableCellVerticalAlignment.middle,
+                        children: [
                           TableRow(
-                            key: ValueKey('row-${entry.id}'),
-                            decoration: _rowDecoration,
-                            children: _fields(entry),
+                            decoration: BoxDecoration(color: colors.muted),
+                            children: [
+                              for (final column in columns) _heading(column),
+                            ],
                           ),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        for (final entry in visible)
-                          DecoratedBox(
-                            key: ValueKey('row-${entry.id}'),
-                            decoration: _rowDecoration,
-                            child: _stackedFields(entry, box.maxWidth),
-                          ),
-                      ],
+                          for (final entry in visible)
+                            TableRow(
+                              key: ValueKey('row-${entry.id}'),
+                              decoration: _rowDecoration,
+                              children: _fields(entry),
+                            ),
+                        ],
+                      ),
                     ),
+                  ),
+                );
+              },
             ),
           ),
         if (visible.isEmpty)
@@ -400,11 +403,19 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     );
   }
 
-  List<String> get _columns => [
-    '账号',
-    if (_hasCredits) ...['余额', '即将到期积分', '到期时间'],
-    if (_hasRewards) '最近领取时间',
-    if (!_hasCredits) '套餐 / 工作区',
+  List<({String label, double width, _AccountSort? sort})> get _columns => [
+    (
+      label: '账号',
+      width: widget.entries.any((e) => e.onActivate != null) ? 276 : 220,
+      sort: _AccountSort.name,
+    ),
+    if (_hasCredits) ...[
+      (label: '余额', width: 140, sort: null),
+      (label: '即将到期额度', width: 128, sort: null),
+      (label: '到期时间', width: 120, sort: _AccountSort.expiry),
+    ],
+    if (_hasRewards) (label: '最近领取时间', width: 132, sort: _AccountSort.claim),
+    if (!_hasCredits) (label: '套餐 / 工作区', width: 240, sort: null),
   ];
 
   BoxDecoration get _rowDecoration => BoxDecoration(
@@ -415,36 +426,63 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
     ),
   );
 
-  Widget _heading(String label) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-    child: Text(
+  Widget _heading(({String label, double width, _AccountSort? sort}) column) {
+    final label = column.label, sort = column.sort;
+    final active = sort != null && _sort == sort;
+    final text = Text(
       label,
+      maxLines: 1,
+      softWrap: false,
       style: context.theme.typography.body.sm.copyWith(
         fontWeight: FontWeight.w500,
-        color: context.theme.colors.mutedForeground,
+        color: active
+            ? context.theme.colors.foreground
+            : context.theme.colors.mutedForeground,
       ),
-    ),
-  );
-
-  Widget _stackedFields(AccountTableEntry entry, double width) {
-    final fields = _fields(entry);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        fields.first,
-        Wrap(
+    );
+    if (sort == null)
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: text,
+      );
+    final hint = !active
+        ? '按$label升序'
+        : _descending
+        ? '恢复默认排序'
+        : '按$label降序';
+    return FTooltip(
+      tipBuilder: (context, controller) => Text(hint),
+      child: FButton(
+        key: ValueKey('account-sort-${sort.name}'),
+        semanticsTooltip: hint,
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        mainAxisAlignment: MainAxisAlignment.start,
+        style: const FButtonStyleDelta.delta(
+          contentStyle: FButtonContentStyleDelta.delta(
+            padding: EdgeInsetsGeometryDelta.value(
+              EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            ),
+          ),
+        ),
+        onPress: () => _sortBy(sort),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            for (var i = 1; i < fields.length; i++)
-              SizedBox(
-                width: _textScale > 1.5 ? width : width / 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [_heading(_columns[i]), fields[i]],
-                ),
-              ),
+            text,
+            const SizedBox(width: 5),
+            Icon(
+              active
+                  ? (_descending
+                        ? FLucideIcons.arrowDown
+                        : FLucideIcons.arrowUp)
+                  : FLucideIcons.chevronsUpDown,
+              size: 12,
+              color: context.theme.colors.mutedForeground,
+            ),
           ],
         ),
-      ],
+      ),
     );
   }
 
@@ -469,22 +507,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
           ? _actionCell(
               key: 'balance-${entry.id}',
               onPress: () => _details(entry.id),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _cell(entry.balance),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-                    child: Text(
-                      entry.queriedAt == null
-                          ? '尚无查询时间'
-                          : '${accountDate(entry.queriedAt!).substring(5)} ${accountTime(entry.queriedAt!)} 查询',
-                      style: context.theme.typography.body.xs.copyWith(
-                        color: context.theme.colors.mutedForeground,
-                      ),
-                    ),
-                  ),
-                ],
+              child: _cell(
+                entry.balance,
+                tooltip: entry.queriedAt == null
+                    ? '查询时间未知 · 查看账号详情'
+                    : '${accountDate(entry.queriedAt!)} ${accountTime(entry.queriedAt!)} 查询 · 查看账号详情',
               ),
             )
           : _cell('不适用'),
@@ -500,7 +527,10 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Text(
         text,
-        style: context.theme.typography.body.sm.copyWith(color: color),
+        style: context.theme.typography.body.sm.copyWith(
+          color: color,
+          fontWeight: FontWeight.w400,
+        ),
       ),
     );
     return tooltip == null
@@ -533,13 +563,17 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
 
   Widget _claimTime(AccountTableEntry row) {
     final receipt = row.receipt;
-    if (receipt == null) return _cell('—');
+    if (receipt == null) return _cell('—', tooltip: '暂无已确认的领取记录');
     return _actionCell(
       key: 'claim-${row.id}',
       onPress: () => _details(row.id),
       child: receipt.confirmedAt != null
           ? _dateCell(receipt.confirmedAt!)
-          : _cell(receipt.day == null ? '时间未知' : '${receipt.day}\n时间未知'),
+          : _cell(
+              receipt.day ?? '—',
+              tooltip: '已确认领取，具体时间未知',
+              color: context.theme.colors.mutedForeground,
+            ),
     );
   }
 
@@ -567,7 +601,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
 
   Widget _expiry(AccountTableEntry row, {bool time = false}) {
     final expiry = row.nextExpiry;
-    if (expiry == null) return _cell('—');
+    if (expiry == null) return _cell('—', tooltip: '平台未提供可核实的到期信息');
     final now = DateTime.now();
     final urgent =
         expiry.isAfter(now) &&
@@ -616,6 +650,12 @@ class _AccountName extends StatelessWidget {
     final muted = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
     );
+    final description = [
+      e.label,
+      if (e.sourceLabel != null) e.sourceLabel!,
+      if (e.identity != e.label) e.identity,
+      e.status,
+    ].join('\n');
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: height),
       child: Row(
@@ -638,43 +678,41 @@ class _AccountName extends StatelessWidget {
           ),
           Expanded(
             child: FTooltip(
-              tipBuilder: (context, controller) =>
-                  Text('${e.identity}\n${e.status}'),
+              tipBuilder: (context, controller) => Text(description),
               child: FButton(
                 key: ValueKey('account-${e.id}'),
-                semanticsTooltip: '${e.identity}\n${e.status}',
+                semanticsTooltip: description,
                 variant: FButtonVariant.ghost,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.start,
                 onPress: onDetails,
+                style: const FButtonStyleDelta.delta(
+                  contentStyle: FButtonContentStyleDelta.delta(
+                    padding: EdgeInsetsGeometryDelta.value(
+                      EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                    ),
+                  ),
+                ),
                 child: Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         e.label,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: context.theme.typography.body.sm.copyWith(
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-                      if (e.sourceLabel != null)
-                        Text(
-                          e.sourceLabel!,
-                          style: muted,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
                       Text(
-                        e.statusLabel ?? e.status,
-                        style: muted.copyWith(
-                          color: e.needsAttention
-                              ? context.theme.colors.error
-                              : null,
-                        ),
-                        maxLines: 2,
+                        [
+                          if (e.sourceLabel != null) e.sourceLabel!,
+                          e.statusLabel ?? e.status,
+                        ].join(' · '),
+                        style: muted,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
@@ -686,7 +724,7 @@ class _AccountName extends StatelessWidget {
           if (e.onActivate != null)
             FButton(
               key: ValueKey('activate-${e.id}'),
-              variant: FButtonVariant.outline,
+              variant: FButtonVariant.ghost,
               size: FButtonSizeVariant.sm,
               mainAxisSize: MainAxisSize.min,
               onPress: e.activationEnabled ? e.onActivate : null,

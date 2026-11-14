@@ -372,7 +372,7 @@ void main() {
           },
         ),
       );
-      expect(find.text('时间未知'), findsOneWidget);
+      expect(findTooltip('已确认领取，具体时间未知'), findsOneWidget);
       expect(find.text('额度查询未完成'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
