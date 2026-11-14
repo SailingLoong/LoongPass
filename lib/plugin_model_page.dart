@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'plugin_application.dart';
-import 'magpie_connection.dart';
+import 'model_connection_panel.dart';
 import 'managed_app.dart';
 import 'workspace_tools.dart' show WorkspacePage, WorkspaceCard;
 
@@ -27,8 +27,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
     try {
       await action();
     } catch (_) {
-      if (mounted)
-        setState(() => _message = '操作未完成。请确认 Magpie 已安装并启动，以及本地服务端口可用。');
+      if (mounted) setState(() => _message = '服务或账号设置未保存。请确认本地服务端口可用后重试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -61,46 +60,6 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   enabled: !(_busy),
                   onChange: (value) => _run(() => service.setEnabled(value)),
                 ),
-                const FDivider(),
-                Text(
-                  'Magpie 接入',
-                  style: context.theme.typography.body.sm.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '选择下方账号来源后，将授权保存到 Magpie。模型分组、路由、恢复以及 Claude Code 等客户端的接入仍由 Magpie 管理。',
-                ),
-                const SizedBox(height: 12),
-                FButton(
-                  variant: FButtonVariant.primary,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress:
-                      _busy ||
-                          !service.running ||
-                          !service.grants.any(
-                            (g) => g.enabled && g.account.active,
-                          )
-                      ? null
-                      : () => _run(() async {
-                          await MagpieConnection().connect(
-                            app.bridgePath,
-                            service.endpoint!,
-                            service.grants,
-                            legacyKeys: service.legacyKeys,
-                            saveBackup: service.saveConnectionBackup,
-                          );
-                          if (mounted)
-                            setState(
-                              () => _message =
-                                  '账号授权已保存到 Magpie。可在 Magpie 中选择模型或路由分组。',
-                            );
-                        }),
-                  prefix: const Icon(FLucideIcons.link),
-                  child: Text(_busy ? '正在处理…' : '连接 Magpie'),
-                ),
                 if (_message != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
@@ -110,6 +69,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
               ],
             ),
           ),
+          ModelConnectionPanel(connection: app.connection, enabled: !_busy),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(

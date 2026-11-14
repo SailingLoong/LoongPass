@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'managed_app.dart';
+import 'model_connection.dart';
 import 'native_account_document_store.dart';
 import 'native_legacy_sources.dart';
 import 'pinned_bun.dart';
@@ -29,12 +30,14 @@ class PluginApplication {
     this.accounts,
     this.models,
     this.rewards,
+    this.connection,
   );
   final PluginInstallation installation;
   final PluginRuntime runtime;
   final PluginAccounts accounts;
   final PluginModelService models;
   final PluginRewards rewards;
+  final ModelConnection connection;
   String get bridgePath => installation.bridgePath;
 
   static Future<PluginApplication> start() async {
@@ -111,6 +114,7 @@ class PluginApplication {
         accounts,
         models,
         rewards,
+        ModelConnection(models, installation.bridgePath),
       );
     } catch (_) {
       await rewards?.close();
@@ -125,6 +129,7 @@ class PluginApplication {
       WorkBuddyPluginFeatures(accounts)
           .activate(key, apply: WorkBuddyDesktopFlutter.activate);
   Future<void> close() async {
+    connection.dispose();
     await rewards.close();
     await models.close();
     await accounts.close();

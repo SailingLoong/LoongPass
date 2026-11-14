@@ -3,16 +3,116 @@ import 'dart:io';
 
 import 'plugin_model_service.dart';
 
+/// Native observations only. Saved account IDs do not certify inference.
+class MagpieInspection {
+  const MagpieInspection({
+    required this.executableFound,
+    this.gatewayReady,
+    this.accountIds,
+  });
+  final bool executableFound;
+  final bool? gatewayReady;
+  final Set<String>? accountIds;
+}
+
 /// Uses Magpie's supported installation and authorization commands. Secrets
 /// travel on stdin, never shell commands, process arguments or diagnostics.
 class MagpieConnection {
   MagpieConnection({
     Future<String> Function(List<String>, {String? input})? run,
     Future<List<Map<String, dynamic>>> Function()? readProviders,
+    Future<String> Function()? locateExecutable,
   }) : _command = run,
-       _readProviders = readProviders;
+       _readProviders = readProviders,
+       _locateExecutable = locateExecutable;
   final Future<String> Function(List<String>, {String? input})? _command;
   final Future<List<Map<String, dynamic>>> Function()? _readProviders;
+  final Future<String> Function()? _locateExecutable;
+
+  /// Explicit diagnostics use native commands; no vendor request is sent here.
+  Future<MagpieInspection> inspect() async {
+    String? executable;
+    if (_command == null) {
+      try {
+        executable = await _executable();
+      } catch (_) {
+        return const MagpieInspection(executableFound: false);
+      }
+    }
+    final command =
+        _command ??
+        (List<String> args, {String? input}) => _run(
+          executable!,
+          args,
+          input: input,
+          // Native plugin load and model-list hooks each have their own
+          // 20-second budget. Let that bounded fallback finish before ours.
+          timeout: args.first == 'healthcheck'
+              ? const Duration(seconds: 10)
+              : const Duration(minutes: 2),
+        );
+    var gatewayReady = false;
+    Set<String>? accountIds;
+    try {
+      await command(['healthcheck']);
+      gatewayReady = true;
+    } catch (_) {}
+    try {
+      accountIds = _accountIds(await command(['plugin', 'list', '--json']));
+    } catch (_) {}
+    return MagpieInspection(
+      executableFound: true,
+      gatewayReady: gatewayReady,
+      accountIds: accountIds == null ? null : Set.unmodifiable(accountIds),
+    );
+  }
+
+  static Set<String> _accountIds(String output) {
+    final value = jsonDecode(output);
+    // Magpie returns [] (rather than an object) with no installed plugins.
+    if (value is List && value.isEmpty) return {};
+    if (value is! Map || value['providers'] is! List)
+      throw const FormatException('Unknown Magpie plugin list');
+    final providers = value['providers'] as List;
+    if (providers.any((p) => p is! Map || p['id'] is! String))
+      throw const FormatException('Unknown Magpie provider');
+    final own = providers.where((p) => p['id'] == 'loongpass').firstOrNull;
+    if (own == null) return {};
+    // Native keepUnloaded retains cached provider/account rows when a plugin
+    // is disabled or fails to load. Only its current owner can certify them.
+    final spec = own['spec'];
+    final installed = (value['plugins'] as List?)
+        ?.whereType<Map>()
+        .where((p) => p['spec'] == spec)
+        .firstOrNull;
+    final loaded = (value['loaded'] as List?)
+        ?.whereType<Map>()
+        .where((p) => p['spec'] == spec)
+        .firstOrNull;
+    if (spec is! String ||
+        spec.isEmpty ||
+        installed == null ||
+        !{null, false}.contains(installed['off']) ||
+        loaded == null ||
+        !{null, ''}.contains(loaded['error']) ||
+        loaded['provides'] is! List ||
+        !(loaded['provides'] as List).contains('loongpass') ||
+        (loaded['servedBy'] != null &&
+            (loaded['servedBy'] is! Map ||
+                !{null, spec}.contains(loaded['servedBy']['loongpass']))))
+      throw const FormatException('Current LoongPass plugin not confirmed');
+    final accounts = own['accounts'];
+    if (accounts == null && own['signedIn'] == false) return {};
+    if (accounts is! List ||
+        accounts.any(
+          (a) =>
+              a is! Map ||
+              a['accountId'] is! String ||
+              (a['accountId'] as String).isEmpty,
+        ))
+      throw const FormatException('Unknown Magpie accounts');
+    return {for (final a in accounts) a['accountId'] as String};
+  }
 
   Future<void> connect(
     String bridgePath,
@@ -45,14 +145,7 @@ class MagpieConnection {
     }
     // Native structured output is also the capability check. A successful
     // process exit alone does not prove every selected account was saved.
-    final listing = jsonDecode(await command(['plugin', 'list', '--json']));
-    final providers = listing is Map ? listing['providers'] : null;
-    final own = providers is List
-        ? providers.where((p) => p is Map && p['id'] == 'loongpass').firstOrNull
-        : null;
-    final saved = {
-      for (final a in own?['accounts'] as List? ?? const []) a['accountId'],
-    };
+    final saved = _accountIds(await command(['plugin', 'list', '--json']));
     if (selected.any((g) => !saved.contains(g.account.key)))
       throw StateError('Magpie did not retain every account');
 
@@ -118,6 +211,7 @@ class MagpieConnection {
   }
 
   Future<String> _executable() async {
+    if (_locateExecutable != null) return _locateExecutable();
     final candidates = <String>[
       for (final directory in (Platform.environment['PATH'] ?? '').split(
         Platform.isWindows ? ';' : ':',
@@ -139,6 +233,7 @@ class MagpieConnection {
     String executable,
     List<String> arguments, {
     String? input,
+    Duration timeout = const Duration(minutes: 2),
   }) async {
     final child = await Process.start(
       executable,
@@ -160,10 +255,10 @@ class MagpieConnection {
     await child.stdin.close();
     try {
       final results = await Future.wait<Object?>([
-        child.exitCode.timeout(const Duration(minutes: 2)),
+        child.exitCode,
         output,
         errors,
-      ], eagerError: true);
+      ], eagerError: true).timeout(timeout);
       if (results[0] != 0) throw StateError('Magpie connection was not saved');
       return results[1] as String;
     } finally {
