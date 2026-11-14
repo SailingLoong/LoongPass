@@ -8,7 +8,7 @@ Forui 0.27.7 renders a non-editable select as a read-only Material TextField. Up
 
 ## Change
 
-All eight existing select controls use Forui's public field builder to expose the actual selectable-button semantics. The existing field, its controller, focus, keyboard handling, popover and every option remain in place. The semantic label follows the selected value; the accessibility press invokes the existing select tap callback, and disabled controls expose no press action. The expanded state and popup options remain owned by Forui.
+All eight existing select controls use Forui's public field builder to expose the actual selectable-button semantics. The existing field, its controller, focus, keyboard handling, popover and every option remain in place. The semantic label follows the selected value; the accessibility press invokes the existing select tap callback, and disabled controls expose no press action. Accessibility input-focus and desktop accessibility gain/loss actions forward to the existing FocusNode. The expanded state and popup options remain owned by Forui.
 
 The correction applies to platform selection, sorting, page size, appearance, density, native providers, authentication methods and provider choice prompts. No global accessibility suppression, exception swallowing, SDK modification or provider-specific workaround is added. Account, reward, model, Magpie and community code is unchanged.
 
@@ -16,7 +16,7 @@ The correction applies to platform selection, sorting, page size, appearance, de
 
 - Regression first failed because the platform selector exposed text-field semantics.
 - The original selector fixture aborted with the same `startEditing` exception; the corrected native fixture completes five alternating value updates with accessibility enabled.
-- Widget checks cover WorkBuddy CN selection through accessibility activation, reachable popup options, keyboard activation/selection/focus on macOS and Windows, and disabled-state semantics.
+- Widget checks cover WorkBuddy CN selection through accessibility activation, reachable popup options, accessibility-focus-to-keyboard activation/selection on macOS and Windows, and disabled-state semantics.
 - Complete `tool/check.py` passed on the unchanged production fix before the release version/notes update, including static analysis, 297 Flutter tests, 305 native plugin tests and the macOS storage, migration, updater and client-switch checks.
 - `tool/check_macos_select_semantics.py` creates a temporary minimal host using the pinned application dependencies and exact production field builder. It enables the native bridge in the test host, accesses no account data, honors the shared build locks and removes the temporary build on exit. Release packaging runs this check before upload. `--legacy` verifies the original exception for diagnosis.
 

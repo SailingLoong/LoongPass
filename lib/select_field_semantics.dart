@@ -18,6 +18,14 @@ Widget selectFieldSemantics(
       final value = field.controller?.text ?? '';
       final enabled = field.enabled ?? true;
       final focusable = enabled && field.canRequestFocus;
+      final desktopFocus = focusable && context.platformVariant.desktop;
+      void requestFocus() {
+        final focus = field.focusNode;
+        if (focus != null && focus.canRequestFocus && !focus.hasFocus) {
+          focus.requestFocus();
+        }
+      }
+
       return Semantics(
         button: true,
         enabled: enabled,
@@ -25,6 +33,11 @@ Widget selectFieldSemantics(
         focused: focusable ? field.focusNode?.hasFocus ?? false : null,
         label: value.isEmpty ? field.decoration?.hintText ?? '' : value,
         onTap: enabled ? field.onTap : null,
+        onFocus: focusable ? requestFocus : null,
+        onDidGainAccessibilityFocus: desktopFocus ? requestFocus : null,
+        onDidLoseAccessibilityFocus: desktopFocus
+            ? () => field.focusNode?.unfocus()
+            : null,
         child: ExcludeSemantics(child: child),
       );
     },

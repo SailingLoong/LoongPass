@@ -12,33 +12,52 @@ void main() {
   testDesktopWidgets(
     'select retains keyboard focus and selection',
     (tester) async {
+      final semantics = tester.ensureSemantics();
       final focus = FocusNode();
       addTearDown(focus.dispose);
       String? selected;
-      await tester.pumpWidget(
-        DesktopTestApp(
-          home: Scaffold(
-            body: FSelect<String>(
-              builder: selectFieldSemantics,
-              autoHide: true,
-              focusNode: focus,
-              items: const {'WorkBuddy 国内版': 'workbuddy', 'ZCode': 'zcode'},
-              control: FSelectControl.managed(
-                onChange: (value) => selected = value,
+      try {
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(
+              body: FSelect<String>(
+                key: const Key('keyboard-select'),
+                builder: selectFieldSemantics,
+                autoHide: true,
+                focusNode: focus,
+                items: const {'WorkBuddy 国内版': 'workbuddy', 'ZCode': 'zcode'},
+                control: FSelectControl.managed(
+                  onChange: (value) => selected = value,
+                ),
               ),
             ),
           ),
-        ),
-      );
-      focus.requestFocus();
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pumpAndSettle();
-      expect(selected, 'workbuddy');
-      expect(focus.hasFocus, isTrue);
-      expect(tester.takeException(), isNull);
+        );
+        await tester.pumpAndSettle();
+        final data = tester
+            .getSemantics(find.byKey(const Key('keyboard-select')))
+            .getSemanticsData();
+        final node = find.semantics.byLabel(data.label);
+        expect(data.hasAction(SemanticsAction.focus), isTrue);
+        tester.semantics.performAction(node, SemanticsAction.focus);
+        await tester.pumpAndSettle();
+        expect(focus.hasFocus, isTrue);
+        tester.semantics.didLoseAccessibilityFocus(node);
+        await tester.pumpAndSettle();
+        expect(focus.hasFocus, isFalse);
+        tester.semantics.didGainAccessibilityFocus(node);
+        await tester.pumpAndSettle();
+        expect(focus.hasFocus, isTrue);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(selected, 'workbuddy');
+        expect(focus.hasFocus, isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
     },
     variant: TargetPlatformVariant({
       TargetPlatform.macOS,
@@ -77,6 +96,15 @@ void main() {
       expect(data.flagsCollection.isEnabled, Tristate.isFalse);
       expect(data.flagsCollection.isFocused, Tristate.none);
       expect(data.hasAction(SemanticsAction.tap), isFalse);
+      expect(data.hasAction(SemanticsAction.focus), isFalse);
+      expect(
+        data.hasAction(SemanticsAction.didGainAccessibilityFocus),
+        isFalse,
+      );
+      expect(
+        data.hasAction(SemanticsAction.didLoseAccessibilityFocus),
+        isFalse,
+      );
     } finally {
       handle.dispose();
     }
