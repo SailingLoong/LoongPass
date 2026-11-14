@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.44</title><sparkle:version>44</sparkle:version><sparkle:shortVersionString>1.0.1-beta.44</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.44
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.1-beta.45</title><sparkle:version>45</sparkle:version><sparkle:shortVersionString>1.0.1-beta.45</sparkle:shortVersionString><description>LoongPass 1.0.1-beta.45
 
-- 修复 macOS 在账号页下拉框选择 WorkBuddy 国内版等选项时，可能因无障碍桥接的 startEditing 异常退出的问题。
-- 统一修正平台、排序、分页、设置和授权选择器的无障碍语义，保留原有样式、焦点、键盘与屏幕阅读器操作。
-- 增加真实 macOS 无障碍桥接回归检查，发布打包时验证连续切换选项。
-- 保留 beta 43 的 DSH 接入引导、显式连接检查与诊断，以及现有 Magpie、社区插件、账号、签到、模型和客户端切换功能。
+- 应用入口移到「账号与积分」下的可折叠缩进列表，「全部」固定在首位；直接显示图标与名称，国内版保留 CN 标识。
+- 拖动应用图标可以排序，悬停或聚焦后点 × 隐藏，点 ＋ 重新展示；排列、隐藏项与折叠状态保存在本机。
+- 隐藏应用不会删除账号，切换页面仍保留未完成输入。窄窗口继续使用紧凑图标导航。
+- 包含 beta 44 的 macOS 选择器无障碍崩溃修复，保留 DSH 接入引导、Magpie、社区插件、账号、签到、模型和客户端切换功能。
 
 安装与升级
 
 macOS 使用 LoongPass-macOS-universal.zip；Windows 使用安装版或便携包。旧版在设置中开启「接收 Beta 版更新」后选择「检查更新」。升级保留本机账号、设置与领取记录。
 
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.44/LoongPass-Windows-x64-Setup.exe" length="28604073" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="/iw8CpmfyyM5uJeUhoLATowKcg06D+50+YWPlON+JkWqIs92+qoVUGShGCi6zSHQl2o+oJdY+muOdVLi7fIACg==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: n1r2IYq/Xs7np+ZeEw40Fdzc2URZV5VjilIw5D3ekjOh3G0nQZxxsmHFGmPQGdatl8sjdWDtG+M2/KDth0wDDA==
-length: 2100
+</description><enclosure url="https://loongpass.com/api/download/v1.0.1-beta.45/LoongPass-Windows-x64-Setup.exe" length="28608159" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="sVHWPGRFMSra8dkSS6vYWdTRpkdTgbis4a2INJAhtEDKxPl3eHYi1vB1XwgD7QR2RWavUWV9sCWEGZJXw5YzBA==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: b8J3eZVGA4vIVEgR52iSK3/cSHPQ5HuwhJ2k6YeP2Kv6ACnjO84Ay2YIzmTO5w2pfkWlqcaILfYd1KKj5/utCw==
+length: 2137
 -->
