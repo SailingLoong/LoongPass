@@ -11,6 +11,7 @@ import 'package:material_ui/material_ui.dart';
 import '../lib/app_theme.dart';
 import '../lib/app_sidebar.dart';
 import '../lib/plugin_accounts.dart';
+import '../lib/model_connection.dart';
 import '../lib/plugin_application.dart';
 import '../lib/plugin_model_service.dart';
 import '../lib/plugin_model_page.dart';
@@ -23,6 +24,8 @@ class _Service extends ChangeNotifier implements PluginModelService {
   bool get enabled => true;
   @override
   bool get running => true;
+  @override
+  Uri get endpoint => Uri.parse('http://127.0.0.1:3426');
   @override
   String? get error => null;
   @override
@@ -65,7 +68,9 @@ class _Service extends ChangeNotifier implements PluginModelService {
 }
 
 class _Application implements PluginApplication {
-  _Application(this.models);
+  _Application(this.models) : connection = ModelConnection(models, '/bridge');
+  @override
+  final ModelConnection connection;
   @override
   final PluginModelService models;
   @override
@@ -97,7 +102,9 @@ void main() {
           addTearDown(tester.view.resetPhysicalSize);
           addTearDown(tester.view.resetDevicePixelRatio);
           final service = _Service();
+          final app = _Application(service);
           addTearDown(service.dispose);
+          addTearDown(app.connection.dispose);
           final boundary = GlobalKey();
           final workspace = GlobalKey<AppWorkspaceState>();
           await tester.pumpWidget(
@@ -119,7 +126,7 @@ void main() {
                     },
                     sections: {
                       WorkspaceSection.models: PluginModelServicesPage(
-                        application: _Application(service),
+                        application: app,
                       ),
                     },
                   ),
@@ -148,7 +155,16 @@ void main() {
             image.dispose();
           });
           await capture('collapsed');
-          await tester.ensureVisible(find.text('查看 20 个模型'));
+          await tester.scrollUntilVisible(
+            find.text('查看 20 个模型'),
+            250,
+            scrollable: find
+                .descendant(
+                  of: find.byType(PluginModelServicesPage),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.text('查看 20 个模型'));
           await tester.pumpAndSettle();
