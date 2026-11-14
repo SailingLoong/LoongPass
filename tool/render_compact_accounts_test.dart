@@ -40,6 +40,9 @@ void main() {
   });
   for (final (size, scale) in [
     (const Size(1280, 800), 1.0),
+    (const Size(1280, 800), 1.3),
+    (const Size(1920, 900), 2.0),
+    (const Size(1080, 800), 2.0),
     (const Size(1024, 768), 1.0),
     (const Size(800, 632), 1.0),
     (const Size(480, 800), 1.0),

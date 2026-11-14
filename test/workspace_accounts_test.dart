@@ -10,6 +10,47 @@ import '../lib/workspace_accounts.dart';
 import '../lib/claim_receipt.dart';
 
 void main() {
+  testDesktopWidgets('overview makes every attention account reachable', (
+    tester,
+  ) async {
+    final registry = AccountWorkspaceRegistry();
+    addTearDown(registry.dispose);
+    var operations = 0;
+    registry.publish(ManagedApp.zcode, Object(), [
+      for (var index = 1; index <= 6; index++)
+        AccountTableEntry(
+          id: '$index',
+          label: 'Account $index',
+          identity: 'synthetic-$index',
+          balance: '880 积分',
+          status: '需要重新授权后核对官方额度',
+          statusLabel: '需要重新授权',
+          needsAttention: true,
+          onActivate: () => operations++,
+          details: Text('Details $index'),
+        ),
+    ]);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: WorkspaceOverviewPage(registry: registry, onOpenApp: (_) {}),
+        ),
+      ),
+    );
+    expect(find.text('Account 6'), findsNothing);
+    final showAll = find.byKey(const Key('overview-all-attention'));
+    await tester.ensureVisible(showAll);
+    await tester.tap(showAll);
+    await tester.pumpAndSettle();
+    expect(find.text('Account 6'), findsOneWidget);
+    await tester.ensureVisible(find.text('Account 6'));
+    await tester.tap(find.text('Account 6'));
+    await tester.pumpAndSettle();
+    expect(find.text('Details 6'), findsOneWidget);
+    expect(operations, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testDesktopWidgets(
     'overview retains a known expiry when the remaining amount is unknown',
     (tester) async {

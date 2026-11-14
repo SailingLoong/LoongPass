@@ -76,6 +76,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
+      var additions = 0, recoveries = 0;
       await tester.pumpWidget(
         DesktopTestApp(
           theme: loongPassTheme(Brightness.light),
@@ -88,13 +89,13 @@ void main() {
                 FButton(
                   mainAxisSize: MainAxisSize.min,
                   size: FButtonSizeVariant.sm,
-                  onPress: () {},
+                  onPress: () => additions++,
                   child: const Text('添加账号'),
                 ),
                 FButton(
                   mainAxisSize: MainAxisSize.min,
                   size: FButtonSizeVariant.sm,
-                  onPress: () {},
+                  onPress: () => recoveries++,
                   child: const Text('恢复已保存账号'),
                 ),
               ],
@@ -102,12 +103,32 @@ void main() {
           ),
         ),
       );
-      expect(
-        tester.getTopLeft(find.text('2 个账号')).dy,
-        greaterThan(tester.getBottomLeft(find.text('WorkBuddy')).dy),
+      final title = tester.getRect(find.text('WorkBuddy'));
+      final metadata = tester.getRect(find.text('2 个账号'));
+      Rect actionBounds(String label) => tester.getRect(
+        find.ancestor(of: find.text(label), matching: find.byType(FButton)),
       );
-      expect(tester.getTopLeft(find.text('添加账号')).dx, greaterThan(600));
+      final add = actionBounds('添加账号');
+      final recover = actionBounds('恢复已保存账号');
+      final help = tester.getRect(findTooltip('使用说明'));
+      expect(metadata.left, greaterThan(title.right));
+      expect(metadata.center.dy, closeTo(title.center.dy, 1));
+      expect(add.left, greaterThan(metadata.right));
+      expect(recover.left, greaterThanOrEqualTo(add.right));
+      expect(help.left, greaterThanOrEqualTo(recover.right));
+      final bounds = [title, metadata, add, recover, help];
+      for (var index = 0; index < bounds.length; index++) {
+        for (var other = index + 1; other < bounds.length; other++) {
+          expect(bounds[index].overlaps(bounds[other]), isFalse);
+        }
+      }
       expect(findTooltip('使用说明'), findsOneWidget);
+      await tester.tap(find.text('添加账号'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('恢复已保存账号'));
+      await tester.pumpAndSettle();
+      expect(additions, 1);
+      expect(recoveries, 1);
       expect(tester.takeException(), isNull);
     },
   );

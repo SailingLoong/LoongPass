@@ -24,7 +24,7 @@ Future<void> showAccountDetails(
             animation: animation,
             constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
             builder: (context, style) => Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -35,12 +35,15 @@ Future<void> showAccountDetails(
                         : showExpiry
                         ? '额度到期'
                         : row.label,
-                    style: context.theme.typography.display.lg,
+                    style: context.theme.typography.display.xl.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  if (row != null) ...[
+                  if (row != null &&
+                      (showExpiry || row.sourceLabel != null)) ...[
                     const SizedBox(height: 4),
                     Text(
-                      showExpiry ? row.label : row.sourceLabel ?? '账号详情',
+                      showExpiry ? row.label : row.sourceLabel!,
                       style: context.theme.typography.body.xs.copyWith(
                         color: context.theme.colors.mutedForeground,
                       ),
@@ -131,7 +134,9 @@ class _ExpiryDetails extends StatelessWidget {
     children: [
       Text(
         row.upcomingExpiryAmount == '—' ? '到期额度未知' : row.upcomingExpiryAmount,
-        style: context.theme.typography.display.lg,
+        style: context.theme.typography.display.xl.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
       const SizedBox(height: 6),
       Text(
@@ -141,7 +146,12 @@ class _ExpiryDetails extends StatelessWidget {
       if (row.expiryDetails != null)
         row.expiryDetails!
       else if (row.credits case final credits?) ...[
-        const Text('已知到期批次 · 当前剩余额度'),
+        Text(
+          '已知到期批次 · 当前剩余额度',
+          style: context.theme.typography.body.sm.copyWith(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         for (final batch in upcomingCreditBatches(credits))
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),

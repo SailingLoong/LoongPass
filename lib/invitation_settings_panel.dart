@@ -60,7 +60,7 @@ class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 400),
             child: FTextField(
               key: Key('${widget.settings.app.name}-invitation-code'),
               control: FTextFieldControl.managed(
@@ -70,13 +70,13 @@ class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
               label: const Text('邀请码'),
               size: FTextFieldSizeVariant.sm,
               hint: widget.settings.defaultCode,
-              description: const Text('留空使用默认邀请码。新用户可在添加账号时前往官方邀请注册页。'),
+              description: const Text('留空使用默认邀请码。添加账号时可前往官方邀请页注册。'),
               error: _error == null ? null : Text(_error!),
               enabled: !_saving && widget.settings.ready,
               autocorrect: false,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           if (widget.settings.error != null) ...[
             Text(widget.settings.error!),
             FButton(
@@ -87,18 +87,16 @@ class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
               child: const Text('重试读取'),
             ),
           ] else
-            IntrinsicWidth(
-              child: FButton(
-                key: Key('${widget.settings.app.name}-invitation-save'),
-                variant: FButtonVariant.outline,
-                size: FButtonSizeVariant.sm,
-                onPress:
-                    _saving ||
-                        _input.text.trim() == widget.settings.overrideCode
-                    ? null
-                    : _save,
-                child: Text(_saving ? '正在保存…' : '保存邀请码'),
-              ),
+            FButton(
+              key: Key('${widget.settings.app.name}-invitation-save'),
+              variant: FButtonVariant.outline,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
+              onPress:
+                  _saving || _input.text.trim() == widget.settings.overrideCode
+                  ? null
+                  : _save,
+              child: Text(_saving ? '正在保存…' : '保存邀请码'),
             ),
           if (_message != null)
             Padding(
