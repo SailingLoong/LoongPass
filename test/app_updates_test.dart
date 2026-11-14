@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show PointerDeviceKind;
+import 'dart:ui' show PointerDeviceKind, SemanticsAction;
 
 import 'desktop_test_app.dart';
 
@@ -276,13 +276,20 @@ void main() {
                 );
                 await tester.pump();
                 expect(tester.takeException(), isNull);
-                expect(
-                  tester
-                      .getSemantics(find.byType(FButton))
-                      .getSemanticsData()
-                      .label,
-                  contains(label),
+                final labeledButton = find.descendant(
+                  of: find.byType(FButton),
+                  matching: find.byWidgetPredicate(
+                    (widget) =>
+                        widget is Semantics && widget.properties.label == label,
+                  ),
                 );
+                expect(labeledButton, findsOneWidget);
+                final data = tester
+                    .getSemantics(labeledButton)
+                    .getSemanticsData();
+                expect(data.label, label);
+                expect(data.flagsCollection.isButton, isTrue);
+                expect(data.hasAction(SemanticsAction.tap), isTrue);
                 expect(find.byType(FTooltip), findsOneWidget);
               }
             }
