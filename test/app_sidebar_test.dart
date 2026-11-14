@@ -13,6 +13,7 @@ void main() {
     WidgetTester tester, {
     UiPreferences? preferences,
     double width = 1024,
+    Set<ManagedApp>? enabledApps,
   }) async {
     tester.view.physicalSize = Size(width, 900);
     tester.view.devicePixelRatio = 1;
@@ -23,7 +24,11 @@ void main() {
         home: Scaffold(
           body: AppWorkspace(
             preferences: preferences,
-            sections: const {WorkspaceSection.models: Text('Magpie models')},
+            enabledApps: enabledApps,
+            sections: const {
+              WorkspaceSection.accounts: Text('All accounts'),
+              WorkspaceSection.models: Text('Magpie models'),
+            },
             pages: const {
               ManagedApp.zcode: Text('ZCode content'),
               ManagedApp.qoder: TextField(key: Key('draft')),
@@ -43,12 +48,12 @@ void main() {
   }
 
   testDesktopWidgets(
-    'platform selector preserves regional choices and unfinished input',
+    'nested application navigation preserves regional choices and unfinished input',
     (tester) async {
       await mount(tester);
-      await tester.tap(find.byKey(const Key('platform-filter')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Qoder · 海外版').last);
+      expect(find.byKey(const Key('platform-filter')), findsNothing);
+      expect(find.text('Qoder CN'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('draft')), 'keep me');
       await tester.tap(find.byKey(const Key('nav-models')));
@@ -72,8 +77,18 @@ void main() {
       addTearDown(prefs.dispose);
       await mount(tester, preferences: prefs);
       await order(tester);
-      final source = tester.getCenter(find.byKey(const Key('drag-qoder')));
-      final target = tester.getCenter(find.byKey(const Key('app-zcode')));
+      final source = tester.getCenter(
+        find.descendant(
+          of: find.byKey(const Key('app-order')),
+          matching: find.byKey(const Key('drag-qoder')),
+        ),
+      );
+      final target = tester.getCenter(
+        find.descendant(
+          of: find.byKey(const Key('app-order')),
+          matching: find.byKey(const Key('app-zcode')),
+        ),
+      );
       final gesture = await tester.startGesture(
         source,
         kind: PointerDeviceKind.mouse,
@@ -107,7 +122,10 @@ void main() {
     await mount(tester, preferences: prefs);
     await order(tester);
     final button = find.descendant(
-      of: find.byKey(const Key('app-qoder')),
+      of: find.descendant(
+        of: find.byKey(const Key('app-order')),
+        matching: find.byKey(const Key('app-qoder')),
+      ),
       matching: find.byType(FButton),
     );
     Focus.of(
@@ -124,4 +142,109 @@ void main() {
     expect(find.text('平台偏好'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testDesktopWidgets(
+    'hiding the active app returns to all and showing it preserves its draft',
+    (tester) async {
+      final preferences = UiPreferences();
+      addTearDown(preferences.dispose);
+      await mount(tester, preferences: preferences);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('draft')), 'keep draft');
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(
+        location: tester.getCenter(find.byKey(const Key('app-qoder'))),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hide-qoder')));
+      await tester.pumpAndSettle();
+      expect(find.text('All accounts'), findsOneWidget);
+      expect(find.byKey(const Key('app-qoder')), findsNothing);
+      expect(preferences.isAppVisible(ManagedApp.qoder), isFalse);
+      await tester.tap(find.byKey(const Key('show-apps')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('show-qoder')));
+      await tester.pumpAndSettle();
+      expect(preferences.isAppVisible(ManagedApp.qoder), isTrue);
+      expect(find.text('All accounts'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      expect(find.text('keep draft'), findsOneWidget);
+      await mouse.removePointer();
+    },
+  );
+
+  testDesktopWidgets(
+    'the group collapses without navigating and all apps can be restored in a narrow window',
+    (tester) async {
+      final preferences = UiPreferences();
+      addTearDown(preferences.dispose);
+      await mount(
+        tester,
+        preferences: preferences,
+        width: 480,
+        enabledApps: {ManagedApp.zcode, ManagedApp.qoder},
+      );
+      await tester.tap(find.byKey(const Key('app-zcode')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-apps')), findsNothing);
+      expect(find.text('ZCode content'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      for (final app in [ManagedApp.zcode, ManagedApp.qoder]) {
+        await tester.tap(find.byKey(ValueKey('hide-${app.name}')));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('All accounts'), findsOneWidget);
+      expect(find.byKey(const Key('app-all')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('show-apps')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('show-workbuddy')), findsNothing);
+      await tester.tap(find.byKey(const Key('show-zcode')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('app-zcode')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'dragging visible apps respects hidden entries and keeps the selected page',
+    (tester) async {
+      String? stored;
+      final preferences = UiPreferences(write: (value) async => stored = value);
+      addTearDown(preferences.dispose);
+      preferences.setAppVisible(ManagedApp.qoderCn, false);
+      await mount(tester, preferences: preferences);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('draft')),
+        'persist through drag',
+      );
+      final source = tester.getCenter(find.byKey(const Key('drag-qoder')));
+      final target = tester.getCenter(find.byKey(const Key('app-zcode')));
+      final gesture = await tester.startGesture(
+        source,
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(0, -24));
+      await tester.pump(const Duration(milliseconds: 100));
+      await gesture.moveTo(Offset(source.dx, target.dy + 4));
+      await tester.pump(const Duration(milliseconds: 500));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(preferences.appOrder.first, ManagedApp.qoder);
+      expect(find.text('persist through drag'), findsOneWidget);
+      await preferences.saved;
+      final restored = UiPreferences(read: () async => stored);
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(restored.appOrder.first, ManagedApp.qoder);
+      expect(restored.isAppVisible(ManagedApp.qoderCn), isFalse);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
 }
