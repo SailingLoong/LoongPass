@@ -5,16 +5,17 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.1</title>
-            <pubDate>Sat, 14 Nov 2026 06:53:13 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.45</link>
-            <sparkle:version>45</sparkle:version>
-            <sparkle:shortVersionString>1.0.1-beta.45</sparkle:shortVersionString>
+            <pubDate>Sat, 14 Nov 2026 08:02:52 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.46</link>
+            <sparkle:version>46</sparkle:version>
+            <sparkle:shortVersionString>1.0.1-beta.46</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.1-beta.45
+            <description sparkle:format="markdown">LoongPass 1.0.1-beta.46
 
 - 应用入口移到「账号与积分」下的可折叠缩进列表，「全部」固定在首位；直接显示图标与名称，国内版保留 CN 标识。
 - 拖动应用图标可以排序，悬停或聚焦后点 × 隐藏，点 ＋ 重新展示；排列、隐藏项与折叠状态保存在本机。
 - 隐藏应用不会删除账号，切换页面仍保留未完成输入。窄窗口继续使用紧凑图标导航。
+- 侧栏完整显示 MiniMax CN 等应用名称；账号表格按「账号 → 即将到期积分 → 到期时间 → 最近领取时间 → 余额」排列。
 - 包含 beta 44 的 macOS 选择器无障碍崩溃修复，保留 DSH 接入引导、Magpie、社区插件、账号、签到、模型和客户端切换功能。
 
 安装与升级
@@ -23,10 +24,10 @@ macOS 使用 LoongPass-macOS-universal.zip；Windows 使用安装版或便携包
 
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.45/LoongPass-macOS-universal.zip" length="48418488" type="application/octet-stream" sparkle:edSignature="XD48jJCn5hgaskplLHVf1KjOaRxiTtKSbdSZLuYHbDru8q9R3hCLn+R/JEr/SaWRG1QHlbwwRZF+B3q+od99AA=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.46/LoongPass-macOS-universal.zip" length="48418757" type="application/octet-stream" sparkle:edSignature="HdDtcAbkuqaGSHVkvK6QHKhsBt3k6FMx/x1n0Gv7yGZufQCV2DKc7gIYaur7zOSEmhVmmRtmpgTLZlcOu4lIBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: R2/RGTKdwjOsndy0sQQHl16IyovPnJshbjydV89JvZBt/YXZpTsFS3rXFTRThVmFTpgLnLM1g5pJsiFToeScCw==
-length: 2294
+edSignature: hounzDrsRIH2xGqYX9TOpSd8lQaIfkEUnFuFp1pUpTO1DyHfWWhrKkOx2mldcBQY2JxW/xeBeq4tHVuEmqXwBQ==
+length: 2455
 -->
