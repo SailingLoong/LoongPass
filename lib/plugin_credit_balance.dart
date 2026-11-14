@@ -14,14 +14,19 @@ class PluginCreditExpiry {
 
 num? _number(Object? value) => value is num && value.isFinite ? value : null;
 
-PluginCreditBalance? _remaining(Map value) {
+PluginCreditBalance? pluginWindowBalance(Map value) {
   final unit = value['unit'];
   if (unit is! String || unit.trim().isEmpty) return null;
+  final remaining = pluginWindowRemaining(value);
+  return remaining == null ? null : PluginCreditBalance(remaining, unit);
+}
+
+num? pluginWindowRemaining(Map value) {
   final balance = _number(value['balance']);
-  if (balance != null) return PluginCreditBalance(balance, unit);
+  if (balance != null) return balance;
   final limit = _number(value['limit']), spent = _number(value['amount']);
   if (limit == null || spent == null) return null;
-  return PluginCreditBalance(limit - spent, unit);
+  return limit - spent;
 }
 
 /// WorkBuddy and Qoder mark overlapping components as `aside` when publishing
@@ -50,7 +55,7 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
     for (final name in ['每日赠送积分', '永久积分']) {
       final matches = windows.where((w) => w['name'] == name).toList();
       if (matches.length != 1) return null;
-      final wallet = _remaining(matches.single);
+      final wallet = pluginWindowBalance(matches.single);
       if (wallet == null || wallet.unit != 'credits') return null;
       wallets.add(wallet);
     }
@@ -62,7 +67,7 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
 
   final windows = _creditWindows(usage);
   // Independent pools or model-specific quotas cannot imply an account total.
-  return windows.length == 1 ? _remaining(windows.single) : null;
+  return windows.length == 1 ? pluginWindowBalance(windows.single) : null;
 }
 
 PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {

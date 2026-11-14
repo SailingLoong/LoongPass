@@ -8,13 +8,10 @@ import 'package:flutter/foundation.dart';
 import 'plugin_accounts.dart';
 import 'account_document_store.dart';
 import 'plugin_runtime.dart';
+import 'plugin_model_catalog.dart';
+import 'plugin_model_quota.dart';
 
-class PluginModelGrant {
-  PluginModelGrant(this.account, this.token, this.enabled);
-  final PluginAccount account;
-  final String token;
-  final bool enabled;
-}
+export 'plugin_model_catalog.dart' show PluginModelGrant;
 
 /// Local capability boundary. Request conversion, recovery and supplier
 /// credentials belong to the two native Magpie hosts on either side.
@@ -30,7 +27,7 @@ class PluginModelService extends ChangeNotifier {
   Map<String, dynamic> _data = {};
   Future<void> _writes = Future.value();
   HttpServer? _server;
-  final _active = <PluginFetch, PluginModelGrant>{};
+  final _active = <PluginFetch, ({PluginModelGrant grant, String model})>{};
   bool _closed = false;
   String? error;
   bool get enabled => _data['enabled'] == true;
@@ -48,6 +45,20 @@ class PluginModelService extends ChangeNotifier {
         for (final row in rows) backups.putIfAbsent(row['id'], () => row);
       });
   Map get _rows => _data['grants'] as Map? ?? {};
+  Map get routingSettings =>
+      Map.unmodifiable(jsonDecode(jsonEncode(_data['routing'] ?? {})) as Map);
+  List<PluginModel> get catalog =>
+      pluginModelCatalog(grants, routingSettings, DateTime.now());
+  bool get routingConnected => _data['routingConnected'] == true;
+  Future<void> markRoutingConnected() =>
+      _edit((data) => data['routingConnected'] = true);
+  Set<String> get managedGroups =>
+      (_data['managedGroups'] as List? ?? const []).whereType<String>().toSet();
+  Future<void> saveManagedGroups(Set<String> groups) async {
+    if (setEquals(groups, managedGroups)) return;
+    await _edit((data) => data['managedGroups'] = groups.toList());
+  }
+
   List<PluginModelGrant> get grants => List.unmodifiable([
     for (final account in accounts.accounts)
       PluginModelGrant(
@@ -150,6 +161,34 @@ class PluginModelService extends ChangeNotifier {
       'registrationId': account.registrationId,
     };
   });
+
+  Future<void> setModelEnabled(String id, bool value) => _edit((data) {
+    catalog.singleWhere((model) => model.id == id);
+    final routing = data.putIfAbsent('routing', () => {}) as Map;
+    (routing.putIfAbsent('models', () => {}) as Map)[id] = value;
+  });
+
+  Future<void> setModelAccountEnabled(String id, String account, bool value) =>
+      _edit((data) {
+        final model = catalog.singleWhere((model) => model.id == id);
+        if (!model.bindings.any((binding) => binding.account.key == account)) {
+          throw StateError('Account does not serve this model');
+        }
+        final routing = data.putIfAbsent('routing', () => {}) as Map;
+        final rows = routing.putIfAbsent('accounts', () => {}) as Map;
+        (rows.putIfAbsent(id, () => {}) as Map)[account] = value;
+      });
+
+  Future<void> reorderModels(List<String> order) => _edit((data) {
+    final current = catalog.map((model) => model.id).toSet();
+    if (order.length != current.length ||
+        order.toSet().length != order.length ||
+        !current.containsAll(order)) {
+      throw StateError('Model catalog changed');
+    }
+    final routing = data.putIfAbsent('routing', () => {}) as Map;
+    routing['order'] = List<String>.of(order);
+  });
   Future<void> setEnabled(bool value) async {
     await _edit((data) => data['enabled'] = value);
     if (value) {
@@ -196,7 +235,11 @@ class PluginModelService extends ChangeNotifier {
   void _changed() {
     if (_closed) return;
     for (final entry in _active.entries.toList()) {
-      if (!_current(entry.value)) unawaited(entry.key.cancel());
+      if (!_current(entry.value.grant) ||
+          !_supportedModels(entry.value.grant.account)
+              .any((m) => m['id'] == entry.value.model)) {
+        unawaited(entry.key.cancel());
+      }
     }
     if (!enabled) unawaited(_stop());
     notifyListeners();
@@ -255,7 +298,27 @@ class PluginModelService extends ChangeNotifier {
             'label': account.label,
           },
           'models': _supportedModels(account).toList(),
-          'usage': account.usage,
+          'publicModels': [
+            for (final model in catalog.where((m) => m.enabled && m.official))
+              if (model.bindings.any(
+                (b) => b.account.key == account.key && b.enabled,
+              ))
+                {
+                  'id': model.id,
+                  'name': model.name,
+                  'nativeId': model.bindings
+                      .firstWhere(
+                        (b) => b.account.key == account.key && b.enabled,
+                      )
+                      .nativeId,
+                },
+          ],
+          'usage': modelRoutingUsage(
+            account.provider,
+            account.models,
+            account.usage,
+            DateTime.now(),
+          ),
           'maxConcurrency': limits['maxConcurrency'] ?? 0,
           'maxAccounts': limits['maxAccounts'] ?? 0,
         });
@@ -275,7 +338,8 @@ class PluginModelService extends ChangeNotifier {
         bytes.addAll(chunk);
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map;
-      final model = _supportedModels(account)
+      final model = account.models
+          .where(supportedNativeModel)
           .where(
             (m) =>
                 // Magpie's native Go boundary sends api.id to its host, while
@@ -329,14 +393,30 @@ class PluginModelService extends ChangeNotifier {
         await _json(request.response, 401, {'error': 'grant_unavailable'});
         return;
       }
+      final currentModel = catalog
+          .expand((m) => m.enabled ? m.bindings : <PluginModelBinding>[])
+          .where(
+            (b) =>
+                b.account.key == account.key &&
+                b.nativeId == model['id'] &&
+                b.enabled,
+          )
+          .firstOrNull;
+      if (currentModel == null || !currentModel.available) {
+        request.response.headers.set('retry-after', '30');
+        await _json(request.response, 429, {
+          'error': 'model_quota_unavailable',
+        });
+        return;
+      }
       final concurrency = limits['maxConcurrency'] as int? ?? 0;
       final atOnce = limits['maxAccounts'] as int? ?? 0;
       final busy = _active.values
-          .where((g) => g.account.key == account.key)
+          .where((g) => g.grant.account.key == account.key)
           .length;
       final activeAccounts = {
         for (final g in _active.values)
-          if (g.account.provider == account.provider) g.account.key,
+          if (g.grant.account.provider == account.provider) g.grant.account.key,
       };
       if ((concurrency > 0 && busy >= concurrency) ||
           (atOnce > 0 &&
@@ -358,7 +438,7 @@ class PluginModelService extends ChangeNotifier {
         'body': body['body'],
         'session': body['session'],
       });
-      _active[fetch] = grant;
+      _active[fetch] = (grant: grant, model: model['id'] as String);
       final pending = fetch;
       unawaited(
         request.response.done.then(
@@ -395,14 +475,14 @@ class PluginModelService extends ChangeNotifier {
     }
   }
 
-  static Iterable<Map<String, dynamic>> _supportedModels(
-    PluginAccount account,
-  ) => account.models.where((model) {
-    // Native Magpie video polling omits the selected model/SDK context.
-    // Keep unsupported jobs out of both discovery and request admission.
-    final outputs = model['outputs'];
-    return outputs is! List || !outputs.contains('video');
-  });
+  Iterable<Map<String, dynamic>> _supportedModels(PluginAccount account) sync* {
+    for (final model in catalog.where((m) => m.enabled)) {
+      for (final binding in model.bindings) {
+        if (binding.account.key == account.key && binding.enabled)
+          yield binding.native;
+      }
+    }
+  }
 
   static bool _allowedURL(Object? baseValue, Object? targetValue) {
     if (baseValue is! String || targetValue is! String) return false;

@@ -153,6 +153,24 @@ test('usage reads only its account snapshot and propagates cancellation', async 
   })
 })
 
+test('model-scoped quota IDs follow exported source IDs and canonical IDs remain discoverable', async () => {
+  const hooks = await LoongPassPlugin({})
+  const value = snapshot()
+  value.publicModels = [{ id: 'deepseek-flash', name: 'deepseek-flash', nativeId: chat.id }]
+  value.usage.windows = [{ models: [chat.id], notModels: ['trial'], balance: 9.25, unit: 'credits' }]
+  await withFetch(async () => Response.json(value), async () => {
+    const usage = await hooks.auth.usage(async () => grant(), {})
+    expect(usage.windows[0].models).toEqual(['workbuddy/chat/native'])
+    expect(usage.windows[0].notModels).toEqual(['workbuddy/trial'])
+    expect(usage.windows[0].balance).toBe(9.25)
+    expect(usage.windows[0].unit).toBe('credits')
+    const models = await hooks.provider.models({}, { auth: grant() })
+    expect(models['deepseek-flash'].name).toBe('deepseek-flash')
+    expect(models.auto.name).toBe('Auto')
+    expect(models['workbuddy/chat/native'].api.id).toBe('chat-api')
+  })
+})
+
 test('chat header hook marks only LoongPass requests with native model id and session', async () => {
   const hooks = await LoongPassPlugin({})
   const output = { headers: { existing: 'kept' } }

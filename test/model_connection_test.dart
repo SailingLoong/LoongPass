@@ -8,6 +8,7 @@ import '../lib/magpie_connection.dart';
 import '../lib/model_connection.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_service.dart';
+import '../lib/plugin_model_catalog.dart';
 import 'magpie_fixture.dart';
 
 class _Models extends ChangeNotifier implements PluginModelService {
@@ -23,6 +24,20 @@ class _Models extends ChangeNotifier implements PluginModelService {
   @override
   Set<String> get legacyKeys => {};
   @override
+  bool routingConnected = false;
+  @override
+  Map get routingSettings => {};
+  @override
+  List<PluginModel> get catalog =>
+      pluginModelCatalog(grants, routingSettings, DateTime.now());
+  @override
+  Set<String> managedGroups = {};
+  @override
+  Future<void> saveManagedGroups(Set<String> value) async =>
+      managedGroups = value;
+  @override
+  Future<void> markRoutingConnected() async => routingConnected = true;
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -31,16 +46,63 @@ PluginModelGrant _grant(String key, {String token = 'synthetic'}) =>
       PluginAccount(
         key: key,
         active: true,
-        facts: {'registrationId': key},
+        facts: {'registrationId': key, 'provider': 'qoder'},
         models: [],
       ),
       token,
       true,
     );
 
-String _listing(List<String> ids) => jsonEncode(magpiePluginList(ids));
+String _listing(List<String> ids) {
+  final value = magpiePluginList(ids);
+  (value['providers'] as List).first['accountId'] = ids.firstOrNull;
+  return jsonEncode(value);
+}
 
 void main() {
+  test(
+    'connected routing follows owner events and coalesces updates during sync',
+    () async {
+      final models = _Models()..routingConnected = true;
+      final commands = <List<String>>[];
+      final firstOptions = Completer<String>();
+      final client = MagpieConnection(
+        run: (args, {input}) async {
+          commands.add(args);
+          if (args.join(' ') == 'plugin list --json')
+            return _listing(['one', 'two']);
+          if (args.length > 1 &&
+              args[1] == 'options' &&
+              commands.where((c) => c.length > 1 && c[1] == 'options').length ==
+                  1) {
+            return firstOptions.future;
+          }
+          return '';
+        },
+      );
+      final connection = ModelConnection(models, '/bridge', client: client)
+        ..start();
+      addTearDown(connection.dispose);
+      addTearDown(models.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(connection.busy, isTrue);
+      models.grants = [_grant('one', token: 'replacement')];
+      models.changed();
+      firstOptions.complete('');
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(connection.busy, isFalse);
+      expect(connection.error, isNull);
+      expect(
+        commands.where((c) => c.length > 1 && c[1] == 'options'),
+        hasLength(2),
+      );
+      expect(commands.where((c) => c.first == 'healthcheck'), isEmpty);
+      final count = commands.length;
+      models.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(commands.length, count);
+    },
+  );
   test(
     'closing during connection does not start a new diagnostic process',
     () async {

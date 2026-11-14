@@ -5,6 +5,7 @@
     "migrate.mjs",
     "bridge/package.json",
     "bridge/index.mjs",
+    "bridge/routing.mjs",
     "patches/qoder.patch",
     "patches/plugin-identity.patch",
     "patches/usage-precision.patch",
@@ -17,7 +18,8 @@
     "patches/host-account-catalog.patch",
     "patches/zcode-response.patch",
     "patches/workbuddy-usage.patch",
-    "patches/loomy-models.patch"
+    "patches/loomy-models.patch",
+    "patches/model-quota-expiry.patch"
   ],
   "sources": {
     "magpie": {
@@ -235,7 +237,7 @@
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "520bd1fd3560944d309e924c60058845e2d46491b8b94c671fb002b4b4e29957",
+      "sha256": "5871b526ed251fbca298bab3e78c2c8a01705333e8d7d2f40dbd7e1fd2fe92d2",
       "upstreamSha256": "996caaf0da61c1edf92a23ccfde054899cc67a0900518aba11201759d040295e"
     },
     {
@@ -309,7 +311,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "3481695878a5898781db481385eb14439cf20ef574467fc20e21e9fc30a2689c",
+      "sha256": "cad6b22e009e74e7ca61e0836affcdc56e6c7d4ec6a13c2885f9bd1ec77b7bbc",
       "upstreamSha256": "b29c486235227c339807755872c020af0b8df61a26812fa160230d74778ef277"
     },
     {
@@ -362,6 +364,7 @@
     "patches/host-account-catalog.patch",
     "patches/zcode-response.patch",
     "patches/workbuddy-usage.patch",
-    "patches/loomy-models.patch"
+    "patches/loomy-models.patch",
+    "patches/model-quota-expiry.patch"
   ]
 }

@@ -136,11 +136,15 @@ test('Loomy reports spent credits, percentage, and remaining balance in their ow
   expect(usage.windows[1]).toMatchObject({ balance: 10.0625, unit: 'credits', display: '10.0625 credits' });
   expect(usage.windows[1].used).toBeUndefined();
   expect(usage.windows[1].limit).toBeUndefined();
+  expect(usage.windows[0].runsOut).toBe(37.59375);
+  expect(usage.windows[0].runsOutAt).toBe(usage.windows[0].resetsAt);
+  expect(usage.windows[0].aside).toBe(true);
+  expect(usage.windows[2]).toMatchObject({ balance: 47.65625, unit: 'credits' });
 });
 
 test('Loomy balance-only wallets keep unknown totals and usage unknown', async () => {
   const usage = await loomyUsage({ dailyBalance: '123.0625', balance: 0 });
-  expect(usage.windows).toHaveLength(2);
+  expect(usage.windows).toHaveLength(3);
   expect(usage.windows[0]).toMatchObject({ balance: 123.0625, unit: 'credits', display: '123.0625 credits' });
   expect(usage.windows[1].balance).toBe(0);
   for (const window of usage.windows) {

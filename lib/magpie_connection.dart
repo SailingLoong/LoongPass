@@ -1,7 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'plugin_model_service.dart';
+import 'plugin_model_catalog.dart';
+
+class MagpieCommandFailure implements Exception {
+  const MagpieCommandFailure({this.missingGroup = false});
+  final bool missingGroup;
+  @override
+  String toString() => 'Magpie command failed';
+}
 
 /// Native observations only. Saved account IDs do not certify inference.
 class MagpieInspection {
@@ -182,6 +189,110 @@ class MagpieConnection {
     }
   }
 
+  /// Groups retain supplier model IDs so Magpie owns capability selection and
+  /// protocol conversion. Middleware exposes the canonical public names.
+  Future<void> syncRouting(
+    String bridgePath,
+    List<PluginModel> models, {
+    Set<String> previousGroups = const {},
+  }) async {
+    final command =
+        _command ??
+        (List<String> args, {String? input}) async =>
+            _run(await _executable(), args, input: input);
+    final listing = jsonDecode(await command(['plugin', 'list', '--json']));
+    final provider = listing is Map
+        ? (listing['providers'] as List? ?? const [])
+              .whereType<Map>()
+              .where((p) => p['id'] == 'loongpass')
+              .firstOrNull
+        : null;
+    final selected = models
+        .where(
+          (m) =>
+              m.official &&
+              m.enabled &&
+              m.bindings.any(
+                (b) => b.enabled && b.grant.enabled && b.account.active,
+              ),
+        )
+        .toList();
+    if (selected.isNotEmpty && provider?['accountId'] is! String) {
+      throw StateError('Magpie primary account unavailable');
+    }
+    final groups = <String, List<String>>{};
+    final pools = <String, Map<String, dynamic>>{};
+    final routes = <String, String>{};
+    for (final model in selected) {
+      final bindings = model.bindings.where(
+        (b) => b.enabled && b.grant.enabled && b.account.active,
+      );
+      groups[model.groupId] = bindings
+          .map((b) => 'loongpass/${b.exportedId}')
+          .toSet()
+          .toList();
+      routes[model.publicId] = 'group/${model.groupId}';
+      final accounts = <String, dynamic>{};
+      for (final key in bindings.map((b) => b.account.key).toSet()) {
+        final sources = bindings.where((b) => b.account.key == key);
+        accounts[key] = {
+          'available': sources.any((b) => b.available),
+          'expires': sources
+              .where((b) => b.available && b.expiry != null)
+              .map((b) => b.expiry!.at.millisecondsSinceEpoch)
+              .toSet()
+              .toList(),
+        };
+      }
+      pools['group/${model.groupId}'] = accounts;
+    }
+    if (groups.isNotEmpty) {
+      groups['loongpass-auto'] = selected
+          .map((m) => 'group/${m.groupId}')
+          .toList();
+      routes['loongpass/auto'] = 'group/loongpass-auto';
+    }
+    for (final entry in groups.entries) {
+      final options = [
+        'models=${entry.value.join(',')}',
+        'routing=${entry.key == 'loongpass-auto' ? 'order' : 'bridge/quota'}',
+        'stays=session',
+        'listed=no',
+      ];
+      try {
+        await command(['group', 'set', entry.key, ...options]);
+      } on MagpieCommandFailure catch (error) {
+        if (!error.missingGroup) rethrow;
+        await command([
+          'group',
+          'add',
+          entry.key,
+          'id=${entry.key}',
+          ...options,
+        ]);
+      }
+    }
+    // Expose aliases only after every target exists. A retry can complete a
+    // partially written group without pointing new requests at a missing one.
+    await command([
+      'plugin',
+      'options',
+      bridgePath,
+      jsonEncode({
+        'routes': routes,
+        'pools': pools,
+        'defaultAccount': provider?['accountId'],
+      }),
+    ]);
+    for (final id in previousGroups.difference(groups.keys.toSet())) {
+      try {
+        await command(['group', 'rm', id]);
+      } on MagpieCommandFailure catch (error) {
+        if (!error.missingGroup) rethrow;
+      }
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _installedProviders() async {
     // Installed layouts only. Portable Magpie chooses its own data directory;
     // never use the installed profile to authorize deleting a portable row.
@@ -250,7 +361,12 @@ class MagpieConnection {
               return bytes;
             })
             .then(utf8.decode),
-        errors = child.stderr.drain<void>();
+        errors = child.stderr
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .fold<String>(
+              '',
+              (value, chunk) => value.length >= 16384 ? value : value + chunk,
+            );
     if (input != null) child.stdin.write(input);
     await child.stdin.close();
     try {
@@ -259,7 +375,15 @@ class MagpieConnection {
         output,
         errors,
       ], eagerError: true).timeout(timeout);
-      if (results[0] != 0) throw StateError('Magpie connection was not saved');
+      if (results[0] != 0) {
+        // Keep native diagnostics private. Only classify the exact documented
+        // missing-group result needed for idempotent create/remove operations.
+        final missing =
+            arguments.length >= 3 &&
+            arguments.first == 'group' &&
+            (results[2] as String).contains('no group "${arguments[2]}"');
+        throw MagpieCommandFailure(missingGroup: missing);
+      }
       return results[1] as String;
     } finally {
       child.kill();

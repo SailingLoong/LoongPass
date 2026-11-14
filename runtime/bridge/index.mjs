@@ -133,7 +133,13 @@ export const LoongPassPlugin = async () => ({
       }
     },
     async usage(getAuth, _provider, { signal } = {}) {
-      return (await catalog(await getAuth(), signal)).usage
+      const snapshot = await catalog(await getAuth(), signal)
+      if (!snapshot.usage) return snapshot.usage
+      return { ...snapshot.usage, windows: (snapshot.usage.windows ?? []).map(window => ({
+        ...window,
+        ...(Array.isArray(window.models) ? { models: window.models.map(id => `${snapshot.account.provider}/${id}`) } : {}),
+        ...(Array.isArray(window.notModels) ? { notModels: window.notModels.map(id => `${snapshot.account.provider}/${id}`) } : {}),
+      })) }
     },
   },
   provider: {
@@ -141,10 +147,22 @@ export const LoongPassPlugin = async () => ({
     async models(provider, { auth, signal } = {}) {
       if (!auth) return provider.models ?? {}
       const snapshot = await catalog(auth, signal)
-      return Object.fromEntries(snapshot.models.map(native => {
+      const models = Object.fromEntries(snapshot.models.map(native => {
         const model = modelOf(snapshot.account.provider, native)
         return [model.id, model]
       }))
+      for (const canonical of snapshot.publicModels ?? []) {
+        const native = snapshot.models.find(model => model.id === canonical.nativeId)
+        if (!native) continue
+        const model = modelOf(snapshot.account.provider, native)
+        // Public entries are resolved by the native gateway middleware. Their
+        // sentinel API IDs cannot pass the local native-fetch admission check
+        // if that middleware was disabled or failed to load.
+        models[canonical.id] = { ...model, id: canonical.id, name: canonical.name,
+          api: { ...model.api, id: `loongpass/${canonical.id}` } }
+        models.auto ??= { ...model, id: 'auto', name: 'Auto', api: { ...model.api, id: 'loongpass/auto' } }
+      }
+      return models
     },
   },
   config(config) {

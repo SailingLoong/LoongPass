@@ -52,6 +52,13 @@ beforeEach(() => {
 afterEach(() => {globalThis.fetch = realFetch;});
 afterAll(async () => {await rm(directory,{recursive:true,force:true});});
 
+test('gift quota exposes the remaining batch expiry for model routing', async () => {
+  const gift = await native.giftOf(native.stateOf(auth));
+  expect(gift.windows[0].runsOutAt).toBe(new Date((now + 3600) * 1000).toISOString());
+  expect(gift.windows[0].runsOut).toBe(750);
+  expect(gift.windows[0].models).toEqual(['glm-5.3-flash']);
+});
+
 for (const mode of ['freeFirst','trial','plan fallback']) {
   for (const streamed of [false,true]) {
     test(`ZCode ${mode} ${streamed ? 'SSE' : 'JSON'} preserves model identity and ToolSearch replies together`, async () => {

@@ -141,7 +141,10 @@ void main() {
           },
         });
         final rows = await bridge.call('providers', {}) as List;
-        expect((rows.single['models'] as List).map((m) => m['id']), ['fixture/fixture-model', 'fixture/image']);
+        expect((rows.single['models'] as List).map((m) => m['id']), [
+          'fixture/fixture-model',
+          'fixture/image',
+        ]);
         final through = bridge.fetch({
           'provider': 'loongpass',
           'model': 'fixture-wire',
@@ -163,12 +166,49 @@ void main() {
         await bridge.close();
         await bridgeDir.delete(recursive: true);
       }
+      // Reading either side of the many-to-many view uses the same grants.
+      await service.setModelAccountEnabled(
+        'fixture/fixture-model',
+        'fixture#a',
+        false,
+      );
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        429,
+      );
+      expect(
+        service.catalog
+            .singleWhere((m) => m.id == 'fixture/fixture-model')
+            .availableAccounts,
+        1,
+      );
+      await service.setModelAccountEnabled(
+        'fixture/fixture-model',
+        'fixture#a',
+        true,
+      );
+      await service.reorderModels(['fixture/image', 'fixture/fixture-model']);
+      expect(service.catalog.first.id, 'fixture/image');
+      expect(modelStore.data['routing']['order'], [
+        'fixture/image',
+        'fixture/fixture-model',
+      ]);
+      await service.setModelEnabled('fixture/fixture-model', false);
+      expect(
+        (jsonDecode((await request('/plugin/catalog')).$3)['models'] as List)
+            .map((m) => m['id']),
+        ['image'],
+      );
+      await service.setModelEnabled('fixture/fixture-model', true);
       final refused = await request('/plugin/fetch', body: envelope('refused'));
       expect(refused.$1, 429);
       expect(refused.$2['retry-after'], '7');
       expect(jsonDecode(refused.$3)['error']['code'], 11128);
       expect(
-        (await request('/plugin/fetch', body: {...envelope('videos'), 'model': 'video-wire'})).$1,
+        (await request(
+          '/plugin/fetch',
+          body: {...envelope('videos'), 'model': 'video-wire'},
+        )).$1,
         400,
         reason: 'An unsupported video job must not be created through a model grant.',
       );
