@@ -1,0 +1,90 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../lib/app_sidebar.dart';
+import '../lib/main.dart';
+import '../lib/plugin_model_page.dart';
+import '../lib/ui_preferences.dart';
+import 'desktop_test_app.dart';
+import 'model_workspace_fixture.dart';
+
+void main() {
+  testDesktopWidgets(
+    'root composition follows model order and opens the exact regional account',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final app = ModelWorkspaceFixture();
+      final preferences = UiPreferences()..setModelsExpanded(true);
+      addTearDown(app.dispose);
+      addTearDown(preferences.dispose);
+      await tester.pumpWidget(
+        AccountToolApp(application: app, preferences: preferences),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('model-nav-auto')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<PluginModelServicesPage>(
+              find.byType(PluginModelServicesPage),
+            )
+            .selectedModelId,
+        'deepseek-flash',
+      );
+      await tester.tap(find.text('日常账号 14').hitTestable());
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('account-qoderCn/saved-13')).hitTestable(),
+        findsOneWidget,
+      );
+      final selected = find.byWidgetPredicate(
+        (widget) => widget is Semantics && widget.properties.selected == true,
+      );
+      expect(
+        find.ancestor(
+          of: find.byKey(const Key('account-qoderCn/saved-13')),
+          matching: selected,
+        ),
+        findsOneWidget,
+      );
+      expect(app.accounts.refreshes, 0);
+
+      await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('海外账号').hitTestable());
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('account-qoder/global-13')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(
+        find.ancestor(
+          of: find.byKey(const Key('account-qoder/global-13')),
+          matching: selected,
+        ),
+        findsOneWidget,
+      );
+
+      await app.models.reorderModels(['deepseek-flash', 'MiniMax-M3']);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.byKey(const Key('model-nav-deepseek-flash'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('model-nav-MiniMax-M3'))).dy,
+        ),
+      );
+      await tester.tap(find.byKey(const Key('model-nav-auto')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
+        'auto',
+      );
+      expect(find.textContaining('loongpass/auto').hitTestable(), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}

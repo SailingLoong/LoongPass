@@ -15,6 +15,7 @@ import 'workspace_accounts.dart';
 import 'workspace_tools.dart';
 import 'app_updates.dart';
 import 'plugin_application.dart';
+import 'plugin_accounts.dart';
 import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
 import 'invitation_settings.dart';
@@ -34,9 +35,15 @@ Future<void> main() async {
 }
 
 class AccountToolApp extends StatefulWidget {
-  const AccountToolApp({super.key, this.preferences, this.invitations});
+  const AccountToolApp({
+    super.key,
+    this.preferences,
+    this.invitations,
+    this.application,
+  });
   final UiPreferences? preferences;
   final Map<ManagedApp, InvitationSettings>? invitations;
+  final PluginApplication? application;
   @override
   State<AccountToolApp> createState() => _AccountToolAppState();
 }
@@ -52,6 +59,7 @@ class _AccountToolAppState extends State<AccountToolApp> {
   late final _home = _AccountPage(
     preferences: _preferences,
     invitations: _invitations,
+    application: widget.application,
   );
   @override
   void dispose() {
@@ -84,9 +92,14 @@ class _AccountToolAppState extends State<AccountToolApp> {
 
 /// Composition owns mounted platform pages; auxiliary pages only read UI snapshots.
 class _AccountPage extends StatefulWidget {
-  const _AccountPage({required this.preferences, required this.invitations});
+  const _AccountPage({
+    required this.preferences,
+    required this.invitations,
+    this.application,
+  });
   final UiPreferences preferences;
   final Map<ManagedApp, InvitationSettings> invitations;
+  final PluginApplication? application;
   @override
   State<_AccountPage> createState() => _AccountPageState();
 }
@@ -96,7 +109,9 @@ class _AccountPageState extends State<_AccountPage> {
   final _registry = AccountWorkspaceRegistry();
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
+  final _accountsPage = GlobalKey<WorkspaceAccountsPageState>();
   PluginApplication? _application;
+  String? _selectedModelId;
   bool _starting = false;
   String? _startError;
 
@@ -105,7 +120,9 @@ class _AccountPageState extends State<_AccountPage> {
     super.initState();
     unawaited(_updates.load());
     unawaited(_codex.start());
-    if (nativeAccountsSupported) unawaited(_start());
+    _application = widget.application;
+    _application?.models.addListener(_modelsChanged);
+    if (_application == null && nativeAccountsSupported) unawaited(_start());
   }
 
   Future<void> _start() async {
@@ -120,6 +137,7 @@ class _AccountPageState extends State<_AccountPage> {
         await application.close();
         return;
       }
+      application.models.addListener(_modelsChanged);
       setState(() => _application = application);
     } catch (_) {
       if (mounted)
@@ -186,11 +204,40 @@ class _AccountPageState extends State<_AccountPage> {
       ),
   };
   void _openApp(ManagedApp app) => _workspace.currentState?.selectApp(app);
+
+  void _modelsChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_selectedModelId != 'auto' &&
+          !_application!.models.catalog.any(
+            (model) => model.id == _selectedModelId,
+          )) {
+        _selectedModelId = null;
+      }
+    });
+  }
+
+  void _selectModel(String? id) => setState(() => _selectedModelId = id);
+
+  void _openAccount(PluginAccount account) {
+    final app = ManagedApp.values
+        .where((app) => app.nativeProviders.contains(account.provider))
+        .firstOrNull;
+    if (app == null) return;
+    _workspace.currentState?.selectSection(WorkspaceSection.accounts);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted)
+        _accountsPage.currentState?.revealAccount('${app.name}/${account.key}');
+    });
+  }
+
   @override
   void dispose() {
     _updates.dispose();
     _codex.dispose();
-    if (_application != null) unawaited(_application!.close());
+    _application?.models.removeListener(_modelsChanged);
+    if (_application != null && widget.application == null)
+      unawaited(_application!.close());
     _registry.dispose();
     super.dispose();
   }
@@ -202,6 +249,12 @@ class _AccountPageState extends State<_AccountPage> {
       child: AppWorkspace(
         key: _workspace,
         preferences: widget.preferences,
+        modelIds: [
+          if (_application != null) 'auto',
+          ...?_application?.models.catalog.map((model) => model.id),
+        ],
+        selectedModelId: _selectedModelId,
+        onSelectModel: _selectModel,
         initialApp: ManagedApp.workbuddy,
         footerBuilder: (context, compact) => AppUpdateBadge(
           updates: _updates,
@@ -213,7 +266,12 @@ class _AccountPageState extends State<_AccountPage> {
         sections: {
           WorkspaceSection.models: _application == null
               ? _status
-              : PluginModelServicesPage(application: _application!),
+              : PluginModelServicesPage(
+                  application: _application!,
+                  selectedModelId: _selectedModelId,
+                  onSelectModel: _selectModel,
+                  onOpenAccount: _openAccount,
+                ),
           WorkspaceSection.settings: WorkspaceSettingsPage(
             preferences: widget.preferences,
             updates: _updates,
@@ -226,6 +284,7 @@ class _AccountPageState extends State<_AccountPage> {
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.accounts: WorkspaceAccountsPage(
+            key: _accountsPage,
             registry: _registry,
             serviceStatus: _application == null ? _status : null,
           ),

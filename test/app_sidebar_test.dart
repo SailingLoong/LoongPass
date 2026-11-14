@@ -58,6 +58,58 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testDesktopWidgets(
+    'a long model list scrolls without moving the main navigation',
+    (tester) async {
+      tester.view.physicalSize = const Size(1024, 480);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final preferences = UiPreferences()..setModelsExpanded(true);
+      addTearDown(preferences.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: AppWorkspace(
+              preferences: preferences,
+              modelIds: [for (var i = 0; i < 100; i++) 'model-$i'],
+              pages: const {},
+              sections: const {
+                WorkspaceSection.overview: Text('Overview'),
+                WorkspaceSection.models: Text('Models'),
+                WorkspaceSection.activity: Text('Activity'),
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final positions = {
+        for (final section in WorkspaceSection.values)
+          section: tester.getRect(find.byKey(ValueKey('nav-${section.name}'))),
+      };
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('model-nav-model-99')),
+        500,
+        scrollable: find.descendant(
+          of: find.byKey(const PageStorageKey('model-list')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('model-nav-model-99')).hitTestable(),
+        findsOneWidget,
+      );
+      for (final section in WorkspaceSection.values) {
+        final button = find.byKey(ValueKey('nav-${section.name}'));
+        expect(button.hitTestable(), findsOneWidget);
+        expect(tester.getRect(button), positions[section]);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testDesktopWidgets('models navigation can expand before the catalog loads', (
     tester,
   ) async {
