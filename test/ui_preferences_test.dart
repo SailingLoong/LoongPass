@@ -16,7 +16,6 @@ void main() {
       preferences.reorder(5, 0);
       preferences.toggleFavorite('qoderCn/same-id');
       preferences.setPageSize('workbuddy', 5);
-      preferences.setCollapsed(true);
       preferences.setTheme(ThemeMode.dark);
       preferences.setAppVisible(ManagedApp.qoder, false);
       preferences.setAppsExpanded(false);
@@ -38,7 +37,6 @@ void main() {
       expect(restored.isFavorite('qoder/same-id'), isFalse);
       expect(restored.pageSize('workbuddy'), 5);
       expect(restored.pageSize('qoder'), 10);
-      expect(restored.collapsed, isTrue);
       expect(restored.themeMode, ThemeMode.dark);
       expect(restored.isAppVisible(ManagedApp.qoder), isFalse);
       expect(restored.isAppVisible(ManagedApp.qoderCn), isTrue);
@@ -55,6 +53,7 @@ void main() {
           'appOrder': ['qoder', 'lobsterai', 'qoder', null, 'zcode'],
           'pageSizes': {'qoder': 999},
           'theme': 'invalid',
+          'collapsed': true,
         }),
       );
       await preferences.load();
@@ -73,6 +72,16 @@ void main() {
       expect(preferences.themeMode, ThemeMode.system);
       expect(ManagedApp.values.every(preferences.isAppVisible), isTrue);
       expect(preferences.appsExpanded, isTrue);
+      String? rewritten;
+      final legacy = UiPreferences(
+        read: () async => jsonEncode({'collapsed': true}),
+        write: (value) async => rewritten = value,
+      );
+      await legacy.load();
+      legacy.setComfortable(true);
+      await legacy.saved;
+      expect((jsonDecode(rewritten!) as Map).containsKey('collapsed'), isFalse);
+      legacy.dispose();
       final corrupt = UiPreferences(read: () async => '{bad json');
       await corrupt.load();
       expect(corrupt.appOrder, ManagedApp.values);
@@ -111,15 +120,15 @@ void main() {
         'codex',
       ]);
       fail = true;
-      preferences.setCollapsed(true);
+      preferences.setComfortable(true);
       await preferences.saved;
       expect(preferences.error, isNotNull);
-      expect(preferences.collapsed, isTrue);
+      expect(preferences.comfortable, isTrue);
       fail = false;
       preferences.retrySave();
       await preferences.saved;
       expect(preferences.error, isNull);
-      expect((jsonDecode(stored!) as Map)['collapsed'], true);
+      expect((jsonDecode(stored!) as Map)['comfortable'], true);
     },
   );
 }

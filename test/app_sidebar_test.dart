@@ -81,8 +81,14 @@ void main() {
           );
         await inter.load();
       });
-      await mount(tester);
+      final preferences = UiPreferences(read: () async => '{"collapsed":true}');
+      addTearDown(preferences.dispose);
+      await preferences.load();
+      await mount(tester, preferences: preferences);
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 192);
       expect(find.byKey(const Key('platform-filter')), findsNothing);
+      expect(find.byKey(const Key('toggle-sidebar')), findsNothing);
+      expect(find.byKey(const Key('app-all')), findsNothing);
       expect(find.text('Qoder CN'), findsOneWidget);
       for (final app in ManagedApp.values) {
         final paragraph = tester.renderObject<RenderParagraph>(
@@ -105,11 +111,22 @@ void main() {
       expect(find.text('Magpie models'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
-      expect(find.text('keep me'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('toggle-sidebar')));
+      expect(find.text('All accounts'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-qoder')));
       await tester.pumpAndSettle();
       expect(find.text('keep me'), findsOneWidget);
+      tester.view.physicalSize = const Size(480, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
       expect(findTooltip('账号与积分'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('app-brand')));
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+      expect(find.text('keep me'), findsOneWidget);
+      tester.view.physicalSize = const Size(1024, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 192);
+      expect(find.text('keep me'), findsOneWidget);
     },
   );
 
@@ -219,40 +236,57 @@ void main() {
     },
   );
 
-  testDesktopWidgets(
-    'the group collapses without navigating and all apps can be restored in a narrow window',
-    (tester) async {
-      final preferences = UiPreferences();
-      addTearDown(preferences.dispose);
-      await mount(
-        tester,
-        preferences: preferences,
-        width: 480,
-        enabledApps: {ManagedApp.zcode, ManagedApp.qoder},
-      );
-      await tester.tap(find.byKey(const Key('app-zcode')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('nav-accounts')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('account-apps')), findsNothing);
-      expect(find.text('ZCode content'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('nav-accounts')));
-      await tester.pumpAndSettle();
-      for (final app in [ManagedApp.zcode, ManagedApp.qoder]) {
-        await tester.tap(find.byKey(ValueKey('hide-${app.name}')));
+  for (final width in [480.0, 1024.0]) {
+    testDesktopWidgets(
+      'account summary and spacious app disclosure are independent at $width',
+      (tester) async {
+        final preferences = UiPreferences();
+        addTearDown(preferences.dispose);
+        await mount(
+          tester,
+          preferences: preferences,
+          width: width,
+          enabledApps: {ManagedApp.zcode, ManagedApp.qoder},
+        );
+        await tester.tap(find.byKey(const Key('app-zcode')));
         await tester.pumpAndSettle();
-      }
-      expect(find.text('All accounts'), findsOneWidget);
-      expect(find.byKey(const Key('app-all')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('show-apps')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('show-workbuddy')), findsNothing);
-      await tester.tap(find.byKey(const Key('show-zcode')));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('app-zcode')), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        final disclosure = tester.getRect(
+          find.byKey(const Key('toggle-account-apps')),
+        );
+        final parent = tester.getRect(find.byKey(const Key('nav-accounts')));
+        expect(disclosure.width, greaterThanOrEqualTo(32));
+        expect(disclosure.height, greaterThanOrEqualTo(32));
+        expect(disclosure.overlaps(parent), isFalse);
+        await tester.tapAt(disclosure.centerLeft + const Offset(2, 0));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-apps')), findsNothing);
+        expect(find.text('ZCode content'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('nav-accounts')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-apps')), findsNothing);
+        expect(find.text('All accounts'), findsOneWidget);
+        expect(find.byKey(const Key('app-all')), findsNothing);
+        await tester.tap(find.byKey(const Key('toggle-account-apps')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('nav-accounts')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-apps')), findsOneWidget);
+        for (final app in [ManagedApp.zcode, ManagedApp.qoder]) {
+          await tester.tap(find.byKey(ValueKey('hide-${app.name}')));
+          await tester.pumpAndSettle();
+        }
+        expect(find.text('All accounts'), findsOneWidget);
+        expect(find.byKey(const Key('app-all')), findsNothing);
+        await tester.tap(find.byKey(const Key('show-apps')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('show-workbuddy')), findsNothing);
+        await tester.tap(find.byKey(const Key('show-zcode')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('app-zcode')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testDesktopWidgets(
     'dragging visible apps respects hidden entries and keeps the selected page',

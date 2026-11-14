@@ -119,14 +119,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                         );
                 },
               ),
-              const SizedBox(height: 16),
-              FSwitch(
-                value: preferences.collapsed,
-                label: const Text('精简导航'),
-                description: const Text('只显示任务图标，悬停可查看名称。'),
-                leadingLabel: true,
-                onChange: preferences.setCollapsed,
-              ),
             ],
           ),
         ),
