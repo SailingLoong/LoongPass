@@ -410,11 +410,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       sort: _AccountSort.name,
     ),
     if (_hasCredits) ...[
-      (label: '余额', width: 140, sort: null),
       (label: '即将到期额度', width: 128, sort: null),
       (label: '到期时间', width: 120, sort: _AccountSort.expiry),
     ],
     if (_hasRewards) (label: '最近领取时间', width: 132, sort: _AccountSort.claim),
+    if (_hasCredits) (label: '余额', width: 140, sort: null),
     if (!_hasCredits) (label: '套餐 / 工作区', width: 240, sort: null),
   ];
 
@@ -503,6 +503,11 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
       onDetails: () => _details(entry.id),
     ),
     if (_hasCredits) ...[
+      entry.hasCredits ? _expiry(entry) : _cell('不适用'),
+      entry.hasCredits ? _expiry(entry, time: true) : _cell('不适用'),
+    ],
+    if (_hasRewards) entry.hasRewards ? _claimTime(entry) : _cell('不适用'),
+    if (_hasCredits)
       entry.hasCredits
           ? _actionCell(
               key: 'balance-${entry.id}',
@@ -515,10 +520,6 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
               ),
             )
           : _cell('不适用'),
-      entry.hasCredits ? _expiry(entry) : _cell('不适用'),
-      entry.hasCredits ? _expiry(entry, time: true) : _cell('不适用'),
-    ],
-    if (_hasRewards) entry.hasRewards ? _claimTime(entry) : _cell('不适用'),
     if (!_hasCredits) _cell(entry.accountSummary ?? entry.identity),
   ];
 

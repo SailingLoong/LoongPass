@@ -311,11 +311,31 @@ void main() {
   );
 
   testDesktopWidgets(
-    'nested application navigation preserves regional choices and unfinished input',
+    'nested application navigation shows full names and preserves unfinished input',
     (tester) async {
+      await tester.runAsync(() async {
+        final inter = FontLoader(FTypeface.defaultFontFamily)
+          ..addFont(
+            rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'),
+          );
+        await inter.load();
+      });
       await mount(tester);
       expect(find.byKey(const Key('platform-filter')), findsNothing);
       expect(find.text('Qoder CN'), findsOneWidget);
+      for (final app in ManagedApp.values) {
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.text(app.label),
+            matching: find.byType(RichText),
+          ),
+        );
+        expect(
+          paragraph.didExceedMaxLines,
+          isFalse,
+          reason: '${app.label} should be fully visible',
+        );
+      }
       await tester.tap(find.byKey(const Key('app-qoder')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const Key('draft')), 'keep me');

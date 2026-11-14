@@ -58,7 +58,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final labels = ['账号', '余额', '即将到期额度', '到期时间', '最近领取时间'];
+      final labels = ['账号', '即将到期额度', '到期时间', '最近领取时间', '余额'];
       var previous = -1.0;
       for (final label in labels) {
         expect(find.text(label), findsOneWidget);
@@ -67,7 +67,17 @@ void main() {
         expect(bounds.height, lessThan(30));
         previous = bounds.left;
       }
-      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
+      for (final (label, key) in [
+        ('即将到期额度', 'expiry-one'),
+        ('到期时间', 'expiry-time-one'),
+        ('最近领取时间', 'claim-one'),
+        ('余额', 'balance-one'),
+      ]) {
+        final heading = tester.getRect(find.text(label));
+        final cell = tester.getRect(find.byKey(ValueKey(key)));
+        expect(heading.left, greaterThanOrEqualTo(cell.left));
+        expect(heading.right, lessThanOrEqualTo(cell.right));
+      }
       final horizontal = find.byKey(const Key('account-table-scroll'));
       final controller = tester
           .widget<SingleChildScrollView>(horizontal)
@@ -84,6 +94,7 @@ void main() {
       );
       await tester.drag(horizontal, const Offset(-500, 0));
       await tester.pumpAndSettle();
+      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
       expect(find.text('09:30').hitTestable(), findsOneWidget);
       expect(find.text('最近领取时间').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -537,9 +548,10 @@ void main() {
       await tester.drag(horizontal, const Offset(-600, 0));
       await tester.pumpAndSettle();
       expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
+      expect(find.text('余额').first.hitTestable(), findsOneWidget);
       await tester.drag(horizontal, const Offset(600, 0));
       await tester.pumpAndSettle();
-      expect(find.text('余额').first.hitTestable(), findsOneWidget);
+      expect(find.text('账号').first.hitTestable(), findsOneWidget);
     },
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
