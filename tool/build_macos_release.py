@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Serialize universal macOS builds and reuse the native compiler cache."""
 import fcntl
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import os
 from pathlib import Path
 import plistlib
@@ -28,9 +28,9 @@ def verify_app(app):
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
 
 
-def main():
-    root = Path(__file__).resolve().parents[1]
-    verify_plugin_sources(root)
+@contextmanager
+def build_lock(root):
+    """Use the shared machine/project locks for every native build."""
     cache = Path.home() / "Library/Caches/LoongPass"
     cache.mkdir(parents=True, exist_ok=True)
     with ExitStack() as locks:
@@ -42,6 +42,13 @@ def main():
                 raise SystemExit("Another build owns the shared or project build lock.")
         if shutil.disk_usage(root).free < 8 * 1024**3:
             raise SystemExit("At least 8 GiB of free space is required for packaging.")
+        yield cache
+
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    verify_plugin_sources(root)
+    with build_lock(root) as cache:
         environment = os.environ.copy()
         environment.pop("CI", None)
         environment.pop("FLUTTER_MACOS_ARM64_ONLY", None)

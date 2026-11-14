@@ -43,6 +43,33 @@ void main() {
   }
 
   testDesktopWidgets(
+    'platform selection keeps button semantics when changing to WorkBuddy CN',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await mount(tester);
+        final selector = find.byKey(const Key('platform-filter'));
+        final node = tester.getSemantics(selector);
+        final before = node.getSemanticsData();
+        expect(before.flagsCollection.isTextField, isFalse);
+        expect(before.flagsCollection.isButton, isTrue);
+        tester.semantics.tap(find.semantics.byLabel(before.label));
+        await tester.pumpAndSettle();
+        expect(find.bySemanticsLabel('WorkBuddy · 国内版'), findsOneWidget);
+        await tester.tap(find.text('WorkBuddy · 国内版').last);
+        await tester.pumpAndSettle();
+        final after = tester.getSemantics(selector).getSemanticsData();
+        expect(after.flagsCollection.isTextField, isFalse);
+        expect(after.flagsCollection.isButton, isTrue);
+        expect(after.label, contains('WorkBuddy · 国内版'));
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+
+  testDesktopWidgets(
     'platform selector preserves regional choices and unfinished input',
     (tester) async {
       await mount(tester);

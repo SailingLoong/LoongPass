@@ -8,6 +8,7 @@ import 'package:forui/forui.dart';
 import 'account_table_entry.dart';
 export 'account_table_entry.dart';
 import 'account_details.dart';
+import 'select_field_semantics.dart';
 import 'ui_preferences.dart';
 import 'account_workspace_registry.dart';
 
@@ -171,6 +172,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                   ),
                 );
                 final sort = FSelect<String>(
+                  builder: selectFieldSemantics,
                   key: const Key('account-sort'),
                   size: FTextFieldSizeVariant.sm,
                   items: {
@@ -327,6 +329,7 @@ class _CompactAccountsTableState extends State<CompactAccountsTable> {
                 SizedBox(
                   width: 128 * _textScale,
                   child: FSelect<int>(
+                    builder: selectFieldSemantics,
                     key: const Key('account-page-size'),
                     size: FTextFieldSizeVariant.sm,
                     items: {

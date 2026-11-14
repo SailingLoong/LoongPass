@@ -63,6 +63,9 @@ jobs:
       - name: Build universal macOS app
         if: env.PACKAGE_APP == 'true'
         run: python3 tool/build_macos_release.py
+      - name: Check native macOS selector accessibility
+        if: env.PACKAGE_APP == 'true'
+        run: python3 tool/check_macos_select_semantics.py
       - name: Package source-matched app
         if: env.PACKAGE_APP == 'true'
         run: |

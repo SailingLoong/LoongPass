@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'app_navigation_item.dart';
+import 'select_field_semantics.dart';
 import 'managed_app.dart';
 import 'ui_preferences.dart';
 import 'workspace_tools.dart';
@@ -216,6 +217,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 320),
                             child: FSelect<String>(
+                              builder: selectFieldSemantics,
                               key: const Key('platform-filter'),
                               size: FTextFieldSizeVariant.sm,
                               items: {
