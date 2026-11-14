@@ -191,13 +191,20 @@ class AppUpdateBadge extends StatelessWidget {
           child: FButton(
             variant: ready ? FButtonVariant.primary : FButtonVariant.ghost,
             size: FButtonSizeVariant.sm,
+            semanticsLabel: label,
             onPress: ready
                 ? (updates.canInstall ? updates.install : null)
                 : onOpen,
             prefix: compact ? null : icon,
             child: compact
                 ? icon
-                : Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                : Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
           ),
         ),
       );
