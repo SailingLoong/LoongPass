@@ -111,6 +111,8 @@ ZCode 的 `-Trial` 模型仅使用 Start Plan 赠送权益；普通模型沿用�
 
 DeepSeek Harness 的父子会话可共用这条模型链路。开启 Agent Teams、选择子 agent 模型，以及为独立 Superagent profile 配置模型，见 [Teams / Superagent 接入指南](docs/dsh-multi-agent.md)。
 
+飞书可通过长连接向本机 DSH 派发任务，接收结果与审批。固定版本安装、独立 profile 配置和使用步骤见 [飞书接入指南](docs/dsh-feishu.md)。
+
 ## 从源码构建
 
 使用`pubspec.yaml` 指定的 Flutter 和锁定依赖。macOS 还需 Xcode 与仓库指定的 Rust 工具链，Windows 还需 Visual Studio 2022 的 C++ 桌面开发工具、CMake、Python、NuGet CLI 与 PowerShell 7。
