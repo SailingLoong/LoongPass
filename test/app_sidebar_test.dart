@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -13,9 +14,10 @@ void main() {
     WidgetTester tester, {
     UiPreferences? preferences,
     double width = 1024,
+    double height = 900,
     Set<ManagedApp>? enabledApps,
   }) async {
-    tester.view.physicalSize = Size(width, 900);
+    tester.view.physicalSize = Size(width, height);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -26,8 +28,10 @@ void main() {
             preferences: preferences,
             enabledApps: enabledApps,
             sections: const {
+              WorkspaceSection.overview: Text('Overview'),
               WorkspaceSection.accounts: Text('All accounts'),
               WorkspaceSection.models: Text('Magpie models'),
+              WorkspaceSection.activity: Text('Recent claims'),
             },
             pages: const {
               ManagedApp.zcode: Text('ZCode content'),
@@ -45,6 +49,162 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('平台顺序'));
     await tester.pumpAndSettle();
+  }
+
+  testDesktopWidgets(
+    'expanded navigation aligns labels and keeps regional names clear of actions',
+    (tester) async {
+      await tester.runAsync(() async {
+        final inter = FontLoader(FTypeface.defaultFontFamily)
+          ..addFont(
+            rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'),
+          );
+        final sourceHan = FontLoader('SourceHanSansSC')
+          ..addFont(rootBundle.load('assets/fonts/SourceHanSansSC-VF.ttf'));
+        await Future.wait([inter.load(), sourceHan.load()]);
+      });
+      await mount(tester);
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 208);
+      expect(find.byKey(const Key('show-apps')), findsNothing);
+      final accountLabel = find.descendant(
+        of: find.byKey(const Key('nav-accounts')),
+        matching: find.text('账号与积分'),
+      );
+      final labelLeft = tester.getTopLeft(accountLabel).dx;
+      for (final app in ManagedApp.values) {
+        final button = find.byKey(ValueKey('app-${app.name}'));
+        final label = find.descendant(
+          of: button,
+          matching: find.text(app.label),
+        );
+        final paragraph = tester.renderObject<RenderParagraph>(label);
+        final boxes = paragraph.getBoxesForSelection(
+          TextSelection(baseOffset: 0, extentOffset: app.label.length),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: app.label);
+        expect(tester.getTopLeft(label).dx, labelLeft, reason: app.label);
+        expect(tester.getSize(button).height, 36, reason: app.label);
+        expect(
+          paragraph.localToGlobal(Offset(boxes.last.right, 0)).dx,
+          lessThan(
+            tester.getRect(find.byKey(ValueKey('hide-${app.name}'))).left,
+          ),
+          reason: app.label,
+        );
+      }
+      final label = find.text('MiniMax CN');
+      final before = tester.getRect(label);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(label));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(label), before);
+      expect(
+        find.byKey(const Key('hide-minimaxCn')).hitTestable(),
+        findsOneWidget,
+      );
+      await mouse.removePointer();
+      Focus.of(tester.element(label)).requestFocus();
+      await tester.pumpAndSettle();
+      expect(tester.getRect(label), before);
+      expect(
+        find.byKey(const Key('hide-minimaxCn')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'automatic compact navigation preserves the manual preference and mounted drafts',
+    (tester) async {
+      final writes = <String>[];
+      final preferences = UiPreferences(
+        write: (value) async => writes.add(value),
+      );
+      addTearDown(preferences.dispose);
+      await mount(tester, preferences: preferences);
+      await tester.tap(find.byKey(const Key('app-qoder')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('draft')), 'keep on resize');
+
+      tester.view.physicalSize = const Size(800, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+      expect(preferences.collapsed, isFalse);
+      expect(writes, isEmpty);
+      expect(find.text('keep on resize'), findsOneWidget);
+
+      tester.view.physicalSize = const Size(1024, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 208);
+      await tester.tap(find.byKey(const Key('toggle-sidebar')));
+      await tester.pumpAndSettle();
+      await preferences.saved;
+      expect(preferences.collapsed, isTrue);
+      expect(writes, hasLength(1));
+
+      tester.view.physicalSize = const Size(800, 900);
+      await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(1024, 900);
+      await tester.pumpAndSettle();
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+      expect(preferences.collapsed, isTrue);
+      expect(writes, hasLength(1));
+      expect(find.text('keep on resize'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final size in [const Size(800, 632), const Size(1024, 480)]) {
+    testDesktopWidgets(
+      'main navigation stays visible while applications scroll at $size',
+      (tester) async {
+        await mount(tester, width: size.width, height: size.height);
+        final positions = <WorkspaceSection, Rect>{};
+        for (final section in WorkspaceSection.values) {
+          final button = find.byKey(ValueKey('nav-${section.name}'));
+          expect(button.hitTestable(), findsOneWidget);
+          positions[section] = tester.getRect(button);
+        }
+        final list = find.byKey(const PageStorageKey('account-app-scroll'));
+        final scrollable = find.descendant(
+          of: list,
+          matching: find.byType(Scrollable),
+        );
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: tester.getCenter(list),
+            scrollDelta: const Offset(0, 600),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.state<ScrollableState>(scrollable).position.pixels,
+          greaterThan(0),
+        );
+        for (final section in WorkspaceSection.values) {
+          final button = find.byKey(ValueKey('nav-${section.name}'));
+          expect(button.hitTestable(), findsOneWidget);
+          expect(tester.getRect(button), positions[section]);
+        }
+        expect(find.byKey(const Key('app-all')).hitTestable(), findsOneWidget);
+        await tester.tap(find.byKey(const Key('app-codex')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('nav-models')));
+        await tester.pumpAndSettle();
+        expect(find.text('Magpie models'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('nav-accounts')));
+        await tester.pumpAndSettle();
+        expect(find.text('Codex 尚未接入'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('nav-activity')));
+        await tester.pumpAndSettle();
+        expect(find.text('Recent claims'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('nav-settings')));
+        await tester.pumpAndSettle();
+        expect(find.text('平台偏好'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testDesktopWidgets(
@@ -217,10 +377,17 @@ void main() {
       expect(find.text('ZCode content'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer();
       for (final app in [ManagedApp.zcode, ManagedApp.qoder]) {
+        await mouse.moveTo(
+          tester.getCenter(find.byKey(ValueKey('app-${app.name}'))),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(ValueKey('hide-${app.name}')));
         await tester.pumpAndSettle();
       }
+      await mouse.removePointer();
       expect(find.text('All accounts'), findsOneWidget);
       expect(find.byKey(const Key('app-all')), findsOneWidget);
       await tester.tap(find.byKey(const Key('show-apps')));

@@ -31,6 +31,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
   @override
   Widget build(BuildContext context) {
     final app = widget.app;
+    final actionsVisible = _hovered || _focused;
     Widget icon = ManagedAppIcon(app: app);
     if (widget.onHide != null)
       icon = ReorderableDragStartListener(
@@ -60,6 +61,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                 widget.onMove(1),
           },
           child: Focus(
+            canRequestFocus: false,
             onFocusChange: (v) => setState(() => _focused = v),
             child: Semantics(
               key: ValueKey('selected-${app.name}'),
@@ -69,67 +71,68 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                     widget.onMove(-1),
                 const CustomSemanticsAction(label: '向下移动应用'): () =>
                     widget.onMove(1),
+                if (widget.onHide != null)
+                  const CustomSemanticsAction(label: '隐藏应用'): widget.onHide!,
               },
               child: Stack(
                 children: [
-                  Padding(
-                    padding: EdgeInsets.only(
-                      right: widget.onHide != null && !widget.compact ? 24 : 0,
-                    ),
-                    child: SidebarNavigationButton(
-                      key: ValueKey('app-${app.name}'),
-                      label: app.label,
-                      icon: icon,
-                      compact: widget.compact,
-                      selected: widget.selected,
-                      onPressed: widget.onPressed,
-                      trailing: widget.compact || widget.onHide != null
-                          ? null
-                          : Opacity(
-                              opacity: _hovered || _focused ? 1 : 0,
-                              child: ReorderableDragStartListener(
-                                key: ValueKey('drag-${app.name}'),
-                                index: widget.index,
-                                child: MouseRegion(
-                                  cursor: SystemMouseCursors.grab,
-                                  child: Semantics(
-                                    label: '拖动排序 · Option + ↑ / ↓',
-                                    child: Icon(
-                                      FLucideIcons.gripVertical,
-                                      size: 16,
-                                    ),
+                  SidebarNavigationButton(
+                    key: ValueKey('app-${app.name}'),
+                    label: app.label,
+                    tooltip: '${app.label} · ${app.region}',
+                    icon: icon,
+                    compact: widget.compact,
+                    selected: widget.selected,
+                    onPressed: widget.onPressed,
+                    trailing: widget.compact || widget.onHide != null
+                        ? null
+                        : Opacity(
+                            opacity: actionsVisible ? 1 : 0,
+                            child: ReorderableDragStartListener(
+                              key: ValueKey('drag-${app.name}'),
+                              index: widget.index,
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.grab,
+                                child: Semantics(
+                                  label: '拖动排序 · Option + ↑ / ↓',
+                                  child: Icon(
+                                    FLucideIcons.gripVertical,
+                                    size: 16,
                                   ),
                                 ),
                               ),
                             ),
-                    ),
+                          ),
                   ),
                   if (widget.onHide != null)
                     Positioned(
-                      right: 0,
-                      top: widget.compact ? 0 : 4,
-                      child: Opacity(
-                        opacity: _hovered || _focused ? 1 : 0,
-                        child: FTooltip(
-                          tipBuilder: (context, controller) =>
-                              Text('隐藏 ${app.label}'),
-                          child: SizedBox.square(
-                            dimension: widget.compact ? 18 : 24,
-                            child: FButton.icon(
-                              key: ValueKey('hide-${app.name}'),
-                              variant: FButtonVariant.ghost,
-                              size: FButtonSizeVariant.sm,
-                              style: const FButtonStyleDelta.delta(
-                                iconContentStyle:
-                                    FButtonIconContentStyleDelta.delta(
-                                      padding: EdgeInsetsGeometryDelta.value(
-                                        EdgeInsets.all(4),
+                      right: widget.compact ? 0 : 4,
+                      top: widget.compact ? 0 : 6,
+                      child: IgnorePointer(
+                        ignoring: !actionsVisible,
+                        child: Opacity(
+                          opacity: actionsVisible ? 1 : 0,
+                          child: FTooltip(
+                            tipBuilder: (context, controller) =>
+                                Text('隐藏 ${app.label}'),
+                            child: SizedBox.square(
+                              dimension: widget.compact ? 20 : 24,
+                              child: FButton.icon(
+                                key: ValueKey('hide-${app.name}'),
+                                variant: FButtonVariant.ghost,
+                                size: FButtonSizeVariant.sm,
+                                style: const FButtonStyleDelta.delta(
+                                  iconContentStyle:
+                                      FButtonIconContentStyleDelta.delta(
+                                        padding: EdgeInsetsGeometryDelta.value(
+                                          EdgeInsets.all(4),
+                                        ),
                                       ),
-                                    ),
+                                ),
+                                semanticsLabel: '隐藏 ${app.label}',
+                                onPress: widget.onHide,
+                                child: const Icon(FLucideIcons.x, size: 12),
                               ),
-                              semanticsLabel: '隐藏 ${app.label}',
-                              onPress: widget.onHide,
-                              child: const Icon(FLucideIcons.x, size: 12),
                             ),
                           ),
                         ),
@@ -166,14 +169,20 @@ class ManagedAppIcon extends StatelessWidget {
             Positioned(
               right: 0,
               bottom: 0,
-              child: Transform.scale(
+              child: FBadge(
                 key: ValueKey('region-${app.name}'),
-                scale: .55,
-                alignment: Alignment.bottomRight,
-                child: FBadge(
-                  variant: FBadgeVariant.secondary,
-                  child: Text(app.regionCode),
+                variant: FBadgeVariant.secondary,
+                style: const FBadgeStyleDelta.delta(
+                  padding: EdgeInsetsGeometryDelta.value(
+                    EdgeInsets.symmetric(horizontal: 2),
+                  ),
+                  labelTextStyle: TextStyleDelta.delta(
+                    fontSize: 7,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
+                child: Text(app.regionCode),
               ),
             ),
         ],
@@ -191,34 +200,48 @@ class SidebarNavigationButton extends StatelessWidget {
     required this.selected,
     required this.onPressed,
     this.trailing,
+    this.tooltip,
   });
   final String label;
   final Widget icon;
   final bool compact, selected;
   final VoidCallback? onPressed;
   final Widget? trailing;
+  final String? tooltip;
   @override
   Widget build(BuildContext context) {
     final variant = selected ? FButtonVariant.secondary : FButtonVariant.ghost;
+    final iconSlot = SizedBox.square(dimension: 20, child: Center(child: icon));
     final button = Semantics(
-      tooltip: label,
+      tooltip: tooltip ?? label,
       child: compact
           ? FButton.icon(
               variant: variant,
-              size: FButtonSizeVariant.sm,
+              size: FButtonSizeVariant.md,
+              style: const FButtonStyleDelta.delta(
+                iconContentStyle: FButtonIconContentStyleDelta.delta(
+                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.all(8)),
+                ),
+              ),
               selected: selected,
               semanticsLabel: label,
               onPress: onPressed,
-              child: icon,
+              child: iconSlot,
             )
           : FButton(
               variant: variant,
-              size: FButtonSizeVariant.sm,
+              size: FButtonSizeVariant.md,
+              style: const FButtonStyleDelta.delta(
+                contentStyle: FButtonContentStyleDelta.delta(
+                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.all(8)),
+                  spacing: 8,
+                ),
+              ),
               selected: selected,
               onPress: onPressed,
               mainAxisSize: MainAxisSize.max,
               mainAxisAlignment: MainAxisAlignment.start,
-              prefix: icon,
+              prefix: iconSlot,
               suffix: trailing,
               child: Expanded(
                 child: Text(
@@ -229,11 +252,14 @@ class SidebarNavigationButton extends StatelessWidget {
               ),
             ),
     );
-    return compact
-        ? FTooltip(
-            tipBuilder: (context, controller) => Text(label),
-            child: button,
-          )
-        : button;
+    return SizedBox(
+      width: double.infinity,
+      child: compact
+          ? FTooltip(
+              tipBuilder: (context, controller) => Text(tooltip ?? label),
+              child: button,
+            )
+          : button,
+    );
   }
 }
