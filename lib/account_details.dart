@@ -35,8 +35,7 @@ Future<void> showAccountDetails(
                         : showExpiry
                         ? '额度到期'
                         : row.label,
-                    style: context.theme.typography.display.lg.copyWith(
-                      fontSize: 20,
+                    style: context.theme.typography.display.xl.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -135,8 +134,7 @@ class _ExpiryDetails extends StatelessWidget {
     children: [
       Text(
         row.upcomingExpiryAmount == '—' ? '到期额度未知' : row.upcomingExpiryAmount,
-        style: context.theme.typography.display.lg.copyWith(
-          fontSize: 20,
+        style: context.theme.typography.display.xl.copyWith(
           fontWeight: FontWeight.w600,
         ),
       ),
