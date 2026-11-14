@@ -5,22 +5,21 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.1</title>
-            <pubDate>Sat, 14 Nov 2026 04:19:26 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.42</link>
-            <sparkle:version>42</sparkle:version>
-            <sparkle:shortVersionString>1.0.1-beta.42</sparkle:shortVersionString>
+            <pubDate>Sat, 14 Nov 2026 05:31:57 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.1-beta.43</link>
+            <sparkle:version>43</sparkle:version>
+            <sparkle:shortVersionString>1.0.1-beta.43</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.1-beta.42
+            <description sparkle:format="markdown">LoongPass 1.0.1-beta.43
 
-- 重新整理桌面导航、字体层级、按钮大小与布局，账号、模型连接、最近领取和设置入口更清楚。
-- 账号列表保留可见的切换操作；详情就地打开，集中展示精确余额、查询时间、积分到期批次与待处理状态。
-- 简化官方授权、账号恢复和设置流程，完整模型目录可展开；支持深色模式、窄窗口及大字号。
-- 保留既有平台与地区、Magpie 与社区插件、授权方式、签到核验、账号维护、邀请码、客户端切换和更新功能。
-- 包含 beta 41 的 DSH Agent Teams / Superagent 接入及系统代理修复。
+- 「模型连接」新增连接检查，分别说明 Magpie 命令是否可用、网关是否可达，以及所选账号的授权记录是否已保存，并给出对应操作。
+- 连接 Magpie 后自动检查；打开页面不会启动检查。更换账号、重新授权或关闭服务后，旧结果会失效。
+- 应用内提供 DeepSeek Harness Agent Teams 的接入步骤与完整指南入口，继续由 Magpie 管理模型路由、DSH 管理团队与会话。
+- 保留 Beta 42 的桌面界面、原有账号、完整模型目录、签到与社区插件能力。
 
 测试范围
 
-本版重点测试整套 UI 的日常使用、深色模式和窗口缩放。界面自动检查使用演示账号；新官方授权、真实领取、模型调用和客户端切换需分别按实际平台验证。此前功能验收仍见仓库 docs/verification，不把界面检查等同于真账号验收。
+连接检查不发送模型推理请求，授权记录存在不代表当前凭据有效或 Teams 已完成任务。Superagent 常驻任务仍需在上游独立配置。模拟、构建和实际安装的验收范围见仓库 docs/verification/2026-11-14-dsh-onboarding.md；Windows / Intel 真机调用另行验收。
 
 安装与升级
 
@@ -28,10 +27,10 @@ macOS 使用 LoongPass-macOS-universal.zip。Windows 日常使用 LoongPass-Wind
 
 本版为 Beta。macOS 使用本地签名，Windows 尚未配置 Authenticode 发布者签名；原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.42/LoongPass-macOS-universal.zip" length="48382460" type="application/octet-stream" sparkle:edSignature="u/tR0Q/v1OxkGG3776zCurhOg89//w8Hx70uSqP1/yawRFpnd1hWJnN5tPVGiVErpnQhhKMrtuL8//fyA32GCQ=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.1-beta.43/LoongPass-macOS-universal.zip" length="48400312" type="application/octet-stream" sparkle:edSignature="Np8xJQLRTgSIBDWGi7P0+Sh606drQeAgRuqBLjQdSS6xNf90baTd5WwwSkYBWNWRy5TMKbfIMqbZ0FgwyufIDg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 6EmPl1Jqj5jUllPbsOCiamc+wBzdZ3TWUahNBL6FdhERA1/CdtMzOqmP2KCQ/B8DI2W5SLeYxbN8s5aK/Ui8Bg==
-length: 2723
+edSignature: /F13gGMxYnil4A4owzcCNfkjb5wlof4hcQl1jDsxXkugR8DZigT5Sz61gMttlx8nu3maIBHLcMDMDB+8XEX4Dw==
+length: 2665
 -->
