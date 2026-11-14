@@ -94,7 +94,9 @@ class AppWorkspaceState extends State<AppWorkspace> {
       listenable: _preferences,
       builder: (context, _) => LayoutBuilder(
         builder: (context, constraints) {
-          final automaticCompact = constraints.maxWidth < 900;
+          final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
+              .clamp(1.0, double.infinity);
+          final automaticCompact = constraints.maxWidth < 900 * textScale;
           final compact = automaticCompact || _preferences.collapsed;
           final toggleLabel = automaticCompact
               ? '放大窗口以展开导航'
@@ -128,7 +130,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                 color: colors.muted,
                 child: SizedBox(
                   key: const Key('app-sidebar'),
-                  width: compact ? 56 : 208,
+                  width: compact ? 56 : 208 * textScale,
                   child: Column(
                     children: [
                       Padding(

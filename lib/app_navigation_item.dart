@@ -169,20 +169,22 @@ class ManagedAppIcon extends StatelessWidget {
             Positioned(
               right: 0,
               bottom: 0,
-              child: FBadge(
-                key: ValueKey('region-${app.name}'),
-                variant: FBadgeVariant.secondary,
-                style: const FBadgeStyleDelta.delta(
-                  padding: EdgeInsetsGeometryDelta.value(
-                    EdgeInsets.symmetric(horizontal: 2),
+              child: MediaQuery.withNoTextScaling(
+                child: FBadge(
+                  key: ValueKey('region-${app.name}'),
+                  variant: FBadgeVariant.secondary,
+                  style: const FBadgeStyleDelta.delta(
+                    padding: EdgeInsetsGeometryDelta.value(
+                      EdgeInsets.symmetric(horizontal: 2),
+                    ),
+                    labelTextStyle: TextStyleDelta.delta(
+                      fontSize: 7,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  labelTextStyle: TextStyleDelta.delta(
-                    fontSize: 7,
-                    height: 1.2,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  child: Text(app.regionCode),
                 ),
-                child: Text(app.regionCode),
               ),
             ),
         ],
@@ -254,12 +256,10 @@ class SidebarNavigationButton extends StatelessWidget {
     );
     return SizedBox(
       width: double.infinity,
-      child: compact
-          ? FTooltip(
-              tipBuilder: (context, controller) => Text(tooltip ?? label),
-              child: button,
-            )
-          : button,
+      child: FTooltip(
+        tipBuilder: (context, controller) => Text(tooltip ?? label),
+        child: button,
+      ),
     );
   }
 }
