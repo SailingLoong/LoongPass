@@ -101,6 +101,50 @@ class _Application implements PluginApplication {
 
 void main() {
   testDesktopWidgets(
+    'long model and account names fit a narrow window at 200 percent text scale',
+    (tester) async {
+      tester.view.physicalSize = const Size(604, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = _Service();
+      const modelName =
+          'Long model name with native reasoning and tool support from the upstream catalog';
+      const accountName =
+          'Long account name with an official source and a recognizable identity';
+      service.grants.first.account.models
+        ..clear()
+        ..add({'id': 'long-model', 'name': modelName});
+      service.grants.first.account.facts['label'] = accountName;
+      final app = _Application(service);
+      addTearDown(service.dispose);
+      addTearDown(app.connection.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: PluginModelServicesPage(
+              application: app,
+              onOpenAccount: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text(modelName));
+      await tester.tap(find.text(modelName));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(accountName).first);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testDesktopWidgets(
     'canonical list searches aliases and preserves account identity',
     (tester) async {
       final service = _Service();

@@ -23,13 +23,17 @@ String modelExpiryText(PluginModelBinding binding) {
 }
 
 String _remaining(PluginModelBinding binding) {
-  final values = <String>{};
-  for (final window in binding.quota.windows.where((w) => w['aside'] != true)) {
+  final values = <String>[];
+  final windows = binding.quota.windows
+      .where((w) => w['aside'] != true)
+      .toList();
+  for (final window in windows) {
     final amount = pluginWindowRemaining(window);
+    final name = windows.length > 1 ? '${window['name'] ?? '额度'} ' : '';
     if (amount != null) {
-      values.add('$amount ${window['unit'] ?? '单位未知'}');
+      values.add('$name$amount ${pluginWindowBalance(window)?.unit ?? '单位未知'}');
     } else if (window['used'] is num) {
-      values.add('已用 ${window['used']}%');
+      values.add('${name}已用 ${window['used']}%');
     }
   }
   return values.isEmpty ? '未知' : values.join('\n');
@@ -128,7 +132,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
           onPress: widget.onOpenAccount == null
               ? null
               : () => widget.onOpenAccount!(account),
-          child: Text(account.label, softWrap: true),
+          child: Flexible(child: Text(account.label, softWrap: true)),
         ),
         Text(modelSourceName(account.provider), style: muted),
       ],

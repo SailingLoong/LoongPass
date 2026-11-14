@@ -64,7 +64,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   Widget build(BuildContext context) {
     final app = widget.application, service = app.models;
     return ListenableBuilder(
-      listenable: service,
+      listenable: Listenable.merge([service, app.connection]),
       builder: (context, _) {
         final catalog = service.catalog;
         final selectedId = widget.onSelectModel == null
@@ -84,6 +84,16 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
           title: selected?.name ?? 'loongpass/auto',
           subtitle: '同会话、同模型优先复用账号。新会话优先使用最早到期的剩余额度。',
           children: [
+            if (app.connection.busy)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text('正在更新 Magpie 连接…'),
+              ),
+            if (app.connection.error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text('Magpie 连接配置尚未同步完成。已连接的配置会自动重试，也可展开连接设置重新连接。'),
+              ),
             if (_message != null) WorkspaceCard(child: Text(_message!)),
             if (selectedId != null)
               Padding(

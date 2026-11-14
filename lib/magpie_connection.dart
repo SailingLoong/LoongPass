@@ -227,10 +227,9 @@ class MagpieConnection {
       final bindings = model.bindings.where(
         (b) => b.enabled && b.grant.enabled && b.account.active,
       );
-      groups[model.groupId] = bindings
-          .map((b) => 'loongpass/${b.exportedId}')
-          .toSet()
-          .toList();
+      groups[model.groupId] =
+          bindings.map((b) => 'loongpass/${b.exportedId}').toSet().toList()
+            ..sort();
       routes[model.publicId] = 'group/${model.groupId}';
       final accounts = <String, dynamic>{};
       for (final key in bindings.map((b) => b.account.key).toSet()) {
@@ -253,7 +252,11 @@ class MagpieConnection {
       routes['loongpass/auto'] = 'group/loongpass-auto';
     }
     for (final entry in groups.entries) {
+      final name = routes.entries
+          .firstWhere((route) => route.value == 'group/${entry.key}')
+          .key;
       final options = [
+        'name=$name',
         'models=${entry.value.join(',')}',
         'routing=${entry.key == 'loongpass-auto' ? 'order' : 'bridge/quota'}',
         'stays=session',
@@ -263,13 +266,7 @@ class MagpieConnection {
         await command(['group', 'set', entry.key, ...options]);
       } on MagpieCommandFailure catch (error) {
         if (!error.missingGroup) rethrow;
-        await command([
-          'group',
-          'add',
-          entry.key,
-          'id=${entry.key}',
-          ...options,
-        ]);
+        await command(['group', 'add', name, 'id=${entry.key}', ...options]);
       }
     }
     // Expose aliases only after every target exists. A retry can complete a
@@ -284,7 +281,10 @@ class MagpieConnection {
         'defaultAccount': provider?['accountId'],
       }),
     ]);
-    for (final id in previousGroups.difference(groups.keys.toSet())) {
+    final obsolete = previousGroups.difference(groups.keys.toSet()).toList();
+    // Magpie refuses to delete a child still referenced by its parent group.
+    if (obsolete.remove('loongpass-auto')) obsolete.insert(0, 'loongpass-auto');
+    for (final id in obsolete) {
       try {
         await command(['group', 'rm', id]);
       } on MagpieCommandFailure catch (error) {

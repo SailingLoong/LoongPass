@@ -48,7 +48,7 @@ class PluginModelList extends StatelessWidget {
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
                 onPress: () => onSelect(model.id),
-                child: Text(model.name, softWrap: true),
+                child: Flexible(child: Text(model.name, softWrap: true)),
               ),
               Text(
                 '${model.availableAccounts} 个可用账号${model.official ? '' : ' · 标准名称待核实'}',
