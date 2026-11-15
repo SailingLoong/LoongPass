@@ -105,6 +105,7 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   final Map<String, Map<String, dynamic>> providers;
   List<PluginAccount> _rows;
   int refreshes = 0;
+  final automaticRequests = <(String, bool)>[];
   bool failAutomatic = false;
   String? saved;
   @override
@@ -132,6 +133,7 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
 
   @override
   Future<void> setAutomatic(String key, bool enabled) async {
+    automaticRequests.add((key, enabled));
     if (failAutomatic) throw StateError('Synthetic save failure');
     _rows.singleWhere((a) => a.key == key).facts['automatic'] = enabled;
     notifyListeners();
@@ -372,7 +374,7 @@ void main() {
           },
         ),
       );
-      expect(find.text('时间未知'), findsOneWidget);
+      expect(findTooltip('已确认领取，具体时间未知'), findsOneWidget);
       expect(find.text('额度查询未完成'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
@@ -831,15 +833,43 @@ void main() {
         findsOneWidget,
       );
       accounts.failAutomatic = true;
-      await tester.ensureVisible(find.byType(FSwitch));
-      await tester.tap(find.byType(FSwitch));
+      final automatic = find.byType(FSwitch);
+      final automaticLabel = find.descendant(
+        of: automatic,
+        matching: find.text('自动领取'),
+      );
+      await tester.ensureVisible(automaticLabel);
       await tester.pumpAndSettle();
+      expect(automaticLabel.hitTestable(), findsOneWidget);
+      await tester.tap(automaticLabel);
+      await tester.pumpAndSettle();
+      expect(accounts.automaticRequests, [('zcode#one', false)]);
+      expect(accounts.accounts.single.automatic, isTrue);
+      expect(tester.widget<FSwitch>(automatic).value, isTrue);
       expect(
         find.descendant(
           of: find.byType(FDialog),
           matching: find.textContaining('操作未完成'),
         ),
         findsOneWidget,
+      );
+      accounts.failAutomatic = false;
+      await tester.ensureVisible(automaticLabel);
+      await tester.pumpAndSettle();
+      await tester.tap(automaticLabel);
+      await tester.pumpAndSettle();
+      expect(accounts.automaticRequests, [
+        ('zcode#one', false),
+        ('zcode#one', false),
+      ]);
+      expect(accounts.accounts.single.automatic, isFalse);
+      expect(tester.widget<FSwitch>(automatic).value, isFalse);
+      expect(
+        find.descendant(
+          of: find.byType(FDialog),
+          matching: find.textContaining('操作未完成'),
+        ),
+        findsNothing,
       );
       await tester.pumpWidget(const SizedBox());
       accounts.dispose();

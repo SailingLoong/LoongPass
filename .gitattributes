@@ -1,2 +1,5 @@
 # Source locks verify original bytes, including each upstream's line endings.
 runtime/** -text
+# The compatibility patch is hashed verbatim and retains upstream whitespace.
+integrations/dsh-feishu/dsh-lark-channel.patch -text -whitespace
+integrations/dsh-feishu/atomic-write/** -text

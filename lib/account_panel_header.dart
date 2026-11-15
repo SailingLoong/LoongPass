@@ -18,23 +18,22 @@ class AccountPanelToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AccountPresentationScope.maybeOf(context)?.app;
     final colors = context.theme.colors;
-    final identity = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final identity = Wrap(
+      spacing: 10,
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(title, style: context.theme.typography.display.xl),
-        const SizedBox(height: 5),
-        Wrap(
-          spacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (app != null) Text(app.region),
-            Text('$accountCount 个账号'),
-          ],
+        Text(
+          title,
+          style: context.theme.typography.display.xl.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
+        Text([if (app != null) app.region, '$accountCount 个账号'].join(' · ')),
       ],
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: DefaultTextStyle.merge(
         style: context.theme.typography.body.xs.copyWith(
           color: colors.mutedForeground,
@@ -59,7 +58,7 @@ class AccountPanelToolbar extends StatelessWidget {
                     children: [
                       Expanded(child: identity),
                       const SizedBox(width: 16),
-                      Expanded(flex: 2, child: controls),
+                      Flexible(flex: 2, child: controls),
                     ],
                   )
                 : Column(

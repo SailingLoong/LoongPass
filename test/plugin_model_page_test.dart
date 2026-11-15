@@ -7,6 +7,7 @@ import '../lib/plugin_application.dart';
 import '../lib/plugin_model_service.dart';
 import '../lib/plugin_model_catalog.dart';
 import '../lib/plugin_model_page.dart';
+import '../lib/app_theme.dart';
 import 'desktop_test_app.dart';
 
 class _Service extends ChangeNotifier implements PluginModelService {
@@ -191,6 +192,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(service.catalog.first.bindings.every((b) => !b.enabled), isTrue);
       expect(service.catalog.last.bindings.every((b) => b.enabled), isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'long model names remain readable in a narrow large-text layout',
+    (tester) async {
+      tester.view.physicalSize = const Size(604, 632);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = _Service();
+      const name =
+          'Long model name with native reasoning and tool support from the upstream catalog';
+      service.grants.single.account.models.add({
+        'id': 'long-model',
+        'name': name,
+      });
+      final app = _Application(service);
+      addTearDown(service.dispose);
+      addTearDown(app.connection.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          theme: loongPassTheme(Brightness.dark),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(body: PluginModelServicesPage(application: app)),
+        ),
+      );
+      service.publish();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text(name));
+      await tester.pumpAndSettle();
+      expect(find.text(name).hitTestable(), findsOneWidget);
+      expect(service.changes, 0);
       expect(tester.takeException(), isNull);
     },
   );

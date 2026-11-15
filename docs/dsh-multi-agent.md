@@ -31,6 +31,10 @@ DSH 新建会话默认不开启 Teams；保存后的会话选择会在恢复时�
 
 Teams 成员共享 checkout。任务板中的文件提示只会警告冲突，不提供文件锁；并发写代码前仍需明确文件归属或使用独立 worktree。停止一个子 agent 不会自动释放其任务所有权，按 DSH 的任务工具处理。[任务与中断语义](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/team/agent-team/README.md)
 
+## 从飞书发起本机任务
+
+飞书可以作为本机 DSH Teams 的消息入口。独立 profile 通过 `dsh-lark-channel` 长连接接收任务，由 DSH 在本机执行，并把结果与工具审批发回聊天。接入、绑定与验证步骤见 [飞书接入指南](dsh-feishu.md)。
+
 ## 为 Superagent 提供模型
 
 按 [Superagent 官方部署指南](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/006-deployment.md) 准备独立的 `superagent` Web profile，并按它当前的 `package.json` 核对 DSH 兼容范围。不要直接把某个桌面 RC 版本视作原型兼容性证明。
@@ -39,7 +43,7 @@ Teams 成员共享 checkout。任务板中的文件提示只会警告冲突，�
 
 Superagent 默认使用所在 profile 的默认模型；其 **Eval** 和 **Execution** 设置可分别指定模型。这样评估与 worker 都可使用 LoongPass 来源或 Magpie 原生分组。任务并发由 Superagent 的 `maxWorkers` 控制，实际可用并发还受账号与上游限制；增加 worker 数不会增加账号额度。[模型与执行配置](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/006-deployment.md)
 
-本次交付提供模型接入路径与指南，不创建监听仓库、GitHub 机器人身份、飞书机器人或常驻服务。这些需要在 Superagent 自己的 Sources / Policy / Execution 中独立配置。其 worker 以运行它的系统用户权限工作，上游推荐用专用系统账号隔离凭据。新建 profile 的 `--from-default-profile` 会替换已有 profile，升级时不要重复执行。[安装与隔离边界](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/006-deployment.md)
+采用 Superagent 研究原型时，在它自己的 Sources / Policy / Execution 中配置监听来源与执行策略。其 worker 以运行它的系统用户权限工作，上游推荐用专用系统账号隔离凭据。新建 profile 的 `--from-default-profile` 会替换已有 profile，升级时需要保留现有 profile。[安装与隔离边界](https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/006-deployment.md)
 
 ## 网络与排查
 

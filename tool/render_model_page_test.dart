@@ -1,4 +1,4 @@
-// Visual acceptance of the real model page with synthetic, read-only owners.
+// Visual acceptance of the actual application with synthetic, read-only owners.
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -8,74 +8,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../lib/app_theme.dart';
 import '../lib/app_sidebar.dart';
-import '../lib/plugin_accounts.dart';
-import '../lib/model_connection.dart';
-import '../lib/plugin_application.dart';
-import '../lib/plugin_model_service.dart';
-import '../lib/plugin_model_page.dart';
+import '../lib/main.dart';
+import '../lib/ui_preferences.dart';
 import '../test/desktop_test_app.dart';
-
-class _Service extends ChangeNotifier implements PluginModelService {
-  int changes = 0;
-  void publish() => notifyListeners();
-  @override
-  bool get enabled => true;
-  @override
-  bool get running => true;
-  @override
-  Uri get endpoint => Uri.parse('http://127.0.0.1:3426');
-  @override
-  String? get error => null;
-  @override
-  final grants = [
-    PluginModelGrant(
-      PluginAccount(
-        key: 'zcode#one',
-        active: true,
-        facts: {
-          'provider': 'zcode',
-          'uid': 'demo',
-          'label': 'Demo account',
-          'realm': 'bigmodel',
-          'registrationId': 'one',
-        },
-        models: [
-          for (var i = 1; i <= 20; i++)
-            {
-              'id': i == 20 ? 'GLM-Trial' : 'GLM-$i',
-              'name': i == 20 ? 'GLM Trial' : 'GLM $i',
-            },
-        ],
-      ),
-      'synthetic',
-      true,
-    ),
-  ];
-  @override
-  Future<void> enable(String key, bool enabled) async {
-    changes++;
-  }
-
-  @override
-  Future<void> setEnabled(bool value) async {
-    changes++;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _Application implements PluginApplication {
-  _Application(this.models) : connection = ModelConnection(models, '/bridge');
-  @override
-  final ModelConnection connection;
-  @override
-  final PluginModelService models;
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
+import '../test/model_workspace_fixture.dart';
 
 void main() {
   setUpAll(() async {
@@ -91,51 +28,38 @@ void main() {
   });
   for (final (size, scale) in [
     (const Size(1024, 768), 1.0),
+    (const Size(800, 628), 1.0),
     (const Size(480, 800), 2.0),
   ]) {
     for (final brightness in Brightness.values) {
       testDesktopWidgets(
-        'model catalog ${size.width} ${brightness.name} scale $scale',
+        'model workspace ${size.width} ${brightness.name} scale $scale',
         (tester) async {
           tester.view.physicalSize = size;
           tester.view.devicePixelRatio = 1;
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
           addTearDown(tester.view.resetPhysicalSize);
           addTearDown(tester.view.resetDevicePixelRatio);
-          final service = _Service();
-          final app = _Application(service);
-          addTearDown(service.dispose);
-          addTearDown(app.connection.dispose);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final app = ModelWorkspaceFixture();
+          final preferences = UiPreferences()
+            ..setModelsExpanded(true)
+            ..setTheme(
+              brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
+            );
+          addTearDown(app.dispose);
+          addTearDown(preferences.dispose);
           final boundary = GlobalKey();
-          final workspace = GlobalKey<AppWorkspaceState>();
           await tester.pumpWidget(
             RepaintBoundary(
               key: boundary,
-              child: DesktopTestApp(
-                theme: loongPassTheme(brightness),
-                builder: (context, child) => MediaQuery(
-                  data: MediaQuery.of(context)
-                      .copyWith(textScaler: TextScaler.linear(scale)),
-                  child: child!,
-                ),
-                home: FScaffold(
-                  childPad: false,
-                  child: AppWorkspace(
-                    key: workspace,
-                    pages: const {
-                      ManagedApp.workbuddy: Text('Synthetic accounts'),
-                    },
-                    sections: {
-                      WorkspaceSection.models: PluginModelServicesPage(
-                        application: app,
-                      ),
-                    },
-                  ),
-                ),
-              ),
+              child: AccountToolApp(application: app, preferences: preferences),
             ),
           );
-          workspace.currentState!.selectSection(WorkspaceSection.models);
           await tester.pumpAndSettle();
+          final workspace = tester.state<AppWorkspaceState>(
+            find.byType(AppWorkspace),
+          );
           Future<void> capture(String suffix) => tester.runAsync(() async {
             final image =
                 await (boundary.currentContext!.findRenderObject()
@@ -146,7 +70,7 @@ void main() {
             ))!;
             final directory = Directory(
               Platform.environment['LOONGPASS_PREVIEW_DIR'] ??
-                  'artifacts/compact-ui',
+                  'artifacts/model-ui',
             );
             await directory.create(recursive: true);
             await File(
@@ -154,25 +78,22 @@ void main() {
             ).writeAsBytes(bytes.buffer.asUint8List());
             image.dispose();
           });
-          await capture('collapsed');
-          await tester.scrollUntilVisible(
-            find.text('查看 20 个模型'),
-            250,
-            scrollable: find
-                .descendant(
-                  of: find.byType(PluginModelServicesPage),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
+          workspace.selectModel('auto');
+          await tester.pumpAndSettle();
+          await capture('auto');
+          workspace.selectModel('deepseek-flash');
+          await tester.pumpAndSettle();
+          await capture('accounts');
+          expect(tester.takeException(), isNull);
+          await tester.ensureVisible(find.text('日常账号 14').hitTestable());
+          await tester.tap(find.text('日常账号 14').hitTestable());
+          await tester.pumpAndSettle();
+          await capture('account-link');
+          expect(
+            find.byKey(const Key('account-qoderCn/saved-13')).hitTestable(),
+            findsOneWidget,
           );
-          await tester.pumpAndSettle();
-          await tester.tap(find.text('查看 20 个模型'));
-          await tester.pumpAndSettle();
-          await tester.ensureVisible(find.text('GLM Trial · 仅赠送'));
-          await tester.pumpAndSettle();
-          await capture('expanded');
-          expect(find.text('GLM Trial · 仅赠送').hitTestable(), findsOneWidget);
-          expect(service.changes, 0);
+          expect(app.accounts.refreshes, 0);
           expect(tester.takeException(), isNull);
         },
       );

@@ -10,6 +10,116 @@ import '../lib/workspace_accounts.dart';
 import '../lib/claim_receipt.dart';
 
 void main() {
+  testDesktopWidgets('account deep link reveals the exact paginated account', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final registry = AccountWorkspaceRegistry();
+    final page = GlobalKey<WorkspaceAccountsPageState>();
+    addTearDown(registry.dispose);
+    var operations = 0;
+    final source = Object();
+    registry.publish(ManagedApp.qoderCn, source, [
+      for (var i = 0; i < 15; i++)
+        AccountTableEntry(
+          id: '$i',
+          label: 'Account $i',
+          identity: 'synthetic',
+          balance: '60 积分',
+          status: 'ready',
+          details: Text('Details $i'),
+          onActivate: () => operations++,
+        ),
+    ]);
+    registry.publish(ManagedApp.qoder, Object(), const [
+      AccountTableEntry(
+        id: '14',
+        label: 'Global 14',
+        identity: 'synthetic',
+        balance: '90 积分',
+        status: 'ready',
+        details: Text('Global details'),
+      ),
+    ]);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: WorkspaceAccountsPage(key: page, registry: registry),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('account-search')), 'missing');
+    await tester.pumpAndSettle();
+    expect(find.text('没有匹配的账号。'), findsOneWidget);
+    expect(page.currentState!.revealAccount('qoderCn/14'), isTrue);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account-qoderCn/14')), findsOneWidget);
+    expect(find.text('Account 0'), findsNothing);
+    final target = tester.getRect(find.byKey(const Key('account-qoderCn/14')));
+    expect(target.top, greaterThanOrEqualTo(0));
+    expect(target.bottom, lessThanOrEqualTo(600));
+    expect(operations, 0);
+    await tester.tap(find.byKey(const Key('account-qoderCn/14')));
+    await tester.pumpAndSettle();
+    expect(find.text('Details 14'), findsOneWidget);
+    expect(find.text('Global details'), findsNothing);
+    await tester.tap(find.text('关闭'));
+    await tester.pumpAndSettle();
+    expect(page.currentState!.revealAccount('qoderCn/0'), isTrue);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account-qoderCn/0')), findsOneWidget);
+    expect(find.text('Account 14'), findsNothing);
+    registry.publish(ManagedApp.qoderCn, source, []);
+    await tester.pumpAndSettle();
+    expect(page.currentState!.revealAccount('qoderCn/14'), isFalse);
+    expect(operations, 0);
+    expect(tester.takeException(), isNull);
+  });
+  testDesktopWidgets('overview makes every attention account reachable', (
+    tester,
+  ) async {
+    final registry = AccountWorkspaceRegistry();
+    addTearDown(registry.dispose);
+    var operations = 0;
+    registry.publish(ManagedApp.zcode, Object(), [
+      for (var index = 1; index <= 6; index++)
+        AccountTableEntry(
+          id: '$index',
+          label: 'Account $index',
+          identity: 'synthetic-$index',
+          balance: '880 积分',
+          status: '需要重新授权后核对官方额度',
+          statusLabel: '需要重新授权',
+          needsAttention: true,
+          onActivate: () => operations++,
+          details: Text('Details $index'),
+        ),
+    ]);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: WorkspaceOverviewPage(registry: registry, onOpenApp: (_) {}),
+        ),
+      ),
+    );
+    expect(find.text('Account 6'), findsNothing);
+    final showAll = find.byKey(const Key('overview-all-attention'));
+    await tester.ensureVisible(showAll);
+    await tester.tap(showAll);
+    await tester.pumpAndSettle();
+    expect(find.text('Account 6'), findsOneWidget);
+    await tester.ensureVisible(find.text('Account 6'));
+    await tester.tap(find.text('Account 6'));
+    await tester.pumpAndSettle();
+    expect(find.text('Details 6'), findsOneWidget);
+    expect(operations, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testDesktopWidgets(
     'overview retains a known expiry when the remaining amount is unknown',
     (tester) async {

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
 import '../lib/model_names.dart';
+import '../lib/plugin_model_quota.dart';
 
 final now = DateTime.utc(2026, 11, 15, 2);
 
@@ -27,6 +28,155 @@ PluginModelGrant grant(
 );
 
 void main() {
+  test('renewable refused windows recover at reset while expired credits stay unavailable', () {
+    final reset = now.add(const Duration(minutes: 1));
+    final window = {
+      'name': 'WorkBuddy token window',
+      'models': ['deepseek-flash'],
+      'used': 100,
+      'amount': 2000000,
+      'limit': 2000000,
+      'unit': 'tokens',
+      'refused': true,
+      'resetsAt': reset.toIso8601String(),
+    };
+    final usage = {
+      'windows': [window],
+    };
+    expect(
+      pluginModelQuota(usage, 'deepseek-flash', now).status,
+      ModelQuotaStatus.exhausted,
+    );
+    expect(
+      pluginModelQuota(usage, 'deepseek-flash', reset).status,
+      ModelQuotaStatus.unknown,
+    );
+    expect(
+      pluginModelQuota(
+        usage,
+        'deepseek-flash',
+        reset.add(const Duration(seconds: 1)),
+      ).status,
+      ModelQuotaStatus.unknown,
+    );
+    expect(
+      pluginModelQuota(
+        {
+          'windows': [
+            {...window, 'balance': 0},
+          ],
+        },
+        'deepseek-flash',
+        reset,
+      ).status,
+      ModelQuotaStatus.unknown,
+    );
+    expect(
+      pluginModelQuota(
+        {
+          'windows': [
+            {
+              ...window,
+              'balance': 12.25,
+              'used': 0,
+              'runsOut': 12.25,
+              'runsOutAt': reset.toIso8601String(),
+            },
+          ],
+        },
+        'deepseek-flash',
+        reset,
+      ).status,
+      ModelQuotaStatus.expired,
+    );
+  });
+
+  test('model windows match native sized IDs and allowlist precedence', () {
+    const sized = {
+      'models': ['model@256k'],
+    };
+    expect(modelWindowApplies(sized, 'MODEL@256K'), isTrue);
+    expect(modelWindowApplies(sized, 'model'), isTrue);
+    expect(modelWindowApplies(sized, 'model@500k'), isFalse);
+    expect(
+      modelWindowApplies({
+        'models': ['model'],
+      }, 'model@500k'),
+      isTrue,
+    );
+    expect(
+      modelWindowApplies({
+        'models': ['model'],
+        'notModels': ['model'],
+      }, 'model'),
+      isTrue,
+    );
+    expect(
+      modelWindowApplies({
+        'notModels': ['model@256k'],
+      }, 'model@500k'),
+      isTrue,
+    );
+    expect(
+      modelWindowApplies({
+        'notModels': ['model@256k'],
+      }, 'model'),
+      isFalse,
+    );
+    expect(
+      modelWindowApplies({'model': 'other', ...sized}, 'model@256k'),
+      isFalse,
+    );
+  });
+
+  test(
+    'freeFirst narrows explicit paid allowlists and drops empty windows',
+    () {
+      const model = 'GLM-5.3-Flash', trial = '$model-Trial';
+      final usage = modelRoutingUsage(
+        'zcode',
+        [
+          {'id': model},
+          {'id': trial},
+          {'id': 'GLM-5.2'},
+        ],
+        {
+          'windows': [
+            {
+              'name': 'paid only',
+              'models': [model],
+              'used': 100,
+            },
+            {
+              'name': 'shared paid',
+              'models': [model, 'GLM-5.2'],
+              'used': 100,
+            },
+            {
+              'name': 'gift',
+              'models': [trial],
+              'balance': 12.25,
+              'unit': 'credits',
+            },
+          ],
+        },
+        now,
+      )!;
+      final windows = (usage['windows'] as List).cast<Map>();
+      expect(windows.map((w) => w['name']), ['shared paid', 'gift']);
+      expect(windows.first['models'], ['GLM-5.2']);
+      expect((windows.last['models'] as List).toSet(), {trial, model});
+      expect(
+        pluginModelQuota(usage, model, now).status,
+        ModelQuotaStatus.available,
+      );
+      expect(
+        pluginModelQuota(usage, 'GLM-5.2', now).status,
+        ModelQuotaStatus.exhausted,
+      );
+    },
+  );
+
   test('confirmed expired authorization excludes a positive cached balance while a failed usage query retains it', () {
     final catalog = pluginModelCatalog(
       [

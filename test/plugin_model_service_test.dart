@@ -18,6 +18,7 @@ class _Accounts extends PluginAccounts {
     required super.enabledProviders,
   });
   String? authorizationError;
+  Map<String, dynamic>? usageOverride;
   @override
   List<PluginAccount> get accounts => [
     for (final account in super.accounts)
@@ -26,7 +27,7 @@ class _Accounts extends PluginAccounts {
         facts: account.facts,
         active: account.active,
         models: account.models,
-        usage: account.usage,
+        usage: usageOverride ?? account.usage,
         queriedAt: account.queriedAt,
         error: authorizationError ?? account.error,
       ),
@@ -224,6 +225,43 @@ void main() {
         200,
       );
       accounts.authorizationError = null;
+      final refusedWindow = {
+        'models': ['fixture-model'],
+        'amount': 2000000,
+        'limit': 2000000,
+        'used': 100,
+        'unit': 'tokens',
+        'refused': true,
+      };
+      accounts.usageOverride = {
+        'windows': [
+          {
+            ...refusedWindow,
+            'resetsAt': DateTime.now()
+                .add(const Duration(minutes: 1))
+                .toIso8601String(),
+          },
+        ],
+      };
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        429,
+      );
+      accounts.usageOverride = {
+        'windows': [
+          {
+            ...refusedWindow,
+            'resetsAt': DateTime.now()
+                .subtract(const Duration(seconds: 1))
+                .toIso8601String(),
+          },
+        ],
+      };
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        200,
+      );
+      accounts.usageOverride = null;
       await service.reorderModels(['fixture/image', 'fixture/fixture-model']);
       expect(service.catalog.first.id, 'fixture/image');
       expect(modelStore.data['routing']['order'], [
