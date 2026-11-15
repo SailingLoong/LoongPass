@@ -56,6 +56,10 @@ void main() {
       );
       expect(app.accounts.refreshes, 0);
 
+      expect(preferences.appsExpanded, isTrue);
+      expect(preferences.modelsExpanded, isFalse);
+      await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('海外账号').hitTestable());
@@ -73,6 +77,8 @@ void main() {
       );
 
       await app.models.reorderModels(['deepseek-flash', 'MiniMax-M3']);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(
         tester.getTopLeft(find.byKey(const Key('model-nav-deepseek-flash'))).dy,

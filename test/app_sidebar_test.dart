@@ -58,6 +58,101 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  for (final width in [800.0, 1024.0]) {
+    testDesktopWidgets(
+      'primary navigation opens one group with one click at $width',
+      (tester) async {
+        final preferences = UiPreferences()..setAppsExpanded(false);
+        addTearDown(preferences.dispose);
+        await mount(
+          tester,
+          preferences: preferences,
+          width: width,
+          height: 480,
+        );
+        final accounts = find.byKey(const Key('nav-accounts'));
+        final models = find.byKey(const Key('nav-models'));
+        expect(
+          tester.getTopLeft(models).dy - tester.getBottomLeft(accounts).dy,
+          lessThanOrEqualTo(8),
+        );
+        expect(find.byKey(const Key('toggle-account-apps')), findsNothing);
+        expect(find.byKey(const Key('toggle-models')), findsNothing);
+
+        await tester.tap(accounts);
+        await tester.pumpAndSettle();
+        expect(find.text('All accounts'), findsOneWidget);
+        expect(find.byKey(const Key('account-apps')), findsOneWidget);
+        expect(preferences.appsExpanded, isTrue);
+        expect(preferences.modelsExpanded, isFalse);
+
+        await tester.tap(models);
+        await tester.pumpAndSettle();
+        expect(find.text('Magpie models'), findsOneWidget);
+        expect(find.text('暂无模型'), findsOneWidget);
+        expect(find.byKey(const Key('account-apps')), findsNothing);
+        expect(preferences.appsExpanded, isFalse);
+        expect(preferences.modelsExpanded, isTrue);
+        expect(
+          tester.getTopLeft(models).dy - tester.getBottomLeft(accounts).dy,
+          lessThanOrEqualTo(8),
+        );
+
+        await tester.tap(accounts);
+        await tester.pumpAndSettle();
+        expect(find.text('All accounts'), findsOneWidget);
+        expect(preferences.appsExpanded, isTrue);
+        expect(preferences.modelsExpanded, isFalse);
+        expect(find.text('暂无模型'), findsNothing);
+        for (final section in WorkspaceSection.values) {
+          expect(
+            find.byKey(ValueKey('nav-${section.name}')).hitTestable(),
+            findsOneWidget,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testDesktopWidgets(
+      'long app list scrolls inside fixed primary navigation at $width',
+      (tester) async {
+        await mount(tester, width: width, height: 360);
+        final positions = {
+          for (final section in WorkspaceSection.values)
+            section: tester.getRect(
+              find.byKey(ValueKey('nav-${section.name}')),
+            ),
+        };
+        for (final section in WorkspaceSection.values) {
+          expect(
+            find.byKey(ValueKey('nav-${section.name}')).hitTestable(),
+            findsOneWidget,
+          );
+        }
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('app-codex')),
+          150,
+          scrollable: find.descendant(
+            of: find.byKey(const PageStorageKey('account-app-scroll')),
+            matching: find.byType(Scrollable),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('app-codex')).hitTestable(),
+          findsOneWidget,
+        );
+        for (final section in WorkspaceSection.values) {
+          final button = find.byKey(ValueKey('nav-${section.name}'));
+          expect(button.hitTestable(), findsOneWidget);
+          expect(tester.getRect(button), positions[section]);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testDesktopWidgets(
     'a long model list scrolls without moving the main navigation',
     (tester) async {
@@ -116,9 +211,7 @@ void main() {
     await mount(tester);
     await tester.tap(find.byKey(const Key('nav-models')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('toggle-models')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('toggle-models')));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('toggle-models')), findsNothing);
     expect(find.text('暂无模型'), findsOneWidget);
     expect(find.text('Magpie models'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -161,7 +254,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('toggle-models')));
+      await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(
         tester.getTopLeft(find.byKey(const Key('model-nav-MiniMax-M3'))).dy,
@@ -186,7 +279,7 @@ void main() {
       final restored = UiPreferences(read: () async => stored);
       addTearDown(restored.dispose);
       await restored.load();
-      expect(restored.modelsExpanded, width >= 760);
+      expect(restored.modelsExpanded, isTrue);
       expect(restored.appsExpanded, isFalse);
       expect(tester.takeException(), isNull);
     });
@@ -608,9 +701,9 @@ void main() {
 
   for (final width in [480.0, 1024.0]) {
     testDesktopWidgets(
-      'account summary and spacious app disclosure are independent at $width',
+      'account entry opens the summary and a naturally sized app list at $width',
       (tester) async {
-        final preferences = UiPreferences();
+        final preferences = UiPreferences()..setAppsExpanded(false);
         addTearDown(preferences.dispose);
         await mount(
           tester,
@@ -618,26 +711,24 @@ void main() {
           width: width,
           enabledApps: {ManagedApp.zcode, ManagedApp.qoder},
         );
+        await tester.tap(find.byKey(const Key('nav-accounts')));
+        await tester.pumpAndSettle();
+        expect(find.text('All accounts'), findsOneWidget);
+        expect(find.byKey(const Key('account-apps')), findsOneWidget);
+        expect(find.byKey(const Key('toggle-account-apps')), findsNothing);
+        expect(
+          tester.getTopLeft(find.byKey(const Key('nav-models'))).dy -
+              tester.getBottomLeft(find.byKey(const Key('app-qoder'))).dy,
+          lessThanOrEqualTo(8),
+        );
         await tester.tap(find.byKey(const Key('app-zcode')));
         await tester.pumpAndSettle();
-        final disclosure = tester.getRect(
-          find.byKey(const Key('toggle-account-apps')),
-        );
-        final parent = tester.getRect(find.byKey(const Key('nav-accounts')));
-        expect(disclosure.width, greaterThanOrEqualTo(32));
-        expect(disclosure.height, greaterThanOrEqualTo(32));
-        expect(disclosure.overlaps(parent), isFalse);
-        await tester.tapAt(disclosure.centerLeft + const Offset(2, 0));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('account-apps')), findsNothing);
         expect(find.text('ZCode content'), findsOneWidget);
         await tester.tap(find.byKey(const Key('nav-accounts')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('account-apps')), findsNothing);
+        expect(find.byKey(const Key('account-apps')), findsOneWidget);
         expect(find.text('All accounts'), findsOneWidget);
         expect(find.byKey(const Key('app-all')), findsNothing);
-        await tester.tap(find.byKey(const Key('toggle-account-apps')));
-        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('nav-accounts')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('account-apps')), findsOneWidget);

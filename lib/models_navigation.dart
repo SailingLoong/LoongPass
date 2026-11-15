@@ -35,78 +35,51 @@ class ModelsNavigation extends StatelessWidget {
       selected: active,
       onPressed: onOpen,
     );
-    Widget disclosure(VoidCallback onPress, bool expanded) => Semantics(
-      expanded: expanded,
-      child: SizedBox.square(
-        dimension: 32,
-        child: FButton.icon(
-          key: const Key('toggle-models'),
-          variant: FButtonVariant.ghost,
-          size: FButtonSizeVariant.sm,
-          semanticsLabel: expanded ? '收起模型列表' : '展开模型列表',
-          onPress: onPress,
-          child: Icon(
-            expanded ? FLucideIcons.chevronDown : FLucideIcons.chevronRight,
-            size: 16,
-          ),
-        ),
-      ),
-    );
     if (compact) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          navigation,
-          FPopoverMenu(
-            menuAnchor: Alignment.topLeft,
-            childAnchor: Alignment.topRight,
-            menuBuilder: (context, controller, _) => [
-              FItemGroup(
-                children: [
-                  if (modelIds.isEmpty)
-                    FItem(title: const Text('暂无模型'), enabled: false),
-                  for (final id in modelIds)
-                    FItem(
-                      key: ValueKey('model-nav-$id'),
-                      title: Text(id),
-                      suffix: active && id == selectedModelId
-                          ? const Icon(FLucideIcons.check, size: 16)
-                          : null,
-                      onPress: () {
-                        onSelectModel(id);
-                        controller.hide();
-                      },
-                    ),
-                ],
-              ),
+      return FPopoverMenu(
+        control: FPopoverControl.lifted(
+          shown: active && preferences.modelsExpanded,
+          onChange: preferences.setModelsExpanded,
+        ),
+        menuAnchor: Alignment.topLeft,
+        childAnchor: Alignment.topRight,
+        menuBuilder: (context, controller, _) => [
+          FItemGroup(
+            children: [
+              if (modelIds.isEmpty)
+                FItem(title: const Text('暂无模型'), enabled: false),
+              for (final id in modelIds)
+                FItem(
+                  key: ValueKey('model-nav-$id'),
+                  title: Text(id),
+                  suffix: active && id == selectedModelId
+                      ? const Icon(FLucideIcons.check, size: 16)
+                      : null,
+                  onPress: () {
+                    onSelectModel(id);
+                    controller.hide();
+                  },
+                ),
             ],
-            builder: (context, controller, _) => disclosure(
-              controller.toggle,
-              controller.status.isForwardOrCompleted,
-            ),
           ),
         ],
+        builder: (context, controller, _) => Semantics(
+          expanded: active && preferences.modelsExpanded,
+          child: navigation,
+        ),
       );
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(child: navigation),
-            const SizedBox(width: 4),
-            disclosure(
-              () => preferences.setModelsExpanded(!preferences.modelsExpanded),
-              preferences.modelsExpanded,
-            ),
-          ],
-        ),
+        Semantics(expanded: preferences.modelsExpanded, child: navigation),
         if (preferences.modelsExpanded)
-          Expanded(
+          Flexible(
             child: ListView(
               key: const PageStorageKey('model-list'),
               primary: false,
+              shrinkWrap: true,
               padding: const EdgeInsets.only(left: 12, top: 4, bottom: 8),
               children: [
                 if (modelIds.isEmpty)

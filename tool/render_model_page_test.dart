@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../lib/app_sidebar.dart';
 import '../lib/main.dart';
 import '../lib/ui_preferences.dart';
 import '../test/desktop_test_app.dart';
@@ -28,6 +27,7 @@ void main() {
   });
   for (final (size, scale) in [
     (const Size(1024, 768), 1.0),
+    (const Size(1024, 480), 1.0),
     (const Size(800, 628), 1.0),
     (const Size(480, 800), 2.0),
   ]) {
@@ -43,7 +43,6 @@ void main() {
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
           final app = ModelWorkspaceFixture();
           final preferences = UiPreferences()
-            ..setModelsExpanded(true)
             ..setTheme(
               brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
             );
@@ -57,9 +56,6 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          final workspace = tester.state<AppWorkspaceState>(
-            find.byType(AppWorkspace),
-          );
           Future<void> capture(String suffix) => tester.runAsync(() async {
             final image =
                 await (boundary.currentContext!.findRenderObject()
@@ -74,14 +70,22 @@ void main() {
             );
             await directory.create(recursive: true);
             await File(
-              '${directory.path}/models-${size.width.toInt()}-${brightness.name}-$suffix.png',
+              '${directory.path}/models-${size.width.toInt()}x${size.height.toInt()}-${brightness.name}-$suffix.png',
             ).writeAsBytes(bytes.buffer.asUint8List());
             image.dispose();
           });
-          workspace.selectModel('auto');
+          await tester.tap(find.byKey(const Key('nav-accounts')));
+          await tester.pumpAndSettle();
+          await capture('account-navigation');
+          await tester.tap(find.byKey(const Key('nav-models')));
+          await tester.pumpAndSettle();
+          await capture('model-navigation');
+          await tester.tap(find.byKey(const Key('model-nav-auto')));
           await tester.pumpAndSettle();
           await capture('auto');
-          workspace.selectModel('deepseek-flash');
+          await tester.tap(find.byKey(const Key('nav-models')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
           await tester.pumpAndSettle();
           await capture('accounts');
           expect(tester.takeException(), isNull);

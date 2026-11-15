@@ -8,6 +8,34 @@ import '../lib/ui_preferences.dart';
 import '../lib/managed_app.dart';
 
 void main() {
+  test('account and model navigation share one expanded group', () async {
+    String? stored;
+    final preferences = UiPreferences(write: (value) async => stored = value);
+    addTearDown(preferences.dispose);
+    preferences.setModelsExpanded(true);
+    expect(preferences.modelsExpanded, isTrue);
+    expect(preferences.appsExpanded, isFalse);
+    preferences.setAppsExpanded(true);
+    expect(preferences.appsExpanded, isTrue);
+    expect(preferences.modelsExpanded, isFalse);
+    preferences.setModelsExpanded(false);
+    expect(preferences.appsExpanded, isTrue);
+    await preferences.saved;
+    final restored = UiPreferences(read: () async => stored);
+    addTearDown(restored.dispose);
+    await restored.load();
+    expect(restored.appsExpanded, isTrue);
+    expect(restored.modelsExpanded, isFalse);
+
+    final legacy = UiPreferences(
+      read: () async => '{"appsExpanded":true,"modelsExpanded":true}',
+    );
+    addTearDown(legacy.dispose);
+    await legacy.load();
+    expect(legacy.modelsExpanded, isTrue);
+    expect(legacy.appsExpanded, isFalse);
+  });
+
   test(
     'restart restores user ordering and independent regional favorites',
     () async {

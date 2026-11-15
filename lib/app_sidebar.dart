@@ -71,6 +71,10 @@ class AppWorkspaceState extends State<AppWorkspace> {
   }
 
   void selectSection(WorkspaceSection section) {
+    if (section == WorkspaceSection.accounts)
+      _preferences.setAppsExpanded(true);
+    if (section == WorkspaceSection.models)
+      _preferences.setModelsExpanded(true);
     setState(() {
       if (section == WorkspaceSection.accounts) _all = true;
       _section = section;
@@ -91,6 +95,42 @@ class AppWorkspaceState extends State<AppWorkspace> {
     onOpen: () => selectModel(null),
     onSelectModel: selectModel,
   );
+
+  Widget _navigation(WorkspaceSection section, bool compact) {
+    final child = switch (section) {
+      WorkspaceSection.accounts => AccountsNavigation(
+        preferences: _preferences,
+        compact: compact,
+        active: _section == section,
+        selectedApp: _all ? null : _selected,
+        enabledApps: widget.enabledApps,
+        onOpen: () => selectSection(section),
+        onSelectApp: selectApp,
+        onHideApp: _hideApp,
+      ),
+      WorkspaceSection.models => _modelsNavigation(compact),
+      _ => SidebarNavigationButton(
+        key: ValueKey('nav-${section.name}'),
+        label: section.label,
+        icon: Icon(section.icon, size: 18),
+        compact: compact,
+        selected: _section == section,
+        onPressed: () => selectSection(section),
+      ),
+    };
+    final entry = Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+      child: child,
+    );
+    final expanded = switch (section) {
+      WorkspaceSection.accounts => _preferences.appsExpanded,
+      WorkspaceSection.models => !compact && _preferences.modelsExpanded,
+      _ => false,
+    };
+    // Primary entries keep their height. Only the open child list can scroll
+    // within the space left over, and short lists keep their natural height.
+    return expanded ? Flexible(child: entry) : entry;
+  }
 
   void _hideApp(ManagedApp app) {
     if (_selected == app) setState(() => _all = true);
@@ -172,61 +212,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             for (final section in order)
-                              if (section == WorkspaceSection.accounts)
-                                Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                    ),
-                                    child: AccountsNavigation(
-                                      preferences: _preferences,
-                                      compact: compact,
-                                      active: _section == section,
-                                      selectedApp: _all ? null : _selected,
-                                      enabledApps: widget.enabledApps,
-                                      onOpen: () => selectSection(section),
-                                      onSelectApp: selectApp,
-                                      onHideApp: _hideApp,
-                                    ),
-                                  ),
-                                )
-                              else if (section == WorkspaceSection.models)
-                                if (!compact && _preferences.modelsExpanded)
-                                  Expanded(
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                      ),
-                                      child: _modelsNavigation(compact),
-                                    ),
-                                  )
-                                else
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      8,
-                                      0,
-                                      8,
-                                      4,
-                                    ),
-                                    child: _modelsNavigation(compact),
-                                  )
-                              else
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    8,
-                                    0,
-                                    8,
-                                    4,
-                                  ),
-                                  child: SidebarNavigationButton(
-                                    key: ValueKey('nav-${section.name}'),
-                                    label: section.label,
-                                    icon: Icon(section.icon, size: 18),
-                                    compact: compact,
-                                    selected: _section == section,
-                                    onPressed: () => selectSection(section),
-                                  ),
-                                ),
+                              _navigation(section, compact),
                           ],
                         ),
                       ),
