@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,6 +8,18 @@ import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
 
 void main() {
+  test('routing options target the registered clean bridge path', () async {
+    final bridge = '${Directory.systemTemp.path}${Platform.pathSeparator}bridge';
+    final calls = <List<String>>[];
+    final client = MagpieConnection(
+      run: (args, {input}) async {
+        calls.add(args);
+        return '[]';
+      },
+    );
+    await client.syncRouting('$bridge${Platform.pathSeparator}.', []);
+    expect(calls.singleWhere((args) => args[1] == 'options')[2], bridge);
+  });
   test('removing all routes deletes the referencing auto group before its children', () async {
     final present = {'loongpass-model', 'loongpass-auto'};
     final removed = <String>[];
