@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
+
 import 'plugin_model_catalog.dart';
 
 class MagpieCommandFailure implements Exception {
@@ -193,6 +195,7 @@ class MagpieConnection {
   }) async {
     final selected = grants.where((g) => g.available).toList();
     if (selected.isEmpty) throw StateError('No enabled account');
+    bridgePath = path.normalize(path.absolute(bridgePath));
     final command =
         _command ??
         (List<String> args, {String? input}) async =>
@@ -271,6 +274,7 @@ class MagpieConnection {
     List<PluginModel> models, {
     Set<String> previousGroups = const {},
   }) async {
+    bridgePath = path.normalize(path.absolute(bridgePath));
     final command =
         _command ??
         (List<String> args, {String? input}) async =>

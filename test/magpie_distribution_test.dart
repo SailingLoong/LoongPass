@@ -61,7 +61,8 @@ void main() {
               case 'add':
                 installed.add(directory.path);
               case 'use':
-                expect(args, ['plugin', 'use', bridgePath, 'loongpass']);
+                // Native add cleans the path; use looks up that exact spec.
+                expect(args, ['plugin', 'use', directory.path, 'loongpass']);
                 selected = true;
               case 'login':
                 expect(

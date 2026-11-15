@@ -2,6 +2,13 @@
 
 [LoongPass](https://loongpass.com) is a desktop application for AI-platform accounts
 and credits. This plugin connects a running local LoongPass application to Magpie.
+Every prompt and reply for this provider passes through that local application.
+
+LoongPass 1.0.1 bundles `@sailing-loong/magpie-bridge@0.2.1`. The desktop app and
+plugin have independent version numbers. That published plugin was checked with
+the 1.0.1 application code and external Magpie 0.1.3346 and 0.1.4277 on macOS;
+see the [compatibility record](https://github.com/SailingLoong/LoongPass/blob/main/docs/verification/2026-11-16-stable-1.0.1.md)
+for scope.
 
 ## What LoongPass provides
 
@@ -38,8 +45,14 @@ plugin alone does not install the application or enable every listed feature.
    magpie plugin add github:SailingLoong/LoongPass
    ```
 
-   Once the npm release is available, `magpie plugin add @sailing-loong/magpie-bridge`
-   installs the same package identity.
+   The published npm package installs the same plugin identity:
+
+   ```sh
+   magpie plugin add @sailing-loong/magpie-bridge@0.2.1
+   ```
+
+   This selects the initial version. Magpie's current update commands can replace
+   an explicit npm version; it is not a catalog-enforced review pin.
 3. Save accounts in LoongPass. In **模型连接**, enable the accounts to expose, open
    the connection settings, enable the local service, then click **连接 Magpie**.
    LoongPass uses Magpie's native commands to install its bundled compatible bridge,
