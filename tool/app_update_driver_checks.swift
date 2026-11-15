@@ -10,12 +10,14 @@ import Sparkle
     precondition(driver.phase == .downloading && driver.progress == nil && !driver.canInstall)
     driver.showDownloadDidReceiveData(ofLength: 25)
     precondition(driver.progress == nil)
+    precondition(driver.downloadedBytes == 25)
     driver.showDownloadDidReceiveExpectedContentLength(100)
     precondition(driver.progress == 0.25)
     driver.showDownloadDidReceiveData(ofLength: 100)
     precondition(driver.progress == 1)
     driver.showDownloadDidStartExtractingUpdate()
     precondition(driver.phase == .preparing && !driver.canInstall && driver.progress == nil)
+    precondition(driver.downloadedBytes == nil)
     driver.showReady(toInstallAndRelaunch: { choice in
       if choice == .install { installed += 1 }
       if choice == .skip { skipped += 1 }
@@ -52,6 +54,8 @@ import Sparkle
       exit(1)
     }
     driver.automaticUpdates = { false }
+    driver.showDownloadInitiated(cancellation: {})
+    precondition(driver.downloadedBytes == 0 && driver.progress == nil)
     driver.show(SPUUpdatePermissionRequest(systemProfile: []), reply: { response in
       precondition(!response.automaticUpdateChecks && !response.sendSystemProfile)
     })

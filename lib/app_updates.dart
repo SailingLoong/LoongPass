@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +13,11 @@ class AppUpdates extends ChangeNotifier {
   String? version, offeredVersion, error;
   UpdatePhase phase = UpdatePhase.idle;
   double? progress;
+  int? downloadedBytes;
+  double? downloadBytesPerSecond;
+  DateTime? lastCheckAt, nextCheckAt;
+  Timer? _downloadTimer;
+  int _sampleBytes = 0, _sampleTick = 0;
   bool automaticUpdates = false, receiveBetaUpdates = false;
   bool canCheck = false, canChangeChannel = false, installOnQuit = true;
   bool _canInstall = false, _canSkip = false;
@@ -34,6 +41,8 @@ class AppUpdates extends ChangeNotifier {
     _revision = revision;
     version = value[UpdateContract.version] as String?;
     offeredVersion = value[UpdateContract.offeredVersion] as String?;
+    final previousPhase = phase;
+    final previousBytes = downloadedBytes;
     phase = UpdatePhase.values.firstWhere(
       (phase) => phase.name == value[UpdateContract.phase],
       orElse: () => UpdatePhase.idle,
@@ -42,6 +51,10 @@ class AppUpdates extends ChangeNotifier {
     progress = fraction != null && fraction.isFinite
         ? fraction.toDouble().clamp(0, 1)
         : null;
+    downloadedBytes = _bytes(value[UpdateContract.downloadedBytes]);
+    lastCheckAt = _date(value[UpdateContract.lastCheckAt]);
+    nextCheckAt = _date(value[UpdateContract.nextCheckAt]);
+    _trackDownload(previousPhase, previousBytes);
     automaticUpdates = value[UpdateContract.automaticUpdates] == true;
     receiveBetaUpdates = value[UpdateContract.receiveBetaUpdates] == true;
     canCheck = value[UpdateContract.canCheck] == true;
@@ -51,6 +64,40 @@ class AppUpdates extends ChangeNotifier {
     _canSkip = value[UpdateContract.canSkip] == true;
     error = value[UpdateContract.error] as String?;
     notifyListeners();
+  }
+
+  static int? _bytes(Object? value) =>
+      value is int && value >= 0 ? value : null;
+  static DateTime? _date(Object? value) => value is int && value > 0
+      ? DateTime.fromMillisecondsSinceEpoch(value)
+      : null;
+
+  void _trackDownload(UpdatePhase previousPhase, int? previousBytes) {
+    if (phase != UpdatePhase.downloading) {
+      _downloadTimer?.cancel();
+      _downloadTimer = null;
+      downloadBytesPerSecond = null;
+      return;
+    }
+    if (previousPhase != phase ||
+        previousBytes == null ||
+        (downloadedBytes ?? 0) < previousBytes) {
+      _sampleBytes = downloadedBytes ?? 0;
+      _sampleTick = _downloadTimer?.tick ?? 0;
+      downloadBytesPerSecond = null;
+    }
+    _downloadTimer ??= Timer.periodic(const Duration(seconds: 1), (timer) {
+      final bytes = downloadedBytes;
+      // Timer.tick includes missed intervals and uses the timer's monotonic
+      // clock. A delayed frame must not turn several seconds into a speed spike.
+      final seconds = timer.tick - _sampleTick;
+      downloadBytesPerSecond = bytes != null && seconds > 0
+          ? (bytes - _sampleBytes).clamp(0, double.infinity) / seconds
+          : null;
+      _sampleBytes = bytes ?? 0;
+      _sampleTick = timer.tick;
+      notifyListeners();
+    });
   }
 
   Future<void> _invoke(String method, [Object? value]) async {
@@ -81,6 +128,7 @@ class AppUpdates extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _downloadTimer?.cancel();
     _channel.setMethodCallHandler(null);
     super.dispose();
   }

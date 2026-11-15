@@ -613,7 +613,7 @@ void main() {
       final source = tester.getCenter(
         find.descendant(
           of: find.byKey(const Key('app-order')),
-          matching: find.byKey(const Key('drag-qoder')),
+          matching: find.byKey(const Key('app-qoder')),
         ),
       );
       final target = tester.getCenter(
@@ -647,6 +647,19 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
+  testDesktopWidgets('platform sorting clicks do not navigate', (tester) async {
+    await mount(tester);
+    await order(tester);
+    final item = find.descendant(
+      of: find.byKey(const Key('app-order')),
+      matching: find.byKey(const Key('app-qoder')),
+    );
+    await tester.tap(item);
+    await tester.pumpAndSettle();
+    expect(find.text('平台偏好'), findsOneWidget);
+    expect(find.byKey(const Key('draft')), findsNothing);
+  });
+
   testDesktopWidgets('keyboard can reorder platforms without navigating away', (
     tester,
   ) async {
@@ -654,18 +667,14 @@ void main() {
     addTearDown(prefs.dispose);
     await mount(tester, preferences: prefs);
     await order(tester);
-    final button = find.descendant(
+    final item = find.descendant(
       of: find.descendant(
         of: find.byKey(const Key('app-order')),
         matching: find.byKey(const Key('app-qoder')),
       ),
-      matching: find.byType(FButton),
+      matching: find.byType(Text),
     );
-    Focus.of(
-      tester.element(
-        find.descendant(of: button, matching: find.byType(Text)).first,
-      ),
-    ).requestFocus();
+    Focus.of(tester.element(item.first)).requestFocus();
     await tester.pump();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);

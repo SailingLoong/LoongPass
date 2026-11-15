@@ -7,6 +7,9 @@ inline constexpr char version[] = "version";
 inline constexpr char phase[] = "phase";
 inline constexpr char offeredVersion[] = "offeredVersion";
 inline constexpr char progress[] = "progress";
+inline constexpr char downloadedBytes[] = "downloadedBytes";
+inline constexpr char lastCheckAt[] = "lastCheckAt";
+inline constexpr char nextCheckAt[] = "nextCheckAt";
 inline constexpr char error[] = "error";
 inline constexpr char automaticUpdates[] = "automaticUpdates";
 inline constexpr char receiveBetaUpdates[] = "receiveBetaUpdates";
@@ -22,6 +25,7 @@ inline constexpr char install[] = "install";
 inline constexpr char skip[] = "skip";
 inline constexpr char setAutomaticUpdates[] = "setAutomaticUpdates";
 inline constexpr char setReceiveBetaUpdates[] = "setReceiveBetaUpdates";
+inline constexpr int checkIntervalSeconds = 3600;
 namespace phases {
 inline constexpr char idle[] = "idle";
 inline constexpr char checking[] = "checking";

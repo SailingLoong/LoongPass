@@ -6,6 +6,9 @@ abstract final class UpdateContract {
   static const phase = 'phase';
   static const offeredVersion = 'offeredVersion';
   static const progress = 'progress';
+  static const downloadedBytes = 'downloadedBytes';
+  static const lastCheckAt = 'lastCheckAt';
+  static const nextCheckAt = 'nextCheckAt';
   static const error = 'error';
   static const automaticUpdates = 'automaticUpdates';
   static const receiveBetaUpdates = 'receiveBetaUpdates';
@@ -21,6 +24,7 @@ abstract final class UpdateContract {
   static const skip = 'skip';
   static const setAutomaticUpdates = 'setAutomaticUpdates';
   static const setReceiveBetaUpdates = 'setReceiveBetaUpdates';
+  static const checkIntervalSeconds = 3600;
 }
 
 enum UpdatePhase {

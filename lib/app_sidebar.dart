@@ -158,7 +158,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
             WorkspaceSection.settings: WorkspaceSettingsPage(
               preferences: _preferences,
-              onOpenApp: selectApp,
             ),
             ...widget.sections,
           };

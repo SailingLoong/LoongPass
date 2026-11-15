@@ -47,6 +47,7 @@ if sys.platform == "darwin":
              'macos/Runner/UpdateContract.swift', 'macos/Runner/AppUpdateUserDriver.swift',
              'tool/app_update_driver_checks.swift', '-o', update_driver])
         run([update_driver])
+        run([sys.executable, 'test/sparkle_update_integration_test.py'])
         zcode_context = str(Path(scratch) / "zcode-context-checks")
         run(["xcrun", "swiftc", "macos/Runner/ZcodeRequestContext.swift", "tool/zcode_request_context_checks.swift", "-o", zcode_context])
         run([zcode_context])

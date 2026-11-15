@@ -12,6 +12,7 @@ final class AppUpdateUserDriver: NSObject, SPUUserDriver {
   private(set) var error: String?
   private var expected: UInt64 = 0
   private var received: UInt64 = 0
+  var downloadedBytes: UInt64? { phase == .downloading ? received : nil }
   private var installHandler: (() -> Void)?
   private var skipHandler: (() -> Void)?
   // Automatic Sparkle installations retain their driver via the delegate.

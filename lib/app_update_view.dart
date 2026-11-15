@@ -2,6 +2,24 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'app_updates.dart';
+import 'update_contract.dart';
+
+String _percentage(AppUpdates updates) =>
+    updates.progress == null ? '进度未知' : '${(updates.progress! * 100).floor()}%';
+
+String _speed(AppUpdates updates) {
+  final speed = updates.downloadBytesPerSecond;
+  if (speed == null) return '计算速度…';
+  if (speed >= 1048576) return '${(speed / 1048576).toStringAsFixed(1)} MiB/s';
+  if (speed >= 1024) return '${(speed / 1024).toStringAsFixed(1)} KiB/s';
+  return '${speed.round()} B/s';
+}
+
+String _checkTime(DateTime time) {
+  String pair(int value) => value.toString().padLeft(2, '0');
+  final local = time.toLocal();
+  return '${pair(local.month)}-${pair(local.day)} ${pair(local.hour)}:${pair(local.minute)}';
+}
 
 String _status(UpdatePhase phase) => switch (phase) {
   UpdatePhase.idle => '将在后台检查并准备更新',
@@ -102,13 +120,25 @@ class AppUpdateCard extends StatelessWidget {
                     ),
             ),
             const SizedBox(height: 10),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                updates.phase == UpdatePhase.idle && !updates.automaticUpdates
-                    ? '自动检查已关闭，可手动检查更新'
-                    : _status(updates.phase),
-              ),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    updates.phase == UpdatePhase.idle &&
+                            !updates.automaticUpdates
+                        ? '自动检查已关闭，可手动检查更新'
+                        : _status(updates.phase),
+                  ),
+                ),
+                if (updates.phase == UpdatePhase.downloading) ...[
+                  Text(_percentage(updates)),
+                  Text(_speed(updates)),
+                ],
+              ],
             ),
             if (updates.phase == UpdatePhase.downloading ||
                 updates.phase == UpdatePhase.preparing) ...[
@@ -127,13 +157,32 @@ class AppUpdateCard extends StatelessWidget {
                 ),
               ),
             const FDivider(),
+            Text(
+              '上次检查：${updates.lastCheckAt == null ? '尚无记录' : _checkTime(updates.lastCheckAt!)}',
+              style: theme.typography.body.xs.copyWith(
+                color: theme.colors.mutedForeground,
+              ),
+            ),
+            if (updates.automaticUpdates)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  updates.nextCheckAt == null
+                      ? '下次检查：本次更新处理完成后继续'
+                      : '下次检查：约 ${_checkTime(updates.nextCheckAt!)}',
+                  style: theme.typography.body.xs.copyWith(
+                    color: theme.colors.mutedForeground,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
             FSwitch(
               value: updates.automaticUpdates,
               label: const Text('自动检查并预下载更新'),
               description: Text(
                 updates.installOnQuit
-                    ? '后台下载并校验，准备好后可重启更新，或在退出时安装。'
-                    : '后台下载并校验，准备好后手动安装。',
+                    ? '每 ${UpdateContract.checkIntervalSeconds ~/ 3600} 小时检查并预下载，准备好后可重启更新，或在退出时安装。'
+                    : '每 ${UpdateContract.checkIntervalSeconds ~/ 3600} 小时检查并预下载，准备好后手动安装。',
               ),
               leadingLabel: true,
               enabled: updates.available,
@@ -179,7 +228,11 @@ class AppUpdateBadge extends StatelessWidget {
           updates.phase == UpdatePhase.upToDate)
         return const SizedBox.shrink();
       final ready = updates.phase == UpdatePhase.ready;
-      final label = ready ? '重启并更新' : _status(updates.phase);
+      final status = ready ? '重启并更新' : _status(updates.phase);
+      final telemetry = updates.phase == UpdatePhase.downloading
+          ? '${_percentage(updates)} · ${_speed(updates)}'
+          : null;
+      final label = telemetry == null ? status : '$status · $telemetry';
       final icon = Icon(
         ready ? FLucideIcons.refreshCw : FLucideIcons.download,
         size: 17,
@@ -199,10 +252,23 @@ class AppUpdateBadge extends StatelessWidget {
             child: compact
                 ? icon
                 : Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          status,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (telemetry != null)
+                          Text(
+                            telemetry,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: context.theme.typography.body.xs,
+                          ),
+                      ],
                     ),
                   ),
           ),

@@ -209,6 +209,84 @@ void main() {
   );
 
   testDesktopWidgets(
+    'download bytes show live speed, percentage and stalls without another check',
+    (tester) async {
+      native.addAll({
+        'phase': 'downloading',
+        'canCheck': false,
+        'progress': 0.0,
+        'downloadedBytes': 0,
+      });
+      final updates = await render(tester);
+      addTearDown(updates.dispose);
+      expect(find.text('0%'), findsOneWidget);
+      await event(tester, {
+        ...native,
+        'revision': 1,
+        'progress': 0.25,
+        'downloadedBytes': 1048576,
+      });
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('25%'), findsOneWidget);
+      expect(find.text('1.0 MiB/s'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('0 B/s'), findsOneWidget);
+      await event(tester, {
+        ...native,
+        'revision': 2,
+        'phase': 'preparing',
+        'progress': null,
+      });
+      expect(find.text('1.0 MiB/s'), findsNothing);
+      expect(find.text('0 B/s'), findsNothing);
+      expect(calls.map((c) => c.method), ['state']);
+    },
+  );
+
+  testDesktopWidgets(
+    'unknown totals and replacement downloads do not inherit telemetry',
+    (tester) async {
+      native.addAll({
+        'phase': 'downloading',
+        'canCheck': false,
+        'downloadedBytes': 0,
+      });
+      final updates = await render(tester);
+      addTearDown(updates.dispose);
+      expect(find.text('进度未知'), findsOneWidget);
+      await event(tester, {...native, 'revision': 1, 'downloadedBytes': 2048});
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('2.0 KiB/s'), findsOneWidget);
+      expect(find.byType(FProgress), findsOneWidget);
+      await event(tester, {...native, 'revision': 2, 'downloadedBytes': 0});
+      expect(find.text('计算速度…'), findsOneWidget);
+      await event(tester, {...native, 'revision': 1, 'downloadedBytes': 2048});
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('0 B/s'), findsOneWidget);
+      expect(updates.downloadedBytes, 0);
+    },
+  );
+
+  testDesktopWidgets(
+    'check dates come from the native schedule and disappear on opt-out',
+    (tester) async {
+      native.addAll({
+        'automaticUpdates': true,
+        'lastCheckAt': DateTime(2026, 11, 15, 12).millisecondsSinceEpoch,
+        'nextCheckAt': DateTime(2026, 11, 15, 13).millisecondsSinceEpoch,
+      });
+      final updates = await render(tester);
+      addTearDown(updates.dispose);
+      expect(find.text('上次检查：11-15 12:00'), findsOneWidget);
+      expect(find.text('下次检查：约 11-15 13:00'), findsOneWidget);
+      await tester.tap(find.text('自动检查并预下载更新'));
+      await tester.pumpAndSettle();
+      expect(find.text('下次检查：约 11-15 13:00'), findsNothing);
+      expect(find.text('上次检查：11-15 12:00'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
     'a late check reply cannot overwrite a newer ready event',
     (tester) async {
       final updates = await render(tester);
@@ -239,7 +317,7 @@ void main() {
         for (final (phase, label) in [
           (UpdatePhase.error, '更新未完成，可稍后重试'),
           (UpdatePhase.ready, '重启并更新'),
-          (UpdatePhase.downloading, '正在后台下载更新'),
+          (UpdatePhase.downloading, '正在后台下载更新 · 进度未知 · 计算速度…'),
           (UpdatePhase.preparing, '正在校验并准备更新'),
         ]) {
           native.addAll({
@@ -301,7 +379,12 @@ void main() {
           await mouse.moveTo(tester.getCenter(find.byType(FButton)));
           await tester.pump(const Duration(seconds: 1));
           await tester.pumpAndSettle();
-          expect(find.text(label), findsNWidgets(2));
+          expect(
+            find.text(label),
+            phase == UpdatePhase.downloading
+                ? findsOneWidget
+                : findsNWidgets(2),
+          );
           await mouse.removePointer();
           await tester.pumpAndSettle();
           final callsBeforePress = calls.length;
