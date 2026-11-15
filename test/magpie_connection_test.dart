@@ -145,7 +145,7 @@ void main() {
         ],
       );
       await connection.connect(
-        '/private/bridge',
+        '/synthetic/loongpass',
         Uri.parse('http://127.0.0.1:3426'),
         [grant],
         legacyKeys: {'old-pool'},
@@ -188,7 +188,7 @@ void main() {
         );
         await expectLater(
           connection.connect(
-            '/bridge',
+            '/synthetic/loongpass',
             Uri.parse('http://127.0.0.1:3426'),
             [grant],
             legacyKeys: {'old'},
