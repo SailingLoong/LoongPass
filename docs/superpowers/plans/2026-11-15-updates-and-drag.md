@@ -22,6 +22,6 @@
 
 - [x] Add failing regression cases for sorting without navigation and changing download telemetry.
 - [x] Use a focused drag-only platform-order item and standard whole-item listeners; preserve keyboard actions.
-- [ ] Extend the shared update contract with native bytes and actual check times. Set the native schedule to one hour, derive live transfer speed in the data owner, and render telemetry beside download status.
-- [ ] Run targeted tests, native adapter checks, static analysis and the repository check entry point; inspect rendered UI and a running isolated client.
+- [x] Extend the shared update contract with native bytes and actual check times. Set the native schedule to one hour, derive live transfer speed in the data owner, and render telemetry beside download status.
+- [x] Run targeted tests, native adapter checks, static analysis and the repository check entry point; inspect rendered UI and a running isolated native updater fixture.
 - [ ] Independently review, address defects, merge through repository checks, verify remote main and clean task-owned intermediates / worktree.
