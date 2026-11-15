@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def outputs():
-    contract = json.loads((ROOT / 'tool/update_contract.json').read_text())
+    contract = json.loads((ROOT / 'tool/update_contract.json').read_text(encoding='utf-8'))
     constants = [('channel', contract['channel'])] + [
         (name, name) for group in ('fields', 'methods') for name in contract[group]]
     phases = contract['phases']
@@ -27,7 +27,7 @@ def outputs():
     cpp += 'namespace phases {\n' + ''.join(f'inline constexpr char {name}[] = "{name}";\n' for name in phases) + '}\n}\n'
     # Info.plist is Sparkle's official default configuration, mirrored from the
     # same policy as Windows and checked along with the bridge constants.
-    info = (ROOT / 'macos/Runner/Info.plist').read_text()
+    info = (ROOT / 'macos/Runner/Info.plist').read_text(encoding='utf-8')
     info = re.sub(r'\t<key>SUScheduledCheckInterval</key>\s*<integer>\d+</integer>\n', '', info)
     info = info.replace('\t<key>SUEnableAutomaticChecks</key>',
         f'\t<key>SUScheduledCheckInterval</key>\n\t<integer>{interval}</integer>\n\t<key>SUEnableAutomaticChecks</key>')
@@ -42,7 +42,7 @@ if __name__ == '__main__':
     for name, value in outputs().items():
         path = ROOT / name
         if args.check:
-            if not path.exists() or path.read_text() != value:
+            if not path.exists() or path.read_text(encoding='utf-8') != value:
                 raise SystemExit('Stale update contract: ' + name)
         else:
-            path.write_text(value)
+            path.write_text(value, encoding='utf-8')
