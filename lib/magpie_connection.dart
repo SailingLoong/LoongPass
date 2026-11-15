@@ -143,7 +143,12 @@ class MagpieConnection {
         .whereType<Map>()
         .where((p) => p['id'] == 'loongpass')
         .firstOrNull;
-    if (own?['spec'] != bridgePath ||
+    final spec = own?['spec'];
+    // Magpie cleans directory paths, including Windows separators. Compare
+    // normalized directory URIs rather than the original argument spelling.
+    if (spec is! String ||
+        Directory(spec).absolute.uri.normalizePath() !=
+            Directory(bridgePath).absolute.uri.normalizePath() ||
         selected.any((g) => !saved.contains(g.account.key)))
       throw StateError(
         'Magpie did not retain every account on the bundled bridge',
