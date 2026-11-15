@@ -36,6 +36,7 @@ void main() {
 
   for (final failure in [
     null,
+    'normalized-path',
     'superseded',
     'missing-grant',
     'removed-grant',
@@ -47,6 +48,9 @@ void main() {
         const github = 'github:SailingLoong/LoongPass#main';
         const foreign = '@someone-else/loongpass';
         const unknownLocal = '/unrelated/local-plugin';
+        final bridgePath = failure == 'normalized-path'
+            ? '${directory.path}/.'
+            : directory.path;
         final installed = <String>{npm, github, foreign, unknownLocal};
         final calls = <List<String>>[];
         var selected = false, saved = false, verified = false, removed = false;
@@ -57,7 +61,7 @@ void main() {
               case 'add':
                 installed.add(directory.path);
               case 'use':
-                expect(args, ['plugin', 'use', directory.path, 'loongpass']);
+                expect(args, ['plugin', 'use', bridgePath, 'loongpass']);
                 selected = true;
               case 'login':
                 expect(
@@ -99,11 +103,11 @@ void main() {
           },
         );
         final result = connection.connect(
-          directory.path,
+          bridgePath,
           Uri.parse('http://127.0.0.1:3426'),
           [grant],
         );
-        if (failure == null) {
+        if (failure == null || failure == 'normalized-path') {
           await result;
           expect(installed, {directory.path, foreign, unknownLocal});
           expect(calls.where((a) => a[1] == 'rm'), [
