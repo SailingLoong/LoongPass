@@ -15,10 +15,11 @@ class AppNavigationItem extends StatefulWidget {
     required this.onPressed,
     required this.onMove,
     this.onHide,
+    this.nested = false,
   });
   final ManagedApp app;
   final int index;
-  final bool compact, selected;
+  final bool compact, selected, nested;
   final VoidCallback? onPressed;
   final ValueChanged<int> onMove;
   final VoidCallback? onHide;
@@ -82,6 +83,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
                     tooltip: '${app.label} · ${app.region}',
                     icon: icon,
                     compact: widget.compact,
+                    nested: widget.nested,
                     selected: widget.selected,
                     onPressed: widget.onPressed,
                     trailing: widget.compact || widget.onHide != null
@@ -203,10 +205,13 @@ class SidebarNavigationButton extends StatelessWidget {
     required this.onPressed,
     this.trailing,
     this.tooltip,
+    this.nested = false,
+    this.maxLines = 1,
   });
   final String label;
   final Widget icon;
-  final bool compact, selected;
+  final bool compact, selected, nested;
+  final int maxLines;
   final VoidCallback? onPressed;
   final Widget? trailing;
   final String? tooltip;
@@ -219,10 +224,12 @@ class SidebarNavigationButton extends StatelessWidget {
       child: compact
           ? FButton.icon(
               variant: variant,
-              size: FButtonSizeVariant.md,
-              style: const FButtonStyleDelta.delta(
+              size: nested ? FButtonSizeVariant.sm : FButtonSizeVariant.md,
+              style: FButtonStyleDelta.delta(
                 iconContentStyle: FButtonIconContentStyleDelta.delta(
-                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.all(8)),
+                  padding: EdgeInsetsGeometryDelta.value(
+                    EdgeInsets.all(nested ? 6 : 8),
+                  ),
                 ),
               ),
               selected: selected,
@@ -232,10 +239,15 @@ class SidebarNavigationButton extends StatelessWidget {
             )
           : FButton(
               variant: variant,
-              size: FButtonSizeVariant.md,
-              style: const FButtonStyleDelta.delta(
+              size: nested ? FButtonSizeVariant.sm : FButtonSizeVariant.md,
+              style: FButtonStyleDelta.delta(
                 contentStyle: FButtonContentStyleDelta.delta(
-                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.all(8)),
+                  padding: EdgeInsetsGeometryDelta.value(
+                    EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: nested ? 6 : 8,
+                    ),
+                  ),
                   spacing: 8,
                 ),
               ),
@@ -248,7 +260,17 @@ class SidebarNavigationButton extends StatelessWidget {
               child: Expanded(
                 child: Text(
                   label,
-                  maxLines: 1,
+                  style: nested
+                      ? TextStyle(
+                          fontWeight: selected
+                              ? FontWeight.w500
+                              : FontWeight.w400,
+                          color: selected
+                              ? context.theme.colors.foreground
+                              : context.theme.colors.mutedForeground,
+                        )
+                      : null,
+                  maxLines: maxLines,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

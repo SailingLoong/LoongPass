@@ -76,43 +76,41 @@ class ModelsNavigation extends StatelessWidget {
         Semantics(expanded: preferences.modelsExpanded, child: navigation),
         if (preferences.modelsExpanded)
           Flexible(
-            child: ListView(
-              key: const PageStorageKey('model-list'),
-              primary: false,
-              shrinkWrap: true,
-              padding: const EdgeInsets.only(left: 12, top: 4, bottom: 8),
-              children: [
-                if (modelIds.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      '暂无模型',
-                      style: context.theme.typography.body.sm,
-                    ),
-                  ),
-                for (final id in modelIds)
-                  FTooltip(
-                    tipBuilder: (context, controller) => Text(id),
-                    child: FButton(
-                      key: ValueKey('model-nav-$id'),
-                      variant: active && id == selectedModelId
-                          ? FButtonVariant.secondary
-                          : FButtonVariant.ghost,
-                      size: FButtonSizeVariant.sm,
-                      selected: active && id == selectedModelId,
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.max,
-                      onPress: () => onSelectModel(id),
-                      child: Flexible(
-                        child: Text(
-                          id,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+            child: Container(
+              margin: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+              padding: const EdgeInsets.only(left: 8),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: context.theme.colors.border),
+                ),
+              ),
+              child: ListView(
+                key: const PageStorageKey('model-list'),
+                primary: false,
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  if (modelIds.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text(
+                        '暂无模型',
+                        style: context.theme.typography.body.sm,
                       ),
                     ),
-                  ),
-              ],
+                  for (final id in modelIds)
+                    SidebarNavigationButton(
+                      key: ValueKey('model-nav-$id'),
+                      label: id,
+                      icon: const Icon(FLucideIcons.dot, size: 16),
+                      compact: false,
+                      nested: true,
+                      maxLines: 2,
+                      selected: active && id == selectedModelId,
+                      onPressed: () => onSelectModel(id),
+                    ),
+                ],
+              ),
             ),
           ),
       ],

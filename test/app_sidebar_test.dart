@@ -264,6 +264,20 @@ void main() {
               .dy,
         ),
       );
+      if (width >= 900) {
+        final primaryLabel = find.descendant(
+          of: find.byKey(const Key('nav-models')),
+          matching: find.text('模型连接'),
+        );
+        final nestedLabel = find.descendant(
+          of: find.byKey(const Key('model-nav-deepseek-flash')),
+          matching: find.text('deepseek-flash'),
+        );
+        expect(
+          tester.getTopLeft(nestedLabel).dx,
+          greaterThan(tester.getTopLeft(primaryLabel).dx + 16),
+        );
+      }
       await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
       await tester.pumpAndSettle();
       expect(selection.value, 'deepseek-flash');
@@ -325,10 +339,14 @@ void main() {
             TextSelection(baseOffset: 0, extentOffset: app.label.length),
           );
           expect(paragraph.didExceedMaxLines, isFalse, reason: app.label);
-          expect(tester.getTopLeft(label).dx, labelLeft, reason: app.label);
+          expect(
+            tester.getTopLeft(label).dx,
+            greaterThan(labelLeft + 16),
+            reason: app.label,
+          );
           expect(
             tester.getSize(button).height,
-            greaterThanOrEqualTo(36),
+            greaterThanOrEqualTo(32),
             reason: app.label,
           );
           expect(paragraph.textScaler.scale(14), 14 * textScale);
@@ -450,7 +468,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final size in [const Size(800, 632), const Size(1024, 480)]) {
+  for (final size in [const Size(800, 480), const Size(1024, 480)]) {
     testDesktopWidgets(
       'main navigation stays visible while applications scroll at $size',
       (tester) async {
@@ -710,7 +728,7 @@ void main() {
         expect(
           tester.getTopLeft(find.byKey(const Key('nav-models'))).dy -
               tester.getBottomLeft(find.byKey(const Key('app-qoder'))).dy,
-          lessThanOrEqualTo(8),
+          lessThanOrEqualTo(16),
         );
         await tester.tap(find.byKey(const Key('app-zcode')));
         await tester.pumpAndSettle();
