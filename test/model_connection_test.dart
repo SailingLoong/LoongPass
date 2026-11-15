@@ -58,7 +58,7 @@ PluginModelGrant _grant(
 );
 
 String _listing(List<String> ids) {
-  final value = magpiePluginList(ids);
+  final value = magpiePluginList(ids, spec: '/bridge');
   (value['providers'] as List).first['accountId'] = ids.firstOrNull;
   return jsonEncode(value);
 }
@@ -140,7 +140,9 @@ void main() {
       saved.complete(_listing(['one', 'two']));
       await connecting;
       expect(commands.where((c) => c == 'healthcheck'), isEmpty);
-      expect(commands.where((c) => c == 'plugin list --json'), hasLength(1));
+      // Installation discovery and post-login ownership verification belong to
+      // the explicit connection; disposal must not add a healthcheck.
+      expect(commands.where((c) => c == 'plugin list --json'), hasLength(2));
     },
   );
   test('snapshots are explicit and invalidated by grants, not balance notifications', () async {

@@ -121,6 +121,64 @@ class MagpieConnection {
     return {for (final a in accounts) a['accountId'] as String};
   }
 
+  static List<String> _installedSpecs(String output) {
+    final value = jsonDecode(output);
+    if (value is List && value.isEmpty) return [];
+    if (value is! Map || value['plugins'] is! List)
+      throw const FormatException('Unknown Magpie plugin list');
+    final plugins = value['plugins'] as List;
+    if (plugins.any((p) => p is! Map || p['spec'] is! String))
+      throw const FormatException('Unknown Magpie plugin source');
+    return [for (final p in plugins) p['spec'] as String];
+  }
+
+  static void _verifyGrants(
+    String output,
+    String bridgePath,
+    List<PluginModelGrant> selected,
+  ) {
+    final saved = _accountIds(output);
+    final value = jsonDecode(output);
+    final own = (value['providers'] as List)
+        .whereType<Map>()
+        .where((p) => p['id'] == 'loongpass')
+        .firstOrNull;
+    if (own?['spec'] != bridgePath ||
+        selected.any((g) => !saved.contains(g.account.key)))
+      throw StateError(
+        'Magpie did not retain every account on the bundled bridge',
+      );
+  }
+
+  /// Local paths are distinct registrations in Magpie. Only this package's own
+  /// npm/GitHub distributions can be retired; other providers and paths stay put.
+  static Future<List<String>> _distributionSpecs(
+    List<String> installed,
+    String bridgePath,
+  ) async {
+    if (!installed.any((s) => s.startsWith('@') || s.startsWith('github:')))
+      return [];
+    final package = jsonDecode(
+      await File('$bridgePath/package.json').readAsString(),
+    ) as Map<String, dynamic>;
+    final name = package['name'] as String;
+    final url = (package['repository'] as Map)['url'] as String;
+    final repository = Uri.parse(url.replaceFirst(RegExp(r'^git\+'), ''));
+    if (repository.host != 'github.com')
+      throw const FormatException('Unknown bridge repository');
+    final repo = repository.path
+        .replaceFirst(RegExp(r'^/'), '')
+        .replaceFirst(RegExp(r'\.git$'), '');
+    final github = 'github:${repo.toLowerCase()}';
+    return [
+      for (final spec in installed)
+        if (spec == name ||
+            spec.startsWith('$name@') ||
+            spec.split('#').first.toLowerCase() == github)
+          spec,
+    ];
+  }
+
   Future<void> connect(
     String bridgePath,
     Uri endpoint,
@@ -134,7 +192,10 @@ class MagpieConnection {
         _command ??
         (List<String> args, {String? input}) async =>
             _run(await _executable(), args, input: input);
+    final before = _installedSpecs(await command(['plugin', 'list', '--json']));
+    final distributions = await _distributionSpecs(before, bridgePath);
     await command(['plugin', 'add', bridgePath]);
+    await command(['plugin', 'use', bridgePath, 'loongpass']);
     for (final grant in selected) {
       if ([
         grant.account.key,
@@ -150,9 +211,20 @@ class MagpieConnection {
     }
     // Native structured output is also the capability check. A successful
     // process exit alone does not prove every selected account was saved.
-    final saved = _accountIds(await command(['plugin', 'list', '--json']));
-    if (selected.any((g) => !saved.contains(g.account.key)))
-      throw StateError('Magpie did not retain every account');
+    _verifyGrants(
+      await command(['plugin', 'list', '--json']),
+      bridgePath,
+      selected,
+    );
+    for (final spec in distributions) {
+      await command(['plugin', 'rm', spec]);
+    }
+    if (distributions.isNotEmpty) {
+      final output = await command(['plugin', 'list', '--json']);
+      _verifyGrants(output, bridgePath, selected);
+      if (_installedSpecs(output).any(distributions.contains))
+        throw StateError('Magpie retained a duplicate LoongPass distribution');
+    }
 
     if (legacyKeys.isEmpty) return;
     final previous = await (_readProviders ?? _installedProviders)();

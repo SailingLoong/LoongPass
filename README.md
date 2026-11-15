@@ -97,6 +97,15 @@ Codex 使用已安装官方客户端的登录流程，支持现有文件凭据�
 
 ## Magpie 模型服务
 
+LoongPass 的 Magpie 插件安装、独立发布、账号授权与社区收录说明见
+[LoongPass for Magpie](docs/magpie-plugin.md)。可在 Magpie 的手动安装框输入
+`github:SailingLoong/LoongPass`，或运行 `magpie plugin add github:SailingLoong/LoongPass`。
+插件连接本机 LoongPass；多账号、辅助自动签到、余额与到期管理、即将过期的适用积分优先使用、
+官方 App 账号切换等能力由 LoongPass 提供，各平台支持与验收范围分别说明。
+
+插件授权到 LoongPass 本机服务，使用应用保存的账号与逐账号本地调用授权。
+与直接在 Magpie 登录对应平台的插件共用同一官方账号及积分池；安装插件不会增加额度。
+
 LoongPass 使用固定版本的 Magpie 原生插件宿主和完整上游插件包。原生插件负责授权、续期、模型目录和供应方请求；Magpie 负责客户端协议、模型分组、账号选路与推理恢复。
 
 1. 在「账号与积分」保存账号，在「模型连接」的账号授权中启用希望提供给 Magpie 的账号。

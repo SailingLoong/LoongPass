@@ -1,0 +1,48 @@
+{
+  "name": "@sailing-loong/magpie-bridge",
+  "version": "0.2.1",
+  "description": "Connect LoongPass accounts, rewards and expiring-credit-first model routing to Magpie",
+  "homepage": "https://loongpass.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SailingLoong/LoongPass.git",
+    "directory": "runtime/bridge"
+  },
+  "bugs": {
+    "url": "https://github.com/SailingLoong/LoongPass/issues"
+  },
+  "keywords": [
+    "magpie-plugin",
+    "opencode",
+    "opencode-plugin",
+    "loongpass",
+    "provider",
+    "accounts",
+    "checkin",
+    "credits"
+  ],
+  "type": "module",
+  "main": "./runtime/bridge/index.mjs",
+  "exports": {
+    ".": "./runtime/bridge/index.mjs",
+    "./server": "./runtime/bridge/index.mjs"
+  },
+  "files": [
+    "runtime/bridge/index.mjs",
+    "runtime/bridge/routing.mjs",
+    "docs/magpie-plugin.md"
+  ],
+  "magpie": {
+    "middleware": "./runtime/bridge/routing.mjs",
+    "name": "LoongPass",
+    "icon": "https://raw.githubusercontent.com/SailingLoong/LoongPass/main/assets/branding/loongpass.svg",
+    "summary": {
+      "en": "Connect your running local LoongPass app: multi-account management, assisted reward claims, balances and expiry, and official-app switching where supported. Route models through eligible credits expiring first, using the same vendor account quotas as direct plugins. LoongPass installation required.",
+      "zh": "连接本机 LoongPass，统一管理多平台多账号、辅助自动签到与奖励领取、余额和积分到期、官方 App 账号切换，并按适用积分到期时间优先选路。与直接插件共用原平台账号额度。需安装并运行 LoongPass，各平台能力以应用说明为准。"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}
