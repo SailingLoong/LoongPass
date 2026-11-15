@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'managed_app.dart';
 
+enum _ExpandedNavigation { accounts, models }
+
 /// Owns UI choices only. Account owners remain authoritative for all account
 /// facts; no credentials, balances or claim records are written here.
 class UiPreferences extends ChangeNotifier {
@@ -21,8 +23,7 @@ class UiPreferences extends ChangeNotifier {
   final Future<void> Function(String)? write;
   List<ManagedApp> _order = [...ManagedApp.values];
   final Set<ManagedApp> _hiddenApps = {};
-  bool _appsExpanded = true;
-  bool _modelsExpanded = false;
+  _ExpandedNavigation? _expandedNavigation = _ExpandedNavigation.accounts;
   final Set<String> _favorites = {};
   final Map<String, int> _pageSizes = {};
   bool _comfortable = false, _disposed = false;
@@ -31,8 +32,8 @@ class UiPreferences extends ChangeNotifier {
   Future<void> _pending = Future.value();
   String? error;
   List<ManagedApp> get appOrder => List.unmodifiable(_order);
-  bool get appsExpanded => _appsExpanded;
-  bool get modelsExpanded => _modelsExpanded;
+  bool get appsExpanded => _expandedNavigation == _ExpandedNavigation.accounts;
+  bool get modelsExpanded => _expandedNavigation == _ExpandedNavigation.models;
   bool isAppVisible(ManagedApp app) => !_hiddenApps.contains(app);
   bool get comfortable => _comfortable;
   double get rowHeight => _comfortable ? 44 : 36;
@@ -65,8 +66,12 @@ class UiPreferences extends ChangeNotifier {
             (app) => hidden is List && hidden.contains(app.name),
           ),
         );
-      _appsExpanded = json['appsExpanded'] != false;
-      _modelsExpanded = json['modelsExpanded'] == true;
+      _expandedNavigation = null;
+      if (json['modelsExpanded'] == true) {
+        _expandedNavigation = _ExpandedNavigation.models;
+      } else if (json['appsExpanded'] != false) {
+        _expandedNavigation = _ExpandedNavigation.accounts;
+      }
       _comfortable = json['comfortable'] == true;
       _themeMode =
           ThemeMode.values.where((v) => v.name == json['theme']).firstOrNull ??
@@ -109,15 +114,17 @@ class UiPreferences extends ChangeNotifier {
     if (changed) _changed();
   }
 
-  void setAppsExpanded(bool value) {
-    if (_appsExpanded == value) return;
-    _appsExpanded = value;
-    _changed();
-  }
+  void setAppsExpanded(bool value) =>
+      _setExpandedNavigation(_ExpandedNavigation.accounts, value);
 
-  void setModelsExpanded(bool value) {
-    if (_modelsExpanded == value) return;
-    _modelsExpanded = value;
+  void setModelsExpanded(bool value) =>
+      _setExpandedNavigation(_ExpandedNavigation.models, value);
+
+  void _setExpandedNavigation(_ExpandedNavigation group, bool value) {
+    if (!value && _expandedNavigation != group) return;
+    final expanded = value ? group : null;
+    if (_expandedNavigation == expanded) return;
+    _expandedNavigation = expanded;
     _changed();
   }
 
@@ -151,8 +158,8 @@ class UiPreferences extends ChangeNotifier {
     final payload = jsonEncode({
       'appOrder': _order.map((a) => a.name).toList(),
       'hiddenApps': _hiddenApps.map((app) => app.name).toList(),
-      'appsExpanded': _appsExpanded,
-      'modelsExpanded': _modelsExpanded,
+      'appsExpanded': appsExpanded,
+      'modelsExpanded': modelsExpanded,
       'comfortable': _comfortable,
       'theme': _themeMode.name,
       'favorites': _favorites.toList(),
