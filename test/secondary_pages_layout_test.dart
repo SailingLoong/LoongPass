@@ -232,6 +232,7 @@ void main() {
             'canInstall': phase == 'ready',
             'canSkip': phase == 'ready',
             'progress': phase == 'downloading' ? 0.42 : null,
+            'downloadedBytes': phase == 'downloading' ? 0 : null,
             'error': phase == 'error' ? '网络暂不可用，请稍后重新检查更新。' : null,
           };
           await updates.load();
@@ -252,6 +253,13 @@ void main() {
           );
           expect(find.byType(AppUpdateBadge).hitTestable(), findsOneWidget);
           expect(tester.takeException(), isNull);
+          if (phase == 'downloading') {
+            native['revision'] = ++revision;
+            native['downloadedBytes'] = 1048576;
+            await updates.load();
+            await tester.pump(const Duration(seconds: 1));
+            expect(find.text('1.0 MiB/s'), findsOneWidget);
+          }
           await _capturePreview(
             tester,
             boundary,

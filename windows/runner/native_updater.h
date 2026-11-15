@@ -21,8 +21,10 @@ class NativeUpdater {
   bool automatic_ = false, beta_ = false;
   std::string phase_, offered_version_, error_;
   Json progress_ = nullptr;
+  Json downloaded_bytes_ = nullptr;
   int64_t revision_ = 0;
   std::time_t next_check_ = 0;
+  std::time_t last_check_ = 0;
   std::unique_ptr<flutter::MethodChannel<Value>> channel_;
 };
 }  // namespace loongpass

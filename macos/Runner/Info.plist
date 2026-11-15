@@ -36,6 +36,8 @@
 	<string>https://loongpass.com/updates/appcast-stable.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>/a/FT41tq7pZZgqNUyu9Ns32Qo8NHxziqIOFAnwHRb4=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>3600</integer>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUAutomaticallyUpdate</key>

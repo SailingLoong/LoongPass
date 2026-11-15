@@ -10,6 +10,7 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
   private var observations: [NSKeyValueObservation] = []
   private var synchronizingPreferences = false
   private var revision = 0
+  private var nextCheckAt: Date?
   private let betaPreference = "LoongPassReceiveBetaUpdates"
   private var receiveBetaUpdates: Bool { UserDefaults.standard.bool(forKey: betaPreference) }
   private var canChangeChannel: Bool { !updater.sessionInProgress && !driver.ownsCandidate }
@@ -22,8 +23,17 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
     updater = SPUUpdater(hostBundle: .main, applicationBundle: .main, userDriver: driver, delegate: self)
     driver.changed = { [weak self] in self?.publish() }
     driver.automaticUpdates = { [weak self] in self?.updater.automaticallyChecksForUpdates ?? false }
-    // Preserve a previous opt-out of either checks or downloads.
-    setAutomaticUpdates(updater.automaticallyChecksForUpdates && updater.automaticallyDownloadsUpdates)
+    let preferences = UserDefaults.standard
+    let inlinePreference = "LoongPassUsesInlineUpdates"
+    if !preferences.bool(forKey: inlinePreference) {
+      // Migrate the former combined setting once, preserving either opt-out.
+      setAutomaticUpdates(updater.automaticallyChecksForUpdates && updater.automaticallyDownloadsUpdates)
+      preferences.set(true, forKey: inlinePreference)
+    }
+    // Sparkle's unattended driver omits all SPUUserDriver download callbacks.
+    // Its scheduled UI driver lets our user driver accept the download, report
+    // progress, and retain native validation / preparation / install-on-quit.
+    updater.automaticallyDownloadsUpdates = false
     let channel = FlutterMethodChannel(name: UpdateContract.channel, binaryMessenger: messenger)
     self.channel = channel
     channel.setMethodCallHandler { [weak self] call, result in
@@ -58,9 +68,6 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
       updater.observe(\.automaticallyChecksForUpdates) { [weak self] updater, _ in
         self?.setAutomaticUpdates(updater.automaticallyChecksForUpdates)
       },
-      updater.observe(\.automaticallyDownloadsUpdates) { [weak self] updater, _ in
-        self?.setAutomaticUpdates(updater.automaticallyDownloadsUpdates)
-      },
     ]
     do {
       try updater.start()
@@ -79,17 +86,19 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
       UpdateContract.phase: driver.phase.rawValue,
       UpdateContract.offeredVersion: driver.offeredVersion as Any? ?? NSNull(),
       UpdateContract.progress: driver.progress as Any? ?? NSNull(),
+      UpdateContract.downloadedBytes: driver.downloadedBytes as Any? ?? NSNull(),
+      UpdateContract.lastCheckAt: updater.lastUpdateCheckDate.map { Int64($0.timeIntervalSince1970 * 1000) } as Any? ?? NSNull(),
+      UpdateContract.nextCheckAt: updater.automaticallyChecksForUpdates ? nextCheckAt.map { Int64($0.timeIntervalSince1970 * 1000) } as Any? ?? NSNull() : NSNull(),
       UpdateContract.error: driver.error as Any? ?? NSNull(),
       UpdateContract.canCheck: canCheck, UpdateContract.canChangeChannel: canChangeChannel,
       UpdateContract.canInstall: driver.canInstall, UpdateContract.canSkip: driver.canSkip,
       UpdateContract.installOnQuit: true, UpdateContract.receiveBetaUpdates: receiveBetaUpdates,
-      UpdateContract.automaticUpdates: updater.automaticallyChecksForUpdates && updater.automaticallyDownloadsUpdates]
+      UpdateContract.automaticUpdates: updater.automaticallyChecksForUpdates]
   }
   private func setAutomaticUpdates(_ value: Bool) {
     guard !synchronizingPreferences else { return }
     synchronizingPreferences = true
     updater.automaticallyChecksForUpdates = value
-    updater.automaticallyDownloadsUpdates = value
     synchronizingPreferences = false
     publish()
   }
@@ -99,7 +108,16 @@ final class AppUpdater: NSObject, SPUUpdaterDelegate {
   func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
     // Includes scheduled/reset cycles, which do not call the user-driver's
     // manual-check callback. Scheduling itself remains entirely in Sparkle.
+    nextCheckAt = nil
     driver.transition(.checking)
+  }
+  func updater(_ updater: SPUUpdater, willScheduleUpdateCheckAfterDelay delay: TimeInterval) {
+    nextCheckAt = Date(timeIntervalSinceNow: delay)
+    publish()
+  }
+  func updaterWillNotScheduleUpdateCheck(_ updater: SPUUpdater) {
+    nextCheckAt = nil
+    publish()
   }
   func updater(_ updater: SPUUpdater, shouldProceedWithUpdate item: SUAppcastItem,
                updateCheck: SPUUpdateCheck) throws {

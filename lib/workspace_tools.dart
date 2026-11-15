@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 import 'ui_preferences.dart';
 import 'app_updates.dart';
 import 'managed_app.dart';
-import 'app_navigation_item.dart';
+import 'app_order_item.dart';
 import 'invitation_settings.dart';
 import 'invitation_settings_panel.dart';
 import 'select_field_semantics.dart';
@@ -16,12 +16,10 @@ class WorkspaceSettingsPage extends StatefulWidget {
     required this.preferences,
     this.updates,
     this.invitations = const {},
-    this.onOpenApp,
   });
   final UiPreferences preferences;
   final AppUpdates? updates;
   final Map<ManagedApp, InvitationSettings> invitations;
-  final ValueChanged<ManagedApp>? onOpenApp;
   @override
   State<WorkspaceSettingsPage> createState() => _WorkspaceSettingsPageState();
 }
@@ -31,7 +29,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
   UiPreferences get preferences => widget.preferences;
   AppUpdates? get updates => widget.updates;
   Map<ManagedApp, InvitationSettings> get invitations => widget.invitations;
-  ValueChanged<ManagedApp>? get onOpenApp => widget.onOpenApp;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: preferences,
@@ -154,17 +151,12 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                               ),
                           itemBuilder: (context, index) {
                             final app = preferences.appOrder[index];
-                            return AppNavigationItem(
+                            return AppOrderItem(
                               key: ValueKey('ordered-${app.name}'),
                               app: app,
                               index: index,
-                              compact: false,
-                              selected: false,
                               onMove: (delta) =>
                                   preferences.reorder(index, index + delta),
-                              onPressed: onOpenApp == null
-                                  ? null
-                                  : () => onOpenApp!(app),
                             );
                           },
                         ),

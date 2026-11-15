@@ -276,7 +276,6 @@ class _AccountPageState extends State<_AccountPage> {
             preferences: widget.preferences,
             updates: _updates,
             invitations: widget.invitations,
-            onOpenApp: _openApp,
           ),
           WorkspaceSection.overview: WorkspaceOverviewPage(
             registry: _registry,

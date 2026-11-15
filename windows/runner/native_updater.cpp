@@ -10,7 +10,6 @@
 namespace loongpass {
 namespace {
 constexpr UINT kChanged = WM_APP + 231;
-constexpr std::time_t kCheckInterval = 24 * 60 * 60;
 constexpr UINT_PTR kTimer = 0x4C50;
 constexpr wchar_t kSettings[] = L"Software\\SailingLoong\\LoongPass\\Updates";
 std::mutex event_mutex;
@@ -44,7 +43,11 @@ void Changed(win_sparkle_inline_event event, const char* version,
     case WIN_SPARKLE_INLINE_ERROR: break;
   }
   Json value = {{update::phase, phase}, {update::offeredVersion, version ? version : ""},
-                {update::progress, nullptr}, {update::error, ""}};
+                {update::progress, nullptr}, {update::downloadedBytes, nullptr},
+                {update::error, ""}};
+  if (event == WIN_SPARKLE_INLINE_DOWNLOADING) {
+    value[update::downloadedBytes] = downloaded;
+  }
   if (event == WIN_SPARKLE_INLINE_DOWNLOADING && total > 0)
     value[update::progress] = (std::min)(1.0, static_cast<double>(downloaded) / total);
   if (event == WIN_SPARKLE_INLINE_ERROR)
@@ -71,6 +74,12 @@ NativeUpdater::NativeUpdater(HWND window, flutter::BinaryMessenger* messenger)
   DWORD size = sizeof(next);
   if (RegGetValueW(HKEY_CURRENT_USER, kSettings, L"NextCheck", RRF_RT_REG_QWORD,
                    nullptr, &next, &size) == ERROR_SUCCESS) next_check_ = static_cast<std::time_t>(next);
+  // A pending daily check from an older version must not delay the hourly policy.
+  if (next_check_ > std::time(nullptr) + update::checkIntervalSeconds) next_check_ = 0;
+  ULONGLONG last = 0;
+  size = sizeof(last);
+  if (RegGetValueW(HKEY_CURRENT_USER, kSettings, L"LastCheck", RRF_RT_REG_QWORD,
+                   nullptr, &last, &size) == ERROR_SUCCESS) last_check_ = static_cast<std::time_t>(last);
   const auto version = Wide(LOONGPASS_RELEASE_NAME), build = Wide(LOONGPASS_BUILD_NUMBER);
   win_sparkle_set_app_details(L"SailingLoong", L"LoongPass", version.c_str());
   win_sparkle_set_app_build_version(build.c_str());
@@ -140,6 +149,9 @@ Json NativeUpdater::State() const {
           {update::version, std::string(LOONGPASS_RELEASE_NAME) + " (" + LOONGPASS_BUILD_NUMBER + ")"},
           {update::offeredVersion, offered_version_.empty() ? Json(nullptr) : Json(offered_version_)},
           {update::progress, progress_}, {update::error, error_.empty() ? Json(nullptr) : Json(error_)},
+          {update::downloadedBytes, downloaded_bytes_},
+          {update::lastCheckAt, last_check_ > 0 ? Json(static_cast<int64_t>(last_check_) * 1000) : Json(nullptr)},
+          {update::nextCheckAt, automatic_ && !OwnsCandidate() && next_check_ > 0 ? Json(static_cast<int64_t>(next_check_) * 1000) : Json(nullptr)},
           {update::canCheck, !OwnsCandidate()}, {update::canChangeChannel, !OwnsCandidate()},
           {update::canInstall, phase_ == update::phases::ready}, {update::canSkip, phase_ == update::phases::ready},
           {update::automaticUpdates, automatic_}, {update::receiveBetaUpdates, beta_}, {update::installOnQuit, false}};
@@ -149,13 +161,18 @@ void NativeUpdater::Publish() {
   channel_->InvokeMethod(update::stateChanged, std::make_unique<Value>(Encode(State())));
 }
 void NativeUpdater::Check(bool automatic) {
-  next_check_ = std::time(nullptr) + kCheckInterval;
+  last_check_ = std::time(nullptr);
+  next_check_ = last_check_ + update::checkIntervalSeconds;
   const ULONGLONG next = static_cast<ULONGLONG>(next_check_);
+  const ULONGLONG last = static_cast<ULONGLONG>(last_check_);
+  if (RegSetKeyValueW(HKEY_CURRENT_USER, kSettings, L"LastCheck", REG_QWORD, &last, sizeof(last)) != ERROR_SUCCESS)
+    throw std::runtime_error("Update scheduling unavailable");
   if (RegSetKeyValueW(HKEY_CURRENT_USER, kSettings, L"NextCheck", REG_QWORD, &next, sizeof(next)) != ERROR_SUCCESS)
     throw std::runtime_error("Update scheduling unavailable");
   if (!win_sparkle_check_update_inline(automatic ? 0 : 1))
     throw std::runtime_error("Update check unavailable");
   phase_ = update::phases::checking; offered_version_.clear(); error_.clear(); progress_ = nullptr;
+  downloaded_bytes_ = nullptr;
   Publish();
 }
 bool NativeUpdater::HandleMessage(UINT message, WPARAM parameter) {
@@ -166,6 +183,7 @@ bool NativeUpdater::HandleMessage(UINT message, WPARAM parameter) {
       phase_ = (*event)[update::phase].get<std::string>();
       offered_version_ = (*event)[update::offeredVersion].get<std::string>();
       progress_ = (*event)[update::progress];
+      downloaded_bytes_ = (*event)[update::downloadedBytes];
       error_ = (*event)[update::error].get<std::string>();
       Publish();
     }

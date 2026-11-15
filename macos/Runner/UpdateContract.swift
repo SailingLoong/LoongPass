@@ -6,6 +6,9 @@ enum UpdateContract {
   static let phase = "phase"
   static let offeredVersion = "offeredVersion"
   static let progress = "progress"
+  static let downloadedBytes = "downloadedBytes"
+  static let lastCheckAt = "lastCheckAt"
+  static let nextCheckAt = "nextCheckAt"
   static let error = "error"
   static let automaticUpdates = "automaticUpdates"
   static let receiveBetaUpdates = "receiveBetaUpdates"
@@ -21,6 +24,7 @@ enum UpdateContract {
   static let skip = "skip"
   static let setAutomaticUpdates = "setAutomaticUpdates"
   static let setReceiveBetaUpdates = "setReceiveBetaUpdates"
+  static let checkIntervalSeconds = 3600
 }
 
 enum UpdatePhase: String {
