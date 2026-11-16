@@ -40,10 +40,13 @@ Verification of this follow-up:
 
 - The old panel reproduced immediate activation before consent through both entry points. After the fix, all 22 panel checks passed, including explicit confirmation, cancellation, stale owner/disposal and a 480-pixel window with twice-normal text size and reachable controls.
 - Pinned Windows Flutter 3.50.0 / Dart 3.14.0: analysis clean, all 371 Flutter tests passed, update-contract check passed and six SDK-gate checks passed. The current source also passed 311 native Bun protocol checks with the verified pinned test runtime.
+- Both platform source-check jobs and Windows packaging passed for the follow-up ([run 43931022262](https://github.com/SailingLoong/LoongPass/actions/runs/43931022262)). Its Windows candidate was staged without launching it. The CI checkout `5b18f1aebe50eb78c57c1a2572af89416c389375` has the exact same Git tree as reviewed head `bd8118a`; archive and executable SHA-256 were verified before retiring the idle older candidate. This is package qualification, not desktop acceptance.
 - Existing macOS WorkBuddy native checks passed: stopped-writer transaction refusal/recovery, product/session metadata and process classification. These isolated checks do not switch a real client.
 - UI implementation remains Flutter with Forui components and theme styles. Actual visual/interaction acceptance of the new confirmation remains pending: the computer-control tool still reports the Mac as locked and requires manual unlock. No new running-client identity acceptance is inferred from the component/native checks. The earlier WorkBuddy desktop round trip is recorded separately in [native runtime verification](2026-11-09-native-runtime.md).
 
 Earlier local test attempts exposed Mac AppleDouble transfer sidecars, a missing test-runtime environment variable and a Mac-oriented subprocess entry point used on Windows. These execution setup failures were corrected using the Windows CI command sequence; they are retained in private logs and are not reported as successful runs. Source dependencies and their lockfile were not upgraded.
+
+The existing manual release workflow also accepts a macOS-only candidate build, symmetrical with its Windows-only choice. PR, main and tag behavior is unchanged. This allows preparing the Mac confirmation's actual-runtime candidate while reusing the qualified Windows package; the presence of this build selector does not establish that Mac visual acceptance has passed.
 
 ## Acceptance boundary
 

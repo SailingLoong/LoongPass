@@ -77,4 +77,4 @@
 - [x] Extend the existing WorkBuddy activation widget check to require confirmation before the activation callback, cancellation with no callback, and one activation after explicit confirmation. Run against the unchanged panel and observe failure.
 - [x] Add Forui confirmation in the existing activation handler; route row and details entry points through it, prevent repeated prompts and reject stale/unmounted presentation.
 - [x] Verify row activation at narrow width and large text, cancellation, confirmation and teardown; retain the current applied/outcome verification wording.
-- [ ] Run the affected widget checks, full Flutter suite/analysis and existing WorkBuddy transaction/process checks. Review the diff, update actual verification coverage and push the task branch. Real desktop acceptance and main integration remain required by Task 4.
+- [x] Run the affected widget checks, full Flutter suite/analysis and existing WorkBuddy transaction/process checks. Review the diff, update actual verification coverage and push the task branch. Real desktop acceptance and main integration remain required by Task 4.
