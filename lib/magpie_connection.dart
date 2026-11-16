@@ -268,7 +268,8 @@ class MagpieConnection {
   }
 
   /// Groups retain supplier model IDs so Magpie owns capability selection and
-  /// protocol conversion. Middleware exposes the canonical public names.
+  /// protocol conversion. Image endpoints use native groups because
+  /// Magpie's request middleware is scoped to chat protocols.
   Future<void> syncRouting(
     String bridgePath,
     List<PluginModel> models, {
@@ -289,7 +290,6 @@ class MagpieConnection {
     final selected = models
         .where(
           (m) =>
-              m.official &&
               m.enabled &&
               m.bindings.any(
                 (b) => b.enabled && b.grant.enabled && b.account.active,
@@ -302,6 +302,10 @@ class MagpieConnection {
     final groups = <String, List<String>>{};
     final pools = <String, Map<String, dynamic>>{};
     final routes = <String, String>{};
+    final accountModels = <String, Set<String>>{
+      for (final account in provider?['accounts'] as List? ?? const [])
+        if (account['accountId'] is String) account['accountId']: {'auto'},
+    };
     for (final model in selected) {
       final bindings = model.bindings.where(
         (b) => b.enabled && b.grant.enabled && b.account.active,
@@ -309,7 +313,15 @@ class MagpieConnection {
       groups[model.groupId] =
           bindings.map((b) => 'loongpass/${b.exportedId}').toSet().toList()
             ..sort();
-      routes[model.publicId] = 'group/${model.groupId}';
+      for (final binding in bindings) {
+        accountModels.putIfAbsent(binding.account.key, () => {'auto'}).addAll([
+          binding.exportedId,
+          if (!model.generatesImages) model.id,
+        ]);
+      }
+      if (!model.generatesImages) {
+        routes[model.publicId] = 'group/${model.groupId}';
+      }
       final accounts = <String, dynamic>{};
       for (final key in bindings.map((b) => b.account.key).toSet()) {
         final sources = bindings.where((b) => b.account.key == key);
@@ -330,10 +342,22 @@ class MagpieConnection {
           .toList();
       routes['loongpass/auto'] = 'group/loongpass-auto';
     }
+    // Native account catalogs are soft preferences. These hard limits keep
+    // image failover on the group's next member instead of another account
+    // under the first member's model ID. `auto` alone serves no native request.
+    for (final entry in accountModels.entries) {
+      await command([
+        'provider',
+        'account-models',
+        'loongpass',
+        entry.key,
+        ...entry.value,
+      ]);
+    }
     for (final entry in groups.entries) {
-      final name = routes.entries
-          .firstWhere((route) => route.value == 'group/${entry.key}')
-          .key;
+      final model = selected.where((m) => m.groupId == entry.key).firstOrNull;
+      final image = model?.generatesImages ?? false;
+      final name = image ? model!.name : model?.publicId ?? 'loongpass/auto';
       final options = [
         'name=$name',
         'models=${entry.value.join(',')}',

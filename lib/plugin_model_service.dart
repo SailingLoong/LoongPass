@@ -164,9 +164,27 @@ class PluginModelService extends ChangeNotifier {
 
   Future<void> setModelEnabled(String id, bool value) => _edit((data) {
     catalog.singleWhere((model) => model.id == id);
-    final routing = data.putIfAbsent('routing', () => {}) as Map;
+    final routing = _routingForEdit(data);
     (routing.putIfAbsent('models', () => {}) as Map)[id] = value;
   });
+
+  Map<String, dynamic> _routingForEdit(Map<String, dynamic> data) {
+    final routing = upgradeModelRouting(data['routing'] as Map? ?? {});
+    data['routing'] = routing;
+    return routing;
+  }
+
+  Future<void> retainModels(Set<String> ids) {
+    final selection = Set<String>.of(ids);
+    return _edit((data) {
+      if (!catalog.map((model) => model.id).toSet().containsAll(selection)) {
+        throw StateError('Model catalog changed');
+      }
+      final routing = _routingForEdit(data);
+      routing['defaultModelEnabled'] = false;
+      routing['models'] = {for (final id in selection) id: true};
+    });
+  }
 
   Future<void> setModelAccountEnabled(String id, String account, bool value) =>
       _edit((data) {
@@ -174,7 +192,7 @@ class PluginModelService extends ChangeNotifier {
         if (!model.bindings.any((binding) => binding.account.key == account)) {
           throw StateError('Account does not serve this model');
         }
-        final routing = data.putIfAbsent('routing', () => {}) as Map;
+        final routing = _routingForEdit(data);
         final rows = routing.putIfAbsent('accounts', () => {}) as Map;
         (rows.putIfAbsent(id, () => {}) as Map)[account] = value;
       });
@@ -186,7 +204,7 @@ class PluginModelService extends ChangeNotifier {
         !current.containsAll(order)) {
       throw StateError('Model catalog changed');
     }
-    final routing = data.putIfAbsent('routing', () => {}) as Map;
+    final routing = _routingForEdit(data);
     routing['order'] = List<String>.of(order);
   });
   Future<void> setEnabled(bool value) async {
@@ -291,15 +309,24 @@ class PluginModelService extends ChangeNotifier {
       final account = grant.account;
       final limits = accounts.providers[account.provider] ?? {};
       if (request.method == 'GET' && request.uri.path == '/plugin/catalog') {
+        final models = _supportedModels(account).toList();
+        final usage = modelRoutingUsage(
+          account.provider,
+          account.models,
+          account.usage,
+          DateTime.now(),
+        );
         await _json(request.response, 200, {
           'account': {
             'id': account.key,
             'provider': account.provider,
             'label': account.label,
           },
-          'models': _supportedModels(account).toList(),
+          'models': models,
           'publicModels': [
-            for (final model in catalog.where((m) => m.enabled && m.official))
+            for (final model in catalog.where(
+              (m) => m.enabled && !m.generatesImages,
+            ))
               if (model.bindings.any(
                 (b) => b.account.key == account.key && b.enabled,
               ))
@@ -313,12 +340,8 @@ class PluginModelService extends ChangeNotifier {
                       .nativeId,
                 },
           ],
-          'usage': modelRoutingUsage(
-            account.provider,
-            account.models,
-            account.usage,
-            DateTime.now(),
-          ),
+          'usage': usage,
+          'exportedUsage': _exportedUsage(account.provider, models, usage),
           'maxConcurrency': limits['maxConcurrency'] ?? 0,
           'maxAccounts': limits['maxAccounts'] ?? 0,
         });
@@ -338,18 +361,21 @@ class PluginModelService extends ChangeNotifier {
         bytes.addAll(chunk);
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map;
-      final model = account.models
-          .where(supportedNativeModel)
+      final model = catalog
+          .expand((m) => m.bindings)
+          .where((b) => b.account.key == account.key)
           .where(
-            (m) =>
+            (b) =>
                 // Magpie's native Go boundary sends api.id to its host, while
                 // OpenCode can retain the catalog id. Both name this account's
                 // declared model; the SDK and URL disambiguate native aliases.
-                (m['apiId'] == body['model'] ||
-                    '${account.provider}/${m['id']}' == body['model']) &&
-                m['npm'] == body['npm'] &&
-                _allowedURL(m['url'], body['url']),
+                (b.native['apiId'] == body['model'] ||
+                    '${account.provider}/${b.nativeId}' == body['model'] ||
+                    b.exportedId == body['model']) &&
+                b.native['npm'] == body['npm'] &&
+                _allowedURL(b.native['url'], body['url']),
           )
+          .map((b) => b.native)
           .firstOrNull;
       if (model == null ||
           body['method'] != 'POST' ||
@@ -479,9 +505,37 @@ class PluginModelService extends ChangeNotifier {
     for (final model in catalog.where((m) => m.enabled)) {
       for (final binding in model.bindings) {
         if (binding.account.key == account.key && binding.enabled)
-          yield binding.native;
+          yield {
+            ...binding.native,
+            if (binding.generatesImages) 'bridgeId': binding.exportedId,
+          };
       }
     }
+  }
+
+  // Resolve native window matching before adding account namespaces. The
+  // bridge consumes this projection without duplicating the quota contract.
+  static Map<String, dynamic>? _exportedUsage(
+    String provider,
+    List<Map<String, dynamic>> models,
+    Map<String, dynamic>? usage,
+  ) {
+    if (usage == null) return null;
+    final windows = <Map<String, dynamic>>[];
+    for (final raw in usage['windows'] as List? ?? const []) {
+      if (raw is! Map) continue;
+      final ids = models
+          .where((m) => modelWindowApplies(raw, m['id']))
+          .map((m) => m['bridgeId'] ?? '$provider/${m['id']}')
+          .toList();
+      if (ids.isEmpty) continue;
+      windows.add(
+        {...raw, 'models': ids}
+          ..remove('model')
+          ..remove('notModels'),
+      );
+    }
+    return {...usage, 'windows': windows};
   }
 
   static bool _allowedURL(Object? baseValue, Object? targetValue) {

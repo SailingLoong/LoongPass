@@ -174,11 +174,34 @@ test('model-scoped quota IDs follow exported source IDs and canonical IDs remain
 test('chat header hook marks only LoongPass requests with native model id and session', async () => {
   const hooks = await LoongPassPlugin({})
   const output = { headers: { existing: 'kept' } }
-  await hooks['chat.headers']({ model: { id: 'workbuddy/claude-native', providerID: 'loongpass', api: { npm: '@ai-sdk/anthropic' } }, sessionID: 'session-1' }, output)
+  await hooks['chat.headers']({ model: { id: 'workbuddy/claude-native', providerID: 'loongpass', api: { id: 'claude-api', npm: '@ai-sdk/anthropic' } }, sessionID: 'session-1' }, output)
   expect(output.headers).toEqual({ existing: 'kept', 'x-loongpass-model': 'workbuddy/claude-native', 'x-loongpass-npm': '@ai-sdk/anthropic', 'x-loongpass-session': 'session-1' })
   const other = { headers: {} }
   await hooks['chat.headers']({ model: { id: 'other', providerID: 'other' }, sessionID: 'wrong' }, other)
   expect(other.headers).toEqual({})
+  const native = { headers: {} }
+  hooks['chat.headers']({ model: { id: 'MiniMax-M3', providerID: 'loongpass',
+    api: { id: 'loongpass/MiniMax-M3', npm: '@ai-sdk/anthropic' } } }, native)
+  expect(native.headers['x-loongpass-model']).toBe('MiniMax-M3')
+})
+
+test('image members keep account-scoped catalog IDs and native request identity', async () => {
+  const hooks = await LoongPassPlugin({})
+  const value = snapshot()
+  const native = { ...chat, outputs: ['image'], bridgeId: 'accounts/first/workbuddy/chat/native' }
+  value.models = [native]
+  value.usage.windows = [{ models: [native.id], balance: 12.25, unit: 'credits' }]
+  value.exportedUsage = { windows: [{ models: [native.bridgeId], balance: 12.25, unit: 'credits' }] }
+  await withFetch(async () => Response.json(value), async () => {
+    const models = await hooks.provider.models({}, { auth: grant() })
+    expect(Object.keys(models)).toEqual([native.bridgeId])
+    const model = models[native.bridgeId]
+    expect(model.api.id).toBe(chat.apiId)
+    const output = { headers: {} }
+    hooks['chat.headers']({ model }, output)
+    expect(output.headers['x-loongpass-model']).toBe(native.bridgeId)
+    expect((await hooks.auth.usage(async () => grant(), {})).windows[0].models).toEqual([native.bridgeId])
+  })
 })
 
 test('fetch envelopes exact request bytes and all native context before host header stripping', async () => {

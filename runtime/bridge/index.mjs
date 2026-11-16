@@ -49,7 +49,7 @@ function modelOf(provider, native) {
   const input = modalities(native.inputs, native.inputsSaid)
   if (input && !native.imageSaid) delete input.image
   return {
-    id: `${provider}/${native.id}`, providerID: ID, name: native.name,
+    id: native.bridgeId ?? `${provider}/${native.id}`, providerID: ID, name: native.name,
     api: { id: native.apiId, npm: native.npm, url: native.url },
     limit: { context: native.context, input: native.input, output: native.output },
     capabilities: {
@@ -134,6 +134,7 @@ export const LoongPassPlugin = async () => ({
     },
     async usage(getAuth, _provider, { signal } = {}) {
       const snapshot = await catalog(await getAuth(), signal)
+      if (snapshot.exportedUsage) return snapshot.exportedUsage
       if (!snapshot.usage) return snapshot.usage
       return { ...snapshot.usage, windows: (snapshot.usage.windows ?? []).map(window => ({
         ...window,

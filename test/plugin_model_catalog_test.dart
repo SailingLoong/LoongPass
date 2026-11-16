@@ -28,6 +28,205 @@ PluginModelGrant grant(
 );
 
 void main() {
+  test('versioned preferences retain missing catalogs and prioritize explicit choices', () {
+    final legacy = {
+      'models': {'glm-5.3': false},
+      'accounts': {
+        'trae-cn/glm-5.3-max': {'cn': false},
+      },
+      'order': ['trae-cn/glm-5.3-max', 'glm-5.3'],
+    };
+    final saved = upgradeModelRouting(legacy);
+    expect(pluginModelCatalog([], saved, now), isEmpty);
+    final grants = [
+      grant('cn', 'trae-cn', [
+        {'id': 'glm-5.3'},
+        {'id': 'glm-5.3-max'},
+      ]),
+    ];
+    final restored = pluginModelCatalog(grants, saved, now).single;
+    expect(restored.enabled, isTrue);
+    expect(restored.availableAccounts, 0);
+    expect(saved['legacy'], legacy);
+    saved['models'] = {'glm-5.3': true};
+    final enabled = pluginModelCatalog(grants, saved, now).single;
+    expect(enabled.availableAccounts, 0);
+    saved['accounts'] = {
+      'glm-5.3': {'cn': true},
+    };
+    expect(
+      pluginModelCatalog(
+        grants,
+        saved,
+        now,
+      ).single.bindings.every((b) => b.enabled),
+      isTrue,
+    );
+    saved['models'] = {'glm-5.3': false};
+    expect(pluginModelCatalog(grants, saved, now).single.enabled, isFalse);
+  });
+
+  test(
+    'legacy alias participation survives grouping and explicit new choices',
+    () {
+      final grants = [
+        grant('cn', 'trae-cn', [
+          {'id': 'glm-5.3'},
+          {'id': 'glm-5.3-max'},
+        ]),
+      ];
+      for (final (disabled, enabled) in [
+        ('trae-cn/glm-5.3-max', 'glm-5.3'),
+        ('glm-5.3', 'trae-cn/glm-5.3-max'),
+      ]) {
+        final settings = {
+          'models': {disabled: false, enabled: true},
+        };
+        final model = pluginModelCatalog(grants, settings, now).single;
+        expect(model.enabled, isTrue);
+        expect(model.availableAccounts, 1);
+        expect(model.bindings.where((b) => b.enabled).map((b) => b.nativeId), [
+          disabled == 'glm-5.3' ? 'glm-5.3-max' : 'glm-5.3',
+        ]);
+        final retained = upgradeModelRouting(settings)
+          ..['models'] = {'glm-5.3': true};
+        expect(
+          pluginModelCatalog(
+            grants,
+            retained,
+            now,
+          ).single.bindings.where((b) => b.enabled).map((b) => b.nativeId),
+          model.bindings.where((b) => b.enabled).map((b) => b.nativeId),
+        );
+      }
+      final allDisabled = upgradeModelRouting({
+        'models': {'glm-5.3': false, 'trae-cn/glm-5.3-max': false},
+      });
+      expect(
+        pluginModelCatalog(grants, allDisabled, now).single.enabled,
+        isFalse,
+      );
+      allDisabled['models'] = {'glm-5.3': true};
+      expect(
+        pluginModelCatalog(grants, allDisabled, now).single.availableAccounts,
+        0,
+      );
+      allDisabled['accounts'] = {
+        'glm-5.3': {'cn': true},
+      };
+      expect(
+        pluginModelCatalog(grants, allDisabled, now).single.availableAccounts,
+        1,
+      );
+    },
+  );
+
+  test('regional channel IDs resolve official model aliases', () {
+    for (final (provider, native, expected) in [
+      ('trae-cn', 'glm-5.3-max', 'glm-5.3'),
+      ('trae-global', 'gemini-3.1-pro-max', 'gemini-3.1-pro-preview'),
+      ('trae-cn', 'glm-5.1', 'glm-5.1'),
+      ('trae-cn', 'glm-5', 'glm-5'),
+      ('trae-cn', 'glm-4.7', 'glm-4.7'),
+      ('trae-cn', 'glm-4.6', 'glm-4.6'),
+      ('qoder-cn', 'dfmodel', 'deepseek-flash'),
+    ]) {
+      expect(officialModelId(provider, {'id': native}), expected);
+    }
+  });
+
+  test('a retained group does not enable a disabled alias when another catalog disappears', () {
+    final grants = [
+      grant('base', 'trae-cn', [
+        {'id': 'glm-5.3'},
+      ]),
+      grant('max', 'trae-cn', [
+        {'id': 'glm-5.3-max'},
+      ]),
+    ];
+    final settings = upgradeModelRouting({
+      'models': {'trae-cn/glm-5.3-max': false},
+    })..['models'] = {'glm-5.3': true};
+    expect(
+      pluginModelCatalog(grants, settings, now).single.availableAccounts,
+      1,
+    );
+    grants.first.account.models.clear();
+    final remaining = pluginModelCatalog(grants, settings, now).single;
+    expect(remaining.enabled, isTrue);
+    expect(remaining.availableAccounts, 0);
+  });
+
+  test('same named regional models share an expiry-ordered account pool', () {
+    final grants = [
+      grant(
+        'global',
+        'minimax-code-global',
+        [
+          {
+            'id': 'MiniMax-Image',
+            'name': 'MiniMax Image',
+            'outputs': ['image'],
+          },
+        ],
+        windows: [
+          {
+            'balance': 393.36,
+            'runsOut': 393.36,
+            'unit': 'credits',
+            'runsOutAt': '2026-12-06T00:00:00Z',
+          },
+        ],
+      ),
+      grant(
+        'cn',
+        'minimax-code',
+        [
+          {
+            'id': 'MiniMax-Image',
+            'name': 'MiniMax Image',
+            'outputs': ['image'],
+          },
+        ],
+        windows: [
+          {
+            'balance': 278.68,
+            'runsOut': 278.68,
+            'unit': 'credits',
+            'runsOutAt': '2026-11-17T00:00:00Z',
+          },
+        ],
+      ),
+    ];
+    final model = pluginModelCatalog(grants, {}, now).single;
+    expect(model.id, 'minimax-image');
+    expect(model.name, 'MiniMax Image');
+    expect(model.official, isFalse);
+    expect(model.availableAccounts, 2);
+    expect(model.bindings.map((b) => b.account.key), ['cn', 'global']);
+    expect(model.preferred!.expiry!.amount!.amount, 278.68);
+    expect(model.preferred!.expiry!.amount!.unit, 'credits');
+    expect(model.bindings.last.expiry!.amount!.amount, 393.36);
+    expect(model.bindings.map((b) => b.exportedId), [
+      'accounts/cn/minimax-code/MiniMax-Image',
+      'accounts/global/minimax-code-global/MiniMax-Image',
+    ]);
+
+    final migrated = pluginModelCatalog(grants, {
+      'order': [
+        'minimax-code-global/MiniMax-Image',
+        'minimax-code/MiniMax-Image',
+      ],
+      'models': {'minimax-code/MiniMax-Image': false},
+    }, now).single;
+    expect(migrated.enabled, isTrue);
+    expect(migrated.preferred!.account.key, 'global');
+    expect(
+      migrated.bindings.singleWhere((b) => b.account.key == 'cn').enabled,
+      isFalse,
+    );
+  });
+
   test('renewable refused windows recover at reset while expired credits stay unavailable', () {
     final reset = now.add(const Duration(minutes: 1));
     final window = {
