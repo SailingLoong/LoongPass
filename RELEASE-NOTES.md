@@ -1,20 +1,12 @@
-LoongPass 1.0.1
+LoongPass 1.0.2
 
-- 整合 1.0.1 Beta 阶段的多平台账号、授权恢复、辅助自动签到与奖励领取、精确余额及积分到期管理改进。停止 LobsterAI 接入，各平台和地区能力以应用说明为准。
-- 模型连接采用固定版本的 Magpie 原生插件宿主，提供 loongpass/auto 和标准模型分组。新会话优先使用适用积分更早到期的可用账号，同一会话保留原生账号亲和与恢复行为。
-- 修复 Magpie 插件安装后选择来源的路径兼容问题。连接时验证本地插件与逐账号授权，再移除已识别的重复 npm/GitHub 来源；保留账号授权。
-- 更新桌面导航、账号表格和模型工作区，支持排序、应用显示偏好、深色模式、窄窗口及大字号；修复 macOS 选择器的无障碍崩溃。
-- 自动更新每小时检查一次，显示最近及下次检查时间、下载进度和速度；继续由 Sparkle / WinSparkle 验签和安装，保留已有更新偏好。
-- 保留已支持的官方客户端账号切换，并提供 Magpie 与 DeepSeek Harness 接入检查和引导。升级构建工具链及固定的原生依赖。
-
-Magpie 插件与兼容性
-
-桌面应用为 1.0.1（构建 50），独立发布的 npm 插件为 @sailing-loong/magpie-bridge@0.2.1；两者独立编号，插件可执行代码与本版随附桥接一致。已在 macOS 对 Magpie 0.1.3346 和 0.1.4277 完成隔离的合成账号接入、授权保留、选路、流式回复及工具调用检查。此项不代表新增供应商真实调用或 Windows / Intel 真机验收。社区市场收录仍以维护者审核为准。
-
-该供应商的全部提示词和回复经过本机 LoongPass；供应方凭据由应用私有目录管理，Magpie 保存逐账号本地调用授权。辅助签到、积分管理及受支持的官方 App 切换由桌面应用提供。
+- 将应用界面、README、插件介绍、网站和项目文档中的签到能力称谓统一为“辅助签到”，奖励领取统一表述为“辅助领取”。
+- 项目准则明确约束中英文文案，插件、官网与设计交接同步遵循应用仓的唯一规则来源。
+- 本次仅调整称谓与说明，保留现有账号、签到任务、积分、模型选路与客户端切换行为。
+- 应用随附 Magpie 桥接插件 0.2.2，其可执行文件与已核验的 0.2.1 一致；插件版本独立于应用版本。
 
 安装与升级
 
-macOS 使用 LoongPass-macOS-universal.zip；Windows 日常使用 LoongPass-Windows-x64-Setup.exe，便携使用 LoongPass-Windows-x64.zip。正式版和 Beta 用户均可在应用设置中检查更新，无需开启 Beta 渠道。升级保留本机账号、设置与领取记录。
+macOS 使用 LoongPass-macOS-universal.zip；Windows 使用安装版或便携 ZIP。正式版和 Beta 用户均可在应用设置中检查更新。升级保留本机账号、设置与领取记录。
 
-macOS 使用本地签名，尚未进行 Developer ID 公证；Windows 尚未配置 Authenticode 发布者签名。原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。具体平台能力和验收边界见 README 与 docs/verification。
+macOS 使用本地签名，尚未进行 Developer ID 公证；Windows 尚未配置 Authenticode 发布者签名。原生更新器验证 Ed25519 发布签名。请从官网或本仓库 Release 下载并核对 SHA256SUMS 与 SOURCE_COMMIT。

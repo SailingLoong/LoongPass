@@ -836,7 +836,7 @@ void main() {
       final automatic = find.byType(FSwitch);
       final automaticLabel = find.descendant(
         of: automatic,
-        matching: find.text('自动领取'),
+        matching: find.text('辅助领取'),
       );
       await tester.ensureVisible(automaticLabel);
       await tester.pumpAndSettle();

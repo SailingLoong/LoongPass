@@ -96,7 +96,7 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
                 if (accounts.any((a) => a.entry.automatic != null))
                   (
                     '${accounts.where((a) => a.entry.automatic == true).length}',
-                    '自动领取已开启',
+                    '辅助领取已开启',
                   ),
               ])
                 Column(

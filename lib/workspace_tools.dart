@@ -194,7 +194,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('自动签到与活动领取仅在 LoongPass 运行期间执行。可在各账号详情管理开关并查看最近结果。'),
+                    Text('辅助签到与活动领取仅在 LoongPass 运行期间执行。可在各账号详情管理开关并查看最近结果。'),
                     SizedBox(height: 8),
                     Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
                   ],

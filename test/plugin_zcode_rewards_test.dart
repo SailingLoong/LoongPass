@@ -669,7 +669,7 @@ void main() {
   );
 
   test(
-    'disabling automatic claims during discovery prevents POST and publication',
+    'disabling assisted claims during discovery prevents POST and publication',
     () async {
       final started = Completer<void>(), resume = Completer<void>();
       official.beforeRequest = (r) async {
@@ -694,7 +694,7 @@ void main() {
   );
 
   test(
-    'disabling automatic claims during captcha prevents the verified POST',
+    'disabling assisted claims during captcha prevents the verified POST',
     () async {
       official.captcha = true;
       await expectLater(
@@ -713,7 +713,7 @@ void main() {
     },
   );
 
-  test('disabling automatic claims after dispatch preserves pending for reconciliation', () async {
+  test('disabling assisted claims after dispatch preserves pending for reconciliation', () async {
     final started = Completer<void>(), resume = Completer<void>();
     official.afterClaim = () async {
       started.complete();
@@ -738,7 +738,7 @@ void main() {
   });
 
   test(
-    'manual claims remain available when automatic claims are disabled',
+    'manual claims remain available when assisted claims are disabled',
     () async {
       await accounts.setAutomatic(_key, false);
       await rewards.claim(_key);
