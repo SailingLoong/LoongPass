@@ -9,6 +9,8 @@ import '../lib/plugin_model_catalog.dart';
 import '../lib/plugin_model_page.dart';
 import '../lib/app_theme.dart';
 import 'desktop_test_app.dart';
+import 'memory_account_store.dart';
+import 'model_workspace_fixture.dart';
 
 class _Service extends ChangeNotifier implements PluginModelService {
   int changes = 0;
@@ -100,6 +102,47 @@ class _Application implements PluginApplication {
 }
 
 void main() {
+  testDesktopWidgets(
+    'filtered selection is saved and hidden models can be restored',
+    (tester) async {
+      final accounts = WorkspaceFixtureAccounts();
+      final service = PluginModelService(
+        accounts: accounts,
+        store: MemoryAccountStore('ui-selection'),
+      );
+      await service.start();
+      final app = _Application(service);
+      try {
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(body: PluginModelServicesPage(application: app)),
+          ),
+        );
+        await tester.enterText(find.byKey(const Key('model-search')), '1017');
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('retain-models')));
+        await tester.pumpAndSettle();
+        expect(service.catalog.where((m) => m.enabled).map((m) => m.id), [
+          'deepseek-flash',
+        ]);
+        await tester.enterText(find.byKey(const Key('model-search')), '');
+        await tester.pumpAndSettle();
+        expect(find.text('MiniMax-M3'), findsNothing);
+        await tester.tap(find.byKey(const Key('show-all-models')));
+        await tester.pumpAndSettle();
+        expect(find.text('MiniMax-M3'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('model-enabled-MiniMax-M3')));
+        await tester.pumpAndSettle();
+        expect(service.catalog.every((m) => m.enabled), isTrue);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        app.connection.dispose();
+        await service.close();
+        accounts.dispose();
+      }
+    },
+  );
   testDesktopWidgets(
     'long model and account names fit a narrow window at 200 percent text scale',
     (tester) async {

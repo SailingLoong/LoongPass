@@ -8,8 +8,113 @@ import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
 
 void main() {
+  test('named models share a native route across regions and respect selection', () async {
+    final calls = <List<String>>[];
+    final client = MagpieConnection(
+      run: (args, {input}) async {
+        calls.add(args);
+        if (args.join(' ') == 'plugin list --json') {
+          return '{"providers":[{"id":"loongpass","accountId":"cn","accounts":[{"accountId":"cn"},{"accountId":"global"},{"accountId":"unselected"}]}]}';
+        }
+        return '';
+      },
+    );
+    final grants = [
+      for (final (key, provider, date) in [
+        ('cn', 'minimax-code', '2026-11-17T00:00:00Z'),
+        ('global', 'minimax-code-global', '2026-12-06T00:00:00Z'),
+      ])
+        PluginModelGrant(
+          PluginAccount(
+            key: key,
+            active: true,
+            facts: {'provider': provider, 'registrationId': key},
+            models: [
+              {
+                'id': 'MiniMax-Image',
+                'name': 'MiniMax Image',
+                'outputs': ['image'],
+              },
+            ],
+            usage: {
+              'windows': [
+                {
+                  'balance': 10,
+                  'runsOut': 10,
+                  'unit': 'credits',
+                  'runsOutAt': date,
+                },
+              ],
+            },
+          ),
+          'synthetic',
+          true,
+        ),
+    ];
+    final models = pluginModelCatalog(grants, {}, DateTime.utc(2026, 11, 16));
+    await client.syncRouting('/bridge', models);
+    final groups = calls.where((c) => c.first == 'group').toList();
+    expect(groups, hasLength(2));
+    expect(
+      groups.first,
+      contains(
+        'models=loongpass/accounts/cn/minimax-code/MiniMax-Image,loongpass/accounts/global/minimax-code-global/MiniMax-Image',
+      ),
+    );
+    final options = jsonDecode(
+      calls.singleWhere((c) => c[1] == 'options').last,
+    );
+    final pool = options['pools']['group/${models.single.groupId}'];
+    expect(pool['cn']['expires'], [1794873600000]);
+    expect(pool['global']['expires'], [1796515200000]);
+    expect(groups.first, contains('listed=no'));
+    expect(groups.first, contains('name=MiniMax Image'));
+    expect(models.single.publicId, 'group/${models.single.groupId}');
+    expect(options['routes'].containsKey('loongpass/minimax-image'), isFalse);
+    expect(
+      calls,
+      contains(
+        equals([
+          'provider',
+          'account-models',
+          'loongpass',
+          'cn',
+          'auto',
+          'accounts/cn/minimax-code/MiniMax-Image',
+        ]),
+      ),
+    );
+    expect(
+      calls,
+      contains(
+        equals([
+          'provider',
+          'account-models',
+          'loongpass',
+          'unselected',
+          'auto',
+        ]),
+      ),
+    );
+    calls.clear();
+    await client.syncRouting(
+      '/bridge',
+      pluginModelCatalog(grants, {
+        'version': 2,
+        'defaultModelEnabled': false,
+      }, DateTime.utc(2026, 11, 16)),
+      previousGroups: {models.single.groupId, 'loongpass-auto'},
+    );
+    final disabled = jsonDecode(
+      calls.singleWhere((c) => c[1] == 'options').last,
+    );
+    expect(disabled['routes'], isEmpty);
+    expect(disabled['pools'], isEmpty);
+  });
+
   test('routing options target the registered clean bridge path', () async {
-    final bridge = '${Directory.systemTemp.path}${Platform.pathSeparator}bridge';
+    final bridge =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}bridge';
     final calls = <List<String>>[];
     final client = MagpieConnection(
       run: (args, {input}) async {

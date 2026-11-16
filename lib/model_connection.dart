@@ -123,8 +123,7 @@ class ModelConnection extends ChangeNotifier {
     final catalog = models.catalog;
     final groups = {
       for (final m in catalog)
-        if (m.official &&
-            m.enabled &&
+        if (m.enabled &&
             m.bindings.any(
               (b) => b.enabled && b.grant.enabled && b.account.active,
             ))

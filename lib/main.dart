@@ -210,7 +210,7 @@ class _AccountPageState extends State<_AccountPage> {
     setState(() {
       if (_selectedModelId != 'auto' &&
           !_application!.models.catalog.any(
-            (model) => model.id == _selectedModelId,
+            (model) => model.id == _selectedModelId && model.enabled,
           )) {
         _selectedModelId = null;
       }
@@ -251,8 +251,14 @@ class _AccountPageState extends State<_AccountPage> {
         preferences: widget.preferences,
         modelIds: [
           if (_application != null) 'auto',
-          ...?_application?.models.catalog.map((model) => model.id),
+          ...?_application?.models.catalog
+              .where((model) => model.enabled)
+              .map((model) => model.id),
         ],
+        modelSearchTerms: {
+          for (final model in _application?.models.catalog ?? [])
+            model.id: model.searchText,
+        },
         selectedModelId: _selectedModelId,
         onSelectModel: _selectModel,
         initialApp: ManagedApp.workbuddy,

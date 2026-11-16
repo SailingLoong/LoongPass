@@ -117,6 +117,43 @@ void main() {
         ['fixture-model', 'image'],
         reason: 'Video polling has no model context in native Magpie; retain images and chat only.',
       );
+      accounts.usageOverride = {
+        'windows': [
+          {
+            'models': ['IMAGE'],
+            'balance': 12.25,
+            'unit': 'credits',
+          },
+          {
+            'notModels': ['ImAgE'],
+            'balance': 9.5,
+            'unit': 'credits',
+          },
+          {
+            'models': ['unavailable-model'],
+            'balance': 100,
+            'unit': 'credits',
+          },
+        ],
+      };
+      final quotaCatalog = jsonDecode((await request('/plugin/catalog')).$3);
+      expect(quotaCatalog['exportedUsage']['windows'], [
+        {
+          'models': ['accounts/fixture%23a/fixture/image'],
+          'balance': 12.25,
+          'unit': 'credits',
+        },
+        {
+          'models': ['fixture/fixture-model'],
+          'balance': 9.5,
+          'unit': 'credits',
+        },
+      ]);
+      expect(
+        quotaCatalog['usage']['windows'],
+        accounts.usageOverride!['windows'],
+      );
+      accounts.usageOverride = null;
       Map<String, dynamic> envelope(String path) => {
         'model': 'fixture-wire',
         'npm': '@ai-sdk/openai-compatible',
@@ -140,6 +177,21 @@ void main() {
       expect(echoed['access'], 'native-a');
       expect(echoed['authorization'], 'Bearer native-a');
       expect(echoed['session'], 'native-session');
+      final scopedImage = {
+        ...envelope('images/generations'),
+        'model': 'accounts/fixture%23a/fixture/image',
+        'body': base64Encode(
+          utf8.encode('{"model":"image","prompt":"synthetic"}'),
+        ),
+      };
+      expect((await request('/plugin/fetch', body: scopedImage)).$1, 200);
+      expect(
+        (await request(
+          '/plugin/fetch',
+          body: {...scopedImage, 'model': 'accounts/fixture%23b/fixture/image'},
+        )).$1,
+        400,
+      );
       final bridgeDir = await Directory.systemTemp.createTemp(
         'loongpass-bridge-host-',
       );
@@ -169,7 +221,9 @@ void main() {
         final rows = await bridge.call('providers', {}) as List;
         expect((rows.single['models'] as List).map((m) => m['id']), [
           'fixture/fixture-model',
-          'fixture/image',
+          'accounts/fixture%23a/fixture/image',
+          'fixture',
+          'auto',
         ]);
         final through = bridge.fetch({
           'provider': 'loongpass',
@@ -193,26 +247,16 @@ void main() {
         await bridgeDir.delete(recursive: true);
       }
       // Reading either side of the many-to-many view uses the same grants.
-      await service.setModelAccountEnabled(
-        'fixture/fixture-model',
-        'fixture#a',
-        false,
-      );
+      await service.setModelAccountEnabled('fixture', 'fixture#a', false);
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
         429,
       );
       expect(
-        service.catalog
-            .singleWhere((m) => m.id == 'fixture/fixture-model')
-            .availableAccounts,
+        service.catalog.singleWhere((m) => m.id == 'fixture').availableAccounts,
         1,
       );
-      await service.setModelAccountEnabled(
-        'fixture/fixture-model',
-        'fixture#a',
-        true,
-      );
+      await service.setModelAccountEnabled('fixture', 'fixture#a', true);
       accounts.authorizationError = 'authorization_required';
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
@@ -262,19 +306,16 @@ void main() {
         200,
       );
       accounts.usageOverride = null;
-      await service.reorderModels(['fixture/image', 'fixture/fixture-model']);
-      expect(service.catalog.first.id, 'fixture/image');
-      expect(modelStore.data['routing']['order'], [
-        'fixture/image',
-        'fixture/fixture-model',
-      ]);
-      await service.setModelEnabled('fixture/fixture-model', false);
+      await service.reorderModels(['image', 'fixture']);
+      expect(service.catalog.first.id, 'image');
+      expect(modelStore.data['routing']['order'], ['image', 'fixture']);
+      await service.setModelEnabled('fixture', false);
       expect(
         (jsonDecode((await request('/plugin/catalog')).$3)['models'] as List)
             .map((m) => m['id']),
         ['image'],
       );
-      await service.setModelEnabled('fixture/fixture-model', true);
+      await service.setModelEnabled('fixture', true);
       final refused = await request('/plugin/fetch', body: envelope('refused'));
       expect(refused.$1, 429);
       expect(refused.$2['retry-after'], '7');

@@ -4,9 +4,9 @@ import 'package:forui/forui.dart';
 import 'app_navigation_item.dart';
 import 'ui_preferences.dart';
 
-/// Model identity and order come from the model service. This widget owns no
-/// routing, account or quota state.
-class ModelsNavigation extends StatelessWidget {
+/// Model identity and order come from the model service. This widget owns
+/// search and navigation state only.
+class ModelsNavigation extends StatefulWidget {
   const ModelsNavigation({
     super.key,
     required this.preferences,
@@ -16,14 +16,93 @@ class ModelsNavigation extends StatelessWidget {
     required this.selectedModelId,
     required this.onOpen,
     required this.onSelectModel,
+    this.searchTerms = const {},
   });
 
   final UiPreferences preferences;
   final bool compact, active;
   final List<String> modelIds;
+  final Map<String, String> searchTerms;
   final String? selectedModelId;
   final VoidCallback onOpen;
   final ValueChanged<String> onSelectModel;
+
+  @override
+  State<ModelsNavigation> createState() => _ModelsNavigationState();
+}
+
+class _ModelsNavigationState extends State<ModelsNavigation> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Widget _content({VoidCallback? onSelected}) {
+    final query = _search.text.trim().toLowerCase();
+    final visible = widget.modelIds
+        .where(
+          (id) =>
+              id == 'auto' ||
+              (widget.searchTerms[id] ?? id).toLowerCase().contains(query),
+        )
+        .toList();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.modelIds.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            child: FTextField(
+              key: const Key('model-nav-search'),
+              hint: '筛选模型',
+              size: FTextFieldSizeVariant.sm,
+              prefixBuilder: (context, style, variants) =>
+                  const Icon(FLucideIcons.search, size: 14),
+              control: FTextFieldControl.managed(
+                controller: _search,
+                onChange: (_) => setState(() {}),
+              ),
+            ),
+          ),
+        Flexible(
+          child: ListView(
+            key: const PageStorageKey('model-list'),
+            primary: false,
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            children: [
+              for (final id in visible)
+                SidebarNavigationButton(
+                  key: ValueKey('model-nav-$id'),
+                  label: id,
+                  icon: const Icon(FLucideIcons.dot, size: 16),
+                  compact: false,
+                  nested: true,
+                  maxLines: 2,
+                  selected: widget.active && id == widget.selectedModelId,
+                  onPressed: () {
+                    widget.onSelectModel(id);
+                    onSelected?.call();
+                  },
+                ),
+              if (!visible.any((id) => id != 'auto'))
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    widget.modelIds.isEmpty ? '暂无模型' : '暂无匹配模型',
+                    style: context.theme.typography.body.sm,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,40 +110,29 @@ class ModelsNavigation extends StatelessWidget {
       key: const Key('nav-models'),
       label: '模型连接',
       icon: const Icon(FLucideIcons.route, size: 18),
-      compact: compact,
-      selected: active,
-      onPressed: onOpen,
+      compact: widget.compact,
+      selected: widget.active,
+      onPressed: widget.onOpen,
     );
-    if (compact) {
-      return FPopoverMenu(
+    if (widget.compact) {
+      return FPopover(
         control: FPopoverControl.lifted(
-          shown: active && preferences.modelsExpanded,
-          onChange: preferences.setModelsExpanded,
+          shown: widget.active && widget.preferences.modelsExpanded,
+          onChange: widget.preferences.setModelsExpanded,
         ),
-        menuAnchor: Alignment.topLeft,
+        popoverAnchor: Alignment.topLeft,
         childAnchor: Alignment.topRight,
-        menuBuilder: (context, controller, _) => [
-          FItemGroup(
-            children: [
-              if (modelIds.isEmpty)
-                FItem(title: const Text('暂无模型'), enabled: false),
-              for (final id in modelIds)
-                FItem(
-                  key: ValueKey('model-nav-$id'),
-                  title: Text(id),
-                  suffix: active && id == selectedModelId
-                      ? const Icon(FLucideIcons.check, size: 16)
-                      : null,
-                  onPress: () {
-                    onSelectModel(id);
-                    controller.hide();
-                  },
-                ),
-            ],
+        popoverBuilder: (context, controller) => SizedBox(
+          width: 260,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * .6,
+            ),
+            child: _content(onSelected: controller.hide),
           ),
-        ],
+        ),
         builder: (context, controller, _) => Semantics(
-          expanded: active && preferences.modelsExpanded,
+          expanded: widget.active && widget.preferences.modelsExpanded,
           child: navigation,
         ),
       );
@@ -73,8 +141,11 @@ class ModelsNavigation extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(expanded: preferences.modelsExpanded, child: navigation),
-        if (preferences.modelsExpanded)
+        Semantics(
+          expanded: widget.preferences.modelsExpanded,
+          child: navigation,
+        ),
+        if (widget.preferences.modelsExpanded)
           Flexible(
             child: Container(
               margin: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
@@ -84,33 +155,7 @@ class ModelsNavigation extends StatelessWidget {
                   left: BorderSide(color: context.theme.colors.border),
                 ),
               ),
-              child: ListView(
-                key: const PageStorageKey('model-list'),
-                primary: false,
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                children: [
-                  if (modelIds.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Text(
-                        '暂无模型',
-                        style: context.theme.typography.body.sm,
-                      ),
-                    ),
-                  for (final id in modelIds)
-                    SidebarNavigationButton(
-                      key: ValueKey('model-nav-$id'),
-                      label: id,
-                      icon: const Icon(FLucideIcons.dot, size: 16),
-                      compact: false,
-                      nested: true,
-                      maxLines: 2,
-                      selected: active && id == selectedModelId,
-                      onPressed: () => onSelectModel(id),
-                    ),
-                ],
-              ),
+              child: _content(),
             ),
           ),
       ],

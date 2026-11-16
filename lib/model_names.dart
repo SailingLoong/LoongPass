@@ -5,6 +5,10 @@
 /// platform.minimax.io/docs/api-reference/text-anthropic-api
 /// platform.minimax.io/docs/release-notes/models
 /// docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash
+/// docs.bigmodel.cn/cn/guide/models/text/glm-5.1 (checked 2026-11-16)
+/// docs.bigmodel.cn/cn/guide/models/text/glm-5
+/// docs.bigmodel.cn/cn/guide/models/text/glm-4.7
+/// docs.bigmodel.cn/cn/guide/models/text/glm-4.6
 /// help.aliyun.com/zh/model-studio/newly-released-models
 /// platform.kimi.com/docs/models
 /// platform.claude.com/docs/en/about-claude/model-deprecations
@@ -110,7 +114,12 @@ const _officialModels = [
 
 String _key(String value) =>
     value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
-final _officialByKey = {for (final id in _officialModels) _key(id): id};
+// Keep the previous inventory for interpreting existing persisted preferences.
+final _legacyOfficialByKey = {for (final id in _officialModels) _key(id): id};
+final _officialByKey = {
+  ..._legacyOfficialByKey,
+  for (final id in ['glm-5.1', 'glm-5', 'glm-4.7', 'glm-4.6']) _key(id): id,
+};
 
 // IDs documented by the pinned supplier packages. They are scoped because a
 // provider's opaque alias says nothing about an identically named other one.
@@ -135,7 +144,20 @@ const _deepseekFlashAliases = {
   'deepseek-flash-1017',
 };
 
-String? officialModelId(String provider, Map<String, dynamic> model) {
+String? officialModelId(String provider, Map<String, dynamic> model) =>
+    _officialModelId(provider, model, legacy: false);
+
+String legacyModelId(String provider, Map<String, dynamic> model) =>
+    _officialModelId(provider, model, legacy: true) ??
+    '$provider/${model['id']}';
+
+String? _officialModelId(
+  String provider,
+  Map<String, dynamic> model, {
+  required bool legacy,
+}) {
+  if (!legacy) provider = provider.replaceFirst(RegExp(r'-(cn|global)$'), '');
+  final names = legacy ? _legacyOfficialByKey : _officialByKey;
   final native = (model['id'] as String? ?? '').toLowerCase();
   final channel = _channelAliases[provider]?[native];
   if (channel != null) return channel;
@@ -145,9 +167,9 @@ String? officialModelId(String provider, Map<String, dynamic> model) {
   // TRAE's -max and WorkBuddy's -1m are source context modes. The
   // unmodified binding retains their limits and supplier API identity.
   if (provider == 'trae' && id.endsWith('-max')) {
-    final base = officialModelId(provider, {
+    final base = _officialModelId(provider, {
       'id': id.substring(0, id.length - 4),
-    });
+    }, legacy: legacy);
     if (base != null) return base;
   }
   if (provider == 'workbuddy' && id.endsWith('-1m'))
@@ -165,10 +187,26 @@ String? officialModelId(String provider, Map<String, dynamic> model) {
     'gemini-3-pro': 'gemini-3-pro-preview',
     'gemini-3-flash': 'gemini-3-flash-preview',
   };
-  final exact = aliases[id] ?? _officialByKey[_key(id)];
+  final exact = aliases[id] ?? names[_key(id)];
   if (exact != null) return exact;
   // Only a complete, known name is accepted. Dates and arbitrary suffixes
   // cannot silently turn an unknown model into a known model.
   final name = model['name'];
-  return name is String ? _officialByKey[_key(name)] : null;
+  return name is String ? names[_key(name)] : null;
+}
+
+/// A supplier's complete display name groups its accounts even when the
+/// underlying official API model has not been identified. Native IDs remain
+/// on the bindings, and this fallback never claims an official model mapping.
+String modelId(String provider, Map<String, dynamic> model) {
+  final official = officialModelId(provider, model);
+  if (official != null) return official;
+  final name = (model['name'] as String? ?? '').trim();
+  final id = Uri.encodeComponent(
+    (name.isEmpty ? model['id'] as String : name)
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), '-'),
+  );
+  return id == 'auto' ? 'model-auto' : id;
 }
