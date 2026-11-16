@@ -28,6 +28,9 @@ class AuthFile {
       const std::string& stage, const std::string& name,
       const std::function<void()>& ensureStopped) const;
   void DiscardStage(const std::string& name, const std::string& digest) const;
+  void RecoverReplacement(const std::string& stage, const std::string& name,
+      const std::string& before, const std::string& after,
+      const std::function<void()>& ensureStopped) const;
   void WithExclusive(const std::function<void()>& action) const;
   std::string RootRevision() const;
   const std::filesystem::path& root() const;

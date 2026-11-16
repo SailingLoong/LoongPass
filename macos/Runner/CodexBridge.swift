@@ -176,29 +176,16 @@ import FlutterMacOS
     }
 
     private func renew(_ credential: CodexCredential, client: CodexDesktopClient, policy: CodexAuthPolicy) async throws {
+        guard let accounts else { throw CodexRuntimeFailure.unavailable }
         let scratch = try temporaryHome()
-        let server = CodexAppServer(executable: client.executable, home: scratch, overrides: policy.loginOverrides)
-        do {
-            let path = scratch.appendingPathComponent("auth.json")
-            try credential.data.write(to: path, options: .withoutOverwriting)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
-            try await server.start()
-            let reply = try await server.request("account/read", params: ["refreshToken": true])
-            guard let account = reply["account"] as? [String: Any], account["type"] as? String == "chatgpt" else {
-                throw CodexRuntimeFailure.loginFailed
-            }
-            await server.close()
-            try Task.checkCancellation()
-            guard let bytes = try CodexAuthFile(root: scratch).read() else { throw CodexRuntimeFailure.loginFailed }
-            let fresh = try CodexCredential(data: bytes)
-            guard fresh.id == credential.id else { throw CodexRuntimeFailure.loginFailed }
-            try policy.validate(workspaceId: fresh.workspaceId)
-            _ = try accounts?.capture(bytes)
-            try FileManager.default.removeItem(at: scratch)
-        } catch {
-            await server.close()
-            try? FileManager.default.removeItem(at: scratch)
-            throw error
+        var preserved = false
+        defer {
+            // Keep the private final grant when durable persistence failed.
+            if preserved { try? FileManager.default.removeItem(at: scratch) }
+        }
+        try await CodexRenewal.run(executable: client.executable, home: scratch, credential: credential, policy: policy) {
+            _ = try accounts.capture($0)
+            preserved = true
         }
     }
 

@@ -5,6 +5,7 @@
 #include <sddl.h>
 
 #include <array>
+#include <cstring>
 #include <vector>
 
 namespace loongpass::codex {
@@ -98,6 +99,27 @@ bool Stage(const std::string& name) {
   return false;
 }
 
+bool Previous(const std::string& name) {
+  constexpr size_t suffix = sizeof(".previous") - 1;
+  return name.size() > suffix && name.compare(name.size() - suffix, suffix, ".previous") == 0 &&
+      Stage(name.substr(0, name.size() - suffix));
+}
+
+bool Rename(HANDLE file, const std::filesystem::path& path) {
+  const auto bytes = path.wstring().size() * sizeof(wchar_t);
+  std::vector<unsigned char> storage(sizeof(FILE_RENAME_INFO) + bytes);
+  auto* rename = reinterpret_cast<FILE_RENAME_INFO*>(storage.data());
+  rename->ReplaceIfExists = FALSE;
+  rename->FileNameLength = static_cast<DWORD>(bytes);
+  std::memcpy(rename->FileName, path.c_str(), bytes);
+  return SetFileInformationByHandle(file, FileRenameInfo, rename, static_cast<DWORD>(storage.size())) != FALSE;
+}
+
+bool Discard(HANDLE file) {
+  FILE_DISPOSITION_INFO disposition = {TRUE};
+  return SetFileInformationByHandle(file, FileDispositionInfo, &disposition, sizeof(disposition)) != FALSE;
+}
+
 bool Settings(const std::string& name) {
   return name == LocalSettings::fileName || name.rfind(".loongpass-codex-settings-", 0) == 0;
 }
@@ -160,7 +182,7 @@ struct AuthFile::State {
     security.Validate(directories.back().value);
   }
   std::filesystem::path Path(const std::string& name) const {
-    Require(name == "auth.json" || name == LocalSettings::fileName || Stage(name));
+    Require(name == "auth.json" || name == LocalSettings::fileName || Stage(name) || Previous(name));
     return root / std::filesystem::u8path(name);
   }
   std::filesystem::path root;
@@ -208,46 +230,80 @@ void AuthFile::Replace(const std::string& data, const Snapshot& expected,
   Require(data.size() <= (Settings(name) ? LocalSettings::maximumBytes : 1024 * 1024));
   state_->Validate();
   const auto staged = state_->Path(stage), destination = state_->Path(name);
+  Handle file(CreateFileW(staged.c_str(), GENERIC_READ | GENERIC_WRITE | DELETE | READ_CONTROL,
+      FILE_SHARE_READ, state_->security.attributes(), CREATE_NEW,
+      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
+  Require(file.valid(), FailureCode::unavailable);
   struct Cleanup {
-    std::filesystem::path path;
-    bool created = false;
-    Json identity;
-    ~Cleanup() {
-      if (!created) return;
-      Handle named(CreateFileW(path.c_str(), FILE_READ_ATTRIBUTES,
-          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-          OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
-      BY_HANDLE_FILE_INFORMATION info = {};
-      if (named.valid() && GetFileInformationByHandle(named.value, &info) && Identity(info) == identity)
-        DeleteFileW(path.c_str());
-    }
-  } cleanup{staged};
-  {
-    Handle file(CreateFileW(staged.c_str(), GENERIC_WRITE | READ_CONTROL, 0,
-        state_->security.attributes(), CREATE_NEW,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
-    Require(file.valid(), FailureCode::unavailable);
-    cleanup.created = true;
-    cleanup.identity = Identity(Information(file.value, false, data.size()));
-    DWORD written = 0;
-    Require(WriteFile(file.value, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) &&
-        written == data.size() && FlushFileBuffers(file.value), FailureCode::unavailable);
-  }
+    HANDLE file;
+    bool committed = false;
+    ~Cleanup() { if (!committed) Discard(file); }
+  } cleanup{file.value};
+  Information(file.value, false, data.size());
+  DWORD written = 0;
+  Require(WriteFile(file.value, data.data(), static_cast<DWORD>(data.size()), &written, nullptr) &&
+      written == data.size() && FlushFileBuffers(file.value), FailureCode::unavailable);
   ensureStopped();
+  // Pin the exact preimage against both in-place writes and path replacement.
+  // Handle-based renames work without granting other processes delete sharing.
+  Handle previous(CreateFileW(destination.c_str(), GENERIC_READ | DELETE | READ_CONTROL,
+      FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+  if (!previous.valid()) Require(GetLastError() == ERROR_FILE_NOT_FOUND, FailureCode::sourceChanged);
   Require(Read(name) == expected && Read(stage).data == data, FailureCode::sourceChanged);
-  state_->Validate();
-  const DWORD flags = MOVEFILE_WRITE_THROUGH | (expected.data ? MOVEFILE_REPLACE_EXISTING : 0);
-  Require(MoveFileExW(staged.c_str(), destination.c_str(), flags) != FALSE,
-          FailureCode::sourceChanged);
-  Require(Read(name).data == data, FailureCode::sourceChanged);
+  bool displaced = false;
+  try {
+    if (previous.valid()) {
+      Require(Rename(previous.value, state_->Path(stage + ".previous")), FailureCode::sourceChanged);
+      displaced = true;
+    }
+    // Re-check the OS boundary with the validated preimage pinned. A new
+    // destination created here wins; neither rename is allowed to replace it.
+    ensureStopped();
+    state_->Validate();
+    Require(Rename(file.value, destination), FailureCode::sourceChanged);
+    cleanup.committed = true;
+    Require(FlushFileBuffers(file.value) != FALSE, FailureCode::unavailable);
+    Require(Read(name).data == data, FailureCode::sourceChanged);
+    if (previous.valid()) Require(Discard(previous.value), FailureCode::unavailable);
+  } catch (...) {
+    // Restore the actual displaced file only into an empty destination. On a
+    // competing creation retain it at the journal-derived recovery path.
+    if (displaced && !cleanup.committed) Rename(previous.value, destination);
+    throw;
+  }
 }
 
 void AuthFile::DiscardStage(const std::string& name, const std::string& digest) const {
-  Require(Stage(name), FailureCode::recoveryConflict);
+  Require(Stage(name) || Previous(name), FailureCode::recoveryConflict);
+  Handle file(CreateFileW(state_->Path(name).c_str(), GENERIC_READ | DELETE | READ_CONTROL,
+      FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+  if (!file.valid()) {
+    Require(GetLastError() == ERROR_FILE_NOT_FOUND, FailureCode::recoveryConflict); return;
+  }
   const auto saved = Read(name);
-  if (!saved.data) return;
-  Require(saved.digest() == digest && Read(name) == saved, FailureCode::recoveryConflict);
-  Require(DeleteFileW(state_->Path(name).c_str()) != FALSE, FailureCode::recoveryConflict);
+  Require(saved.data && saved.digest() == digest, FailureCode::recoveryConflict);
+  Require(Discard(file.value), FailureCode::recoveryConflict);
+}
+
+void AuthFile::RecoverReplacement(const std::string& stage, const std::string& name,
+    const std::string& before, const std::string& after,
+    const std::function<void()>& ensureStopped) const {
+  Require(Stage(stage) && (name == "auth.json" || name == LocalSettings::fileName), FailureCode::recoveryConflict);
+  const auto backupName = stage + ".previous";
+  Handle backup(CreateFileW(state_->Path(backupName).c_str(), GENERIC_READ | DELETE | READ_CONTROL,
+      FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+  if (!backup.valid()) {
+    Require(GetLastError() == ERROR_FILE_NOT_FOUND, FailureCode::recoveryConflict); return;
+  }
+  Require(Read(backupName).digest() == before, FailureCode::recoveryConflict);
+  const auto current = Read(name);
+  if (!current.data) {
+    ensureStopped();
+    Require(Rename(backup.value, state_->Path(name)), FailureCode::recoveryConflict);
+  } else {
+    Require(current.digest() == before || current.digest() == after, FailureCode::recoveryConflict);
+    Require(Discard(backup.value), FailureCode::recoveryConflict);
+  }
 }
 
 void AuthFile::WithExclusive(const std::function<void()>& action) const {

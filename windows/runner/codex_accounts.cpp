@@ -18,11 +18,13 @@ struct ScratchHome {
   std::filesystem::path root;
   std::unique_ptr<NativeAccountFile> owner;
   std::unique_ptr<AuthFile> auth;
+  bool retain = false;
   explicit ScratchHome(const std::filesystem::path& parent)
       : root(parent / Wide("authorization-" + RandomHex(16))),
         owner(std::make_unique<NativeAccountFile>(root)), auth(std::make_unique<AuthFile>(root)) {}
   ~ScratchHome() {
     auth.reset(); owner.reset();
+    if (retain) return;  // A failed durable save must not delete the only fresh grant.
     std::error_code error;
     std::filesystem::remove_all(root, error);
   }
@@ -152,8 +154,11 @@ struct Accounts::State {
     policy.Validate(target.workspaceId);
     if (current != id) {
       ScratchHome scratch(accounts->root());
-      const auto renewed = RenewLogin(client.executable, *scratch.auth, target, policy, cancelled);
-      accounts->Capture(renewed.data);
+      scratch.retain = true;
+      RenewLogin(client.executable, *scratch.auth, target, policy, cancelled, [&](const Credential& fresh) {
+        accounts->Capture(fresh.data);
+        scratch.retain = false;
+      });
     }
     const auto outcome = RunActivation(target.workspaceId, [&](bool& wasRunning) {
       client.Quit(cancelled, wasRunning);

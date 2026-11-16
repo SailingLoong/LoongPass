@@ -56,10 +56,12 @@ int ControlledChild() {
     send({{"id", 999999}, {"result", {{"unrelated", true}}}});
     send({{"method", "account/login/completed"}, {"params", {{"loginId", "synthetic-login"}, {"success", true}}}});
     Json reply = {{"correlated", true}, {"pid", GetCurrentProcessId()}};
+    if (request.at("method") == "account/read" && behavior == "lost-response") break;
     if (request.at("method") == "account/read") reply["account"] = {{"type", "chatgpt"}};
     send({{"id", request.at("id")}, {"result", reply}});
   }
   if (mode.contains("final")) Write(std::filesystem::current_path() / L"auth.json", mode.at("final"));
+  if (mode.value("cancelOnClose", false)) Write(std::filesystem::current_path() / L"shutdown-complete", "done");
   return 0;
 }
 
@@ -123,9 +125,27 @@ void RuntimeChecks(const std::map<std::string, Credential>& values) {
     AuthFile auth(root);
     Write(root / L"fixture-mode.json", Json({{"final", values.at("b-rotated").data}}).dump());
     const AuthPolicy policy({{"cli_auth_credentials_store", "file"}});
-    const auto fresh = RenewLogin(path, auth, values.at("b"), policy, {});
+    const auto fresh = RenewLogin(path, auth, values.at("b"), policy, {}, [](const Credential&) {});
     Check(fresh.data == values.at("b-rotated").data,
           "Renewal saved the pre-shutdown grant instead of the child's final write");
+  }
+  for (const auto* behavior : {"cancel", "lost-response"}) {
+    const auto root = temporary.path / loongpass::Wide(std::string("renew-") + behavior);
+    loongpass::NativeAccountFile owner(root);
+    AuthFile auth(root);
+    AccountStore saved(temporary.path / loongpass::Wide(std::string("saved-") + behavior));
+    saved.Capture(values.at("b").data);
+    Write(root / L"fixture-mode.json", Json({{"final", values.at("b-rotated").data},
+        {"behavior", behavior}, {"cancelOnClose", std::string(behavior) == "cancel"}}).dump());
+    const auto cancelled = [&] { return std::filesystem::exists(root / L"shutdown-complete"); };
+    Refuses(std::string(behavior) == "cancel" ? FailureCode::cancelled : FailureCode::unavailable, [&] {
+      const auto fresh = RenewLogin(path, auth, values.at("b"),
+          AuthPolicy({{"cli_auth_credentials_store", "file"}}), cancelled,
+          [&](const Credential& value) { saved.Capture(value.data); });
+      Check(fresh.id == values.at("b").id, "Renewal changed identity");
+    });
+    Check(saved.Saved(values.at("b").id).data == values.at("b-rotated").data,
+          "Interrupted refresh discarded the child's final rotated grant");
   }
   std::cout << "Codex runtime checks passed: correlation, login notification, EOF, malformed/oversized frames, timeout, cancellation, reaping, final grant\n";
 }
@@ -291,13 +311,51 @@ void ExternalPermissionChecks(const Credential& credential) {
   Refuses(FailureCode::unsafePath, [&] { auth.Read(); });
   std::cout << "Codex external permission checks passed: existing readers tolerated, foreign writers refused\n";
 }
+
+void ReplacementRaceChecks(const Credential& before, const Credential& target, const Credential& external) {
+  TemporaryDirectory temporary;
+  AuthFile auth(temporary.path / L"home");
+  AuthFile writer(temporary.path / L"writer");
+  writer.Replace(external.data, writer.Read(), ".loongpass-codex-auth-" + std::string(32, 'c'), "auth.json", [] {});
+  auth.Replace(before.data, auth.Read(), ".loongpass-codex-auth-" + std::string(32, 'e'), "auth.json", [] {});
+  const auto expected = auth.Read();
+  const auto stage = ".loongpass-codex-auth-" + std::string(32, 'f');
+  int checks = 0;
+  Refuses(FailureCode::sourceChanged, [&] {
+    auth.Replace(target.data, expected, stage, "auth.json", [&] {
+      // The commit boundary must re-check writers after it has pinned and
+      // displaced the validated preimage. A competing destination wins.
+      if (++checks == 2) {
+        const auto backup = auth.root() / loongpass::Wide(stage + ".previous");
+        const auto changed = CreateFileW(backup.c_str(), GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE |
+            FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, 0, nullptr);
+        const bool pinned = changed == INVALID_HANDLE_VALUE && GetLastError() == ERROR_SHARING_VIOLATION;
+        if (changed != INVALID_HANDLE_VALUE) CloseHandle(changed);
+        Check(pinned, "The validated preimage was still writable");
+        Check(MoveFileExW((writer.root() / L"auth.json").c_str(), (auth.root() / L"auth.json").c_str(),
+            MOVEFILE_WRITE_THROUGH) != FALSE, "Concurrent atomic writer fixture unavailable");
+      }
+    });
+  });
+  Check(checks == 2 && auth.Read().data == external.data, "Post-validation writer was silently overwritten");
+  Check(Read(auth.root() / loongpass::Wide(stage + ".previous")) == before.data,
+        "The actual displaced login was not retained on conflict");
+  Refuses(FailureCode::recoveryConflict, [&] {
+    auth.RecoverReplacement(stage, "auth.json", Digest(before.data), Digest(target.data), [] {});
+  });
+  Check(auth.Read().data == external.data, "Recovery overwrote the competing login");
+  Check(DeleteFileW((auth.root() / L"auth.json").c_str()) != FALSE, "Crash fixture removal failed");
+  auth.RecoverReplacement(stage, "auth.json", Digest(before.data), Digest(target.data), [] {});
+  Check(auth.Read().data == before.data, "Displaced-only interrupted replacement did not recover");
+  std::cout << "Codex replacement race checks passed: competing destination retained, displaced preimage preserved\n";
+}
 }  // namespace
 
 int main(int argc, char** argv) {
   using namespace loongpass::codex;
   try {
     if (argc > 1 && std::string(argv[argc - 1]) == "app-server") return ControlledChild();
-    Check(argc == 2, "Pass the shared account contract fixture");
+    Check(argc == 2 || argc == 3, "Pass the shared account contract fixture");
     std::ifstream file(argv[1]);
     Json fixture;
     file >> fixture;
@@ -322,6 +380,10 @@ int main(int argc, char** argv) {
           "Email was used as the account identity");
     Check(credentials.at("b").id == credentials.at("b-rotated").id,
           "Token rotation changed account identity");
+    if (argc == 3 && std::string(argv[2]) == "replacement") {
+      ReplacementRaceChecks(credentials.at("a"), credentials.at("b"), credentials.at("b-rotated"));
+      return 0;
+    }
     for (const auto& entry : fixture.at("settings")) {
       const auto data = entry.at("document").dump();
       const auto& source = credentials.at(entry.at("source").get<std::string>());
@@ -353,6 +415,7 @@ int main(int argc, char** argv) {
     ActivationChecks();
     PackageChecks();
     ExternalPermissionChecks(credentials.at("a"));
+    ReplacementRaceChecks(credentials.at("a"), credentials.at("b"), credentials.at("b-rotated"));
     std::cout << "Codex native contract checks passed: identities, unknown fields, local preference isolation, policy\n";
     return 0;
   } catch (const std::exception& error) {

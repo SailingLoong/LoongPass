@@ -82,9 +82,15 @@ void AccountStore::Recover(AuthFile& auth, const std::function<void()>& ensureSt
   Require(state == "prepared" || state == "applied" || state == "aborted");
   if (state != "prepared") return;
   Require(journal.at("root") == PathText(auth.root()) && journal.at("rootRevision") == auth.RootRevision());
-  const auto current = auth.Read();
   const auto before = journal.at("before").get<std::string>();
   const auto after = journal.at("after").get<std::string>();
+  auth.RecoverReplacement(journal.at("stage"), "auth.json", before, after, ensureStopped);
+  if (journal.contains("settings")) {
+    const auto& settings = journal.at("settings");
+    auth.RecoverReplacement(settings.at("stage"), LocalSettings::fileName,
+        settings.at("beforeDigest"), settings.at("afterDigest"), ensureStopped);
+  }
+  const auto current = auth.Read();
   Require(current.digest() == before || current.digest() == after);
   bool applied = current.digest() == after;
   if (journal.contains("settings")) {

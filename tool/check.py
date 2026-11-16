@@ -86,6 +86,12 @@ if sys.platform == "darwin":
         codex_runtime = str(Path(scratch) / "codex-runtime-checks")
         run(["xcrun", "swiftc", "macos/Runner/CodexAppServer.swift", "tool/codex_runtime_checks.swift", "-o", codex_runtime])
         run([codex_runtime])
+        codex_renewal = str(Path(scratch) / "codex-renewal-checks")
+        run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
+             "macos/Runner/CodexAccounts.swift", "macos/Runner/CodexLocalSettings.swift",
+             "macos/Runner/CodexAppServer.swift", "macos/Runner/CodexRenewal.swift",
+             "tool/codex_renewal_checks.swift", "-o", codex_renewal])
+        run([codex_renewal])
         codex_activation = str(Path(scratch) / "codex-activation-checks")
         run(["xcrun", "swiftc", "macos/Runner/CodexAppServer.swift", "macos/Runner/CodexActivation.swift",
              "tool/codex_activation_checks.swift", "-o", codex_activation])

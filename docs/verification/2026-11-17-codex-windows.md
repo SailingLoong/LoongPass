@@ -20,6 +20,7 @@ The C++ code is necessary Windows SDK integration within the existing Flutter ap
 - Windows Flutter 3.50.0 / Dart 3.14.0: static analysis and 28 Codex controller/widget checks, including Windows availability, closure wording, cancellation, native-only snapshots and narrow layouts. Dependency resolution enforced the unchanged lockfile.
 - macOS native checks: account, local settings, paired transaction, stdio runtime, process classification, shared fixture parity and updated automatic-open boundary.
 - Read-only Windows official-client probe: Store discovery, effective file-store policy and parsing the current credential shape passed. This did not replace the current login.
+- Independent review regressions: a competing destination after validation is retained, the pinned/displaced preimage cannot be changed or silently deleted, and recognized interrupted displacement recovers into an empty destination. Cancelled/lost-response renewal durably saves the final same-identity grant on both native adapters before returning the failure. Private scratch data is retained when durable capture itself fails.
 
 ## Acceptance boundary
 
