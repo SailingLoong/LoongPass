@@ -1,0 +1,236 @@
+{
+  "credentials": [
+    {
+      "name": "a",
+      "document": {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+          "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InNhbWVAZXhhbXBsZS5pbnZhbGlkIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InN5bnRoZXRpYy11c2VyLWEiLCJ1c2VyX2lkIjoic3ludGhldGljLXVzZXItYSIsImNoYXRncHRfYWNjb3VudF9pZCI6InN5bnRoZXRpYy13b3Jrc3BhY2UtYSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.synthetic-signature",
+          "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoic3ludGhldGljLXVzZXItYSIsInVzZXJfaWQiOiJzeW50aGV0aWMtdXNlci1hIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoic3ludGhldGljLXdvcmtzcGFjZS1hIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoic2FtZUBleGFtcGxlLmludmFsaWQifX0.synthetic-signature",
+          "refresh_token": "synthetic-refresh-a",
+          "account_id": "synthetic-workspace-a",
+          "future_token_field": {
+            "retained": true
+          }
+        },
+        "last_refresh": "2026-11-16T00:00:00Z",
+        "future_auth_field": [
+          "retained"
+        ]
+      },
+      "expectedId": "codex-983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+      "expectedOwner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47"
+    },
+    {
+      "name": "b",
+      "document": {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+          "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InNhbWVAZXhhbXBsZS5pbnZhbGlkIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InN5bnRoZXRpYy11c2VyLWIiLCJ1c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsImNoYXRncHRfYWNjb3VudF9pZCI6InN5bnRoZXRpYy13b3Jrc3BhY2UtYiIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.synthetic-signature",
+          "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsInVzZXJfaWQiOiJzeW50aGV0aWMtdXNlci1iIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoic3ludGhldGljLXdvcmtzcGFjZS1iIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoic2FtZUBleGFtcGxlLmludmFsaWQifX0.synthetic-signature",
+          "refresh_token": "synthetic-refresh-b",
+          "account_id": "synthetic-workspace-b",
+          "future_token_field": {
+            "retained": true
+          }
+        },
+        "last_refresh": "2026-11-16T00:00:00Z",
+        "future_auth_field": [
+          "retained"
+        ]
+      },
+      "expectedId": "codex-3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6",
+      "expectedOwner": "3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6"
+    },
+    {
+      "name": "b-rotated",
+      "document": {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+          "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InNhbWVAZXhhbXBsZS5pbnZhbGlkIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InN5bnRoZXRpYy11c2VyLWIiLCJ1c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsImNoYXRncHRfYWNjb3VudF9pZCI6InN5bnRoZXRpYy13b3Jrc3BhY2UtYiIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.synthetic-signature",
+          "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsInVzZXJfaWQiOiJzeW50aGV0aWMtdXNlci1iIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoic3ludGhldGljLXdvcmtzcGFjZS1iIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoic2FtZUBleGFtcGxlLmludmFsaWQifX0.synthetic-signature",
+          "refresh_token": "synthetic-refresh-b-latest",
+          "account_id": "synthetic-workspace-b",
+          "future_token_field": {
+            "retained": true
+          }
+        },
+        "last_refresh": "2026-11-16T00:00:00Z",
+        "future_auth_field": [
+          "retained"
+        ]
+      },
+      "expectedId": "codex-3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6",
+      "expectedOwner": "3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6"
+    },
+    {
+      "name": "conflicting-workspace",
+      "document": {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+          "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InNhbWVAZXhhbXBsZS5pbnZhbGlkIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InN5bnRoZXRpYy11c2VyLWIiLCJ1c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsImNoYXRncHRfYWNjb3VudF9pZCI6InN5bnRoZXRpYy13b3Jrc3BhY2UtYiIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.synthetic-signature",
+          "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoic3ludGhldGljLXVzZXItYiIsInVzZXJfaWQiOiJzeW50aGV0aWMtdXNlci1iIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoic3ludGhldGljLXdvcmtzcGFjZS1iIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoic2FtZUBleGFtcGxlLmludmFsaWQifX0.synthetic-signature",
+          "refresh_token": "synthetic-refresh-b",
+          "account_id": "conflicting-workspace",
+          "future_token_field": {
+            "retained": true
+          }
+        },
+        "last_refresh": "2026-11-16T00:00:00Z",
+        "future_auth_field": [
+          "retained"
+        ]
+      },
+      "invalid": true
+    },
+    {
+      "name": "api-key",
+      "document": {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": "synthetic-api-key",
+        "tokens": {
+          "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InNhbWVAZXhhbXBsZS5pbnZhbGlkIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InN5bnRoZXRpYy11c2VyLWEiLCJ1c2VyX2lkIjoic3ludGhldGljLXVzZXItYSIsImNoYXRncHRfYWNjb3VudF9pZCI6InN5bnRoZXRpYy13b3Jrc3BhY2UtYSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIn19.synthetic-signature",
+          "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoic3ludGhldGljLXVzZXItYSIsInVzZXJfaWQiOiJzeW50aGV0aWMtdXNlci1hIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoic3ludGhldGljLXdvcmtzcGFjZS1hIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwcm8ifSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9wcm9maWxlIjp7ImVtYWlsIjoic2FtZUBleGFtcGxlLmludmFsaWQifX0.synthetic-signature",
+          "refresh_token": "synthetic-refresh-a",
+          "account_id": "synthetic-workspace-a",
+          "future_token_field": {
+            "retained": true
+          }
+        },
+        "last_refresh": "2026-11-16T00:00:00Z",
+        "future_auth_field": [
+          "retained"
+        ]
+      },
+      "invalid": true
+    }
+  ],
+  "settings": [
+    {
+      "name": "audited-local-state-only",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-account-renderer-state-v1": {
+          "owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+          "inactive": {
+            "3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+              "atoms": {
+                "composer-prompt-drafts-v2": {
+                  "old": "old target draft"
+                },
+                "cloud-cache": {
+                  "target": true
+                }
+              },
+              "globals": {
+                "local-projects": [
+                  "old target project"
+                ],
+                "target-capability": true
+              }
+            }
+          }
+        },
+        "electron-persisted-atom-state": {
+          "composer-prompt-drafts-v2": {
+            "draft": "local draft"
+          },
+          "cloud-cache": {
+            "source": true
+          },
+          "queued-follow-ups": [
+            "do not copy"
+          ]
+        },
+        "local-projects": [
+          "local project"
+        ],
+        "pinned-thread-ids": [
+          "local-thread"
+        ],
+        "shared-future-field": {
+          "preserved": true
+        },
+        "queued-follow-ups": [
+          "source queue"
+        ]
+      },
+      "expected": {
+        "electron-account-renderer-state-v1": {
+          "owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+          "inactive": {
+            "3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+              "atoms": {
+                "composer-prompt-drafts-v2": {
+                  "draft": "local draft"
+                },
+                "cloud-cache": {
+                  "target": true
+                }
+              },
+              "globals": {
+                "local-projects": [
+                  "local project"
+                ],
+                "target-capability": true,
+                "pinned-thread-ids": [
+                  "local-thread"
+                ]
+              }
+            }
+          }
+        },
+        "electron-persisted-atom-state": {
+          "composer-prompt-drafts-v2": {
+            "draft": "local draft"
+          },
+          "cloud-cache": {
+            "source": true
+          },
+          "queued-follow-ups": [
+            "do not copy"
+          ]
+        },
+        "local-projects": [
+          "local project"
+        ],
+        "pinned-thread-ids": [
+          "local-thread"
+        ],
+        "shared-future-field": {
+          "preserved": true
+        },
+        "queued-follow-ups": [
+          "source queue"
+        ]
+      }
+    },
+    {
+      "name": "future-renderer-refused",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-account-renderer-state-v2": {}
+      },
+      "invalid": true
+    },
+    {
+      "name": "unrecognized-owner-refused",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-account-renderer-state-v1": {
+          "owner": "unknown-owner",
+          "inactive": {}
+        }
+      },
+      "invalid": true
+    }
+  ],
+  "legacySettings": "{ \"local-projects\": [\"legacy\"], \"future\": true }"
+}

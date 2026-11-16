@@ -78,7 +78,7 @@ if sys.platform == "darwin":
         run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
              "macos/Runner/CodexAccounts.swift", "macos/Runner/CodexLocalSettings.swift", "tool/codex_accounts_checks.swift", "-o", codex_accounts])
         run([codex_accounts])
-        for name in ["codex_local_settings", "codex_settings_transaction"]:
+        for name in ["codex_local_settings", "codex_settings_transaction", "codex_contract"]:
             executable = str(Path(scratch) / (name + "-checks"))
             run(["xcrun", "swiftc", "macos/Runner/AppDataDirectory.swift", "macos/Runner/AccountFile.swift",
                  "macos/Runner/CodexAccounts.swift", "macos/Runner/CodexLocalSettings.swift", "tool/" + name + "_checks.swift", "-o", executable])
