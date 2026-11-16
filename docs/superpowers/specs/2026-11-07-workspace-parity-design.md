@@ -50,7 +50,7 @@ Load once at composition startup, serialize writes, and surface save failures.
 - Never copy mock model calls, launch-at-login, unimplemented client identity
   verification or fabricated activity records from the design prototype.
 - Settings expose only implemented UI preferences and accurate runtime/data
-  explanations. Automatic-claim settings remain in account details.
+  explanations. Assisted-claim settings remain in account details.
 
 ## Verification
 

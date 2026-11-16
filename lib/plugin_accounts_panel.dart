@@ -474,7 +474,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         if (_supportsRewards(a))
           FSwitch(
             value: a.automatic,
-            label: const Text('自动领取'),
+            label: const Text('辅助领取'),
             description: Text(
               a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
             ),
@@ -503,7 +503,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             title: widget.title,
             accountCount: rows.length,
             helpText:
-                '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可自动领取。'
+                '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可辅助领取。'
                 '领取结果待核验时只查询官方状态。各额度窗口保留官方单位，不合计重叠额度。',
             actions: [
               FButton(
@@ -690,7 +690,7 @@ String _statusLabel(PluginAccount a) {
       a.error != null
           ? '最近查询未完成'
           : a.automatic
-          ? '自动领取已开启'
+          ? '辅助领取已开启'
           : '已保存',
   };
 }

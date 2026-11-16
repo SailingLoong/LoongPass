@@ -3,7 +3,7 @@
 ## Behavior repaired
 
 Credit queries belong to account owners. Restoring saved accounts starts a
-credit-only refresh; periodic reads continue when automatic rewards are off.
+credit-only refresh; periodic reads continue when assisted rewards are off.
 MiniMax, Qoder and TRAE still query credits when a reward check fails or returns
 without granting anything. Existing credential leases, regional boundaries and
 durable claim journals retain ownership of authorization and reward dispatch.

@@ -32,7 +32,7 @@
 
 ## 安装与数据保留
 
-候选通过标准 macOS Universal 构建及签名完整性检查，替换 `/Applications` 中同一个 LoongPass 后以普通桌面入口启动。确认仅有一个应用进程，Bun 宿主收到原生 `MAGPIE_HTTPS_PROXY`，没有普通 `HTTPS_PROXY` 隐式代理变量。13 个账号身份、原生授权键和原有 65 条领取记录均完整保留。启动后的数据层自动领取继续运行，检查时共有 68 条领取记录。
+候选通过标准 macOS Universal 构建及签名完整性检查，替换 `/Applications` 中同一个 LoongPass 后以普通桌面入口启动。确认仅有一个应用进程，Bun 宿主收到原生 `MAGPIE_HTTPS_PROXY`，没有普通 `HTTPS_PROXY` 隐式代理变量。13 个账号身份、原生授权键和原有 65 条领取记录均完整保留。启动后的数据层辅助领取继续运行，检查时共有 68 条领取记录。
 
 macOS 与 Windows 的 PR CI 均已通过。本次没有界面改动；实际窗口视觉与交互不由本轮 headless 接入测试代替。
 

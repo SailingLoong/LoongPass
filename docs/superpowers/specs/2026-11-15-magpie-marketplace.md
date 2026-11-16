@@ -23,8 +23,7 @@ user capability and are not selected.
 
 ## Product description and boundaries
 
-Describe the LoongPass application: multiple platforms/accounts, assisted automatic
-check-in and reward claims, balances and expiry, expiring eligible credits first,
+Describe the LoongPass application: multiple platforms/accounts, assisted check-in and reward claims, balances and expiry, expiring eligible credits first,
 official application account switching, and models supplied to Magpie. State
 per-platform support and verification limits. The installed plugin connects the
 running desktop application; it does not independently implement these features.

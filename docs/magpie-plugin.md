@@ -4,9 +4,9 @@
 and credits. This plugin connects a running local LoongPass application to Magpie.
 Every prompt and reply for this provider passes through that local application.
 
-LoongPass 1.0.1 bundles `@sailing-loong/magpie-bridge@0.2.1`. The desktop app and
-plugin have independent version numbers. That published plugin was checked with
-the 1.0.1 application code and external Magpie 0.1.3346 and 0.1.4277 on macOS;
+LoongPass 1.0.2 bundles `@sailing-loong/magpie-bridge@0.2.2`. The desktop app and
+plugin have independent version numbers. The bridge executable files are unchanged from reviewed 0.2.1, checked with
+external Magpie 0.1.3346 and 0.1.4277 on macOS;
 see the [compatibility record](https://github.com/SailingLoong/LoongPass/blob/main/docs/verification/2026-11-16-stable-1.0.1.md)
 for scope.
 
@@ -14,7 +14,7 @@ for scope.
 
 - Multiple accounts across supported platforms, official authorization and saved
   identities, with credentials retained by the local application.
-- Assisted automatic check-in and reward claims where the platform actually offers
+- Assisted check-in and reward claims where the platform actually offers
   them. Scheduling runs while LoongPass is running; uncertain claims are retained
   for verification rather than blindly repeated.
 - Balances, reward history and remaining-credit expiry from official interfaces.
@@ -48,7 +48,7 @@ plugin alone does not install the application or enable every listed feature.
    The published npm package installs the same plugin identity:
 
    ```sh
-   magpie plugin add @sailing-loong/magpie-bridge@0.2.1
+   magpie plugin add @sailing-loong/magpie-bridge@0.2.2
    ```
 
    This selects the initial version. Magpie's current update commands can replace
