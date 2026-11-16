@@ -2,12 +2,15 @@
 #include "../windows/runner/codex_account_state.h"
 #include "../windows/runner/codex_account_store.h"
 #include "../windows/runner/codex_auth_session.h"
+#include "../windows/runner/codex_activation.h"
+#include "../windows/runner/codex_desktop_client.h"
 
 #include <fstream>
 #include <iostream>
 #include <map>
 #include <stdexcept>
 #include <windows.h>
+#include <aclapi.h>
 #include <atomic>
 #include <thread>
 
@@ -212,6 +215,82 @@ void TransactionChecks(const Json& fixture, const std::map<std::string, Credenti
   }
   std::cout << "Codex transaction checks passed: A/B/A, latest grants, restart, CAS, recovery, isolation and unsafe files\n";
 }
+
+void ActivationChecks() {
+  std::vector<std::string> steps;
+  auto run = [&](bool running, bool rejected) {
+    return RunActivation("workspace-b", [&](bool& wasRunning) {
+      steps.push_back("quit"); wasRunning = running;
+    }, [&] {
+      steps.push_back("policy");
+      return AuthPolicy(rejected ? Json{{"cli_auth_credentials_store", "keyring"}} :
+                                   Json{{"cli_auth_credentials_store", "file"}});
+    }, [&] { steps.push_back("apply"); }, [&] { steps.push_back("open"); return true; });
+  };
+  Check(run(false, false) == "opened" && steps == std::vector<std::string>{"quit", "policy", "apply", "open"},
+        "Successful activation did not open a previously stopped desktop");
+  steps.clear();
+  Refuses(FailureCode::unsupportedStore, [&] { run(true, true); });
+  Check(steps == std::vector<std::string>{"quit", "policy", "open"}, "Failed activation did not restore prior desktop");
+  steps.clear();
+  Refuses(FailureCode::unsupportedStore, [&] { run(false, true); });
+  Check(steps == std::vector<std::string>{"quit", "policy"}, "Refusal opened a previously stopped desktop");
+  steps.clear();
+  Refuses(FailureCode::busy, [&] {
+    RunActivation("workspace-b", [&](bool& wasRunning) {
+      wasRunning = true; throw Failure(FailureCode::busy);
+    }, [] { return AuthPolicy({{"cli_auth_credentials_store", "file"}}); }, [] {},
+    [&] { steps.push_back("open"); return true; });
+  });
+  Check(steps == std::vector<std::string>{"open"}, "Partially stopped desktop was not restored");
+  std::cout << "Codex activation checks passed: success auto-opens, policy refusal, prior/partial desktop restoration\n";
+}
+
+void PackageChecks() {
+  TemporaryDirectory temporary;
+  std::filesystem::create_directories(temporary.path / L"app/resources");
+  Write(temporary.path / L"app/Desktop.exe", "synthetic executable");
+  Write(temporary.path / L"app/resources/codex.exe", "synthetic CLI");
+  Json metadata = {{"root", temporary.path.u8string()}, {"family", "Synthetic.Codex_Family"},
+      {"apps", Json::array({{{"id", "DesktopApp"}, {"exe", "app/Desktop.exe"}},
+                           {{"id", "ExtensionHost"}, {"exe", "app/resources/plugins/host.exe"}},
+                           {{"id", "CommandRunner"}, {"exe", "app/resources/command-runner.exe"}}})}};
+  const auto client = DesktopClient::Resolve(metadata);
+  Check(client.applicationId == L"Synthetic.Codex_Family!DesktopApp" &&
+      client.executable == temporary.path / L"app/resources/codex.exe",
+      "Package helper applications obscured the actual desktop");
+  metadata["apps"].push_back({{"id", "AmbiguousDesktop"}, {"exe", "app/Other.exe"}});
+  Refuses(FailureCode::unavailable, [&] { DesktopClient::Resolve(metadata); });
+  metadata["apps"].back()["exe"] = "../outside.exe";
+  Refuses(FailureCode::unavailable, [&] { DesktopClient::Resolve(metadata); });
+  std::cout << "Codex package checks passed: desktop capability, helper apps, ambiguity and path traversal\n";
+}
+
+void ExternalPermissionChecks(const Credential& credential) {
+  TemporaryDirectory temporary;
+  AuthFile auth(temporary.path / L"home");
+  auth.Replace(credential.data, auth.Read(), ".loongpass-codex-auth-" + std::string(32, 'd'), "auth.json", [] {});
+  const auto path = auth.root() / L"auth.json";
+  auto grant = [&](DWORD rights) {
+    BYTE sid[SECURITY_MAX_SID_SIZE] = {}; DWORD size = sizeof(sid);
+    Check(CreateWellKnownSid(WinWorldSid, nullptr, sid, &size) != FALSE, "Permission fixture SID unavailable");
+    PACL old = nullptr, updated = nullptr; PSECURITY_DESCRIPTOR descriptor = nullptr;
+    Check(GetNamedSecurityInfoW(const_cast<wchar_t*>(path.c_str()), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+        nullptr, nullptr, &old, nullptr, &descriptor) == ERROR_SUCCESS, "Permission fixture ACL unavailable");
+    EXPLICIT_ACCESSW access = {}; access.grfAccessPermissions = rights; access.grfAccessMode = SET_ACCESS;
+    access.Trustee.TrusteeForm = TRUSTEE_IS_SID; access.Trustee.ptstrName = reinterpret_cast<wchar_t*>(sid);
+    const auto merged = SetEntriesInAclW(1, &access, old, &updated);
+    const auto result = merged == ERROR_SUCCESS ? SetNamedSecurityInfoW(const_cast<wchar_t*>(path.c_str()),
+        SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, updated, nullptr) : merged;
+    if (updated) LocalFree(updated); LocalFree(descriptor);
+    Check(result == ERROR_SUCCESS, "Permission fixture update failed");
+  };
+  grant(FILE_GENERIC_READ);
+  Check(auth.Read().data == credential.data, "An external read-only ACL prevented official-file import");
+  grant(FILE_GENERIC_READ | FILE_WRITE_DATA);
+  Refuses(FailureCode::unsafePath, [&] { auth.Read(); });
+  std::cout << "Codex external permission checks passed: existing readers tolerated, foreign writers refused\n";
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -271,6 +350,9 @@ int main(int argc, char** argv) {
     Check(DecodeBase64(EncodeBase64(legacy)) == legacy, "Private credential encoding changed bytes");
     TransactionChecks(fixture, credentials);
     RuntimeChecks(credentials);
+    ActivationChecks();
+    PackageChecks();
+    ExternalPermissionChecks(credentials.at("a"));
     std::cout << "Codex native contract checks passed: identities, unknown fields, local preference isolation, policy\n";
     return 0;
   } catch (const std::exception& error) {

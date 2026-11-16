@@ -7,6 +7,8 @@ struct DesktopClient {
   std::wstring applicationId;
   std::string revision;
   static DesktopClient Installed(const Cancelled& cancelled);
+  // Resolve applications from an already verified Store package's metadata.
+  static DesktopClient Resolve(const Json& metadata);
   void Quit(const Cancelled& cancelled, bool& wasRunning) const;
   void EnsureStopped(const Cancelled& cancelled) const;
   bool Reopen() const;

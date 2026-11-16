@@ -1,5 +1,6 @@
 #include "codex_accounts.h"
 #include "codex_account_store.h"
+#include "codex_activation.h"
 #include "codex_auth_session.h"
 #include "codex_desktop_client.h"
 
@@ -154,20 +155,16 @@ struct Accounts::State {
       const auto renewed = RenewLogin(client.executable, *scratch.auth, target, policy, cancelled);
       accounts->Capture(renewed.data);
     }
-    bool wasRunning = false;
-    try {
+    const auto outcome = RunActivation(target.workspaceId, [&](bool& wasRunning) {
       client.Quit(cancelled, wasRunning);
+    }, [&] {
       const auto installed = DesktopClient::Installed(cancelled);
       if (!client.SameInstallation(installed)) throw Failure(FailureCode::sourceChanged);
-      policy = ReadPolicy(client.executable, auth->root(), cancelled);
-      policy.Validate(accounts->Saved(id).workspaceId);
+      return ReadPolicy(client.executable, auth->root(), cancelled);
+    }, [&] {
       accounts->Activate(id, *auth, [&] { client.EnsureStopped(cancelled); });
-    } catch (...) {
-      if (wasRunning && !client.Reopen()) Update({{"message", "Codex 未能重开，请手动打开并核对账号。"}});
-      throw;
-    }
-    const bool opened = wasRunning && client.Reopen();
-    Update({{"outcome", opened ? "opened" : "applied"}, {"message", opened ?
+    }, [&] { return client.Reopen(); });
+    Update({{"outcome", outcome}, {"message", outcome == "opened" ?
       "已应用账号登录并重开 Codex，请核对客户端账号。项目和对话设置保留。" :
       "已应用账号登录，请打开 Codex 并核对账号。项目和对话设置保留。"}});
   }
@@ -241,7 +238,9 @@ bool Accounts::Handle(const Call& call, std::unique_ptr<Result>& result) {
   const auto& method = call.method_name();
   if (!methods.count(method)) return false;
   if (method == "codexAccountsStatus") { result->Success(Encode(state_->Snapshot())); return true; }
-  auto args = Decode(call.arguments());
+  Json args;
+  try { args = Decode(call.arguments()); }
+  catch (...) { result->Error("codex_invalid_arguments"); return true; }
   if (args.is_null()) args = Json::object();
   const bool selection = method == "codexActivate" || method == "codexRemove";
   if (!args.is_object() || (selection ? (args.size() != 1 || !args.value("id", Json()).is_string() ||

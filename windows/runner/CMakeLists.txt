@@ -11,6 +11,7 @@ add_library(loongpass_codex STATIC
   "codex_app_server.cpp"
   "codex_auth_session.cpp"
   "codex_desktop_client.cpp"
+  "codex_activation.cpp"
 )
 apply_standard_settings(loongpass_codex)
 target_compile_definitions(loongpass_codex PRIVATE "NOMINMAX")

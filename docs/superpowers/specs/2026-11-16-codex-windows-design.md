@@ -8,7 +8,7 @@ The authorized scope includes official authorization, import of the current logi
 
 ## Approach
 
-Use the existing Flutter view and method-channel contract with a Windows native adapter. Reuse the Windows private account-file owner for durable storage. Use the installed official Codex executable for effective configuration, browser authorization and renewal. Follow LoongPort's Windows lifecycle: discover the MSIX package and application identity at runtime; explicitly disclose forced termination; stop the selected official desktop process tree; observe termination; apply the selected login; reopen through its application identity.
+Use the existing Flutter view and method-channel contract with a Windows native adapter. Reuse the Windows private account-file owner for durable storage. Use the installed official Codex executable for effective configuration, browser authorization and renewal. Follow LoongPort's Windows lifecycle: discover the MSIX package and application identity at runtime; explicitly disclose forced termination; stop the selected official desktop process tree; observe termination; apply the selected login; open through its application identity after successful activation.
 
 This is the recommended implementation choice: Windows already uses C++ bridges for private storage and authorization, while macOS uses Swift. A second service/runtime would duplicate application lifecycle management. Migrating the working macOS adapter into a new shared runtime would expand this platform addition into an unrelated storage migration. Shared synthetic fixtures will check the identity and local-preference contract on both native implementations.
 

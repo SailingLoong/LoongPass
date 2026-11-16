@@ -32,7 +32,7 @@ import Foundation
             try CodexAuthPolicy(["cli_auth_credentials_store": "file"])
         }, apply: { try target.write(to: auth) }, reopen: { opened = true; return true })
         let applied = try Data(contentsOf: auth)
-        precondition(applied == target && result == "applied" && !opened)
-        print("Codex activation checks passed: post-quit store/workspace policy, refusal preserves auth, prior desktop restored, stopped desktop stays stopped")
+        precondition(applied == target && result == "opened" && opened)
+        print("Codex activation checks passed: post-quit store/workspace policy, refusal preserves auth, prior desktop restored, successful activation opens a stopped desktop")
     }
 }

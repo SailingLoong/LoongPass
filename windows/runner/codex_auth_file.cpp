@@ -52,7 +52,7 @@ class Security {
   }
   ~Security() { if (descriptor_) LocalFree(descriptor_); }
   SECURITY_ATTRIBUTES* attributes() { return &attributes_; }
-  void Validate(HANDLE file, bool settings) const {
+  void Validate(HANDLE file) const {
     PSID owner = nullptr;
     PACL acl = nullptr;
     PSECURITY_DESCRIPTOR raw = nullptr;
@@ -74,8 +74,10 @@ class Security {
           EqualSid(trustee, const_cast<unsigned char*>(administrators_.data()));
       constexpr DWORD write = FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA |
           FILE_WRITE_ATTRIBUTES | FILE_DELETE_CHILD | DELETE | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL;
-      const DWORD forbidden = write | (settings ? 0 : FILE_READ_DATA | GENERIC_READ);
-      Require(trusted || (ace->Mask & forbidden) == 0);
+      // The official client owns existing read access (including its Windows
+      // sandbox group). Reject foreign writers; our saved/staged grants still
+      // use the private user/SYSTEM descriptor above.
+      Require(trusted || (ace->Mask & write) == 0);
     }
   }
 
@@ -150,12 +152,12 @@ struct AuthFile::State {
     Require(directory.valid());
     Information(directory.value, true, 0);
     directories.push_back(std::move(directory));
-    security.Validate(directories.back().value, true);
+    security.Validate(directories.back().value);
     identity = Identity(Information(directories.back().value, true, 0));
   }
   void Validate() const {
     Require(Identity(Information(directories.back().value, true, 0)) == identity, FailureCode::sourceChanged);
-    security.Validate(directories.back().value, true);
+    security.Validate(directories.back().value);
   }
   std::filesystem::path Path(const std::string& name) const {
     Require(name == "auth.json" || name == LocalSettings::fileName || Stage(name));
@@ -184,7 +186,7 @@ AuthFile::Snapshot AuthFile::Read(const std::string& name) const {
   }
   const auto limit = Settings(name) ? LocalSettings::maximumBytes : 1024 * 1024;
   const auto info = Information(file.value, false, limit);
-  state_->security.Validate(file.value, Settings(name));
+  state_->security.Validate(file.value);
   const auto before = Fingerprint(file.value, info);
   std::string data(static_cast<size_t>(info.nFileSizeLow), '\0');
   DWORD count = 0;
@@ -255,7 +257,7 @@ void AuthFile::WithExclusive(const std::function<void()>& action) const {
       state_->security.attributes(), OPEN_ALWAYS, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
   Require(file.valid());
   Information(file.value, false, 0);
-  state_->security.Validate(file.value, false);
+  state_->security.Validate(file.value);
   OVERLAPPED range = {};
   Require(LockFileEx(file.value, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
       0, MAXDWORD, MAXDWORD, &range) != FALSE, FailureCode::busy);

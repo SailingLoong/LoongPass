@@ -48,6 +48,7 @@ import FlutterMacOS
             "available": available, "issue": issue,
             "accounts": accounts?.summaries(currentId: currentId) ?? [],
             "loginPending": loginPending, "busy": busy,
+            "quitMode": "normal",
         ]
         if let currentId { value["currentId"] = currentId }
         if let message { value["message"] = message }
@@ -160,6 +161,7 @@ import FlutterMacOS
                 let url = parts.url, NSWorkspace.shared.open(url) else { throw CodexRuntimeFailure.loginFailed }
             message = "请在浏览器中完成 Codex 官方授权；完成后会保存账号。"
             guard try await child.waitForLogin(id) else { throw CodexRuntimeFailure.loginFailed }
+            await child.close()
             try Task.checkCancellation()
             guard let bytes = try CodexAuthFile(root: directory).read(), let accounts else { throw CodexRuntimeFailure.loginFailed }
             let credential = try CodexCredential(data: bytes)
@@ -182,13 +184,16 @@ import FlutterMacOS
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
             try await server.start()
             let reply = try await server.request("account/read", params: ["refreshToken": true])
-            guard let account = reply["account"] as? [String: Any], account["type"] as? String == "chatgpt",
-                let bytes = try CodexAuthFile(root: scratch).read() else { throw CodexRuntimeFailure.loginFailed }
+            guard let account = reply["account"] as? [String: Any], account["type"] as? String == "chatgpt" else {
+                throw CodexRuntimeFailure.loginFailed
+            }
+            await server.close()
+            try Task.checkCancellation()
+            guard let bytes = try CodexAuthFile(root: scratch).read() else { throw CodexRuntimeFailure.loginFailed }
             let fresh = try CodexCredential(data: bytes)
             guard fresh.id == credential.id else { throw CodexRuntimeFailure.loginFailed }
             try policy.validate(workspaceId: fresh.workspaceId)
             _ = try accounts?.capture(bytes)
-            await server.close()
             try FileManager.default.removeItem(at: scratch)
         } catch {
             await server.close()

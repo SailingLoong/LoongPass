@@ -89,20 +89,22 @@ std::set<DWORD> DesktopTree(const DesktopClient& client, const std::vector<Proce
   return output;
 }
 void NoOtherWriters(const std::vector<Process>& processes, const std::set<DWORD>& desktop,
+                    const std::wstring& desktopName,
                     const Cancelled& cancelled) {
   bool hasNode = false;
   for (const auto& item : processes) {
     if (desktop.count(item.id)) continue;
     const bool cli = _wcsicmp(item.name.c_str(), L"codex.exe") == 0;
     const bool node = _wcsicmp(item.name.c_str(), L"node.exe") == 0;
-    if (!cli && !node) continue;
+    const bool otherDesktop = _wcsicmp(item.name.c_str(), desktopName.c_str()) == 0;
+    if (!cli && !node && !otherDesktop) continue;
     Handle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, item.id));
     if (!process.value) {
       if (GetLastError() == ERROR_INVALID_PARAMETER) continue;
       throw Failure(FailureCode::busy);
     }
     if (!SameUser(process.value)) continue;
-    if (cli) throw Failure(FailureCode::busy);
+    if (cli || otherDesktop) throw Failure(FailureCode::busy);
     hasNode = true;
   }
   if (!hasNode) return;
@@ -130,22 +132,37 @@ $ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
 $p=@(Get-AppxPackage -Name OpenAI.Codex | Where-Object {$_.Status -eq 'Ok' -and $_.SignatureKind -eq 'Store'})
 if($p.Count -ne 1){throw 'Unavailable'}
 $m=Get-AppxPackageManifest -Package $p[0]
-$apps=@($m.Package.Applications.Application | Where-Object {$_.Executable -and $_.Id})
-if($apps.Count -ne 1){throw 'Unavailable'}
-@{root=$p[0].InstallLocation;family=$p[0].PackageFamilyName;id=$apps[0].Id;exe=$apps[0].Executable} | ConvertTo-Json -Compress
+$apps=@($m.Package.Applications.Application | Where-Object {$_.Executable -and $_.Id} |
+ ForEach-Object {@{id=$_.Id;exe=$_.Executable}})
+@{root=$p[0].InstallLocation;family=$p[0].PackageFamilyName;apps=$apps} | ConvertTo-Json -Depth 4 -Compress
 )", cancelled);
   const auto value = Json::parse(output, nullptr, false);
+  return Resolve(value);
+}
+DesktopClient DesktopClient::Resolve(const Json& value) {
   Require(value.is_object());
-  for (const auto* key : {"root", "family", "id", "exe"})
+  for (const auto* key : {"root", "family"})
     Require(value.contains(key) && value.at(key).is_string() && !value.at(key).get<std::string>().empty());
   DesktopClient client;
   client.package = std::filesystem::u8path(value.at("root").get<std::string>());
-  const auto relative = std::filesystem::u8path(value.at("exe").get<std::string>());
-  Require(client.package.is_absolute() && !relative.is_absolute() && !relative.has_root_name());
-  for (const auto& part : relative) Require(part != L".." && part != L".");
-  client.desktop = (client.package / relative).lexically_normal();
-  client.executable = client.desktop.parent_path() / L"resources/codex.exe";
-  client.applicationId = Wide(value.at("family").get<std::string>() + "!" + value.at("id").get<std::string>());
+  Require(client.package.is_absolute() && value.value("apps", Json()).is_array());
+  size_t candidates = 0;
+  for (const auto& app : value.at("apps")) {
+    Require(app.is_object() && app.value("id", Json()).is_string() && app.value("exe", Json()).is_string());
+    const auto relative = std::filesystem::u8path(app.at("exe").get<std::string>());
+    Require(!relative.empty() && !relative.is_absolute() && !relative.has_root_name());
+    for (const auto& part : relative) Require(part != L".." && part != L".");
+    const auto desktop = (client.package / relative).lexically_normal();
+    const auto executable = desktop.parent_path() / L"resources/codex.exe";
+    // A package may also register extension hosts and command runners. Choose
+    // the desktop by its adjacent official CLI capability, not an app-ID list.
+    if (GetFileAttributesW(executable.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+    ++candidates;
+    client.desktop = desktop;
+    client.executable = executable;
+    client.applicationId = Wide(value.at("family").get<std::string>() + "!" + app.at("id").get<std::string>());
+  }
+  Require(candidates == 1);
   client.revision = FileRevision(client.desktop) + FileRevision(client.executable);
   return client;
 }
@@ -157,14 +174,14 @@ void DesktopClient::EnsureStopped(const Cancelled& cancelled) const {
   Require(revision == FileRevision(desktop) + FileRevision(executable));
   const auto all = Processes();
   const auto selected = DesktopTree(*this, all);
-  NoOtherWriters(all, selected, cancelled);
+  NoOtherWriters(all, selected, desktop.filename().wstring(), cancelled);
   Require(selected.empty(), FailureCode::busy);
 }
 void DesktopClient::Quit(const Cancelled& cancelled, bool& wasRunning) const {
   FILETIME observedAt = {}; GetSystemTimeAsFileTime(&observedAt);
   const auto all = Processes();
   const auto selected = DesktopTree(*this, all);
-  NoOtherWriters(all, selected, cancelled);
+  NoOtherWriters(all, selected, desktop.filename().wstring(), cancelled);
   if (selected.empty()) return;
   // Pin and validate the selected process handles before terminating any of them.
   std::vector<std::unique_ptr<Handle>> handles;
