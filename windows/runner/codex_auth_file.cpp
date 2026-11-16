@@ -198,6 +198,13 @@ std::string AuthFile::RootRevision() const { state_->Validate(); return state_->
 
 AuthFile::Snapshot AuthFile::Read(const std::string& name) const {
   state_->Validate();
+  if (name == LocalSettings::fileName) {
+    // The JSON file can be an obsolete shadow once official settings migrate
+    // to SQLite. Refuse that unsupported store before changing authentication.
+    const auto database = state_->root / LocalSettings::databaseFileName;
+    Require(GetFileAttributesW(database.c_str()) == INVALID_FILE_ATTRIBUTES &&
+        GetLastError() == ERROR_FILE_NOT_FOUND, FailureCode::settingsUnavailable);
+  }
   const auto path = state_->Path(name);
   Handle file(CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL,
       FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,

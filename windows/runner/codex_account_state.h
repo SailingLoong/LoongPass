@@ -48,6 +48,7 @@ class AuthPolicy {
 struct LocalSettings {
   static constexpr size_t maximumBytes = 3 * 1024 * 1024;
   static constexpr const char* fileName = ".codex-global-state.json";
+  static constexpr const char* databaseFileName = ".codex-global-state.sqlite";
   static std::optional<std::string> ActiveOwner(const std::string& data);
   static std::string Transfer(const std::string& data,
       const std::optional<Credential>& source, const Credential& target);

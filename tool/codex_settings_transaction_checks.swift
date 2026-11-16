@@ -56,6 +56,18 @@ import Darwin
         } catch CodexFailure.busy {}
         let restoredSettings = try Data(contentsOf: path), restoredAuth = try Data(contentsOf: home.appendingPathComponent("auth.json"))
         precondition(restoredSettings == original && restoredAuth == a, "Paired failure did not preserve the original environment")
+        let database = home.appendingPathComponent(".codex-global-state.sqlite")
+        let databaseBytes = Data("unsupported official settings database".utf8)
+        try databaseBytes.write(to: database)
+        do {
+            try accounts.activate(id: target.id, authFile: CodexAuthFile(root: home), ensureStopped: {})
+            preconditionFailure("An unsupported settings database was ignored")
+        } catch CodexFailure.settingsUnavailable {}
+        let refusedAuth = try Data(contentsOf: home.appendingPathComponent("auth.json"))
+        let refusedSettings = try Data(contentsOf: path), refusedDatabase = try Data(contentsOf: database)
+        precondition(refusedAuth == a && refusedSettings == original && refusedDatabase == databaseBytes,
+            "Unsupported settings storage changed the account or preferences")
+        try FileManager.default.removeItem(at: database)
         try accounts.activate(id: target.id, authFile: CodexAuthFile(root: home), ensureStopped: {})
         let applied = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as! [String: Any]
         let metadata = applied["electron-account-renderer-state-v1"] as! [String: Any]

@@ -28,6 +28,10 @@ import Foundation
                     preconditionFailure("Unrecognized renderer state accepted")
                 } catch CodexFailure.settingsUnavailable {}
             } else {
+                if let expectedOwner = entry["expectedActiveOwner"] {
+                    let owner = try CodexLocalSettings.activeOwner(data: bytes)
+                    precondition(owner == (expectedOwner as? String), "Renderer owner was not recognized")
+                }
                 let output = try CodexLocalSettings.transfer(data: bytes, source: source, target: target)
                 let actual = try JSONSerialization.jsonObject(with: output) as! [String: Any]
                 precondition(NSDictionary(dictionary: actual).isEqual(to: entry["expected"] as! [String: Any]))

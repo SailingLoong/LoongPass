@@ -230,6 +230,348 @@
         }
       },
       "invalid": true
+    },
+    {
+      "name": "per-owner-content-settings",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-renderer-content-owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+        "electron-persisted-atom-state": {
+          "prompt-history": [
+            "shared local history"
+          ],
+          "composer-prompt-drafts-v1": {
+            "local": "draft"
+          },
+          "thread-tab-routes-v1:local": [
+            "shared-tab"
+          ]
+        },
+        "electron-owner-atoms:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "composer-auto-context-enabled": true,
+          "composer-recent-model-configurations-v1": [
+            "model-local"
+          ],
+          "agent-mode-by-host-id": {
+            "local": "agent"
+          },
+          "cloud-cache": {
+            "account": "a"
+          },
+          "future-atom": "source"
+        },
+        "electron-owner-atoms:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "composer-auto-context-enabled": false,
+          "cloud-cache": {
+            "account": "b"
+          },
+          "capabilities": [
+            "target-permission"
+          ],
+          "queued-actions": [
+            "target-only"
+          ],
+          "future-atom": "target"
+        },
+        "local-projects": {
+          "local-project": {
+            "title": "Shared local project"
+          }
+        },
+        "queued-follow-ups": [
+          "source-only"
+        ],
+        "electron-account-remote-preference:selected-remote-host-id:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": "target-host",
+        "electron-owner-value:open-in-target-preferences:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "open-in-target-preferences"
+        },
+        "electron-owner-value:open-in-target-preferences:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "open-in-target-preferences"
+        },
+        "electron-owner-value:worktree-repository-preferences:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "worktree-repository-preferences"
+        },
+        "electron-owner-value:worktree-repository-preferences:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "worktree-repository-preferences"
+        },
+        "electron-owner-value:selected-project:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "selected-project"
+        },
+        "electron-owner-value:selected-project:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "selected-project"
+        },
+        "electron-owner-value:app-server-projects-migration-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "app-server-projects-migration-by-host"
+        },
+        "electron-owner-value:app-server-projects-migration-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "app-server-projects-migration-by-host"
+        },
+        "electron-owner-value:app-server-migrated-pinned-thread-ids-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "app-server-migrated-pinned-thread-ids-by-host"
+        },
+        "electron-owner-value:app-server-migrated-pinned-thread-ids-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "app-server-migrated-pinned-thread-ids-by-host"
+        },
+        "electron-owner-value:thread-writable-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-writable-roots"
+        },
+        "electron-owner-value:thread-writable-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "thread-writable-roots"
+        },
+        "electron-owner-value:thread-workspace-root-hints:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-workspace-root-hints"
+        },
+        "electron-owner-value:thread-workspace-root-hints:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "thread-workspace-root-hints"
+        },
+        "electron-owner-value:thread-projectless-output-directories:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-projectless-output-directories"
+        },
+        "electron-owner-value:thread-projectless-output-directories:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "thread-projectless-output-directories"
+        },
+        "electron-owner-value:project-writable-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "project-writable-roots"
+        },
+        "electron-owner-value:project-writable-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "project-writable-roots"
+        },
+        "electron-owner-value:active-workspace-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "active-workspace-roots"
+        },
+        "electron-owner-value:active-workspace-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "active-workspace-roots"
+        },
+        "electron-owner-value:electron-saved-workspace-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "electron-saved-workspace-roots"
+        },
+        "electron-owner-value:electron-saved-workspace-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "electron-saved-workspace-roots"
+        },
+        "electron-owner-value:electron-workspace-root-labels:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "electron-workspace-root-labels"
+        },
+        "electron-owner-value:electron-workspace-root-labels:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "old-target": "electron-workspace-root-labels"
+        },
+        "electron-owner-value:app-server-pending-project-deletions-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": [
+          "source-operation"
+        ],
+        "electron-owner-value:app-server-pending-project-deletions-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": [
+          "target-operation"
+        ]
+      },
+      "expected": {
+        "electron-renderer-content-owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+        "electron-persisted-atom-state": {
+          "prompt-history": [
+            "shared local history"
+          ],
+          "composer-prompt-drafts-v1": {
+            "local": "draft"
+          },
+          "thread-tab-routes-v1:local": [
+            "shared-tab"
+          ]
+        },
+        "electron-owner-atoms:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "composer-auto-context-enabled": true,
+          "composer-recent-model-configurations-v1": [
+            "model-local"
+          ],
+          "agent-mode-by-host-id": {
+            "local": "agent"
+          },
+          "cloud-cache": {
+            "account": "a"
+          },
+          "future-atom": "source"
+        },
+        "electron-owner-atoms:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "composer-auto-context-enabled": true,
+          "cloud-cache": {
+            "account": "b"
+          },
+          "capabilities": [
+            "target-permission"
+          ],
+          "queued-actions": [
+            "target-only"
+          ],
+          "future-atom": "target",
+          "composer-recent-model-configurations-v1": [
+            "model-local"
+          ],
+          "agent-mode-by-host-id": {
+            "local": "agent"
+          }
+        },
+        "local-projects": {
+          "local-project": {
+            "title": "Shared local project"
+          }
+        },
+        "queued-follow-ups": [
+          "source-only"
+        ],
+        "electron-account-remote-preference:selected-remote-host-id:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": "target-host",
+        "electron-owner-value:open-in-target-preferences:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "open-in-target-preferences"
+        },
+        "electron-owner-value:open-in-target-preferences:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "open-in-target-preferences"
+        },
+        "electron-owner-value:worktree-repository-preferences:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "worktree-repository-preferences"
+        },
+        "electron-owner-value:worktree-repository-preferences:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "worktree-repository-preferences"
+        },
+        "electron-owner-value:selected-project:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "selected-project"
+        },
+        "electron-owner-value:selected-project:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "selected-project"
+        },
+        "electron-owner-value:app-server-projects-migration-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "app-server-projects-migration-by-host"
+        },
+        "electron-owner-value:app-server-projects-migration-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "app-server-projects-migration-by-host"
+        },
+        "electron-owner-value:app-server-migrated-pinned-thread-ids-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "app-server-migrated-pinned-thread-ids-by-host"
+        },
+        "electron-owner-value:app-server-migrated-pinned-thread-ids-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "app-server-migrated-pinned-thread-ids-by-host"
+        },
+        "electron-owner-value:thread-writable-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-writable-roots"
+        },
+        "electron-owner-value:thread-writable-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "thread-writable-roots"
+        },
+        "electron-owner-value:thread-workspace-root-hints:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-workspace-root-hints"
+        },
+        "electron-owner-value:thread-workspace-root-hints:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "thread-workspace-root-hints"
+        },
+        "electron-owner-value:thread-projectless-output-directories:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "thread-projectless-output-directories"
+        },
+        "electron-owner-value:thread-projectless-output-directories:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "thread-projectless-output-directories"
+        },
+        "electron-owner-value:project-writable-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "project-writable-roots"
+        },
+        "electron-owner-value:project-writable-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "project-writable-roots"
+        },
+        "electron-owner-value:active-workspace-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "active-workspace-roots"
+        },
+        "electron-owner-value:active-workspace-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "active-workspace-roots"
+        },
+        "electron-owner-value:electron-saved-workspace-roots:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "electron-saved-workspace-roots"
+        },
+        "electron-owner-value:electron-saved-workspace-roots:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "electron-saved-workspace-roots"
+        },
+        "electron-owner-value:electron-workspace-root-labels:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": {
+          "local-setting": "electron-workspace-root-labels"
+        },
+        "electron-owner-value:electron-workspace-root-labels:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-setting": "electron-workspace-root-labels"
+        },
+        "electron-owner-value:app-server-pending-project-deletions-by-host:983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47": [
+          "source-operation"
+        ],
+        "electron-owner-value:app-server-pending-project-deletions-by-host:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": [
+          "target-operation"
+        ]
+      },
+      "expectedActiveOwner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47"
+    },
+    {
+      "name": "unknown-content-owner",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-renderer-content-owner": "unrecognized-owner"
+      },
+      "invalid": true
+    },
+    {
+      "name": "ambiguous-content-migration",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-renderer-content-owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+        "electron-account-renderer-state-v1": {
+          "owner": "983ee3edf9fd41f1c7581c5310e313ffecaf5cb611000360ef961f1af5e7be47",
+          "inactive": {}
+        }
+      },
+      "invalid": true
+    },
+    {
+      "name": "signed-out-content-preferences",
+      "source": "a",
+      "target": "b",
+      "document": {
+        "electron-renderer-content-owner": "signed-out",
+        "electron-persisted-atom-state": {
+          "prompt-history": [
+            "signed-out-history"
+          ]
+        },
+        "electron-owner-atoms:signed-out": {
+          "composer-auto-context-enabled": true,
+          "cloud-cache": {
+            "do-not-copy": true
+          }
+        },
+        "electron-owner-atoms:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "cloud-cache": {
+            "account": "b"
+          }
+        },
+        "electron-owner-value:selected-project:signed-out": {
+          "local-project": "before-login"
+        }
+      },
+      "expected": {
+        "electron-renderer-content-owner": "signed-out",
+        "electron-persisted-atom-state": {
+          "prompt-history": [
+            "signed-out-history"
+          ]
+        },
+        "electron-owner-atoms:signed-out": {
+          "composer-auto-context-enabled": true,
+          "cloud-cache": {
+            "do-not-copy": true
+          }
+        },
+        "electron-owner-atoms:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "cloud-cache": {
+            "account": "b"
+          },
+          "composer-auto-context-enabled": true
+        },
+        "electron-owner-value:selected-project:signed-out": {
+          "local-project": "before-login"
+        },
+        "electron-owner-value:selected-project:3d54af42793aa1968abaed7e6120a86aab83bd95868078b957ae2d1d866840e6": {
+          "local-project": "before-login"
+        }
+      },
+      "expectedActiveOwner": null
     }
   ],
   "legacySettings": "{ \"local-projects\": [\"legacy\"], \"future\": true }"

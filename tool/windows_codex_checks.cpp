@@ -190,6 +190,17 @@ void TransactionChecks(const Json& fixture, const std::map<std::string, Credenti
     });
     Check(auth.Read() == before, "A refused writer check changed authentication");
 
+    // The installed official client can migrate preferences from JSON to a
+    // separate settings database. Never switch against its obsolete JSON shadow.
+    const auto database = home / L".codex-global-state.sqlite";
+    const auto beforeSettings = auth.Read(LocalSettings::fileName);
+    Write(database, "unsupported official settings database");
+    Refuses(FailureCode::settingsUnavailable, [&] { store.Activate(a.id, auth, [] {}); });
+    Check(auth.Read() == before && Read(home / L".codex-global-state.json") == beforeSettings.data &&
+        Read(database) == "unsupported official settings database",
+        "Unsupported settings storage changed the account or preferences");
+    std::filesystem::remove(database);
+
     // Mutate after preparation, immediately before replacement. The new file
     // belongs to the external writer and must survive refusal and recovery.
     int observations = 0;
@@ -390,8 +401,16 @@ int main(int argc, char** argv) {
       const auto& target = credentials.at(entry.at("target").get<std::string>());
       auto transfer = [&] { return LocalSettings::Transfer(data, source, target); };
       if (entry.value("invalid", false)) Refuses(FailureCode::settingsUnavailable, transfer);
-      else Check(Json::parse(transfer()) == entry.at("expected"),
-                 "Local preferences or account-owned caches crossed the wrong boundary");
+      else {
+        if (entry.contains("expectedActiveOwner")) {
+          const auto owner = LocalSettings::ActiveOwner(data);
+          const auto& expectedOwner = entry.at("expectedActiveOwner");
+          Check(expectedOwner.is_null() ? !owner : owner && *owner == expectedOwner,
+                "Renderer owner was not recognized");
+        }
+        Check(Json::parse(transfer()) == entry.at("expected"),
+              "Local preferences or account-owned caches crossed the wrong boundary");
+      }
     }
     const auto legacy = fixture.at("legacySettings").get<std::string>();
     Check(LocalSettings::Transfer(legacy, credentials.at("a"), credentials.at("b")) == legacy,

@@ -2,6 +2,7 @@ import Foundation
 
 enum CodexLocalSettings {
     static let fileName = ".codex-global-state.json"
+    static let databaseFileName = ".codex-global-state.sqlite"
     static let maximumBytes = 3 * 1024 * 1024
 
     /// Protocol keys from the installed official renderer's account-state
@@ -11,6 +12,10 @@ enum CodexLocalSettings {
         static let renderer = "electron-account-renderer-state-v1"
         static let rendererPrefix = "electron-account-renderer-state-"
         static let persistedAtoms = "electron-persisted-atom-state"
+        static let contentOwner = "electron-renderer-content-owner"
+        static let ownerAtoms = "electron-owner-atoms:"
+        static let ownerValue = "electron-owner-value:"
+        static let signedOut = "signed-out"
         static let owner = "owner"
         static let inactive = "inactive"
         static let atoms = "atoms"
@@ -33,9 +38,23 @@ enum CodexLocalSettings {
         static let localAtomPrefixes = [
             "sidebar-project-expanded-v1-codex:", "thread-tab-routes-v1:", "permission-selection-by-host-id:",
         ]
+        // Account-scoped local globals in the newer official content-owner
+        // contract. Other local globals already remain shared in this format.
+        static let contentGlobals: Set<String> = [
+            "open-in-target-preferences", "worktree-repository-preferences", "selected-project",
+            "app-server-projects-migration-by-host", "app-server-migrated-pinned-thread-ids-by-host",
+            "thread-writable-roots", "thread-workspace-root-hints", "thread-projectless-output-directories",
+            "project-writable-roots", "active-workspace-roots", "electron-saved-workspace-roots",
+            "electron-workspace-root-labels",
+        ]
 
         static func isLocalAtom(_ key: String) -> Bool {
             localAtoms.contains(key) || localAtomPrefixes.contains(where: { key.hasPrefix($0) })
+        }
+        static func isContentLocalAtom(_ key: String) -> Bool {
+            isLocalAtom(key) && key != "prompt-history" &&
+                key != "composer-prompt-drafts-v1" && key != "composer-prompt-drafts-v2" &&
+                !key.hasPrefix("thread-tab-routes-v1:")
         }
     }
 
@@ -51,6 +70,12 @@ enum CodexLocalSettings {
     static func activeOwner(data: Data) throws -> String? {
         do {
             let value = try document(data)
+            if let owner = value[Keys.contentOwner] {
+                guard value[Keys.renderer] == nil, let owner = owner as? String, !owner.isEmpty else {
+                    throw CodexFailure.settingsUnavailable
+                }
+                return owner == Keys.signedOut ? nil : owner
+            }
             guard let renderer = value[Keys.renderer] else { return nil }
             guard let metadata = renderer as? [String: Any], let owner = metadata[Keys.owner] else {
                 throw CodexFailure.settingsUnavailable
@@ -64,6 +89,9 @@ enum CodexLocalSettings {
     static func transfer(data: Data, source: CodexCredential?, target: CodexCredential) throws -> Data {
         do {
             var document = try document(data)
+            if document[Keys.contentOwner] != nil {
+                return try transferContent(data: data, document: document, source: source, target: target)
+            }
             // Earlier clients have no account renderer boundary to seed.
             guard let value = document[Keys.renderer] else { return data }
             guard var metadata = value as? [String: Any], let owner = metadata[Keys.owner],
@@ -114,5 +142,33 @@ enum CodexLocalSettings {
             guard result.count <= maximumBytes else { throw CodexFailure.settingsUnavailable }
             return result
         } catch { throw CodexFailure.settingsUnavailable }
+    }
+
+    private static func transferContent(data: Data, document original: [String: Any],
+        source: CodexCredential?, target: CodexCredential) throws -> Data {
+        guard original[Keys.renderer] == nil, let owner = original[Keys.contentOwner] as? String,
+              owner == Keys.signedOut || owner == source?.rendererOwnerKey else { throw CodexFailure.settingsUnavailable }
+        if owner == target.rendererOwnerKey { return data }
+        func atoms(_ key: String) throws -> [String: Any] {
+            guard let value = original[key] else { return [:] }
+            guard let map = value as? [String: Any] else { throw CodexFailure.settingsUnavailable }
+            return map
+        }
+        var document = original
+        var sourceAtoms = try atoms(Keys.ownerAtoms + owner)
+        for (key, value) in try atoms(Keys.persistedAtoms) { sourceAtoms[key] = value }
+        let targetKey = Keys.ownerAtoms + target.rendererOwnerKey
+        var targetAtoms = try atoms(targetKey).filter { !Keys.isContentLocalAtom($0.key) }
+        for (key, value) in sourceAtoms where Keys.isContentLocalAtom(key) { targetAtoms[key] = value }
+        if original[targetKey] != nil || !targetAtoms.isEmpty { document[targetKey] = targetAtoms }
+        for key in Keys.contentGlobals {
+            let sourceKey = Keys.ownerValue + key + ":" + owner
+            let targetKey = Keys.ownerValue + key + ":" + target.rendererOwnerKey
+            document[targetKey] = original[sourceKey] ?? original[key]
+        }
+        if NSDictionary(dictionary: document).isEqual(to: original) { return data }
+        let bytes = try JSONSerialization.data(withJSONObject: document, options: [.sortedKeys])
+        guard bytes.count <= maximumBytes else { throw CodexFailure.settingsUnavailable }
+        return bytes
     }
 }

@@ -10,6 +10,9 @@ namespace {
 constexpr const char* kAuthNamespace = "https://api.openai.com/auth";
 constexpr const char* kRenderer = "electron-account-renderer-state-v1";
 constexpr const char* kAtoms = "electron-persisted-atom-state";
+constexpr const char* kContentOwner = "electron-renderer-content-owner";
+constexpr const char* kOwnerAtoms = "electron-owner-atoms:";
+constexpr const char* kOwnerValue = "electron-owner-value:";
 
 void Require(bool value, FailureCode code = FailureCode::invalidCredential) {
   if (!value) throw Failure(code);
@@ -109,6 +112,50 @@ bool LocalAtom(const std::string& key) {
   return local.count(key) != 0 || key.rfind("sidebar-project-expanded-v1-codex:", 0) == 0 ||
       key.rfind("thread-tab-routes-v1:", 0) == 0 || key.rfind("permission-selection-by-host-id:", 0) == 0;
 }
+
+bool ContentLocalAtom(const std::string& key) {
+  return LocalAtom(key) && key != "prompt-history" && key != "composer-prompt-drafts-v1" &&
+      key != "composer-prompt-drafts-v2" && key.rfind("thread-tab-routes-v1:", 0) != 0;
+}
+
+std::string TransferContent(const std::string& data, Json document,
+    const std::optional<Credential>& source, const Credential& target) {
+  Require(!document.contains(kRenderer) && document.at(kContentOwner).is_string(), FailureCode::settingsUnavailable);
+  const auto owner = document.at(kContentOwner).get<std::string>();
+  Require(owner == "signed-out" || (source && owner == source->rendererOwnerKey), FailureCode::settingsUnavailable);
+  if (owner == target.rendererOwnerKey) return data;
+  auto atoms = [&](const std::string& key) {
+    auto value = document.value(key, Json::object());
+    Require(value.is_object(), FailureCode::settingsUnavailable); return value;
+  };
+  auto sourceAtoms = atoms(kOwnerAtoms + owner);
+  sourceAtoms.update(atoms(kAtoms));
+  const auto targetKey = kOwnerAtoms + target.rendererOwnerKey;
+  auto targetAtoms = atoms(targetKey);
+  for (auto item = targetAtoms.begin(); item != targetAtoms.end();) {
+    if (ContentLocalAtom(item.key())) item = targetAtoms.erase(item); else ++item;
+  }
+  for (const auto& item : sourceAtoms.items()) if (ContentLocalAtom(item.key())) targetAtoms[item.key()] = item.value();
+  const auto original = document;
+  if (document.contains(targetKey) || !targetAtoms.empty()) document[targetKey] = std::move(targetAtoms);
+  static const std::set<std::string> globals = {
+      "open-in-target-preferences", "worktree-repository-preferences", "selected-project",
+      "app-server-projects-migration-by-host", "app-server-migrated-pinned-thread-ids-by-host",
+      "thread-writable-roots", "thread-workspace-root-hints", "thread-projectless-output-directories",
+      "project-writable-roots", "active-workspace-roots", "electron-saved-workspace-roots",
+      "electron-workspace-root-labels"};
+  for (const auto& key : globals) {
+    const auto from = kOwnerValue + key + ":" + owner;
+    const auto to = kOwnerValue + key + ":" + target.rendererOwnerKey;
+    document.erase(to);
+    if (original.contains(from)) document[to] = original.at(from);
+    else if (original.contains(key)) document[to] = original.at(key);
+  }
+  if (document == original) return data;
+  const auto output = document.dump();
+  Require(output.size() <= LocalSettings::maximumBytes, FailureCode::settingsUnavailable);
+  return output;
+}
 }  // namespace
 
 Credential::Credential(std::string bytes) : data(std::move(bytes)) {
@@ -175,6 +222,12 @@ std::vector<std::string> AuthPolicy::LoginOverrides() const {
 std::optional<std::string> LocalSettings::ActiveOwner(const std::string& data) {
   try {
     const auto document = SettingsDocument(data);
+    if (document.contains(kContentOwner)) {
+      Require(!document.contains(kRenderer) && document.at(kContentOwner).is_string(), FailureCode::settingsUnavailable);
+      const auto owner = document.at(kContentOwner).get<std::string>();
+      Require(!owner.empty(), FailureCode::settingsUnavailable);
+      return owner == "signed-out" ? std::nullopt : std::optional<std::string>(owner);
+    }
     if (!document.contains(kRenderer)) return std::nullopt;
     const auto& metadata = document.at(kRenderer);
     Require(metadata.is_object() && metadata.contains("owner"), FailureCode::settingsUnavailable);
@@ -189,6 +242,7 @@ std::string LocalSettings::Transfer(const std::string& data,
     const std::optional<Credential>& source, const Credential& target) {
   try {
     auto document = SettingsDocument(data);
+    if (document.contains(kContentOwner)) return TransferContent(data, std::move(document), source, target);
     if (!document.contains(kRenderer)) return data;
     auto& metadata = document.at(kRenderer);
     Require(metadata.is_object() && metadata.contains("owner") &&

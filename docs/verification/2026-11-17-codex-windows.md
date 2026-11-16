@@ -12,6 +12,8 @@ Saved credentials and newly staged files use private user/SYSTEM permissions. Ex
 
 The C++ code is necessary Windows SDK integration within the existing Flutter application. The UI continues to use Forui and the existing font/theme contract. Shared synthetic fixtures check parity with the macOS identity and preference projection.
 
+Both native adapters recognize the earlier renderer snapshot and the installed macOS client's newer content-owner JSON format. In the latter, already-shared local state remains shared; only the audited local atoms and twelve local owner-scoped preference values seed the target. The active content-owner marker is left for the official client to transition. Unknown owners, ambiguous formats and an existing `.codex-global-state.sqlite` settings store stop activation before authentication changes; SQLite preferences are not implemented. This settings database is separate from conversation databases, which remain untouched.
+
 ## Verified before real acceptance
 
 - Windows MSVC `/W4 /WX`: shared identity/preference fixtures; A → B → A file transactions; latest outgoing grants; restart persistence; CAS refusal; recovery; hardlinks/stage collision; policy restrictions; multi-application package discovery; existing-reader/foreign-writer ACL boundaries.
@@ -21,6 +23,11 @@ The C++ code is necessary Windows SDK integration within the existing Flutter ap
 - macOS native checks: account, local settings, paired transaction, stdio runtime, process classification, shared fixture parity and updated automatic-open boundary.
 - Read-only Windows official-client probe: Store discovery, effective file-store policy and parsing the current credential shape passed. This did not replace the current login.
 - Independent review regressions: a competing destination after validation is retained, the pinned/displaced preimage cannot be changed or silently deleted, and recognized interrupted displacement recovers into an empty destination. Cancelled/lost-response renewal durably saves the final same-identity grant on both native adapters before returning the failure. Private scratch data is retained when durable capture itself fails.
+- Content-owner compatibility: shared native fixtures cover local owner values/atoms, signed-out state, target cache/capability/queue isolation and ambiguous/unknown owner refusal. Native file-transaction checks on each platform reproduce an unsupported settings database being ignored, then verify refusal leaves authentication, JSON and database bytes unchanged.
+- The installed macOS content-owner helpers and owner-transition method were executed against a synthetic projection produced by the native adapter. The target restored local preferences, retained its own cache/capabilities/queued actions, and the official transition cleared source follow-ups. The method SHA-256 is `e824d54afadac1b1feb7f75c1c8e4b1171a4065f6162e59d839774fc8521e84c`; containing module `.vite/build/early-bootstrap-133-a1567e930d5d095f.js` SHA-256 is `e357137c9f54562513a0455214844285f80a98face6e7f77a0c2293d0c575c69`. Static source characterization and this isolated replay do not establish desktop acceptance. Read-only projection of the actual Mac JSON also recognized its owner and changed only target-local preference fields in memory.
+- The complete 368-test Flutter suite, analysis, Windows release compilation/native checks and both Windows/macOS Universal CI packaging passed at `37db97d` ([run 43916235724](https://github.com/SailingLoong/LoongPass/actions/runs/43916235724)). The subsequent content-owner compatibility change passed the relevant Mac native groups and full Windows Codex/storage native checks; fresh integrated builds remain pending.
+
+The Guazi Windows noninteractive local pipeline also exposed `Custom UI mode opened an updater window` in the existing WinSparkle integration check. No updater source was changed. The same check passed in the complete Windows CI job above; this local failure remains recorded separately from Codex checks and has not been described as a fully passing local pipeline.
 
 ## Acceptance boundary
 
