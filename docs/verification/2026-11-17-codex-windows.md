@@ -1,4 +1,4 @@
-# Codex Windows account activation
+# Desktop account activation and Codex Windows support
 
 ## Implementation
 
@@ -29,6 +29,21 @@ Both native adapters recognize the earlier renderer snapshot and the installed m
 - The exact `9e41f28` Windows Release was also rebuilt on Guazi Windows; Codex, storage and authorization checks passed there. Executable SHA-256: `dcf58badc8929108364a6271c6ce16cb7c61674a5a6af84460a35d9e40aa0596`. Its private portable candidate includes the Microsoft runtime and bundled licenses; no installed desktop was launched by the build/archive checks.
 
 The Guazi Windows noninteractive local pipeline also exposed `Custom UI mode opened an updater window` in the existing WinSparkle integration check. No updater source was changed. The same check passed in the complete Windows CI job above; this local failure remains recorded separately from Codex checks and has not been described as a fully passing local pipeline.
+
+## Closure confirmation for all supported switches
+
+The November 17 clarification makes this a shared product rule: confirm closure, wait for the client to exit, apply the selected account, then open the client, including when it was initially stopped. Cancellation or unconfirmed exit stops before account application. Current user-facing desktop switches are Codex on macOS/Windows and WorkBuddy on macOS. Other providers do not currently expose a desktop switch; this follow-up does not add those missing implementations or activate the dormant ZCode bridge.
+
+WorkBuddy already has the required native exit → guarded session write → open sequence. Its account-row and details actions now both show a Forui confirmation first, identify the selected account, explain possible task interruption, and state that the client opens after account application. Confirmation is separate from operation progress. Cancel, owner replacement or disposal during confirmation cannot invoke activation. The native grant owner, desktop write transaction and exit/open implementation are unchanged.
+
+Verification of this follow-up:
+
+- The old panel reproduced immediate activation before consent through both entry points. After the fix, all 22 panel checks passed, including explicit confirmation, cancellation, stale owner/disposal and a 480-pixel window with twice-normal text size and reachable controls.
+- Pinned Windows Flutter 3.50.0 / Dart 3.14.0: analysis clean, all 371 Flutter tests passed, update-contract check passed and six SDK-gate checks passed. The current source also passed 311 native Bun protocol checks with the verified pinned test runtime.
+- Existing macOS WorkBuddy native checks passed: stopped-writer transaction refusal/recovery, product/session metadata and process classification. These isolated checks do not switch a real client.
+- UI implementation remains Flutter with Forui components and theme styles. Actual visual/interaction acceptance of the new confirmation remains pending: the computer-control tool still reports the Mac as locked and requires manual unlock. No new running-client identity acceptance is inferred from the component/native checks. The earlier WorkBuddy desktop round trip is recorded separately in [native runtime verification](2026-11-09-native-runtime.md).
+
+Earlier local test attempts exposed Mac AppleDouble transfer sidecars, a missing test-runtime environment variable and a Mac-oriented subprocess entry point used on Windows. These execution setup failures were corrected using the Windows CI command sequence; they are retained in private logs and are not reported as successful runs. Source dependencies and their lockfile were not upgraded.
 
 ## Acceptance boundary
 

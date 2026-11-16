@@ -69,3 +69,12 @@
 - [ ] Execute real A → B → A, inspect the running desktop identity and local project/preference continuity, and record actual results without credentials.
 - [ ] Review the full branch independently, resolve material findings, complete repository checks and merge through required policy to remote main.
 - [ ] Verify remote main contains the task commits, update the workspace pointer if required, and clean this task's worktree, branch and idle build products safely.
+
+### Task 5: Consistent closure confirmation for supported account switches
+
+**Files:** `lib/plugin_accounts_panel.dart`, `test/plugin_accounts_panel_test.dart`, project policy and verification notes. The existing WorkBuddy native transaction/lifecycle remains the owner of exit, writes and reopen.
+
+- [x] Extend the existing WorkBuddy activation widget check to require confirmation before the activation callback, cancellation with no callback, and one activation after explicit confirmation. Run against the unchanged panel and observe failure.
+- [x] Add Forui confirmation in the existing activation handler; route row and details entry points through it, prevent repeated prompts and reject stale/unmounted presentation.
+- [x] Verify row activation at narrow width and large text, cancellation, confirmation and teardown; retain the current applied/outcome verification wording.
+- [ ] Run the affected widget checks, full Flutter suite/analysis and existing WorkBuddy transaction/process checks. Review the diff, update actual verification coverage and push the task branch. Real desktop acceptance and main integration remain required by Task 4.

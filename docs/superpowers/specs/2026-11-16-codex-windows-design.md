@@ -37,3 +37,11 @@ Reuse the existing Forui account page and interactions. The native snapshot supp
 3. Flutter behavior checks cover Windows entry, native-only snapshots, explicit confirmation and platform-specific quit wording. Existing macOS checks remain passing.
 4. Build a source- and lockfile-matched Windows candidate. On a real Windows 11 machine, authorize two identities, save/restart, switch A → B → A, verify the running desktop's actual identity, and inspect retained local projects/preferences. Keep credentials and private evidence outside Git.
 5. Record actual platform coverage and any remaining macOS acceptance gap, complete independent review, merge through repository policy, verify remote main and clean task artifacts.
+
+## Follow-up: every supported desktop account switch
+
+The user extended the closure-confirmation requirement to every account switch. The currently exposed desktop activation implementations are Codex (macOS/Windows) and WorkBuddy (macOS). Other providers currently manage authorization/rewards/model routing; this change does not create missing desktop switch implementations or expose the dormant ZCode bridge.
+
+WorkBuddy already requests normal exit, observes all official writers stopping, applies its guarded session transaction, and opens the client after success, including when initially stopped. Its missing piece is the pre-activation confirmation. Add that confirmation to the existing panel activation handler so both account-row and details actions follow it. Cancellation must make no activation call. Keep the native owner responsible for lifecycle and session writes; keep Forui responsible for the explicit confirmation. Use the existing Forui dialog directly rather than adding a generic dialog wrapper or placing platform behavior in the shared account table.
+
+Verify refusal/cancellation, explicit confirmation, both visible entry points, stale/unmounted presentation and narrow-window scrolling. Retain the existing requirement to distinguish applied credentials from a verified running-client identity.
