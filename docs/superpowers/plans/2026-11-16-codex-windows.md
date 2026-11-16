@@ -34,10 +34,10 @@
 
 **Interfaces:** `CodexCredential` projects native auth bytes; `CodexLocalSettings` transfers audited local preferences; `CodexAccountStore` captures/removes/observes saved accounts and activates a selected identity in a guarded home. The existing native file owner remains the persistence primitive.
 
-- [ ] Write shared synthetic conformance fixtures and failing Windows transaction checks; confirm the absent implementation fails.
-- [ ] Implement native projections and account persistence with reused private-file ownership.
-- [ ] Implement guarded authentication/settings activation and recovery; verify latest outgoing credentials, unsafe paths, CAS refusal and interrupted transactions.
-- [ ] Run native conformance/transaction checks and existing storage checks, then commit this independently testable change.
+- [x] Write shared synthetic conformance fixtures and failing Windows transaction checks; confirm the absent implementation fails.
+- [x] Implement native projections and account persistence with reused private-file ownership.
+- [x] Implement guarded authentication/settings activation and recovery; verify latest outgoing credentials, unsafe paths, CAS refusal and interrupted transactions.
+- [x] Run native conformance/transaction checks and existing storage checks, then commit this independently testable change.
 
 ### Task 2: Official Windows client runtime and account coordinator
 
@@ -45,26 +45,26 @@
 
 **Interfaces:** `CodexDesktopClient` discovers the installed official package and handles explicit exit/reopen. `CodexAppServer` owns a bounded, cancellable stdio child. `CodexAccounts` owns worker lifetime, read-only snapshots and method-channel operations.
 
-- [ ] Add failing controlled-child checks for request correlation, terminal states and final credential writes.
-- [ ] Implement runtime package/application discovery, effective policy loading and official authorization/renewal.
-- [ ] Implement Windows process-tree exit/reopen with unrelated CLI protection and observed completion.
-- [ ] Implement the serialized native owner, main-thread channel completion, data-owned observation and cancellation/shutdown cleanup.
-- [ ] Run the complete Windows Codex native checks and commit.
+- [x] Add controlled-child checks for request correlation, terminal states and final credential writes; runtime tests were implemented alongside the core, with this test-order deviation recorded in the execution ledger.
+- [x] Implement runtime package/application discovery, effective policy loading and official authorization/renewal.
+- [x] Implement Windows process-tree exit/reopen with unrelated CLI protection and observed completion.
+- [x] Implement the serialized native owner, main-thread channel completion, data-owned observation and cancellation/shutdown cleanup.
+- [x] Run the complete Windows Codex native checks and commit.
 
 ### Task 3: Flutter entry and native integration
 
 **Files:** `lib/codex_accounts.dart`, `lib/codex_accounts_panel.dart`, corresponding Flutter tests, `windows/runner/flutter_window.*`, native CMake, macOS snapshot metadata and repository check workflows.
 
-- [ ] Add and run a failing Flutter check showing the Windows entry is currently unavailable.
-- [ ] Connect the Windows owner, enable Windows support and display native quit-mode wording in the existing confirmation.
-- [ ] Add Windows native checks to the existing CI/build path; preserve the current macOS behavior and check coverage.
-- [ ] Run Flutter analysis/tests and relevant native checks; compile both affected platform integration paths, then commit.
+- [x] Add and run a failing Flutter check showing the Windows entry is currently unavailable.
+- [x] Connect the Windows owner, enable Windows support and display native quit-mode wording in the existing confirmation.
+- [x] Add Windows native checks to the existing CI/build path; preserve the current macOS behavior and check coverage.
+- [x] Run Flutter analysis/tests and relevant native checks; compile both affected platform integration paths, then commit.
 
 ### Task 4: Real acceptance and integration
 
 **Files:** Public verification/source-origin notes; private evidence outside Git.
 
-- [ ] Reuse the Windows toolchain/build caches and machine build lock, build the exact candidate and preserve its source/lock/toolchain fingerprints.
+- [x] Reuse the Windows toolchain/build caches and machine build lock, build the exact candidate and preserve its source/lock/toolchain fingerprints.
 - [ ] Install on the Windows acceptance machine; import/authorize two official identities and verify restart persistence.
 - [ ] Execute real A → B → A, inspect the running desktop identity and local project/preference continuity, and record actual results without credentials.
 - [ ] Review the full branch independently, resolve material findings, complete repository checks and merge through required policy to remote main.
