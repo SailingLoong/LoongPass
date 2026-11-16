@@ -33,6 +33,7 @@ class AppWorkspace extends StatefulWidget {
     this.sections = const {},
     this.footerBuilder,
     this.modelIds = const [],
+    this.modelSearchTerms = const {},
     this.selectedModelId,
     this.onSelectModel,
   });
@@ -43,6 +44,7 @@ class AppWorkspace extends StatefulWidget {
   final Map<WorkspaceSection, Widget> sections;
   final Widget Function(BuildContext, bool compact)? footerBuilder;
   final List<String> modelIds;
+  final Map<String, String> modelSearchTerms;
   final String? selectedModelId;
   final ValueChanged<String?>? onSelectModel;
   @override
@@ -91,6 +93,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
     compact: compact,
     active: _section == WorkspaceSection.models,
     modelIds: widget.modelIds,
+    searchTerms: widget.modelSearchTerms,
     selectedModelId: widget.selectedModelId,
     onOpen: () => selectModel(null),
     onSelectModel: selectModel,

@@ -42,6 +42,16 @@ void main() {
           addTearDown(tester.view.resetDevicePixelRatio);
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
           final app = ModelWorkspaceFixture();
+          for (final account in [
+            app.accounts.accounts.first,
+            app.accounts.accounts.last,
+          ]) {
+            account.models.add({
+              'id': 'MiniMax-Image',
+              'name': 'MiniMax Image',
+              'outputs': ['image'],
+            });
+          }
           final preferences = UiPreferences()
             ..setTheme(
               brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,
@@ -80,9 +90,25 @@ void main() {
           await tester.tap(find.byKey(const Key('nav-models')));
           await tester.pumpAndSettle();
           await capture('model-navigation');
+          await tester.enterText(
+            find.byKey(const Key('model-nav-search')),
+            '1017',
+          );
+          await tester.pumpAndSettle();
+          await capture('sidebar-filter');
+          await tester.enterText(find.byKey(const Key('model-nav-search')), '');
+          await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('model-nav-auto')));
           await tester.pumpAndSettle();
           await capture('auto');
+          await tester.enterText(
+            find.byKey(const Key('model-search')),
+            'minimax',
+          );
+          await tester.pumpAndSettle();
+          await capture('filtered-models');
+          await tester.enterText(find.byKey(const Key('model-search')), '');
+          await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('nav-models')));
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));

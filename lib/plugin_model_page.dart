@@ -27,6 +27,7 @@ class PluginModelServicesPage extends StatefulWidget {
 
 class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   bool _busy = false;
+  bool _showAll = false;
   final _expanded = <int>{};
   final _search = TextEditingController();
   String? _localSelection;
@@ -74,10 +75,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
         final query = _search.text.trim().toLowerCase();
         final visible = catalog
             .where(
-              (m) =>
-                  '${m.id} ${m.name} ${m.bindings.map((b) => '${b.nativeId} ${b.account.label} ${b.account.provider}').join(' ')}'
-                      .toLowerCase()
-                      .contains(query),
+              (m) => (_showAll || m.enabled) && m.searchText.contains(query),
             )
             .toList();
         return WorkspacePage(
@@ -118,9 +116,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   leadingLabel: true,
                   label: const Text('启用此模型'),
                   description: Text(
-                    selected.official
-                        ? selected.publicId
-                        : '标准名称待核实 · ${selected.id}',
+                    '${selected.publicId}${selected.official ? '' : ' · 标准名称待核实'}',
                   ),
                   onChange: (value) =>
                       _run(() => service.setModelEnabled(selected.id, value)),
@@ -142,7 +138,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'loongpass/auto 按下列顺序选择已确认标准名称的模型。拖动或使用上下箭头调整。',
+                      'loongpass/auto 按下列顺序选择已启用的模型。拖动或使用上下箭头调整。',
                       style: context.theme.typography.body.sm,
                     ),
                     const SizedBox(height: 12),
@@ -157,10 +153,41 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                         onChange: (_) => setState(() {}),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        FSwitch(
+                          key: const Key('show-all-models'),
+                          value: _showAll,
+                          label: const Text('显示全部模型'),
+                          onChange: (value) => setState(() => _showAll = value),
+                        ),
+                        if (query.isNotEmpty)
+                          FButton(
+                            key: const Key('retain-models'),
+                            variant: FButtonVariant.outline,
+                            size: FButtonSizeVariant.sm,
+                            mainAxisSize: MainAxisSize.min,
+                            onPress: _busy || visible.isEmpty
+                                ? null
+                                : () => _run(() async {
+                                    await service.retainModels(
+                                      visible.map((m) => m.id).toSet(),
+                                    );
+                                    if (mounted)
+                                      setState(() => _showAll = false);
+                                  }),
+                            child: Text('仅保留筛选结果（${visible.length}）'),
+                          ),
+                      ],
+                    ),
                     if (visible.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Text('暂无匹配模型。可在账号与积分添加账号，或修改搜索条件。'),
+                        child: Text('暂无匹配模型。可显示全部模型、修改搜索条件，或在账号与积分添加账号。'),
                       ),
                     PluginModelList(
                       models: visible,
@@ -171,7 +198,9 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                           _run(() => service.setModelEnabled(id, value)),
                       onReorder: (from, to) {
                         final order = catalog.map((m) => m.id).toList();
-                        order.insert(to, order.removeAt(from));
+                        final source = order.indexOf(visible[from].id);
+                        final target = order.indexOf(visible[to].id);
+                        order.insert(target, order.removeAt(source));
                         _run(() => service.reorderModels(order));
                       },
                     ),

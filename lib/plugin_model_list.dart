@@ -138,6 +138,7 @@ class PluginModelList extends StatelessWidget {
                   ),
                 const SizedBox(width: 8),
                 FSwitch(
+                  key: ValueKey('model-enabled-${model.id}'),
                   semanticsLabel: '启用 ${model.name}',
                   value: model.enabled,
                   enabled: !busy,
