@@ -30,9 +30,8 @@ class PluginModelBinding {
   bool get generatesImages =>
       native['outputs'] is List &&
       (native['outputs'] as List).contains('image');
-  String get exportedId => generatesImages
-      ? 'accounts/${Uri.encodeComponent(account.key)}/${account.provider}/$nativeId'
-      : '${account.provider}/$nativeId';
+  String get exportedId =>
+      'accounts/${Uri.encodeComponent(account.key)}/${account.provider}/$nativeId';
   bool get giftOnly =>
       account.provider == 'zcode' && nativeId.toLowerCase().endsWith('-trial');
   ModelQuotaStatus get status => quota.status;
@@ -44,23 +43,32 @@ class PluginModelBinding {
 }
 
 class PluginModel {
-  PluginModel(this.id, this.name, this.official, this.enabled, this.bindings);
+  PluginModel(
+    this.id,
+    this.name,
+    this.official,
+    this.enabled,
+    this.bindings, {
+    this.published = false,
+  });
   final String id;
   final String name;
   final bool official;
   final bool enabled;
+  final bool published;
+  bool get routed => enabled || published;
   final List<PluginModelBinding> bindings;
   String get groupId =>
       'loongpass-${sha256.convert(utf8.encode(id)).toString().substring(0, 20)}';
   bool get generatesImages => bindings.any((b) => b.generatesImages);
-  String get publicId => generatesImages ? 'group/$groupId' : 'loongpass/$id';
+  String get publicId => 'group/$groupId';
   int get availableAccounts => bindings
       .where((b) => b.available)
       .map((b) => b.account.key)
       .toSet()
       .length;
   PluginModelBinding? get preferred =>
-      enabled ? bindings.where((b) => b.available).firstOrNull : null;
+      routed ? bindings.where((b) => b.available).firstOrNull : null;
   String get searchText =>
       '$id $name ${bindings.map((b) => '${b.nativeId} ${b.native['name'] ?? ''} ${b.account.label} ${b.account.provider}').join(' ')}'
           .toLowerCase();
@@ -156,6 +164,7 @@ List<PluginModel> pluginModelCatalog(
             return account != 0 ? account : a.nativeId.compareTo(b.nativeId);
           }),
         ),
+        published: settings['published']?[id] == true,
       ),
   ]);
 }

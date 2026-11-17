@@ -59,7 +59,7 @@ void main() {
         expect(response.statusCode, 200);
         final data = jsonDecode(await utf8.decoder.bind(response).join());
         expect(data['models'], isEmpty);
-        expect(data['publicModels'], isEmpty);
+        expect(data.containsKey('publicModels'), isFalse);
       } finally {
         client.close(force: true);
       }
@@ -70,6 +70,50 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'publication defaults off and persists independently of Auto choices',
+    () async {
+      expect(service.catalog.every((m) => m.enabled && !m.published), isTrue);
+      await service.setModelPublished('deepseek-flash', true);
+      await service.setModelEnabled('deepseek-flash', false);
+      await service.close();
+      service = PluginModelService(accounts: accounts, store: store, port: 0);
+      await service.start();
+      final flash = service.catalog.singleWhere(
+        (m) => m.id == 'deepseek-flash',
+      );
+      expect(flash.published, isTrue);
+      expect(flash.enabled, isFalse);
+      expect(
+        service.catalog.singleWhere((m) => m.id == 'MiniMax-M3').enabled,
+        isTrue,
+      );
+      accounts.accounts.first.models.add({'id': 'newly-discovered'});
+      expect(
+        service.catalog
+            .singleWhere((m) => m.id == 'newly-discovered')
+            .published,
+        isFalse,
+      );
+      await service.setModelPublished('deepseek-flash', false);
+      expect(service.catalog.any((m) => m.published), isFalse);
+      expect(
+        service.catalog.singleWhere((m) => m.id == 'MiniMax-M3').enabled,
+        isTrue,
+      );
+    },
+  );
+
+  test('failed publication save leaves both preferences unchanged', () async {
+    store.beforeWrite = () async =>
+        throw const FileSystemException('synthetic');
+    await expectLater(
+      service.setModelPublished('MiniMax-M3', true),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(service.catalog.every((m) => m.enabled && !m.published), isTrue);
+  });
 
   test(
     'selection writes are atomic and serialize with individual changes',

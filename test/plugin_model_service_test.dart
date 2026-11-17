@@ -144,7 +144,7 @@ void main() {
           'unit': 'credits',
         },
         {
-          'models': ['fixture/fixture-model'],
+          'models': ['accounts/fixture%23a/fixture/fixture-model'],
           'balance': 9.5,
           'unit': 'credits',
         },
@@ -220,10 +220,8 @@ void main() {
         });
         final rows = await bridge.call('providers', {}) as List;
         expect((rows.single['models'] as List).map((m) => m['id']), [
-          'fixture/fixture-model',
+          'accounts/fixture%23a/fixture/fixture-model',
           'accounts/fixture%23a/fixture/image',
-          'fixture',
-          'auto',
         ]);
         final through = bridge.fetch({
           'provider': 'loongpass',
@@ -314,6 +312,18 @@ void main() {
         (jsonDecode((await request('/plugin/catalog')).$3)['models'] as List)
             .map((m) => m['id']),
         ['image'],
+      );
+      await service.setModelPublished('fixture', true);
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        200,
+        reason:
+            'A separately published model can be used without joining Auto.',
+      );
+      await service.setModelPublished('fixture', false);
+      expect(
+        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
+        429,
       );
       await service.setModelEnabled('fixture', true);
       final refused = await request('/plugin/fetch', body: envelope('refused'));

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 
 import 'plugin_model_catalog.dart';
+import 'magpie_model_routing.dart';
 
 class MagpieCommandFailure implements Exception {
   const MagpieCommandFailure({this.missingGroup = false});
@@ -297,9 +298,8 @@ class MagpieConnection {
     }
   }
 
-  /// Groups retain supplier model IDs so Magpie owns capability selection and
-  /// protocol conversion. Image endpoints use native groups because
-  /// Magpie's request middleware is scoped to chat protocols.
+  /// Only Auto and explicit user choices become native public groups. Their
+  /// account-scoped members retain native protocol conversion and failover.
   Future<void> syncRouting(
     String bridgePath,
     List<PluginModel> models, {
@@ -317,94 +317,43 @@ class MagpieConnection {
               .where((p) => p['id'] == 'loongpass')
               .firstOrNull
         : null;
-    final selected = models
-        .where(
-          (m) =>
-              m.enabled &&
-              m.bindings.any(
-                (b) => b.enabled && b.grant.enabled && b.account.active,
-              ),
-        )
-        .toList();
-    if (selected.isNotEmpty && provider?['accountId'] is! String) {
+    final routing = MagpieModelRouting(models);
+    if (routing.groups.isNotEmpty && provider?['accountId'] is! String) {
       throw StateError('Magpie primary account unavailable');
-    }
-    final groups = <String, List<String>>{};
-    final pools = <String, Map<String, dynamic>>{};
-    final routes = <String, String>{};
-    final exposed = <String>{if (selected.isNotEmpty) 'auto'};
-    final accountModels = <String, Set<String>>{
-      for (final account in provider?['accounts'] as List? ?? const [])
-        if (account['accountId'] is String) account['accountId']: {'auto'},
-    };
-    for (final model in selected) {
-      final bindings = model.bindings.where(
-        (b) => b.enabled && b.grant.enabled && b.account.active,
-      );
-      groups[model.groupId] =
-          bindings.map((b) => 'loongpass/${b.exportedId}').toSet().toList()
-            ..sort();
-      for (final binding in bindings) {
-        final ids = [binding.exportedId, if (!model.generatesImages) model.id];
-        exposed.addAll(ids);
-        accountModels
-            .putIfAbsent(binding.account.key, () => {'auto'})
-            .addAll(ids);
-      }
-      if (!model.generatesImages) {
-        routes[model.publicId] = 'group/${model.groupId}';
-      }
-      final accounts = <String, dynamic>{};
-      for (final key in bindings.map((b) => b.account.key).toSet()) {
-        final sources = bindings.where((b) => b.account.key == key);
-        accounts[key] = {
-          'available': sources.any((b) => b.available),
-          'expires': sources
-              .where((b) => b.available && b.expiry != null)
-              .map((b) => b.expiry!.at.millisecondsSinceEpoch)
-              .toSet()
-              .toList(),
-        };
-      }
-      pools['group/${model.groupId}'] = accounts;
-    }
-    if (groups.isNotEmpty) {
-      groups['loongpass-auto'] = selected
-          .map((m) => 'group/${m.groupId}')
-          .toList();
-      routes['loongpass/auto'] = 'group/loongpass-auto';
     }
     // Native group creation resolves the provider's exposed catalog. Without
     // explicit picks Magpie exposes only its short default model list, which
     // can omit later accounts and prevent the entire routing graph from saving.
     if (provider != null) {
-      final ids = exposed.toList()..sort();
+      // Listing is independent of serving: native groups need the full
+      // dependency catalog, while agents are offered only the public groups.
+      await command(['provider', 'listed', 'loongpass', 'no']);
+      final ids = routing.exposed.toList()..sort();
       await command(
         ids.isEmpty
             ? ['provider', 'models', 'loongpass', 'none']
             : ['provider', 'set', 'loongpass', 'models=${ids.join(',')}'],
       );
     }
-    // Native account catalogs are soft preferences. These hard limits keep
-    // image failover on the group's next member instead of another account
-    // under the first member's model ID. `auto` alone serves no native request.
-    for (final entry in accountModels.entries) {
+    // Empty native allowlists mean every model. Keep the old non-native Auto
+    // sentinel for accounts with no bindings, so they cannot take other seats.
+    for (final account in provider?['accounts'] as List? ?? const []) {
+      final key = account['accountId'];
+      if (key is! String) continue;
       await command([
         'provider',
         'account-models',
         'loongpass',
-        entry.key,
-        ...entry.value,
+        key,
+        ...routing.accountModels[key] ?? {'auto'},
       ]);
     }
-    for (final entry in groups.entries) {
-      final model = selected.where((m) => m.groupId == entry.key).firstOrNull;
-      final image = model?.generatesImages ?? false;
-      final name = image ? model!.name : model?.publicId ?? 'loongpass/auto';
+    for (final entry in routing.groups.entries) {
+      final name = entry.value.name;
       final options = [
         'name=$name',
-        'models=${entry.value.join(',')}',
-        'routing=${entry.key == 'loongpass-auto' ? 'order' : 'bridge/quota'}',
+        'models=${entry.value.members.join(',')}',
+        'routing=order',
         'stays=session',
         'listed=no',
       ];
@@ -421,15 +370,15 @@ class MagpieConnection {
       'plugin',
       'options',
       bridgePath,
-      jsonEncode({
-        'routes': routes,
-        'pools': pools,
-        'defaultAccount': provider?['accountId'],
-      }),
+      jsonEncode({'routes': routing.aliases}),
     ]);
-    final obsolete = previousGroups.difference(groups.keys.toSet()).toList();
+    final obsolete = previousGroups
+        .difference(routing.groups.keys.toSet())
+        .toList();
     // Magpie refuses to delete a child still referenced by its parent group.
-    if (obsolete.remove('loongpass-auto')) obsolete.insert(0, 'loongpass-auto');
+    if (obsolete.remove(MagpieModelRouting.autoGroupId)) {
+      obsolete.insert(0, MagpieModelRouting.autoGroupId);
+    }
     for (final id in obsolete) {
       try {
         await command(['group', 'rm', id]);

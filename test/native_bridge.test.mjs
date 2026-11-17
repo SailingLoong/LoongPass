@@ -153,7 +153,7 @@ test('usage reads only its account snapshot and propagates cancellation', async 
   })
 })
 
-test('model-scoped quota IDs follow exported source IDs and canonical IDs remain discoverable', async () => {
+test('native catalog does not invent public aliases beside native groups', async () => {
   const hooks = await LoongPassPlugin({})
   const value = snapshot()
   value.publicModels = [{ id: 'deepseek-flash', name: 'deepseek-flash', nativeId: chat.id }]
@@ -165,8 +165,7 @@ test('model-scoped quota IDs follow exported source IDs and canonical IDs remain
     expect(usage.windows[0].balance).toBe(9.25)
     expect(usage.windows[0].unit).toBe('credits')
     const models = await hooks.provider.models({}, { auth: grant() })
-    expect(models['deepseek-flash'].name).toBe('deepseek-flash')
-    expect(models.auto.name).toBe('Auto')
+    expect(Object.keys(models)).toEqual(['workbuddy/claude-native', 'workbuddy/chat/native'])
     expect(models['workbuddy/chat/native'].api.id).toBe('chat-api')
   })
 })

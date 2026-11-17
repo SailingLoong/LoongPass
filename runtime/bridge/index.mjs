@@ -152,17 +152,6 @@ export const LoongPassPlugin = async () => ({
         const model = modelOf(snapshot.account.provider, native)
         return [model.id, model]
       }))
-      for (const canonical of snapshot.publicModels ?? []) {
-        const native = snapshot.models.find(model => model.id === canonical.nativeId)
-        if (!native) continue
-        const model = modelOf(snapshot.account.provider, native)
-        // Public entries are resolved by the native gateway middleware. Their
-        // sentinel API IDs cannot pass the local native-fetch admission check
-        // if that middleware was disabled or failed to load.
-        models[canonical.id] = { ...model, id: canonical.id, name: canonical.name,
-          api: { ...model.api, id: `loongpass/${canonical.id}` } }
-        models.auto ??= { ...model, id: 'auto', name: 'Auto', api: { ...model.api, id: 'loongpass/auto' } }
-      }
       return models
     },
   },

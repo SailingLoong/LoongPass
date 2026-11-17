@@ -75,7 +75,9 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
         final query = _search.text.trim().toLowerCase();
         final visible = catalog
             .where(
-              (m) => (_showAll || m.enabled) && m.searchText.contains(query),
+              (m) =>
+                  (_showAll || m.published || query.isNotEmpty) &&
+                  m.searchText.contains(query),
             )
             .toList();
         return WorkspacePage(
@@ -110,16 +112,33 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
               ),
             if (selected != null) ...[
               WorkspaceCard(
-                child: FSwitch(
-                  value: selected.enabled,
-                  enabled: !_busy,
-                  leadingLabel: true,
-                  label: const Text('启用此模型'),
-                  description: Text(
-                    '${selected.publicId}${selected.official ? '' : ' · 标准名称待核实'}',
-                  ),
-                  onChange: (value) =>
-                      _run(() => service.setModelEnabled(selected.id, value)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    FSwitch(
+                      key: ValueKey('model-published-${selected.id}'),
+                      value: selected.published,
+                      enabled: !_busy,
+                      leadingLabel: true,
+                      label: const Text('在 Magpie 中显示'),
+                      description: Text('打开后可单独选择 ${selected.name}。'),
+                      onChange: (value) => _run(
+                        () => service.setModelPublished(selected.id, value),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FSwitch(
+                      key: ValueKey('model-enabled-${selected.id}'),
+                      value: selected.enabled,
+                      enabled: !_busy,
+                      leadingLabel: true,
+                      label: const Text('参与 Auto'),
+                      description: const Text('关闭后 Auto 将跳过此模型，不影响单独选择。'),
+                      onChange: (value) => _run(
+                        () => service.setModelEnabled(selected.id, value),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               PluginModelAccounts(
@@ -138,7 +157,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'loongpass/auto 按下列顺序选择已启用的模型。拖动或使用上下箭头调整。',
+                      '默认只在 Magpie 显示 Auto。打开下方模型的开关后，可单独选择它；未单独显示的模型仍可参与 Auto。拖动或使用上下箭头调整 Auto 的候选顺序。',
                       style: context.theme.typography.body.sm,
                     ),
                     const SizedBox(height: 12),
@@ -180,22 +199,22 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                                     if (mounted)
                                       setState(() => _showAll = false);
                                   }),
-                            child: Text('仅保留筛选结果（${visible.length}）'),
+                            child: Text('Auto 仅使用筛选结果（${visible.length}）'),
                           ),
                       ],
                     ),
                     if (visible.isEmpty)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 24),
-                        child: Text('暂无匹配模型。可显示全部模型、修改搜索条件，或在账号与积分添加账号。'),
+                        child: Text('暂无单独显示的模型。搜索或打开“显示全部模型”后，开启需要的模型。'),
                       ),
                     PluginModelList(
                       models: visible,
                       busy: _busy,
                       filtered: query.isNotEmpty,
                       onSelect: _select,
-                      onEnable: (id, value) =>
-                          _run(() => service.setModelEnabled(id, value)),
+                      onPublish: (id, value) =>
+                          _run(() => service.setModelPublished(id, value)),
                       onReorder: (from, to) {
                         final order = catalog.map((m) => m.id).toList();
                         final source = order.indexOf(visible[from].id);

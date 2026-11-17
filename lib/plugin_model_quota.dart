@@ -31,10 +31,16 @@ bool modelWindowApplies(Map window, String model) {
 }
 
 class PluginModelQuota {
-  const PluginModelQuota(this.status, this.expiry, this.windows);
+  const PluginModelQuota(
+    this.status,
+    this.expiry,
+    this.windows, {
+    this.nextChangeAt,
+  });
   final ModelQuotaStatus status;
   final PluginCreditExpiry? expiry;
   final List<Map<String, dynamic>> windows;
+  final DateTime? nextChangeAt;
 }
 
 PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
@@ -44,6 +50,7 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
         Map<String, dynamic>.from(window),
   ];
   var status = ModelQuotaStatus.unknown;
+  DateTime? nextChangeAt;
   final expiring = <Map<String, dynamic>>[];
   for (final window in windows) {
     final balance = pluginWindowRemaining(window);
@@ -51,6 +58,13 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
     final runsOut = window['runsOut'];
     final spent = window['used'];
     final reset = DateTime.tryParse(window['resetsAt'] as String? ?? '');
+    for (final boundary in [at, reset]) {
+      if (boundary != null &&
+          boundary.isAfter(now) &&
+          (nextChangeAt == null || boundary.isBefore(nextChangeAt))) {
+        nextChangeAt = boundary;
+      }
+    }
     final resetElapsed = reset != null && !reset.isAfter(now);
     final empty = balance != null && balance <= 0;
     final expired =
@@ -87,6 +101,7 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
     status,
     pluginCreditExpiry({'windows': expiring}, const {}, now),
     List.unmodifiable(windows),
+    nextChangeAt: nextChangeAt,
   );
 }
 

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'magpie_connection.dart';
+import 'magpie_model_routing.dart';
 import 'plugin_model_service.dart';
 
 enum ModelConnectionFailure { notReady, saveFailed, changed }
@@ -33,6 +34,7 @@ class ModelConnection extends ChangeNotifier {
   String? _registeredSource;
   String? _appliedRouting;
   Timer? _scheduled;
+  Timer? _quotaBoundary;
 
   List<PluginModelGrant> get _selected =>
       models.grants.where((g) => g.available).toList();
@@ -56,6 +58,8 @@ class ModelConnection extends ChangeNotifier {
     models.routingSettings,
     for (final g in models.grants)
       [g.account.key, g.account.models, g.account.usage, g.account.error],
+    for (final group in MagpieModelRouting(models.catalog).groups.entries)
+      [group.key, group.value.name, group.value.members],
   ]);
 
   void start() {
@@ -79,12 +83,29 @@ class ModelConnection extends ChangeNotifier {
   }
 
   void _schedule({bool retry = false}) {
+    _quotaBoundary?.cancel();
+    _quotaBoundary = null;
     if (_closed ||
         !_started ||
         (!models.routingConnected && (!_restorePending || _selected.isEmpty)) ||
         !models.running ||
         busy)
       return;
+    // Quota facts can change with time even when an upstream snapshot remains
+    // identical. Schedule that boundary here, independently of view/request reads.
+    final boundaries =
+        models.catalog
+            .expand((m) => m.bindings)
+            .map((b) => b.quota.nextChangeAt)
+            .whereType<DateTime>()
+            .toList()
+          ..sort();
+    if (boundaries.isNotEmpty) {
+      _quotaBoundary = Timer(
+        boundaries.first.difference(DateTime.now()),
+        _schedule,
+      );
+    }
     if (!retry && _appliedRouting == _routingState) return;
     _scheduled?.cancel();
     _scheduled = Timer(
@@ -125,15 +146,7 @@ class ModelConnection extends ChangeNotifier {
     if (!models.routingConnected) await models.markRoutingConnected();
     final state = _routingState;
     final catalog = models.catalog;
-    final groups = {
-      for (final m in catalog)
-        if (m.enabled &&
-            m.bindings.any(
-              (b) => b.enabled && b.grant.enabled && b.account.active,
-            ))
-          m.groupId,
-    };
-    if (groups.isNotEmpty) groups.add('loongpass-auto');
+    final groups = MagpieModelRouting(catalog).groups.keys.toSet();
     // Journal before native writes so a partially created group is reclaimed
     // on a retry or after a process restart.
     final previous = models.managedGroups;
@@ -201,6 +214,7 @@ class ModelConnection extends ChangeNotifier {
   void dispose() {
     _closed = true;
     _scheduled?.cancel();
+    _quotaBoundary?.cancel();
     models.removeListener(_changed);
     super.dispose();
   }
