@@ -28,6 +28,7 @@ bool FlutterWindow::OnCreate() {
   }
   RegisterPlugins(flutter_controller_->engine());
   authorization_ = std::make_unique<loongpass::NativeAuthorization>(GetHandle());
+  codex_accounts_ = std::make_unique<loongpass::codex::Accounts>(GetHandle());
   updater_ = std::make_unique<loongpass::NativeUpdater>(GetHandle(), flutter_controller_->engine()->messenger());
   for (const auto& name : {"files", "qoder-accounts"}) {
     auto channel = std::make_unique<flutter::MethodChannel<loongpass::Value>>(
@@ -37,6 +38,7 @@ bool FlutterWindow::OnCreate() {
     channel->SetMethodCallHandler([this, name = std::string(name)](
         const loongpass::Call& call, std::unique_ptr<loongpass::Result> result) {
       if (loongpass::HandleStorageCall(name, call, result)) return;
+      if (name == "files" && codex_accounts_->Handle(call, result)) return;
       if (name == "files" && authorization_->Handle(call, result)) return;
       result->NotImplemented();
     });
@@ -57,6 +59,7 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  codex_accounts_.reset();
   updater_.reset();
   authorization_.reset();
   channels_.clear();
@@ -88,6 +91,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   if (updater_ && updater_->HandleMessage(message, wparam)) return 0;
+  if (codex_accounts_ && codex_accounts_->HandleMessage(message)) return 0;
 
   return Win32Window::MessageHandler(hwnd, message, wparam, lparam);
 }

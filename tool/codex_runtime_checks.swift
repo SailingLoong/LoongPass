@@ -31,6 +31,10 @@ import Darwin
             elif method=='account/login/start':
                 print(json.dumps({'method':'account/login/completed','params':{'loginId':'synthetic-login','success':True}}),flush=True)
                 value={'loginId':'synthetic-login','authUrl':'https://auth.openai.com/authorize'}
+            elif method=='unscopedLogin':
+                print(json.dumps({'method':'account/login/completed','params':{'loginId':None,'success':True}}),flush=True)
+                print(json.dumps({'method':'account/login/completed','params':{'success':False}}),flush=True)
+                value={'continued':True}
             else: value={'echo':q['params']}
             print(json.dumps({'id':9999,'result':{'wrong':True}}),flush=True)
             print(json.dumps({'id':q['id'],'result':value}),flush=True)
@@ -44,6 +48,8 @@ import Darwin
         try await server.start()
         let response = try await server.request("echo", params: ["meaning": 42])
         precondition((response["echo"] as? [String: Any])?["meaning"] as? Int == 42)
+        let unscoped = try await server.request("unscopedLogin")
+        precondition(unscoped["continued"] as? Bool == true)
         let login = try await server.request("account/login/start", params: ["type": "chatgpt"])
         precondition(login["loginId"] as? String == "synthetic-login")
         let loggedIn = try await server.waitForLogin("synthetic-login")

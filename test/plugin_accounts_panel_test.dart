@@ -1143,6 +1143,7 @@ void main() {
       );
       final rewards = _Rewards(accounts);
       String? activated;
+      var activations = 0;
       await tester.pumpWidget(
         DesktopTestApp(
           home: Scaffold(
@@ -1154,6 +1155,7 @@ void main() {
                 title: 'WorkBuddy',
                 activate: (key) async {
                   activated = key;
+                  activations++;
                   return 'applied';
                 },
               ),
@@ -1167,7 +1169,18 @@ void main() {
       await tester.ensureVisible(find.text('切换客户端账号'));
       await tester.tap(find.text('切换客户端账号'));
       await tester.pumpAndSettle();
+      expect(activated, isNull);
+      expect(find.textContaining('关闭 WorkBuddy'), findsOneWidget);
+      expect(find.textContaining('自动打开'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('plugin-activate-cancel')));
+      await tester.pumpAndSettle();
+      expect(activated, isNull);
+      await tester.tap(find.text('切换客户端账号'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('plugin-activate-confirm')));
+      await tester.pumpAndSettle();
       expect(activated, 'workbuddy#one');
+      expect(activations, 1);
       expect(find.textContaining('请打开 WorkBuddy 核对当前身份'), findsWidgets);
       expect(find.textContaining('切换成功'), findsNothing);
       final browser = accounts.accounts.single;
@@ -1214,4 +1227,79 @@ void main() {
       accounts.dispose();
     },
   );
+
+  for (final exit in ['cancel', 'replace owner', 'dispose']) {
+    testDesktopWidgets(
+      'row switch requires closure confirmation before $exit at large text',
+      (tester) async {
+        tester.view.physicalSize = const Size(480, 700);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final account = PluginAccount(
+          key: 'workbuddy#row',
+          active: true,
+          models: const [],
+          facts: {
+            'provider': 'workbuddy',
+            'uid': 'official-user',
+            'realm': 'www.workbuddy.cn',
+            'label': 'long-account-for-confirmation@example.test',
+            'registrationId': 'row',
+          },
+        );
+        final accounts = _Accounts(_Runtime(), rows: [account]);
+        addTearDown(accounts.dispose);
+        var activations = 0;
+        Widget panel(_Accounts owner) => DesktopTestApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: PluginAccountsPanel(
+                accounts: owner,
+                rewards: _Rewards(owner),
+                providerIds: const {'workbuddy'},
+                title: 'WorkBuddy',
+                activate: (_) async {
+                  activations++;
+                  return 'opened';
+                },
+              ),
+            ),
+          ),
+        );
+        await tester.pumpWidget(panel(accounts));
+        await tester.pumpAndSettle();
+        final switchButton = find.byKey(const Key('activate-workbuddy#row'));
+        await tester.ensureVisible(switchButton);
+        await tester.pumpAndSettle();
+        await tester.tap(switchButton);
+        await tester.pumpAndSettle();
+        expect(activations, 0);
+        expect(find.textContaining('关闭 WorkBuddy'), findsOneWidget);
+        final confirm = find.byKey(const Key('plugin-activate-confirm'));
+        expect(confirm.hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        if (exit == 'cancel') {
+          await tester.tap(find.byKey(const Key('plugin-activate-cancel')));
+        } else if (exit == 'replace owner') {
+          final next = _Accounts(_Runtime(), rows: [account]);
+          addTearDown(next.dispose);
+          await tester.pumpWidget(panel(next));
+          await tester.pumpAndSettle();
+          await tester.tap(confirm);
+        } else {
+          await tester.pumpWidget(const SizedBox.shrink());
+        }
+        await tester.pumpAndSettle();
+        expect(activations, 0);
+        expect(find.byKey(const Key('plugin-activate-confirm')), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

@@ -56,6 +56,7 @@
 		CDD100000000000000000003 /* CodexBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000003 /* CodexBridge.swift */; };
 		CDD100000000000000000004 /* CodexActivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000004 /* CodexActivation.swift */; };
 		CDD100000000000000000005 /* CodexLocalSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000005 /* CodexLocalSettings.swift */; };
+		CDD100000000000000000006 /* CodexRenewal.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDD000000000000000000006 /* CodexRenewal.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -135,6 +136,7 @@
 		CDD000000000000000000003 /* CodexBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexBridge.swift; sourceTree = "<group>"; };
 		CDD000000000000000000004 /* CodexActivation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexActivation.swift; sourceTree = "<group>"; };
 		CDD000000000000000000005 /* CodexLocalSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexLocalSettings.swift; sourceTree = "<group>"; };
+		CDD000000000000000000006 /* CodexRenewal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexRenewal.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -239,6 +241,7 @@
 				ABCDEF012345678900000002 /* AccountFile.swift */,
 				ABCDEF012345678900000022 /* AppDataDirectory.swift */,
 				33CC11122044BFA00003C045 /* MainFlutterWindow.swift */,
+				CDD000000000000000000006 /* CodexRenewal.swift */,
 				CDD000000000000000000005 /* CodexLocalSettings.swift */,
 				CDD000000000000000000004 /* CodexActivation.swift */,
 				CDD000000000000000000003 /* CodexBridge.swift */,
@@ -466,6 +469,7 @@
 				ABCDEF012345678900000012 /* AccountFile.swift in Sources */,
 				ABCDEF012345678900000032 /* AppDataDirectory.swift in Sources */,
 				33CC11132044BFA00003C045 /* MainFlutterWindow.swift in Sources */,
+				CDD100000000000000000006 /* CodexRenewal.swift in Sources */,
 				CDD100000000000000000005 /* CodexLocalSettings.swift in Sources */,
 				CDD100000000000000000004 /* CodexActivation.swift in Sources */,
 				CDD100000000000000000003 /* CodexBridge.swift in Sources */,

@@ -51,7 +51,7 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                           '${account.email ?? '邮箱未知'}\n工作区：${account.workspaceId ?? '未知'}\n\n' +
                               (remove
                                   ? '只删除 LoongPass 保存的登录副本，不会退出 Codex 中的账号。'
-                                  : '如 Codex 正在运行，将先正常退出，再应用所选登录并重新打开。正在进行的任务可能中断。'
+                                  : '${_quitDescription(widget.owner.snapshot.quitMode)}'
                                         '现有本机项目、对话与设置会保留；云端对话与权限仍由账号所属工作区决定。'
                                         '操作后请在 Codex 中核对登录账号。'),
                         ),
@@ -235,8 +235,16 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
   );
 }
 
+String _quitDescription(CodexQuitMode? mode) => switch (mode) {
+  CodexQuitMode.force =>
+    '如 Codex 正在运行，将强制关闭，再应用所选登录并重新打开。正在进行的任务会中断，未保存的内容可能丢失。',
+  CodexQuitMode.normal =>
+    '如 Codex 正在运行，将请求关闭；若 Codex 提示强制退出，请先确认，正在进行的任务可能中断。账号应用后会自动打开 Codex。',
+  null => '如 Codex 正在运行，将关闭并重新打开以应用所选登录。正在进行的任务可能中断。',
+};
+
 String _issueText(CodexAccountsIssue? issue) => switch (issue) {
-  CodexAccountsIssue.unsupportedPlatform => 'Codex 官方账号管理目前仅支持 macOS。',
+  CodexAccountsIssue.unsupportedPlatform => 'Codex 官方账号管理目前支持 macOS 和 Windows。',
   CodexAccountsIssue.runtimeUnavailable =>
     '未找到可用的官方 Codex，请安装或更新 Codex 后重启 LoongPass。',
   CodexAccountsIssue.unsupportedStore =>

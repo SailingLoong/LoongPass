@@ -11,8 +11,7 @@ enum CodexActivation {
             let effective = try await policy()
             try effective.validate(workspaceId: workspaceId)
             try apply()
-            if wasRunning { return await reopen() ? "opened" : "applied" }
-            return "applied"
+            return await reopen() ? "opened" : "applied"
         } catch {
             if wasRunning { _ = await reopen() }
             throw error

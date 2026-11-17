@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +12,8 @@ enum CodexAccountsIssue {
 }
 
 enum CodexActivationOutcome { opened, applied, unchanged }
+
+enum CodexQuitMode { normal, force }
 
 /// The native account owner is the only source of authentication facts. This
 /// projection deliberately has no credential or raw native-response field.
@@ -57,6 +60,7 @@ class CodexAccountsSnapshot {
     this.message,
     this.observedAt,
     this.outcome,
+    this.quitMode,
   });
   final bool available, loginPending, busy;
   final CodexAccountsIssue? issue;
@@ -68,6 +72,7 @@ class CodexAccountsSnapshot {
   final String? message;
   final DateTime? observedAt;
   final CodexActivationOutcome? outcome;
+  final CodexQuitMode? quitMode;
 
   factory CodexAccountsSnapshot.fromNative(Object? value) {
     if (value is! Map ||
@@ -98,6 +103,9 @@ class CodexAccountsSnapshot {
       outcome: CodexActivationOutcome.values
           .where((v) => v.name == value['outcome'])
           .firstOrNull,
+      quitMode: CodexQuitMode.values
+          .where((v) => v.name == value['quitMode'])
+          .firstOrNull,
     );
   }
 
@@ -111,6 +119,7 @@ class CodexAccountsSnapshot {
     if (message != null) 'message': message,
     if (observedAt != null) 'observedAt': observedAt!.toIso8601String(),
     if (outcome != null) 'outcome': outcome!.name,
+    if (quitMode != null) 'quitMode': quitMode!.name,
   };
 }
 
@@ -129,7 +138,10 @@ class CodexAccounts extends ChangeNotifier {
   }) : _channel = channel,
        supported =
            !kIsWeb &&
-           (platform ?? defaultTargetPlatform) == TargetPlatform.macOS {
+           const {
+             TargetPlatform.macOS,
+             TargetPlatform.windows,
+           }.contains(platform ?? defaultTargetPlatform) {
     if (!supported) {
       _snapshot = const CodexAccountsSnapshot(
         issue: CodexAccountsIssue.unsupportedPlatform,

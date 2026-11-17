@@ -35,6 +35,7 @@ class PluginAccountsPanel extends StatefulWidget {
 
 class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   bool _busy = false;
+  bool _confirming = false;
   String? _message;
   String? _messageAccount;
 
@@ -148,22 +149,96 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
     }
   }, accountKey: account.key);
 
-  Future<void> _activate(PluginAccount account) => _run(() async {
-    final result = await widget.activate!(account.key);
-    if (mounted)
-      setState(
-        () => _message = switch (result) {
-          'opened' => '已应用授权并打开 WorkBuddy，请在客户端核对当前身份。',
-          'applied' => '授权已应用，请打开 WorkBuddy 核对当前身份。',
-          'cancelled' => '本次客户端切换已取消。',
-          'expired' => '切换准备已超时，请重新操作。',
-          'busy' => '未能确认 WorkBuddy 已完全退出，请保存工作并关闭客户端。',
-          'recoveryRequired' => '客户端文件状态存在冲突，请核对恢复记录后再操作。',
-          'unavailable' => '账号正在处理其他操作或授权需要核验，请稍后重试。',
-          _ => '客户端切换结果待核对，请检查客户端当前身份。',
-        },
+  Future<void> _activate(PluginAccount account) async {
+    if (!mounted || _busy || _confirming || !_canActivate(account)) return;
+    final owner = widget.accounts;
+    final activate = widget.activate!;
+    _confirming = true;
+    try {
+      final confirmed = await showFDialog<bool>(
+        context: context,
+        builder: (context, style, animation) => FDialog(
+          animation: animation,
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+          builder: (context, style) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DefaultTextStyle(
+                  style: style.titleTextStyle,
+                  child: Text('切换 ${widget.title} 账号？'),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: DefaultTextStyle(
+                      style: style.bodyTextStyle,
+                      child: Text(
+                        '${account.label}\n${_identity(account)}\n\n'
+                        '如 ${widget.title} 正在运行，将请求关闭 ${widget.title}；'
+                        '确认其完全退出后应用所选账号并自动打开客户端。'
+                        '正在进行的任务可能中断，请先保存工作。'
+                        '若客户端显示退出确认，取消关闭将停止本次切换。'
+                        '操作后请在客户端核对实际账号。',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    FButton(
+                      key: const Key('plugin-activate-cancel'),
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      child: const Text('取消'),
+                      onPress: () => Navigator.pop(context, false),
+                    ),
+                    FButton(
+                      key: const Key('plugin-activate-confirm'),
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      child: const Text('确认切换'),
+                      onPress: () => Navigator.pop(context, true),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       );
-  }, accountKey: account.key);
+      if (!mounted ||
+          confirmed != true ||
+          !identical(owner, widget.accounts) ||
+          !_canActivate(account))
+        return;
+      await _run(() async {
+        final result = await activate(account.key);
+        if (mounted && identical(owner, widget.accounts))
+          setState(
+            () => _message = switch (result) {
+              'opened' => '已应用授权并打开 WorkBuddy，请在客户端核对当前身份。',
+              'applied' => '授权已应用，请打开 WorkBuddy 核对当前身份。',
+              'cancelled' => '本次客户端切换已取消。',
+              'expired' => '切换准备已超时，请重新操作。',
+              'busy' => '未能确认 WorkBuddy 已完全退出，请保存工作并关闭客户端。',
+              'recoveryRequired' => '客户端文件状态存在冲突，请核对恢复记录后再操作。',
+              'unavailable' => '账号正在处理其他操作或授权需要核验，请稍后重试。',
+              _ => '客户端切换结果待核对，请检查客户端当前身份。',
+            },
+          );
+      }, accountKey: account.key);
+    } finally {
+      _confirming = false;
+    }
+  }
 
   Future<void> _remove(PluginAccount account) async {
     final confirmed = await showFDialog<bool>(

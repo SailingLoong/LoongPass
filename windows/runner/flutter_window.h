@@ -9,6 +9,7 @@
 #include "win32_window.h"
 #include "native_authorization.h"
 #include "native_updater.h"
+#include "codex_accounts.h"
 #include <flutter/method_channel.h>
 #include <flutter/encodable_value.h>
 #include <vector>
@@ -35,6 +36,7 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<loongpass::NativeAuthorization> authorization_;
   std::unique_ptr<loongpass::NativeUpdater> updater_;
+  std::unique_ptr<loongpass::codex::Accounts> codex_accounts_;
   std::vector<std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>> channels_;
 };
 

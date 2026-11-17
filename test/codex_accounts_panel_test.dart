@@ -44,6 +44,7 @@ Map<String, Object?> _snapshot({
   'currentId': currentId,
   'loginPending': loginPending,
   'busy': busy,
+  'quitMode': 'normal',
   'observedAt': '2026-11-07T08:15:00Z',
   if (outcome != null) 'outcome': outcome,
   if (message != null) 'message': message,
@@ -150,6 +151,27 @@ void main() {
     },
   );
 
+  testDesktopWidgets(
+    'Windows force-close confirmation can cancel without activation',
+    (tester) async {
+      final calls = <String>[];
+      messenger.setMockMethodCallHandler(_channel, (call) async {
+        calls.add(call.method);
+        return _snapshot()..['quitMode'] = 'force';
+      });
+      final accounts = owner();
+      await accounts.refreshSnapshot();
+      await mount(tester, accounts);
+      await details(tester, 'official-b');
+      await tester.tap(find.byKey(const Key('codex-switch-official-b')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('强制关闭'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('codex-confirm-cancel')));
+      await tester.pumpAndSettle();
+      expect(calls, ['codexAccountsStatus']);
+    },
+  );
+
   testDesktopWidgets('cancelled restart confirmation sends no activation', (
     tester,
   ) async {
@@ -164,7 +186,7 @@ void main() {
     await details(tester, 'official-b');
     await tester.tap(find.byKey(const Key('codex-switch-official-b')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('正常退出'), findsOneWidget);
+    expect(find.textContaining('提示强制退出'), findsOneWidget);
     expect(find.textContaining('项目、对话与设置'), findsOneWidget);
     await tester.tap(find.byKey(const Key('codex-confirm-cancel')));
     await tester.pumpAndSettle();
@@ -335,7 +357,7 @@ void main() {
         return _snapshot();
       });
       await mount(tester, owner(platform: TargetPlatform.linux));
-      expect(find.textContaining('目前仅支持 macOS'), findsOneWidget);
+      expect(find.textContaining('目前支持 macOS 和 Windows'), findsOneWidget);
       expect(
         tester.widget<FButton>(find.byKey(const Key('codex-login'))).onPress,
         isNull,

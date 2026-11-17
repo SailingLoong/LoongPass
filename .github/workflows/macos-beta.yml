@@ -9,7 +9,7 @@ on:
       platform:
         description: Candidate build platform
         type: choice
-        options: [all, windows]
+        options: [all, macos, windows]
         default: all
 
 permissions:
@@ -103,6 +103,7 @@ jobs:
 
 
   windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'macos'
     name: Windows x64
     runs-on: windows-2022
     timeout-minutes: 60
@@ -168,7 +169,10 @@ jobs:
       - name: Build Windows application and native checks
         run: |
           flutter build windows --release
-          cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks loongpass_update_checks
+          cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks loongpass_update_checks loongpass_codex_checks
+          if ($LASTEXITCODE -ne 0) { throw 'Windows native check compilation failed' }
+          & build/windows/x64/runner/Release/loongpass_codex_checks.exe test/fixtures/codex_account_contract.json
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Codex account checks failed' }
           & build/windows/x64/runner/Release/loongpass_storage_checks.exe
           if ($LASTEXITCODE -ne 0) { throw 'Windows native storage checks failed' }
           & build/windows/x64/runner/Release/loongpass_authorization_checks.exe

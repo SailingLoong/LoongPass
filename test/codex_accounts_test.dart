@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import '../lib/codex_accounts.dart';
 
 const _channel = MethodChannel('test.loongpass/codex');
@@ -65,9 +67,10 @@ void main() {
       expect(encoded, isNot(contains('secret')));
       expect(encoded, isNot(contains('credentials')));
       expect(
-        CodexAccountsSnapshot.fromNative(
-          jsonDecode(encoded),
-        ).accounts.last.plan,
+        CodexAccountsSnapshot.fromNative(jsonDecode(encoded))
+            .accounts
+            .last
+            .plan,
         'team',
       );
     },
@@ -95,47 +98,42 @@ void main() {
     expect(calls.every((c) => c.arguments == null), isTrue);
   });
 
-  test(
-    'explicit actions send only opaque ids and show distinct activation outcomes',
-    () async {
-      final calls = <MethodCall>[];
-      messenger.setMockMethodCallHandler(_channel, (call) async {
-        calls.add(call);
-        return snapshot(
-          currentId: call.method == 'codexActivate'
-              ? 'official-b'
-              : 'official-a',
-          outcome: call.method == 'codexActivate' ? 'opened' : null,
-          loginPending: call.method == 'codexStartLogin',
-        );
-      });
-      final accounts = CodexAccounts(
-        channel: _channel,
-        platform: TargetPlatform.macOS,
+  test('explicit actions send only opaque ids and show distinct activation outcomes', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(_channel, (call) async {
+      calls.add(call);
+      return snapshot(
+        currentId: call.method == 'codexActivate' ? 'official-b' : 'official-a',
+        outcome: call.method == 'codexActivate' ? 'opened' : null,
+        loginPending: call.method == 'codexStartLogin',
       );
-      addTearDown(accounts.dispose);
-      await accounts.refreshSnapshot();
-      await accounts.importCurrent();
-      await accounts.startLogin();
-      expect(accounts.snapshot.loginPending, isTrue);
-      await accounts.cancelLogin();
-      await accounts.activate('official-b');
-      expect(accounts.snapshot.currentId, 'official-b');
-      expect(accounts.snapshot.outcome, CodexActivationOutcome.opened);
-      await accounts.remove('official-a');
-      expect(calls.map((c) => c.method), [
-        'codexAccountsStatus',
-        'codexImportCurrent',
-        'codexStartLogin',
-        'codexCancelLogin',
-        'codexActivate',
-        'codexRemove',
-      ]);
-      expect(calls.take(4).every((c) => c.arguments == null), isTrue);
-      expect(calls[4].arguments, {'id': 'official-b'});
-      expect(calls[5].arguments, {'id': 'official-a'});
-    },
-  );
+    });
+    final accounts = CodexAccounts(
+      channel: _channel,
+      platform: TargetPlatform.macOS,
+    );
+    addTearDown(accounts.dispose);
+    await accounts.refreshSnapshot();
+    await accounts.importCurrent();
+    await accounts.startLogin();
+    expect(accounts.snapshot.loginPending, isTrue);
+    await accounts.cancelLogin();
+    await accounts.activate('official-b');
+    expect(accounts.snapshot.currentId, 'official-b');
+    expect(accounts.snapshot.outcome, CodexActivationOutcome.opened);
+    await accounts.remove('official-a');
+    expect(calls.map((c) => c.method), [
+      'codexAccountsStatus',
+      'codexImportCurrent',
+      'codexStartLogin',
+      'codexCancelLogin',
+      'codexActivate',
+      'codexRemove',
+    ]);
+    expect(calls.take(4).every((c) => c.arguments == null), isTrue);
+    expect(calls[4].arguments, {'id': 'official-b'});
+    expect(calls[5].arguments, {'id': 'official-a'});
+  });
 
   test(
     'in-flight actions and native busy state prevent conflicting mutations',
@@ -192,37 +190,34 @@ void main() {
     },
   );
 
-  test(
-    'native exceptions and malformed responses fail closed without diagnostic secrets',
-    () async {
-      messenger.setMockMethodCallHandler(_channel, (call) async {
-        if (call.method == 'codexAccountsStatus') return snapshot();
-        throw PlatformException(
-          code: 'synthetic-secret',
-          message: 'Bearer synthetic-token',
-          details: {'auth': 'synthetic-private'},
-        );
-      });
-      final accounts = CodexAccounts(
-        channel: _channel,
-        platform: TargetPlatform.macOS,
+  test('native exceptions and malformed responses fail closed without diagnostic secrets', () async {
+    messenger.setMockMethodCallHandler(_channel, (call) async {
+      if (call.method == 'codexAccountsStatus') return snapshot();
+      throw PlatformException(
+        code: 'synthetic-secret',
+        message: 'Bearer synthetic-token',
+        details: {'auth': 'synthetic-private'},
       );
-      addTearDown(accounts.dispose);
-      await accounts.refreshSnapshot();
-      await accounts.importCurrent();
-      expect(accounts.error, isNotNull);
-      expect(accounts.error, isNot(contains('synthetic')));
-      expect(accounts.error, isNot(contains('token')));
-      expect(accounts.canMutate, isFalse);
-      messenger.setMockMethodCallHandler(
-        _channel,
-        (_) async => {'access_token': 'synthetic-private'},
-      );
-      await accounts.refreshSnapshot();
-      expect(accounts.available, isFalse);
-      expect(accounts.error, isNot(contains('synthetic')));
-    },
-  );
+    });
+    final accounts = CodexAccounts(
+      channel: _channel,
+      platform: TargetPlatform.macOS,
+    );
+    addTearDown(accounts.dispose);
+    await accounts.refreshSnapshot();
+    await accounts.importCurrent();
+    expect(accounts.error, isNotNull);
+    expect(accounts.error, isNot(contains('synthetic')));
+    expect(accounts.error, isNot(contains('token')));
+    expect(accounts.canMutate, isFalse);
+    messenger.setMockMethodCallHandler(
+      _channel,
+      (_) async => {'access_token': 'synthetic-private'},
+    );
+    await accounts.refreshSnapshot();
+    expect(accounts.available, isFalse);
+    expect(accounts.error, isNot(contains('synthetic')));
+  });
 
   test(
     'unsupported platform never falls through to native mutations',
@@ -234,7 +229,7 @@ void main() {
       });
       final accounts = CodexAccounts(
         channel: _channel,
-        platform: TargetPlatform.windows,
+        platform: TargetPlatform.linux,
       );
       addTearDown(accounts.dispose);
       await accounts.start();
@@ -248,6 +243,25 @@ void main() {
       expect(nativeCalls, 0);
     },
   );
+
+  test('Windows exposes native official accounts and activation', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(_channel, (call) async {
+      calls.add(call);
+      return snapshot()..['quitMode'] = 'force';
+    });
+    final accounts = CodexAccounts(
+      channel: _channel,
+      platform: TargetPlatform.windows,
+    );
+    addTearDown(accounts.dispose);
+    await accounts.refreshSnapshot();
+    expect(accounts.available, isTrue);
+    expect(accounts.snapshot.quitMode, CodexQuitMode.force);
+    await accounts.activate('official-b');
+    expect(calls.last.method, 'codexActivate');
+    expect(calls.last.arguments, {'id': 'official-b'});
+  });
 
   test(
     'older status response cannot replace a completed explicit action',

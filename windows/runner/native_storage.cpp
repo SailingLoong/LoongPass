@@ -19,7 +19,7 @@
 namespace loongpass {
 namespace {
 constexpr size_t kDocumentLimit = 4 * 1024 * 1024;
-constexpr size_t kFileLimit = 5 * 1024 * 1024;
+constexpr size_t kFileLimit = NativeAccountFile::maximumBytes;
 constexpr size_t kVaultLimit = 1024 * 1024;
 constexpr size_t kJournalLimit = 16 * 1024 * 1024;
 
@@ -209,116 +209,7 @@ std::string ReadBytes(HANDLE handle, size_t limit) {
   return bytes;
 }
 
-class FileOwner {
- public:
-  explicit FileOwner(const std::filesystem::path& root) : directory_(root) {
-    lock_ = Handle(CreateFileW(
-        (root / L"owner.lock").c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
-        FILE_SHARE_READ | FILE_SHARE_WRITE, Security().attributes(), OPEN_ALWAYS,
-        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
-    Require(lock_.valid());
-    FileInformation(lock_.get(), false, kFileLimit, true);
-    OVERLAPPED range = {};
-    Require(LockFileEx(lock_.get(),
-                       LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
-                       0, MAXDWORD, MAXDWORD, &range));
-  }
-  Json Read(const std::string& name, size_t limit = kFileLimit) const {
-    directory_.Check();
-    const auto path = Path(name);
-    Handle file(CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL,
-                            FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                            FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
-    if (!file.valid()) {
-      Require(GetLastError() == ERROR_FILE_NOT_FOUND);
-      return nullptr;
-    }
-    auto value = Json::parse(ReadBytes(file.get(), limit));
-    Require(value.is_object());
-    return value;
-  }
-  void Write(const Json& value, const std::string& name,
-             size_t limit = kFileLimit) const;
-  const std::filesystem::path& root() const { return directory_.root(); }
-  void PrepareJournal() const;
-  void FlushJournal() const;
-
- private:
-  std::filesystem::path Path(const std::string& name) const {
-    Require(!name.empty() && name.size() > 5 &&
-            name.compare(name.size() - 5, 5, ".json") == 0 &&
-            name.find_first_not_of(
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") ==
-                std::string::npos);
-    return directory_.root() / Wide(name);
-  }
-  DirectoryOwner directory_;
-  Handle lock_;
-};
-
-void FileOwner::Write(const Json& value, const std::string& name,
-                      size_t limit) const {
-  Require(value.is_object());
-  const auto destination = Path(name);
-  const std::string bytes = value.dump();
-  Require(bytes.size() <= limit);
-  Read(name, limit);
-  const auto stage = root() / Wide(".write-" + RandomHex(16));
-  struct RemoveStage {
-    std::filesystem::path path;
-    bool created = false;
-    ~RemoveStage() { if (created) DeleteFileW(path.c_str()); }
-  } cleanup{stage};
-  Handle file(CreateFileW(
-      stage.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0,
-      Security().attributes(), CREATE_NEW,
-      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
-  Require(file.valid());
-  cleanup.created = true;
-  FileInformation(file.get(), false, limit, true);
-  DWORD written = 0;
-  Require(WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()),
-                    &written, nullptr) && written == bytes.size());
-  Require(FlushFileBuffers(file.get()));
-  file.Close();
-  directory_.Check();
-  Require(MoveFileExW(stage.c_str(), destination.c_str(),
-                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
-  Handle saved(CreateFileW(destination.c_str(),
-                          GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
-                          FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                          FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH,
-                          nullptr));
-  Require(saved.valid() && FlushFileBuffers(saved.get()));
-  Require(ReadBytes(saved.get(), limit) == bytes);
-}
-
-void FileOwner::PrepareJournal() const {
-  directory_.Check();
-  Handle journal(CreateFileW(
-      (root() / L"workbuddy-intents.jsonl").c_str(),
-      GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, Security().attributes(), OPEN_ALWAYS,
-      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
-  Require(journal.valid());
-  FileInformation(journal.get(), false, kJournalLimit, true);
-  Require(FlushFileBuffers(journal.get()));
-}
-
-void FileOwner::FlushJournal() const {
-  directory_.Check();
-  Handle journal(CreateFileW(
-      (root() / L"workbuddy-intents.jsonl").c_str(),
-      GENERIC_WRITE | FILE_READ_ATTRIBUTES | READ_CONTROL,
-      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
-      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
-  Require(journal.valid());
-  FileInformation(journal.get(), false, kJournalLimit, true);
-  // Dart holds the byte-range lock and performs exact readback before this call.
-  // Flush the file's buffered data/metadata. Windows has no POSIX directory fsync
-  // equivalent here, and no volume-wide/admin flush is requested.
-  Require(FlushFileBuffers(journal.get()));
-}
+using FileOwner = NativeAccountFile;
 
 int64_t Integer(const Json& value, int64_t minimum = 0,
                 int64_t maximum = (std::numeric_limits<int64_t>::max)()) {
@@ -626,6 +517,114 @@ FileOwner& Store(const std::string& scope) {
   return *found->second;
 }
 }  // namespace
+
+struct NativeAccountFile::State {
+  explicit State(const std::filesystem::path& root) : directory(root) {
+    lock = Handle(CreateFileW(
+        (root / L"owner.lock").c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, Security().attributes(), OPEN_ALWAYS,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
+    Require(lock.valid());
+    FileInformation(lock.get(), false, kFileLimit, true);
+    OVERLAPPED range = {};
+    Require(LockFileEx(lock.get(),
+                       LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                       0, MAXDWORD, MAXDWORD, &range));
+  }
+  std::filesystem::path Path(const std::string& name) const {
+    Require(!name.empty() && name.size() > 5 &&
+            name.compare(name.size() - 5, 5, ".json") == 0 &&
+            name.find_first_not_of(
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") ==
+                std::string::npos);
+    return directory.root() / Wide(name);
+  }
+  DirectoryOwner directory;
+  Handle lock;
+};
+
+NativeAccountFile::NativeAccountFile(const std::filesystem::path& root)
+    : state_(std::make_unique<State>(root)) {}
+NativeAccountFile::~NativeAccountFile() = default;
+const std::filesystem::path& NativeAccountFile::root() const { return state_->directory.root(); }
+Json NativeAccountFile::Read(const std::string& name, size_t limit) const {
+  state_->directory.Check();
+  const auto path = state_->Path(name);
+  Handle file(CreateFileW(path.c_str(), GENERIC_READ | READ_CONTROL,
+                          FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                          FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+  if (!file.valid()) {
+    Require(GetLastError() == ERROR_FILE_NOT_FOUND);
+    return nullptr;
+  }
+  auto value = Json::parse(ReadBytes(file.get(), limit));
+  Require(value.is_object());
+  return value;
+}
+
+void NativeAccountFile::Write(const Json& value, const std::string& name,
+                      size_t limit) const {
+  Require(value.is_object());
+  const auto destination = state_->Path(name);
+  const std::string bytes = value.dump();
+  Require(bytes.size() <= limit);
+  Read(name, limit);
+  const auto stage = root() / Wide(".write-" + RandomHex(16));
+  struct RemoveStage {
+    std::filesystem::path path;
+    bool created = false;
+    ~RemoveStage() { if (created) DeleteFileW(path.c_str()); }
+  } cleanup{stage};
+  Handle file(CreateFileW(
+      stage.c_str(), GENERIC_READ | GENERIC_WRITE | READ_CONTROL, 0,
+      Security().attributes(), CREATE_NEW,
+      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
+  Require(file.valid());
+  cleanup.created = true;
+  FileInformation(file.get(), false, limit, true);
+  DWORD written = 0;
+  Require(WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()),
+                    &written, nullptr) && written == bytes.size());
+  Require(FlushFileBuffers(file.get()));
+  file.Close();
+  state_->directory.Check();
+  Require(MoveFileExW(stage.c_str(), destination.c_str(),
+                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
+  Handle saved(CreateFileW(destination.c_str(),
+                          GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
+                          FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                          FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH,
+                          nullptr));
+  Require(saved.valid() && FlushFileBuffers(saved.get()));
+  Require(ReadBytes(saved.get(), limit) == bytes);
+}
+
+void NativeAccountFile::PrepareJournal() const {
+  state_->directory.Check();
+  Handle journal(CreateFileW(
+      (root() / L"workbuddy-intents.jsonl").c_str(),
+      GENERIC_READ | GENERIC_WRITE | READ_CONTROL,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, Security().attributes(), OPEN_ALWAYS,
+      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
+  Require(journal.valid());
+  FileInformation(journal.get(), false, kJournalLimit, true);
+  Require(FlushFileBuffers(journal.get()));
+}
+
+void NativeAccountFile::FlushJournal() const {
+  state_->directory.Check();
+  Handle journal(CreateFileW(
+      (root() / L"workbuddy-intents.jsonl").c_str(),
+      GENERIC_WRITE | FILE_READ_ATTRIBUTES | READ_CONTROL,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
+      FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_WRITE_THROUGH, nullptr));
+  Require(journal.valid());
+  FileInformation(journal.get(), false, kJournalLimit, true);
+  // Dart holds the byte-range lock and performs exact readback before this call.
+  // Flush the file's buffered data/metadata. Windows has no POSIX directory fsync
+  // equivalent here, and no volume-wide/admin flush is requested.
+  Require(FlushFileBuffers(journal.get()));
+}
 
 std::filesystem::path ApplicationDataRoot() {
   static DirectoryOwner application([] {

@@ -195,6 +195,13 @@ final class CodexAuthFile {
         let maximumBytes = settings ? CodexLocalSettings.maximumBytes : 1_048_576
         let forbiddenPermissions: mode_t = settings ? 0o022 : 0o077
         try validate(opened)
+        if name == CodexLocalSettings.fileName {
+            // Current official clients also support a settings database. Its
+            // JSON shadow must not be mistaken for the active preference store.
+            var database = stat()
+            guard fstatat(opened.fd, CodexLocalSettings.databaseFileName, &database, AT_SYMLINK_NOFOLLOW) < 0,
+                  errno == ENOENT else { throw CodexFailure.settingsUnavailable }
+        }
         let fd = openat(opened.fd, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC)
         if fd < 0, errno == ENOENT {
             try validate(opened)
