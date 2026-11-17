@@ -39,9 +39,14 @@ Json AppServer::Receive(Deadline deadline) {
 void AppServer::Notification(const Json& object) {
   if (object.value("method", Json()) != "account/login/completed") return;
   const auto params = object.value("params", Json());
-  if (!params.is_object() || !params.value("loginId", Json()).is_string() ||
-      !params.value("success", Json()).is_boolean()) throw Failure(FailureCode::protocolError);
-  if (logins_.size() < 8) logins_[params.at("loginId").get<std::string>()] = params.at("success").get<bool>();
+  if (!params.is_object() || !params.value("success", Json()).is_boolean())
+    throw Failure(FailureCode::protocolError);
+  const auto id = params.value("loginId", Json());
+  // The official protocol permits unscoped completions. They cannot resolve a
+  // browser login or interrupt an unrelated account/read response.
+  if (id.is_null()) return;
+  if (!id.is_string()) throw Failure(FailureCode::protocolError);
+  if (logins_.size() < 8) logins_[id.get<std::string>()] = params.at("success").get<bool>();
 }
 Json AppServer::Request(const std::string& method, const Json& params) {
   if (cancelled_ && cancelled_()) throw Failure(FailureCode::cancelled);

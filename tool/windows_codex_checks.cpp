@@ -54,6 +54,12 @@ int ControlledChild() {
       if (behavior == "oversized") { std::cout << std::string(4 * 1024 * 1024 + 1, 'x') << std::flush; continue; }
     }
     send({{"id", 999999}, {"result", {{"unrelated", true}}}});
+    if (request.at("method") == "account/read" && behavior == "unscoped-login") {
+      send({{"method", "account/login/completed"}, {"params", {{"loginId", nullptr}, {"success", true}}}});
+      send({{"method", "account/login/completed"}, {"params", {{"success", false}}}});
+    }
+    if (request.at("method") == "account/read" && behavior == "invalid-login-id")
+      send({{"method", "account/login/completed"}, {"params", {{"loginId", 42}, {"success", true}}}});
     send({{"method", "account/login/completed"}, {"params", {{"loginId", "synthetic-login"}, {"success", true}}}});
     Json reply = {{"correlated", true}, {"pid", GetCurrentProcessId()}};
     if (request.at("method") == "account/read" && behavior == "lost-response") break;
@@ -101,6 +107,18 @@ void RuntimeChecks(const std::map<std::string, Credential>& values) {
     Check(WaitForSingleObject(process, 0) == WAIT_OBJECT_0, "Close did not reap the owned child");
     CloseHandle(process);
   }
+  {
+    AppServer server(path, scenario("unscoped-login", "unscoped-login"));
+    const auto reply = server.Request("account/read", {{"refreshToken", true}});
+    Check(reply.at("account").at("type") == "chatgpt",
+          "Unscoped login completion interrupted account renewal");
+    Check(server.WaitForLogin("synthetic-login"), "Unscoped completion changed a correlated login");
+    server.Close();
+  }
+  Refuses(FailureCode::protocolError, [&] {
+    AppServer server(path, scenario("invalid-login-id", "invalid-login-id"));
+    server.Request("account/read");
+  });
   Refuses(FailureCode::unavailable, [&] { AppServer server(path, scenario("eof", "eof")); });
   Refuses(FailureCode::protocolError, [&] {
     AppServer server(path, scenario("malformed", "malformed")); server.Request("test/malformed");

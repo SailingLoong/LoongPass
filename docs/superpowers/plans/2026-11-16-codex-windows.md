@@ -65,6 +65,7 @@
 **Files:** Public verification/source-origin notes; private evidence outside Git.
 
 - [x] Reuse the Windows toolchain/build caches and machine build lock, build the exact candidate and preserve its source/lock/toolchain fingerprints.
+- [x] Investigate the real acceptance abort: reproduce Windows rejection of official unscoped login completions, preserve named-login correlation, verify the native fix and macOS parity, and complete focused independent review. Rebuild the final candidate before repeating desktop acceptance.
 - [ ] Install on the Windows acceptance machine; import/authorize two official identities and verify restart persistence.
 - [ ] Execute real A → B → A, inspect the running desktop identity and local project/preference continuity, and record actual results without credentials.
 - [ ] Review the full branch independently, resolve material findings, complete repository checks and merge through required policy to remote main.

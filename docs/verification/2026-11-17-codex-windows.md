@@ -50,6 +50,16 @@ The existing manual release workflow also accepts a macOS-only candidate build, 
 
 ## Acceptance boundary
 
-Real Windows desktop A → B → A, saved-account restart persistence, package installation and visual/interaction acceptance are pending in this record. File transactions, mock UI checks and the read-only official probe do not establish a successful running-desktop switch. The original macOS two-account desktop round trip also remains unverified; the local Mac hosts active Codex work.
+The user authorized native Windows UI automation after the local Mac locked. The qualified portable Windows candidate restored both saved accounts after restart. Its actual confirmation disclosed forced closure and automatic reopening; cancellation preserved the live authentication/configuration hashes and all observed Codex processes. Reapplying the current login closed the old desktop tree and opened a new process, whose official account page showed the expected identity.
+
+An independent project with a local folder was created through the official client. The first change to the other account reopened the client with the correct email in its official account settings, retaining the project, its selection, model choice and window geometry. A return attempt safely aborted before closing the desktop, while durably retaining the final refreshed grant. A controlled retry subsequently applied the login and reopened the client. These observations predate the protocol fix below and do not establish final-candidate acceptance.
+
+### Official login notification compatibility
+
+Investigation found a Windows protocol error independent of the older transport/storage checks. The installed official Windows CLI `0.167.0-alpha.3.2` generates an `AccountLoginCompletedNotification` schema where `loginId` may be absent or null and only `success` is required. Windows incorrectly required a string ID, so a valid unscoped completion could interrupt an unrelated `account/read` after renewal. The macOS bridge already ignores such completions.
+
+A controlled native child reproduced rejection against the unchanged qualified Windows library. The fix ignores absent/null IDs, retains validation of malformed IDs/success fields, and correlates named browser logins as before. Complete Windows native checks passed after recompiling the affected runtime; the new macOS parity check also passed, with no macOS production change. A focused independent review found no actionable findings. The original failed desktop request's raw RPC frames were not retained, so its precise historical frame is not asserted.
+
+A fresh source-matched Windows package and complete real A → B → A remain required after this fix. Installer acceptance is also pending; the earlier real run used the qualified portable package. The original macOS two-account round trip and new WorkBuddy prompt's Mac visual acceptance remain unverified; the local Mac hosts active Codex work. The macOS-only build [43935823139](https://github.com/SailingLoong/LoongPass/actions/runs/43935823139) passed Universal compilation and packaging, and its complete archive matched the Actions SHA-256 after an incomplete connector download was discarded. No running-client Mac acceptance is inferred from that package.
 
 Private logs and account evidence remain outside Git under the task's artifact directory. The user authorized transferring two existing Mac grants to the Windows acceptance machine over SSH; grant portability and actual online identities must be established by the official client.
