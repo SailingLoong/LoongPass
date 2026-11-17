@@ -134,6 +134,36 @@ class MagpieConnection {
     return [for (final p in plugins) p['spec'] as String];
   }
 
+  /// A saved grant on this loaded bridge proves an earlier explicit connection.
+  /// New installations and disabled or superseded plugins do not opt in.
+  Future<bool> hasSavedConnection(
+    String bridgePath,
+    List<PluginModelGrant> grants,
+  ) async {
+    if (grants.isEmpty) return false;
+    bridgePath = path.normalize(path.absolute(bridgePath));
+    final output =
+        await (_command ??
+            (List<String> args, {String? input}) async => _run(
+              await _executable(),
+              args,
+              input: input,
+            ))(['plugin', 'list', '--json']);
+    try {
+      final saved = _accountIds(output);
+      final matching = grants
+          .where((g) => saved.contains(g.account.key))
+          .toList();
+      if (matching.isEmpty) return false;
+      _verifyGrants(output, bridgePath, matching);
+      return true;
+    } on FormatException {
+      return false;
+    } on StateError {
+      return false;
+    }
+  }
+
   static void _verifyGrants(
     String output,
     String bridgePath,
@@ -302,6 +332,7 @@ class MagpieConnection {
     final groups = <String, List<String>>{};
     final pools = <String, Map<String, dynamic>>{};
     final routes = <String, String>{};
+    final exposed = <String>{if (selected.isNotEmpty) 'auto'};
     final accountModels = <String, Set<String>>{
       for (final account in provider?['accounts'] as List? ?? const [])
         if (account['accountId'] is String) account['accountId']: {'auto'},
@@ -314,10 +345,11 @@ class MagpieConnection {
           bindings.map((b) => 'loongpass/${b.exportedId}').toSet().toList()
             ..sort();
       for (final binding in bindings) {
-        accountModels.putIfAbsent(binding.account.key, () => {'auto'}).addAll([
-          binding.exportedId,
-          if (!model.generatesImages) model.id,
-        ]);
+        final ids = [binding.exportedId, if (!model.generatesImages) model.id];
+        exposed.addAll(ids);
+        accountModels
+            .putIfAbsent(binding.account.key, () => {'auto'})
+            .addAll(ids);
       }
       if (!model.generatesImages) {
         routes[model.publicId] = 'group/${model.groupId}';
@@ -341,6 +373,17 @@ class MagpieConnection {
           .map((m) => 'group/${m.groupId}')
           .toList();
       routes['loongpass/auto'] = 'group/loongpass-auto';
+    }
+    // Native group creation resolves the provider's exposed catalog. Without
+    // explicit picks Magpie exposes only its short default model list, which
+    // can omit later accounts and prevent the entire routing graph from saving.
+    if (provider != null) {
+      final ids = exposed.toList()..sort();
+      await command(
+        ids.isEmpty
+            ? ['provider', 'models', 'loongpass', 'none']
+            : ['provider', 'set', 'loongpass', 'models=${ids.join(',')}'],
+      );
     }
     // Native account catalogs are soft preferences. These hard limits keep
     // image failover on the group's next member instead of another account

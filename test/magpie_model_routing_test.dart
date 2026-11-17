@@ -53,6 +53,19 @@ void main() {
     ];
     final models = pluginModelCatalog(grants, {}, DateTime.utc(2026, 11, 16));
     await client.syncRouting('/bridge', models);
+    // Native group creation resolves exposed models, so explicitly publish the
+    // selected catalog rather than relying on Magpie's default short picker.
+    expect(
+      calls,
+      contains(
+        equals([
+          'provider',
+          'set',
+          'loongpass',
+          'models=accounts/cn/minimax-code/MiniMax-Image,accounts/global/minimax-code-global/MiniMax-Image,auto',
+        ]),
+      ),
+    );
     final groups = calls.where((c) => c.first == 'group').toList();
     expect(groups, hasLength(2));
     expect(
@@ -105,11 +118,28 @@ void main() {
       }, DateTime.utc(2026, 11, 16)),
       previousGroups: {models.single.groupId, 'loongpass-auto'},
     );
+    expect(
+      calls,
+      contains(equals(['provider', 'models', 'loongpass', 'none'])),
+    );
     final disabled = jsonDecode(
       calls.singleWhere((c) => c[1] == 'options').last,
     );
     expect(disabled['routes'], isEmpty);
     expect(disabled['pools'], isEmpty);
+    calls.clear();
+    await client.syncRouting('/bridge', models);
+    expect(
+      calls,
+      contains(
+        equals([
+          'provider',
+          'set',
+          'loongpass',
+          'models=accounts/cn/minimax-code/MiniMax-Image,accounts/global/minimax-code-global/MiniMax-Image,auto',
+        ]),
+      ),
+    );
   });
 
   test('routing options target the registered clean bridge path', () async {
@@ -191,7 +221,7 @@ void main() {
         calls.add(args);
         if (args.join(' ') == 'plugin list --json')
           return '{"providers":[{"id":"loongpass","accountId":"a"}]}';
-        if (args[1] == 'set')
+        if (args.first == 'group' && args[1] == 'set')
           throw const MagpieCommandFailure(missingGroup: true);
         if (args[1] == 'add' && fail) throw const MagpieCommandFailure();
         return '';
