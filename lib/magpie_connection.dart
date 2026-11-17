@@ -141,6 +141,7 @@ class MagpieConnection {
     List<PluginModelGrant> grants,
   ) async {
     if (grants.isEmpty) return false;
+    bridgePath = path.normalize(path.absolute(bridgePath));
     final output =
         await (_command ??
             (List<String> args, {String? input}) async => _run(

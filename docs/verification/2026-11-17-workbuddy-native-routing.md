@@ -17,6 +17,8 @@ loaded, enabled bundled bridge. It preserves connection intent and uses its
 existing serialized synchronization/retry path. New or unrelated installations
 remain unconnected. Intent persistence failures remain retryable; disposal and
 source changes are checked across the persistence boundary.
+All connection entry points normalize local paths before comparing native
+registrations, including drive-root-relative Windows spellings.
 
 `MagpieConnection` explicitly publishes selected native and canonical model IDs
 through supported native provider commands before creating groups. Empty
