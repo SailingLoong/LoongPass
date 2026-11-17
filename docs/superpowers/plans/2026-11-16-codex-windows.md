@@ -66,10 +66,11 @@
 
 - [x] Reuse the Windows toolchain/build caches and machine build lock, build the exact candidate and preserve its source/lock/toolchain fingerprints.
 - [x] Investigate the real acceptance abort: reproduce Windows rejection of official unscoped login completions, preserve named-login correlation, verify the native fix and macOS parity, and complete focused independent review. Rebuild the final candidate before repeating desktop acceptance.
-- [ ] Install on the Windows acceptance machine; import/authorize two official identities and verify restart persistence.
-- [ ] Execute real A → B → A, inspect the running desktop identity and local project/preference continuity, and record actual results without credentials.
-- [ ] Review the full branch independently, resolve material findings, complete repository checks and merge through required policy to remote main.
-- [ ] Verify remote main contains the task commits, update the workspace pointer if required, and clean this task's worktree, branch and idle build products safely.
+- [x] Install on the Windows acceptance machine; import/authorize two official identities and verify restart persistence.
+- [x] Execute real A → B → A on both observed official Windows client versions, inspect the running desktop identity and local project/preference continuity, verify opening an initially stopped client, and record actual results without credentials.
+- [x] Review the full branch independently, resolve material findings and complete repository checks. The final runtime passed both platform CI checks and installed Windows acceptance; configuration/runtime-hook differences and remaining Mac coverage are recorded explicitly.
+
+After acceptance, merge through required policy to remote main, verify the task commits are reachable, update the workspace pointer, and clean this task's worktree, branch and idle build products safely. Record actual integration and cleanup outcomes in the final delivery evidence.
 
 ### Task 5: Consistent closure confirmation for supported account switches
 
