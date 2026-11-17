@@ -35,8 +35,13 @@ class _Models extends ChangeNotifier implements PluginModelService {
   @override
   Future<void> saveManagedGroups(Set<String> value) async =>
       managedGroups = value;
+  Future<void> Function()? beforeConnectionWrite;
   @override
-  Future<void> markRoutingConnected() async => routingConnected = true;
+  Future<void> markRoutingConnected() async {
+    await beforeConnectionWrite?.call();
+    routingConnected = true;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -45,12 +50,13 @@ PluginModelGrant _grant(
   String key, {
   String token = 'synthetic',
   String? error,
+  List<Map<String, dynamic>> models = const [],
 }) => PluginModelGrant(
   PluginAccount(
     key: key,
     active: true,
     facts: {'registrationId': key, 'provider': 'qoder'},
-    models: [],
+    models: models,
     error: error,
   ),
   token,
@@ -64,6 +70,221 @@ String _listing(List<String> ids) {
 }
 
 void main() {
+  test('startup restores routing for a saved pre-routing connection', () async {
+    final models = _Models()
+      ..grants = [
+        _grant(
+          'one',
+          models: [
+            {
+              'id': 'flash',
+              'apiId': 'deepseek-v4.1-flash',
+              'npm': '@ai-sdk/openai-compatible',
+              'url': 'https://synthetic.invalid/v1',
+            },
+          ],
+        ),
+        _grant('new-account'),
+      ];
+    final commands = <List<String>>[];
+    final applied = Completer<void>();
+    var listings = 0;
+    final connection = ModelConnection(
+      models,
+      '/bridge',
+      client: MagpieConnection(
+        run: (args, {input}) async {
+          commands.add(args);
+          if (args.join(' ') == 'plugin list --json')
+            return _listing(listings++ == 0 ? ['one'] : ['one', 'new-account']);
+          if (args.length > 1 && args[1] == 'options') applied.complete();
+          return '';
+        },
+      ),
+    );
+    addTearDown(connection.dispose);
+    addTearDown(models.dispose);
+    connection.start();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    expect(models.routingConnected, isTrue);
+    expect(applied.isCompleted, isTrue);
+    final options = jsonDecode(
+      commands.singleWhere((c) => c.length > 1 && c[1] == 'options').last,
+    );
+    expect(options['routes']['loongpass/auto'], 'group/loongpass-auto');
+    expect(models.managedGroups, contains('loongpass-auto'));
+    expect(connection.error, isNull);
+    final count = commands.length;
+    models.changed();
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    expect(commands.length, count);
+  });
+
+  test('startup leaves a new or unrelated connection unregistered', () async {
+    final disabled = magpiePluginList(['one'], spec: '/bridge');
+    disabled['plugins'][0]['off'] = true;
+    final superseded = magpiePluginList(['one'], spec: '/bridge');
+    superseded['loaded'][0]['servedBy'] = {'loongpass': '/other'};
+    for (final output in [
+      '[]',
+      _listing(['other']),
+      jsonEncode(disabled),
+      jsonEncode(superseded),
+      jsonEncode(magpiePluginList(['one'], spec: '/other')),
+    ]) {
+      final models = _Models();
+      final commands = <List<String>>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            commands.add(args);
+            if (args.join(' ') == 'plugin list --json') return output;
+            throw StateError('Startup may only read the existing connection');
+          },
+        ),
+      );
+      connection.start();
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(models.routingConnected, isFalse);
+      expect(commands, [
+        ['plugin', 'list', '--json'],
+      ]);
+      expect(connection.error, isNull);
+      connection.dispose();
+      models.dispose();
+    }
+  });
+
+  test('startup cannot adopt a connection after its grants change', () async {
+    final models = _Models();
+    final listing = Completer<String>();
+    final commands = <List<String>>[];
+    final connection = ModelConnection(
+      models,
+      '/bridge',
+      client: MagpieConnection(
+        run: (args, {input}) async {
+          commands.add(args);
+          return listing.future;
+        },
+      ),
+    );
+    addTearDown(connection.dispose);
+    addTearDown(models.dispose);
+    connection.start();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    models.grants = [_grant('replacement')];
+    models.changed();
+    listing.complete(_listing(['one', 'two']));
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    expect(models.routingConnected, isFalse);
+    expect(commands, everyElement(['plugin', 'list', '--json']));
+  });
+
+  test(
+    'stopped service and disposal prevent startup connection writes',
+    () async {
+      final models = _Models()..running = false;
+      final listing = Completer<String>();
+      final commands = <List<String>>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            commands.add(args);
+            return listing.future;
+          },
+        ),
+      );
+      addTearDown(models.dispose);
+      connection.start();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      expect(commands, isEmpty);
+      models.running = true;
+      models.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+      connection.dispose();
+      listing.complete(_listing(['one', 'two']));
+      await Future<void>.delayed(Duration.zero);
+      expect(models.routingConnected, isFalse);
+      expect(commands, [
+        ['plugin', 'list', '--json'],
+      ]);
+    },
+  );
+
+  testWidgets(
+    'startup retries after a transient connection intent write failure',
+    (tester) async {
+      final models = _Models();
+      var writes = 0;
+      models.beforeConnectionWrite = () async {
+        if (writes++ == 0) throw StateError('transient store failure');
+      };
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async =>
+              args.contains('--json') ? _listing(['one', 'two']) : '',
+        ),
+      );
+      addTearDown(connection.dispose);
+      addTearDown(models.dispose);
+      connection.start();
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(connection.error, ModelConnectionFailure.saveFailed);
+      expect(models.routingConnected, isFalse);
+      await tester.pump(const Duration(seconds: 30));
+      expect(models.routingConnected, isTrue);
+      expect(connection.error, isNull);
+    },
+  );
+
+  test(
+    'startup rechecks disposal and source after saving connection intent',
+    () async {
+      for (final dispose in [false, true]) {
+        final models = _Models();
+        final saving = Completer<void>();
+        final started = Completer<void>();
+        models.beforeConnectionWrite = () {
+          started.complete();
+          return saving.future;
+        };
+        final commands = <List<String>>[];
+        final connection = ModelConnection(
+          models,
+          '/bridge',
+          client: MagpieConnection(
+            run: (args, {input}) async {
+              commands.add(args);
+              return args.contains('--json') ? _listing(['one', 'two']) : '';
+            },
+          ),
+        );
+        connection.start();
+        await started.future;
+        if (dispose) {
+          connection.dispose();
+        } else {
+          models.grants = [_grant('replacement')];
+          models.changed();
+        }
+        saving.complete();
+        await Future<void>.delayed(Duration.zero);
+        expect(commands, [
+          ['plugin', 'list', '--json'],
+        ]);
+        if (!dispose) connection.dispose();
+        models.dispose();
+      }
+    },
+  );
+
   test(
     'connected routing follows owner events and coalesces updates during sync',
     () async {

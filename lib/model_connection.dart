@@ -27,6 +27,7 @@ class ModelConnection extends ChangeNotifier {
   bool busy = false;
   bool _closed = false;
   bool _started = false;
+  bool _restorePending = true;
   int _revision = 0;
   late String _source;
   String? _registeredSource;
@@ -58,6 +59,7 @@ class ModelConnection extends ChangeNotifier {
   ]);
 
   void start() {
+    if (_closed || _started) return;
     _started = true;
     _schedule();
   }
@@ -79,7 +81,7 @@ class ModelConnection extends ChangeNotifier {
   void _schedule({bool retry = false}) {
     if (_closed ||
         !_started ||
-        !models.routingConnected ||
+        (!models.routingConnected && (!_restorePending || _selected.isEmpty)) ||
         !models.running ||
         busy)
       return;
@@ -87,7 +89,9 @@ class ModelConnection extends ChangeNotifier {
     _scheduled?.cancel();
     _scheduled = Timer(
       retry ? const Duration(seconds: 30) : const Duration(milliseconds: 150),
-      () => unawaited(_run(save: true, inspect: false)),
+      () => unawaited(
+        _run(save: true, inspect: false, restore: !models.routingConnected),
+      ),
     );
   }
 
@@ -141,7 +145,11 @@ class ModelConnection extends ChangeNotifier {
     _appliedRouting = state;
   }
 
-  Future<void> _run({required bool save, required bool inspect}) async {
+  Future<void> _run({
+    required bool save,
+    required bool inspect,
+    bool restore = false,
+  }) async {
     if (_closed || busy) return;
     final revision = _revision;
     _scheduled?.cancel();
@@ -154,6 +162,19 @@ class ModelConnection extends ChangeNotifier {
     notifyListeners();
     var failed = false;
     try {
+      if (restore) {
+        final saved = await _client.hasSavedConnection(bridgePath, _selected);
+        if (_closed || revision != _revision) return;
+        if (!saved) {
+          _restorePending = false;
+          return;
+        }
+        // Preserve existing connection intent before native writes, so retries
+        // and restarts finish upgrading a partially synchronized connection.
+        await models.markRoutingConnected();
+        _restorePending = false;
+        if (_closed || revision != _revision) return;
+      }
       if (save) await _sync();
       if (_closed) return;
       if (inspect) {
