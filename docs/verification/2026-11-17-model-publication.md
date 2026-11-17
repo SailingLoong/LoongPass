@@ -45,6 +45,24 @@ actionable issues after the expiry-boundary correction.
   failover, and advancement to the next model after failures. Native resting may
   skip a recently refused account on the next model, as intended.
 
-Real-account installation/client acceptance and final check results are recorded
-below once observed. This source change does not publish an npm package, release,
-or updater feed by itself.
+## Installed macOS and real accounts
+
+The final production-code commit `ffc4eb8` was built as a universal arm64/x86_64
+macOS app and installed locally. Strict deep signature verification and the
+installed App.framework SHA-256 matched the packaged build. The installed app
+reported version 1.0.2, build 51; the bridge reports 0.2.3.
+
+The actual profile changed from 72 managed groups to one Auto group. Enabling
+MiniMax-M3.1-Flash added exactly one public group and sidebar row; its selection
+survived app replacement/restart. Unpublishing it restored one Auto group. The
+complete previous Auto choices remained unchanged under the existing routing
+schema migration. Actual search and the default/selected UI states were checked.
+
+Real-account calls through the installed app returned HTTP 200 for a text request
+using the legacy Auto alias and for a synthetic echo tool round trip using the
+native Auto group. Both final replies matched their exact acceptance markers.
+Local profile snapshots and client transcripts remain private, outside this repo.
+
+This acceptance covers Apple Silicon real-account execution. Intel real-account
+execution and Windows real-client inference were not exercised locally. This
+source change does not publish an npm package, release, or updater feed by itself.
