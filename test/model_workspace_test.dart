@@ -23,6 +23,7 @@ void main() {
     await tester.tap(find.byKey(const Key('nav-models')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('model-nav-auto')), findsOneWidget);
+    expect(find.text('暂无匹配模型'), findsNothing);
     expect(find.byKey(const Key('model-nav-MiniMax-M3')), findsNothing);
     expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
   });
