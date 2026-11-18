@@ -1,6 +1,6 @@
 {
   "name": "@sailing-loong/magpie-bridge",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Connect LoongPass accounts, rewards and expiring-credit-first model routing to Magpie",
   "homepage": "https://loongpass.com",
   "repository": {

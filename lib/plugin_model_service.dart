@@ -168,6 +168,12 @@ class PluginModelService extends ChangeNotifier {
     (routing.putIfAbsent('models', () => {}) as Map)[id] = value;
   });
 
+  Future<void> setModelPublished(String id, bool value) => _edit((data) {
+    catalog.singleWhere((model) => model.id == id);
+    final routing = _routingForEdit(data);
+    (routing.putIfAbsent('published', () => {}) as Map)[id] = value;
+  });
+
   Map<String, dynamic> _routingForEdit(Map<String, dynamic> data) {
     final routing = upgradeModelRouting(data['routing'] as Map? ?? {});
     data['routing'] = routing;
@@ -323,23 +329,6 @@ class PluginModelService extends ChangeNotifier {
             'label': account.label,
           },
           'models': models,
-          'publicModels': [
-            for (final model in catalog.where(
-              (m) => m.enabled && !m.generatesImages,
-            ))
-              if (model.bindings.any(
-                (b) => b.account.key == account.key && b.enabled,
-              ))
-                {
-                  'id': model.id,
-                  'name': model.name,
-                  'nativeId': model.bindings
-                      .firstWhere(
-                        (b) => b.account.key == account.key && b.enabled,
-                      )
-                      .nativeId,
-                },
-          ],
           'usage': usage,
           'exportedUsage': _exportedUsage(account.provider, models, usage),
           'maxConcurrency': limits['maxConcurrency'] ?? 0,
@@ -420,7 +409,7 @@ class PluginModelService extends ChangeNotifier {
         return;
       }
       final currentModel = catalog
-          .expand((m) => m.enabled ? m.bindings : <PluginModelBinding>[])
+          .expand((m) => m.routed ? m.bindings : <PluginModelBinding>[])
           .where(
             (b) =>
                 b.account.key == account.key &&
@@ -502,13 +491,10 @@ class PluginModelService extends ChangeNotifier {
   }
 
   Iterable<Map<String, dynamic>> _supportedModels(PluginAccount account) sync* {
-    for (final model in catalog.where((m) => m.enabled)) {
+    for (final model in catalog.where((m) => m.routed)) {
       for (final binding in model.bindings) {
         if (binding.account.key == account.key && binding.enabled)
-          yield {
-            ...binding.native,
-            if (binding.generatesImages) 'bridgeId': binding.exportedId,
-          };
+          yield {...binding.native, 'bridgeId': binding.exportedId};
       }
     }
   }

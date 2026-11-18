@@ -10,7 +10,7 @@ class PluginModelList extends StatelessWidget {
     required this.models,
     required this.busy,
     required this.onSelect,
-    required this.onEnable,
+    required this.onPublish,
     required this.onReorder,
     this.filtered = false,
   });
@@ -18,7 +18,7 @@ class PluginModelList extends StatelessWidget {
   final bool busy;
   final bool filtered;
   final ValueChanged<String> onSelect;
-  final void Function(String, bool) onEnable;
+  final void Function(String, bool) onPublish;
   final void Function(int, int) onReorder;
 
   @override
@@ -51,7 +51,7 @@ class PluginModelList extends StatelessWidget {
                 child: Flexible(child: Text(model.name, softWrap: true)),
               ),
               Text(
-                '${model.availableAccounts} 个可用账号${model.official ? '' : ' · 标准名称待核实'}',
+                '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}${model.official ? '' : ' · 标准名称待核实'}',
                 style: muted,
               ),
             ],
@@ -138,11 +138,11 @@ class PluginModelList extends StatelessWidget {
                   ),
                 const SizedBox(width: 8),
                 FSwitch(
-                  key: ValueKey('model-enabled-${model.id}'),
-                  semanticsLabel: '启用 ${model.name}',
-                  value: model.enabled,
+                  key: ValueKey('model-published-${model.id}'),
+                  semanticsLabel: '在 Magpie 中显示 ${model.name}',
+                  value: model.published,
                   enabled: !busy,
-                  onChange: (value) => onEnable(model.id, value),
+                  onChange: (value) => onPublish(model.id, value),
                 ),
               ],
             ),

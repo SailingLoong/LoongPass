@@ -103,6 +103,47 @@ class _Application implements PluginApplication {
 
 void main() {
   testDesktopWidgets(
+    'concrete models start hidden until searched and explicitly published',
+    (tester) async {
+      final service = PluginModelService(
+        accounts: WorkspaceFixtureAccounts(),
+        store: MemoryAccountStore('publication-ui'),
+      );
+      await service.start();
+      final app = _Application(service);
+      try {
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(body: PluginModelServicesPage(application: app)),
+          ),
+        );
+        expect(find.text('MiniMax-M3'), findsNothing);
+        await tester.enterText(
+          find.byKey(const Key('model-search')),
+          'MiniMax',
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('MiniMax-M3'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('model-published-MiniMax-M3')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const Key('model-search')), '');
+        await tester.pumpAndSettle();
+        expect(find.text('MiniMax-M3'), findsOneWidget);
+        expect(service.catalog.every((model) => model.enabled), isTrue);
+        await tester.tap(find.byKey(const Key('model-published-MiniMax-M3')));
+        await tester.pumpAndSettle();
+        expect(find.text('MiniMax-M3'), findsNothing);
+        expect(service.catalog.every((model) => model.enabled), isTrue);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        app.connection.dispose();
+        await service.close();
+        service.accounts.dispose();
+      }
+    },
+  );
+
+  testDesktopWidgets(
     'filtered selection is saved and hidden models can be restored',
     (tester) async {
       final accounts = WorkspaceFixtureAccounts();
@@ -131,7 +172,9 @@ void main() {
         await tester.tap(find.byKey(const Key('show-all-models')));
         await tester.pumpAndSettle();
         expect(find.text('MiniMax-M3'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('model-enabled-MiniMax-M3')));
+        await tester.tap(find.text('MiniMax-M3'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('参与 Auto'));
         await tester.pumpAndSettle();
         expect(service.catalog.every((m) => m.enabled), isTrue);
         expect(tester.takeException(), isNull);
@@ -179,6 +222,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(modelName));
       await tester.tap(find.text(modelName));
       await tester.pumpAndSettle();
@@ -205,6 +250,8 @@ void main() {
           ),
         ),
       );
+      await tester.tap(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       expect(find.text('glm-5.3-flash'), findsOneWidget);
       expect(find.text('deepseek-flash'), findsOneWidget);
       expect(service.changes, 0);
@@ -269,6 +316,8 @@ void main() {
       );
       service.publish();
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(name));
       await tester.pumpAndSettle();
       expect(find.text(name).hitTestable(), findsOneWidget);
@@ -288,6 +337,8 @@ void main() {
         home: Scaffold(body: PluginModelServicesPage(application: app)),
       ),
     );
+    await tester.tap(find.byKey(const Key('show-all-models')));
+    await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('上移 deepseek-flash'));
     await tester.pumpAndSettle();
     expect(service.catalog.first.id, 'deepseek-flash');

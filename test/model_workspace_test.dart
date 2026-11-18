@@ -9,6 +9,24 @@ import 'desktop_test_app.dart';
 import 'model_workspace_fixture.dart';
 
 void main() {
+  testDesktopWidgets('default sidebar contains Auto without concrete models', (
+    tester,
+  ) async {
+    final app = ModelWorkspaceFixture()..models.routingSettings = {};
+    final preferences = UiPreferences()..setModelsExpanded(true);
+    addTearDown(app.dispose);
+    addTearDown(preferences.dispose);
+    await tester.pumpWidget(
+      AccountToolApp(application: app, preferences: preferences),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav-models')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('model-nav-auto')), findsOneWidget);
+    expect(find.text('暂无匹配模型'), findsNothing);
+    expect(find.byKey(const Key('model-nav-MiniMax-M3')), findsNothing);
+    expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
+  });
   for (final width in [1280.0, 480.0]) {
     testDesktopWidgets('sidebar searches native aliases at width $width', (
       tester,
@@ -39,14 +57,15 @@ void main() {
       );
       expect(app.accounts.refreshes, 0);
       app.models.routingSettings = {
-        'models': {'deepseek-flash': false},
+        'version': 2,
+        'published': {'MiniMax-M3': true},
       };
       await app.models.reorderModels(['MiniMax-M3', 'deepseek-flash']);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
       expect(
         tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
-        isNull,
+        'deepseek-flash',
       );
       expect(tester.takeException(), isNull);
     });

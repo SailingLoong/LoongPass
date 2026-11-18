@@ -89,7 +89,8 @@ class _ModelsNavigationState extends State<ModelsNavigation> {
                     onSelected?.call();
                   },
                 ),
-              if (!visible.any((id) => id != 'auto'))
+              if (visible.isEmpty ||
+                  (query.isNotEmpty && !visible.any((id) => id != 'auto')))
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(

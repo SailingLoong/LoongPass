@@ -210,7 +210,7 @@ class _AccountPageState extends State<_AccountPage> {
     setState(() {
       if (_selectedModelId != 'auto' &&
           !_application!.models.catalog.any(
-            (model) => model.id == _selectedModelId && model.enabled,
+            (model) => model.id == _selectedModelId,
           )) {
         _selectedModelId = null;
       }
@@ -252,7 +252,7 @@ class _AccountPageState extends State<_AccountPage> {
         modelIds: [
           if (_application != null) 'auto',
           ...?_application?.models.catalog
-              .where((model) => model.enabled)
+              .where((model) => model.published)
               .map((model) => model.id),
         ],
         modelSearchTerms: {

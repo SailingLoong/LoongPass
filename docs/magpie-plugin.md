@@ -4,11 +4,11 @@
 and credits. This plugin connects a running local LoongPass application to Magpie.
 Every prompt and reply for this provider passes through that local application.
 
-LoongPass 1.0.2 bundles `@sailing-loong/magpie-bridge@0.2.2`. The desktop app and
-plugin have independent version numbers. The bridge executable files are unchanged from reviewed 0.2.1, checked with
-external Magpie 0.1.3346 and 0.1.4277 on macOS;
-see the [compatibility record](https://github.com/SailingLoong/LoongPass/blob/main/docs/verification/2026-11-16-stable-1.0.1.md)
-for scope.
+The current desktop source bundles `@sailing-loong/magpie-bridge@0.2.3`. The
+desktop app and plugin have independent version numbers. This bridge uses native
+public groups for Auto and explicit model publication; older published packages
+retain their release's behavior. See the [publication verification](verification/2026-11-17-model-publication.md)
+and [earlier compatibility record](verification/2026-11-16-stable-1.0.1.md) for scope.
 
 ## What LoongPass provides
 
@@ -23,8 +23,9 @@ for scope.
   Conversation affinity and recovery are handled by Magpie's native routing.
 - Account switching in supported official desktop applications, with credential
   application and verification of the running client's identity reported separately.
-- A model service for Magpie, including model priority and `loongpass/auto`, plus
-  explicit `loongpass/<standard model ID>` selections.
+- A model service for Magpie, with Auto by default and individual native model
+  groups only when explicitly enabled in LoongPass. Publication is independent
+  of which models participate in Auto.
 
 Account switching, authorization, check-in and model support vary by platform and
 OS. The application's [README](../README.md) and
@@ -59,9 +60,16 @@ plugin alone does not install the application or enable every listed feature.
    register per-account local grants and synchronize model groups. The current
    connection implementation selects and verifies the bundled bridge before
    retiring recognized npm/GitHub copies and checking the saved grants again.
-4. Select `loongpass/auto` or a particular LoongPass model in Magpie and keep
-   LoongPass running. Authorization and model availability must be confirmed in the
-   application; a successful plugin installation does not certify an account call.
+4. Select **loongpass/auto** (`group/loongpass-auto`) in Magpie and keep
+   LoongPass running. To offer a particular model separately, search or show all
+   models in LoongPass and enable **在 Magpie 中显示**. The gateway also accepts the
+   legacy `loongpass/auto` request alias. Confirm authorization and model availability
+   in LoongPass.
+
+After upgrading, an existing WorkBuddy conversation may still display
+`custom-local:loongpass/auto`. After Magpie finishes synchronizing its catalog,
+restart WorkBuddy and select the **loongpass/auto** routing group in that
+conversation's model picker.
 
 The bridge uses the loopback service, normally `http://127.0.0.1:3426`. It has no
 runtime npm dependencies and requires no compilation or installation scripts.

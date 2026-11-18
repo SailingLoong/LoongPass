@@ -70,6 +70,71 @@ String _listing(List<String> ids) {
 }
 
 void main() {
+  test(
+    'connected ordering advances at a partial expiry without new snapshots',
+    () async {
+      final now = DateTime.now();
+      final models = _Models()
+        ..routingConnected = true
+        ..grants = [
+          for (final (key, seconds) in [('one', 1), ('two', 30)])
+            PluginModelGrant(
+              PluginAccount(
+                key: key,
+                active: true,
+                facts: {'provider': 'qoder', 'registrationId': key},
+                models: [
+                  {'id': 'dfmodel'},
+                ],
+                usage: {
+                  'windows': [
+                    {
+                      'balance': 10,
+                      'runsOut': 5,
+                      'unit': 'credits',
+                      'runsOutAt': now
+                          .add(Duration(seconds: seconds))
+                          .toIso8601String(),
+                    },
+                  ],
+                },
+              ),
+              'synthetic',
+              true,
+            ),
+        ];
+      final order = <String>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            if (args.join(' ') == 'plugin list --json')
+              return _listing(['one', 'two']);
+            if (args.first == 'group' && args[1] == 'set') {
+              order.add(args.singleWhere((arg) => arg.startsWith('models=')));
+            }
+            return '';
+          },
+        ),
+      );
+      addTearDown(connection.dispose);
+      addTearDown(models.dispose);
+      connection.start();
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      expect(
+        order.single,
+        'models=loongpass/accounts/one/qoder/dfmodel,loongpass/accounts/two/qoder/dfmodel',
+      );
+      // No account notification and no read-triggered work across the boundary.
+      await Future<void>.delayed(const Duration(milliseconds: 950));
+      expect(
+        order.last,
+        'models=loongpass/accounts/two/qoder/dfmodel,loongpass/accounts/one/qoder/dfmodel',
+      );
+    },
+  );
+
   test('startup restores routing for a saved pre-routing connection', () async {
     final models = _Models()
       ..grants = [

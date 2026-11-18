@@ -24,6 +24,14 @@ or adds client-specific prompts. External Magpie owns routing/groups/recovery;
 LoongPass owns grant admission, persistence, scheduling and App activation. Video-output models stay out of model-grant discovery/admission while native
 Magpie polling lacks model/SDK context. Native POST bodies remain opaque.
 
+Public discovery contains one flat native Auto group and only the concrete groups
+the user explicitly publishes. The provider's account-scoped native metadata is
+kept unlisted for protocol conversion and native account allowlists. Auto
+participation and publication are separate persisted choices. The model owner
+orders each group's members by model priority and exact account-credit expiry;
+the connection owner schedules changes at expiry/reset boundaries even without a
+new usage response. Native session affinity, recovery and failover remain Magpie's.
+
 ## Updating
 
 Review upstream changes first, choose explicit commits, update the lock, then run:

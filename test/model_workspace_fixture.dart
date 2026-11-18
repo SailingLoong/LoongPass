@@ -119,7 +119,10 @@ class WorkspaceFixtureModels extends ChangeNotifier
   @override
   bool get routingConnected => false;
   @override
-  Map<String, dynamic> routingSettings = {};
+  Map<String, dynamic> routingSettings = {
+    'version': 2,
+    'published': {'MiniMax-M3': true, 'deepseek-flash': true},
+  };
   @override
   List<PluginModelGrant> get grants => [
     for (final account in accounts.accounts)
