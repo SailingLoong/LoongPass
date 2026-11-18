@@ -62,9 +62,14 @@ plugin alone does not install the application or enable every listed feature.
    retiring recognized npm/GitHub copies and checking the saved grants again.
 4. Select **loongpass/auto** (`group/loongpass-auto`) in Magpie and keep
    LoongPass running. To offer a particular model separately, search or show all
-   models in LoongPass and enable **在 Magpie 中显示**. Existing clients can keep
-   calling the `loongpass/auto` request alias. Authorization and model availability must be confirmed in the
-   application; a successful plugin installation does not certify an account call.
+   models in LoongPass and enable **在 Magpie 中显示**. The gateway also accepts the
+   legacy `loongpass/auto` request alias. Confirm authorization and model availability
+   in LoongPass.
+
+After upgrading, an existing WorkBuddy conversation may still display
+`custom-local:loongpass/auto`. After Magpie finishes synchronizing its catalog,
+restart WorkBuddy and select the **loongpass/auto** routing group in that
+conversation's model picker.
 
 The bridge uses the loopback service, normally `http://127.0.0.1:3426`. It has no
 runtime npm dependencies and requires no compilation or installation scripts.

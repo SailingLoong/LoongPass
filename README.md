@@ -110,7 +110,9 @@ LoongPass 使用固定版本的 Magpie 原生插件宿主和完整上游插件�
 
 1. 在「账号与积分」保存账号，在「模型连接」的账号授权中启用希望提供给 Magpie 的账号。
 2. 展开连接设置，打开本机模型服务并点击「连接 Magpie」。应用通过 Magpie 原生命令安装本地插件、保存逐账号授权并同步模型分组。
-3. 在 Magpie 中选择 **loongpass/auto**（原生 ID 为 `group/loongpass-auto`），按 LoongPass 中的候选顺序自动调用，并保持 LoongPass 运行。已有客户端的 `loongpass/auto` 调用别名继续有效。
+3. 在 Magpie 中选择 **loongpass/auto**（原生 ID 为 `group/loongpass-auto`），按 LoongPass 中的候选顺序自动调用，并保持 LoongPass 运行。网关也接受旧的 `loongpass/auto` 请求别名。
+
+升级后，如果 WorkBuddy 的旧对话仍显示 `custom-local:loongpass/auto`，请在 Magpie 同步完成后重启 WorkBuddy，在该对话的模型菜单里重新选择 **loongpass/auto** 路由组。
 
 默认只向 Magpie 提供 Auto。需要单独选择具体模型时，在「模型连接」搜索或打开「显示全部模型」，开启该模型的「在 Magpie 中显示」开关；关闭后会从 Magpie 和侧栏移除该项。升级前自动展开的模型不会算作手动选择，新发现的模型也默认不单独显示。
 

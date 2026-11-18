@@ -63,6 +63,14 @@ using the legacy Auto alias and for a synthetic echo tool round trip using the
 native Auto group. Both final replies matched their exact acceptance markers.
 Local profile snapshots and client transcripts remain private, outside this repo.
 
+On November 18, 2026, an existing WorkBuddy 5.11.3 conversation still held
+`custom-local:loongpass/auto` and failed in the client before a gateway call was
+recorded. After Magpie synchronized its model entries, restarting WorkBuddy
+loaded the new catalog. Selecting `group/loongpass-auto` in the same conversation
+returned the exact test reply in six seconds. Magpie recorded HTTP 200 from
+MiniMax-M3.1-Flash. The LoongPass portion of the live catalog still contained only
+the Auto group.
+
 This acceptance covers Apple Silicon real-account execution. Intel real-account
 execution and Windows real-client inference were not exercised locally. This
 source change does not publish an npm package, release, or updater feed by itself.

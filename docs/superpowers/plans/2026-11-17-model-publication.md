@@ -53,5 +53,4 @@
 
 - [x] Run the complete repository checks and an independent source review.
 - [x] Query an isolated installed Magpie profile to prove the actual public list and native failover behavior.
-- [ ] Build once, install, inspect the running UI, and test WorkBuddy Auto plus publication/unpublication/restart.
-- [ ] Finish WorkBuddy UI acceptance after Mac unlock, then merge green CI to remote main, update the workspace pointer, and clean eligible task intermediates. Exact evidence and coverage boundaries are recorded in the verification document and private local artifacts.
+- [x] Build and install the macOS package. Verify publication, unpublication, restart persistence, and a real WorkBuddy request after selecting the native Auto group.
