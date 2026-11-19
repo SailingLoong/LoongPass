@@ -1,11 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'account_registration.dart';
 import 'plugin_accounts.dart';
 import 'plugin_zcode_rewards.dart';
 
 const _definitive = {'claimed', 'done', 'ineligible', 'inactive', 'captcha'};
+
+typedef RewardBatch = ({
+  int total,
+  int checked,
+  List<String> failures,
+  bool balanceUnavailable,
+});
 
 /// Owns scheduling and durable check-in intents, never supplier protocols or
 /// credentials. The native host executes hooks; PluginAccounts owns facts.
@@ -21,6 +30,8 @@ class PluginRewards {
   final PluginZcodeRewards zcode;
   final DateTime Function() now;
   final bool timers;
+  final batch = ValueNotifier<RewardBatch?>(null);
+  Future<void>? _batchOperation;
   static final _queues = <String, Future<void>>{};
   final _operations = <Future<void>>{};
   Timer? _periodic, _changedTimer;
@@ -49,7 +60,6 @@ class PluginRewards {
         a.uid,
         a.realm,
         a.active,
-        a.automatic,
         accounts.providers[a.provider]?['checkin'],
         accounts.providers[a.provider]?['checkinStatus'],
       ],
@@ -75,9 +85,9 @@ class PluginRewards {
         if (_closed) break;
         if (!_eligible(a)) continue;
         try {
-          if (a.automatic) {
-            await claim(a.key, automatic: true);
-          } else if (a.provider != 'zcode') {
+          if (a.provider == 'zcode') {
+            await _exclusive(a, () => zcode.refresh(a.key));
+          } else if (accounts.providers[a.provider]?['checkinStatus'] == true) {
             await _exclusive(a, () async {
               await _prepare(a, submit: false);
             });
@@ -95,13 +105,102 @@ class PluginRewards {
     }
   }
 
+  bool supports(PluginAccount account) =>
+      account.provider == 'zcode' ||
+      accounts.providers[account.provider]?['checkin'] == true;
+
   bool _eligible(PluginAccount a) =>
       a.active &&
       a.uid.trim().isNotEmpty &&
       a.registrationId.isNotEmpty &&
+      a.error != 'authorization_required' &&
+      a.usage?['signIn'] != 'expired' &&
       accounts.enabledProviders.contains(a.provider) &&
-      (a.provider == 'zcode' ||
-          accounts.providers[a.provider]?['checkin'] == true);
+      supports(a);
+
+  bool _waitingForWindow(Map reward) {
+    final until = _time(reward['until']);
+    return reward['status'] != 'pending' &&
+        reward['outcome'] != 'claimable' &&
+        until != null &&
+        now().isBefore(until);
+  }
+
+  List<PluginAccount> get candidates {
+    final identities = <String>{};
+    return [
+      for (final account in accounts.accounts)
+        if (_eligible(account) &&
+            (account.provider == 'zcode' ||
+                !_waitingForWindow(
+                  account.facts['reward'] as Map? ?? const {},
+                )) &&
+            identities.add(
+              pluginRewardIdentity(
+                account.provider,
+                account.realm,
+                account.uid,
+              ),
+            ))
+          account,
+    ];
+  }
+
+  Future<void> claimAll() {
+    final running = _batchOperation;
+    if (running != null) return running;
+    final targets = candidates;
+    if (_closed || targets.isEmpty) return Future.value();
+    final operation = Future.microtask(() => _claimAll(targets))
+        .whenComplete(() {
+          _batchOperation = null;
+        });
+    _batchOperation = operation;
+    batch.value = (
+      total: targets.length,
+      checked: 0,
+      failures: const [],
+      balanceUnavailable: false,
+    );
+    return operation;
+  }
+
+  Future<void> _claimAll(List<PluginAccount> targets) async {
+    final failures = <String>[];
+    var checked = 0;
+    for (final account in targets) {
+      if (_closed) break;
+      try {
+        await _claim(account, refreshUsage: false);
+      } catch (_) {
+        failures.add('${account.label}（${account.provider}）');
+      }
+      checked++;
+      if (checked < targets.length) {
+        batch.value = (
+          total: targets.length,
+          checked: checked,
+          failures: List.unmodifiable(failures),
+          balanceUnavailable: false,
+        );
+      }
+    }
+    var balanceUnavailable = false;
+    if (!_closed && targets.any((account) => account.provider != 'zcode')) {
+      try {
+        await accounts.refresh();
+      } catch (_) {
+        balanceUnavailable = true;
+      }
+    }
+    batch.value = (
+      total: targets.length,
+      checked: checked,
+      failures: List.unmodifiable(failures),
+      balanceUnavailable: balanceUnavailable,
+    );
+  }
+
   PluginAccount _account(String key) {
     if (_closed) throw StateError('Reward owner closed');
     return accounts.accounts.firstWhere(
@@ -122,7 +221,6 @@ class PluginRewards {
         facts['registrationId'] == expected.registrationId &&
         facts['uid'] == expected.uid &&
         facts['realm'] == expected.realm &&
-        (facts['automatic'] == true) == expected.automatic &&
         facts['removed'] != true &&
         facts['quarantine'] == null;
     if (!matches(current.facts) || row != null && !matches(row)) {
@@ -151,20 +249,22 @@ class PluginRewards {
     return finished;
   }
 
-  Future<void> claim(String key, {bool automatic = false}) async {
-    final account = _account(key);
-    if (automatic && !account.automatic) return Future.value();
+  Future<void> claim(String key) async =>
+      _claim(_account(key), refreshUsage: true);
+
+  Future<void> _claim(PluginAccount account, {required bool refreshUsage}) {
+    final key = account.key;
     return _exclusive(account, () async {
       if (account.provider == 'zcode') {
-        await zcode.claim(key, automatic: automatic);
+        if (account.facts['reward']?['status'] == 'pending') {
+          await zcode.refresh(key);
+        } else {
+          await zcode.claim(key);
+        }
         _check(account);
         return;
       }
-      final attempt = await _prepare(
-        account,
-        submit: true,
-        automatic: automatic,
-      );
+      final attempt = await _prepare(account, submit: true);
       if (attempt == null) return;
       await accounts.currentCredential(key);
       _check(
@@ -180,7 +280,7 @@ class PluginRewards {
       } catch (_) {
         reply = {
           'outcome': 'failed',
-          'message': 'Check-in result unconfirmed; automatic retry is paused',
+          'message': 'Check-in result awaiting confirmation',
         };
       }
       _check(account);
@@ -196,7 +296,7 @@ class PluginRewards {
         _saveJournal(data, account, reward);
       });
       // Usage is only a balance observation and never reconciles this intent.
-      if (_definitive.contains(result['status'])) {
+      if (refreshUsage && _definitive.contains(result['status'])) {
         try {
           await accounts.refresh();
         } catch (_) {
@@ -209,7 +309,6 @@ class PluginRewards {
   Future<Map<String, dynamic>?> _prepare(
     PluginAccount account, {
     required bool submit,
-    bool automatic = false,
   }) async {
     // Always reread durable facts: an earlier commit may have lost its ack.
     // Supplier reads stay outside the short facts transaction.
@@ -228,10 +327,7 @@ class PluginRewards {
         _saveJournal(data, account, before);
       });
     }
-    final until = _time(before['until']);
-    if (before['status'] != 'pending' &&
-        until != null &&
-        now().isBefore(until)) {
+    if (_waitingForWindow(before)) {
       return null;
     }
     final supported =
@@ -305,14 +401,18 @@ class PluginRewards {
         return;
       }
       if (!submit || supported && status['outcome'] != 'claimable') {
+        final retryAfter = status['outcome'] == 'claimable'
+            ? null
+            : _time(status['until']);
         _saveJournal(data, account, {
           ...identity,
-          'status': 'unavailable',
+          'status': status['outcome'] == 'claimable'
+              ? 'claimable'
+              : 'unavailable',
           'outcome': status['outcome'],
           if (status['outcome'] == 'unknown' && supported)
             'message': 'Check-in status unavailable; retry later',
-          if (_time(status['until']) case final boundary?)
-            'until': boundary.toIso8601String(),
+          if (retryAfter != null) 'until': retryAfter.toIso8601String(),
           'observedAt': now().millisecondsSinceEpoch,
           'history': history,
         });
@@ -329,7 +429,6 @@ class PluginRewards {
         ...attempt!,
         'status': 'pending',
         'submittedAt': now().millisecondsSinceEpoch,
-        'automatic': automatic,
         'history': history,
       });
     });
@@ -356,8 +455,10 @@ class PluginRewards {
     _periodic?.cancel();
     _changedTimer?.cancel();
     if (_started) accounts.removeListener(_changed);
-    await zcode.close();
+    await _batchOperation;
     await Future.wait(_operations.toList().map((f) => f.catchError((_) {})));
+    await zcode.close();
+    batch.dispose();
   }
 }
 
@@ -417,6 +518,7 @@ Map<String, dynamic> _journal(Map data, PluginAccount account) {
     if (reward['history'] is! List ||
         !{
           ..._definitive,
+          'claimable',
           'pending',
           'unavailable',
         }.contains(reward['status']) ||

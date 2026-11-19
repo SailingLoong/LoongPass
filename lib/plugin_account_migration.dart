@@ -159,7 +159,6 @@ List<MigratedPluginAccount> convertPluginAccounts(
         'uid': uid,
         'realm': realm,
         'label': row['label'] ?? uid,
-        'automatic': row['automatic'] ?? true,
         'registrationId': row['registrationId'] ?? key,
         'sourceScope': scope,
         'sourceId': oldId,

@@ -44,7 +44,6 @@ class PluginAccount {
   String get label => facts['label'] ?? uid;
   String get realm => facts['realm'] ?? '';
   String get registrationId => facts['registrationId'];
-  bool get automatic => facts['automatic'] == true;
   PluginCreditBalance? get creditBalance =>
       pluginCreditBalance(provider, usage);
   PluginCreditExpiry? get creditExpiry => pluginCreditExpiry(
@@ -314,7 +313,7 @@ class PluginAccounts extends ChangeNotifier {
       try {
         await store.write(snapshot.revision, snapshot.data);
       } catch (_) {
-        // A lost acknowledgement may follow a committed removal/opt-out. Read
+        // A lost acknowledgement may follow a committed removal. Read
         // the durable facts before any cached consumer can keep using them.
         try {
           _data = (await store.read()).data;
@@ -330,11 +329,6 @@ class PluginAccounts extends ChangeNotifier {
     _writes = next.catchError((_) {});
     return next;
   }
-
-  Future<void> setAutomatic(String key, bool enabled) => edit((data) {
-    final row = (data['accounts'] as Map)[key] as Map;
-    row['automatic'] = enabled;
-  });
 
   Future<void> remove(String key) async {
     await edit((data) {
@@ -386,7 +380,6 @@ class PluginAccounts extends ChangeNotifier {
               if (identity.accountId != null) 'accountId': identity.accountId,
               'label': _label(auth),
               'registrationId': newAccountRegistrationId(),
-              'automatic': old?['automatic'] ?? identity.uid.isNotEmpty,
             }
             ..remove('quarantine')
             ..remove('removed');
@@ -537,7 +530,6 @@ class PluginAccounts extends ChangeNotifier {
       if (identity?.accountId != null) 'accountId': identity!.accountId,
       'label': _label(auth),
       'registrationId': newAccountRegistrationId(),
-      'automatic': identity != null && identity.uid.isNotEmpty,
       if (identity == null) 'quarantine': 'native_identity_mismatch',
     };
   }

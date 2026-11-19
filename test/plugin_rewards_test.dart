@@ -2,12 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 
+import '../lib/account_workspace_registry.dart';
+import '../lib/app_sidebar.dart';
+import '../lib/compact_accounts_table.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_rewards.dart';
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_zcode_rewards.dart';
+import '../lib/workspace_accounts.dart';
 import '../lib/zcode_api.dart';
+import 'desktop_test_app.dart';
 import 'memory_account_store.dart';
 
 class _Harness {
@@ -28,8 +34,13 @@ class _Harness {
       store.data['rewards']?[identity()] ??
       store.data['accounts'][key]['reward'] ??
       {};
-  Future<String> addSlot(String slot, {String uid = 'official'}) async {
-    final provider = (store.data['accounts'] as Map).values.first['provider'];
+  Future<String> addSlot(
+    String slot, {
+    String uid = 'official',
+    String? providerId,
+  }) async {
+    final provider =
+        providerId ?? (store.data['accounts'] as Map).values.first['provider'];
     final next = '$provider#$slot';
     await runtime.call('import', {
       'provider': provider,
@@ -95,6 +106,7 @@ class _Harness {
     bool checkin = true,
     bool checkinStatus = true,
     String provider = 'fixture',
+    List<String> additionalProviders = const [],
   }) async {
     final directory = await Directory.systemTemp.createTemp(
       'loongpass-rewards-',
@@ -136,15 +148,16 @@ class _Harness {
       launcherPath: File('runtime/launcher.mjs').absolute.path,
       directory: directory.path,
       plugins: [
-        {
-          'spec': 'synthetic',
-          'target': plugin.path,
-          'options': {
-            'provider': provider,
-            'checkin': checkin,
-            'checkinStatus': checkinStatus,
+        for (final id in [provider, ...additionalProviders])
+          {
+            'spec': 'synthetic',
+            'target': plugin.path,
+            'options': {
+              'provider': id,
+              'checkin': checkin,
+              'checkinStatus': checkinStatus,
+            },
           },
-        },
       ],
     );
     final store = MemoryAccountStore(directory.path);
@@ -155,7 +168,7 @@ class _Harness {
       runtime: runtime,
       directory: directory.path,
       store: store,
-      enabledProviders: {provider},
+      enabledProviders: {provider, ...additionalProviders},
     );
     await runtime.call('import', {
       'provider': provider,
@@ -184,15 +197,12 @@ class _Harness {
 class _Zcode extends PluginZcodeRewards {
   _Zcode(super.accounts);
   var claims = 0, refreshes = 0;
-  bool? automatic;
   @override
   Future<void> claim(
     String key, {
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
-    bool automatic = false,
   }) async {
     claims++;
-    this.automatic = automatic;
   }
 
   @override
@@ -208,12 +218,14 @@ void main() {
     bool checkin = true,
     bool checkinStatus = true,
     String provider = 'fixture',
+    List<String> additionalProviders = const [],
   }) async {
     final h = await _Harness.open(
       uid: uid,
       checkin: checkin,
       checkinStatus: checkinStatus,
       provider: provider,
+      additionalProviders: additionalProviders,
     );
     opened.add(h);
     return h;
@@ -225,6 +237,108 @@ void main() {
     }
     opened.clear();
   });
+
+  test(
+    'starting with a legacy enabled account only observes the claim window',
+    () async {
+      final harness = await open(provider: 'qoder-cn');
+      await harness.accounts.edit((data) {
+        data['accounts'][harness.key]['automatic'] = true;
+      });
+      await harness.control({
+        'status': {
+          'outcome': 'claimable',
+          'scope': 'current-window',
+          'until': '2026-11-09T02:00:00Z',
+        },
+      });
+      await harness.rewards.start();
+      await harness.waitForRead();
+      await harness.rewards.refresh(harness.key);
+      expect(harness.hooks, isEmpty);
+      expect(harness.reward['status'], 'claimable');
+      await harness.rewards.claim(harness.key);
+      expect(harness.hooks.single['dispatchScope'], 'current-window');
+    },
+  );
+
+  testDesktopWidgets(
+    'overview and sidebar share an explicitly started Qoder batch',
+    (tester) async {
+      final harness = (await tester.runAsync(
+        () => open(provider: 'qoder-cn', additionalProviders: ['qoder']),
+      ))!;
+      final domestic = harness.key;
+      final global = (await tester.runAsync(
+        () => harness.addSlot('global', providerId: 'qoder'),
+      ))!;
+      final registry = AccountWorkspaceRegistry();
+      final navigation = GlobalKey<AppWorkspaceState>();
+      addTearDown(registry.dispose);
+      for (final (app, key) in [
+        (ManagedApp.qoderCn, domestic),
+        (ManagedApp.qoder, global),
+      ]) {
+        registry.publish(app, harness, [
+          AccountTableEntry(
+            id: key,
+            label: 'Demo ${app.label}',
+            identity: 'synthetic',
+            balance: '—',
+            status: '已保存',
+            details: const SizedBox(),
+          ),
+        ]);
+      }
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: AppWorkspace(
+            key: navigation,
+            pages: const {},
+            sections: {
+              WorkspaceSection.overview: WorkspaceOverviewPage(
+                registry: registry,
+                rewards: harness.rewards,
+                onOpenApp: (_) {},
+                onOpenRewards: () => navigation.currentState!.selectSection(
+                  WorkspaceSection.activity,
+                ),
+              ),
+              WorkspaceSection.activity: WorkspaceActivityPage(
+                registry: registry,
+                rewards: harness.rewards,
+              ),
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-activity')));
+      await tester.pumpAndSettle();
+      expect(find.text('签到账号'), findsOneWidget);
+      expect(find.text('Demo Qoder CN'), findsOneWidget);
+      expect(find.text('Demo Qoder'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-overview')));
+      await tester.pumpAndSettle();
+      expect(harness.hooks, isEmpty);
+      expect(find.text('辅助签到（2）'), findsOneWidget);
+      await tester.runAsync(() async {
+        await tester.tap(find.byKey(const ValueKey('reward-batch-action')));
+        await harness.waitForHook();
+        for (
+          var attempt = 0;
+          attempt < 200 && harness.rewards.batch.value?.checked != 2;
+          attempt++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('已检查 2 个账号'), findsOneWidget);
+      expect(find.text('辅助签到（0）'), findsOneWidget);
+      expect(harness.hooks, hasLength(2));
+    },
+  );
 
   test('status failure creates no claim intent and a later successful read may claim', () async {
     final h = await open();
@@ -372,27 +486,27 @@ void main() {
     },
   );
 
-  test(
-    'opt-out during preflight stops before a durable intent or a claim',
-    () async {
-      final h = await open();
-      await h.control({'holdRead': true});
-      final claim = h.rewards.claim(h.key, automatic: true);
-      await h.waitForRead();
-      expect(h.reads.single['status'], isNot('pending'));
-      await h.accounts.setAutomatic(h.key, false);
-      final rejected = expectLater(claim, throwsStateError);
-      await h.release();
-      await rejected;
-      expect(h.hooks, isEmpty);
-      expect(h.reward['status'], isNot('pending'));
-    },
-  );
+  test('replacing an account during preflight stops before a durable intent or a claim', () async {
+    final h = await open();
+    await h.control({'holdRead': true});
+    final claim = h.rewards.claim(h.key);
+    await h.waitForRead();
+    expect(h.reads.single['status'], isNot('pending'));
+    await h.accounts.edit(
+      (data) => data['accounts'][h.key]['registrationId'] = 'replaced',
+    );
+    final rejected = expectLater(claim, throwsStateError);
+    await h.release();
+    await rejected;
+    expect(h.hooks, isEmpty);
+    expect(h.reward['status'], isNot('pending'));
+  });
 
   test('startup returns before network work and close drains an accepted operation', () async {
     final h = await open();
     await h.control({'hold': true});
     await h.rewards.start().timeout(const Duration(seconds: 1));
+    final manual = h.rewards.claim(h.key);
     await h.waitForHook();
     var closed = false;
     final close = h.rewards.close().then((_) => closed = true);
@@ -400,6 +514,7 @@ void main() {
     expect(closed, false);
     await h.release();
     await close;
+    await manual;
     expect(h.reward['status'], 'claimed');
   });
 
@@ -529,32 +644,67 @@ void main() {
     expect((h.reward['history'] as List).single['status'], 'claimed');
   });
 
+  test('one gesture handles both old preferences and deduplicates official identities', () async {
+    final h = await open();
+    final first = h.key;
+    final second = await h.addSlot('b', uid: 'other');
+    await h.addSlot('mirror');
+    await h.accounts.edit((data) {
+      data['accounts'][first]['automatic'] = false;
+      data['accounts'][second]['automatic'] = true;
+    });
+    await h.rewards.start();
+    await h.rewards.refresh(first);
+    expect(h.hooks, isEmpty);
+    await Future.wait([h.rewards.claimAll(), h.rewards.claimAll()]);
+    expect(h.hooks, hasLength(2));
+    expect(h.rewards.batch.value!.checked, 2);
+    for (final key in [first, second]) {
+      final receipt = h.store.data['rewards'][h.identity(key)];
+      expect(receipt['credit'], 12.5);
+      expect(receipt['unit'], 'credits');
+    }
+    await h.rewards.claimAll();
+    expect(h.hooks, hasLength(2));
+  });
+
+  test('new accounts and a new reward window wait for another click', () async {
+    final h = await open();
+    final first = h.key;
+    await h.rewards.start();
+    await h.rewards.claimAll();
+    h.now = h.now.add(const Duration(days: 1));
+    final second = await h.addSlot('new', uid: 'other');
+    await h.rewards.refresh(first);
+    await h.rewards.refresh(second);
+    expect(h.hooks, hasLength(1));
+    await h.rewards.claimAll();
+    expect(h.hooks, hasLength(3));
+  });
+
   test(
-    'automatic opt-out is honored and explicit manual claim stays available',
+    'a failed account leaves its receipt untouched and the batch continues',
     () async {
-      final h = await open();
-      await h.accounts.setAutomatic(h.key, false);
-      await h.rewards.start();
-      await h.rewards.claim(h.key, automatic: true);
-      expect(h.hooks, isEmpty);
-      await h.rewards.claim(h.key);
-      expect(h.hooks, hasLength(1));
+      final harness = await open();
+      final first = harness.key;
+      final second = await harness.addSlot('healthy', uid: 'another');
+      await harness.accounts.edit((data) {
+        data['accounts'][first]['reward'] = {
+          'status': 'claimed',
+          'history': [],
+          'credit': 50,
+        };
+      });
+      await harness.rewards.claimAll();
+      expect(harness.rewards.batch.value!.failures, hasLength(1));
+      expect(harness.store.data['accounts'][first]['reward']['credit'], 50);
+      expect(
+        harness.store.data['rewards'][harness.identity(second)]['status'],
+        'claimed',
+      );
+      expect(harness.hooks, hasLength(1));
     },
   );
-
-  test('account opt-in starts work through the data-layer listener', () async {
-    final h = await open();
-    await h.accounts.setAutomatic(h.key, false);
-    await h.rewards.start();
-    expect(h.hooks, isEmpty);
-    await h.accounts.setAutomatic(h.key, true);
-    await h.waitForHook();
-    await h.rewards.claim(
-      h.key,
-    ); // Joins the per-account queue until publication.
-    expect(h.reward['status'], 'claimed');
-    expect(h.hooks, hasLength(1));
-  });
 
   test(
     'an incomplete persisted receipt cannot authorize another claim',
@@ -572,28 +722,18 @@ void main() {
     },
   );
 
-  for (final field in [
-    'registrationId',
-    'uid',
-    'realm',
-    'automatic',
-    'removed',
-  ]) {
+  for (final field in ['registrationId', 'uid', 'realm', 'removed']) {
     test(
       'a changed $field snapshot cannot publish a late native result',
       () async {
         final h = await open();
         await h.control({'hold': true});
-        final claim = h.rewards.claim(h.key, automatic: true);
+        final claim = h.rewards.claim(h.key);
         final key = h.key;
         final identity = h.identity(key);
         await h.waitForHook();
         await h.accounts.edit((data) {
-          data['accounts'][key][field] = field == 'automatic'
-              ? false
-              : field == 'removed'
-              ? true
-              : 'changed';
+          data['accounts'][key][field] = field == 'removed' ? true : 'changed';
         });
         final rejected = expectLater(claim, throwsStateError);
         await h.release();
@@ -902,11 +1042,10 @@ void main() {
     final zcode = _Zcode(h.accounts);
     await h.rewards.close();
     h.rewards = PluginRewards(h.accounts, zcode: zcode, timers: false);
-    await h.rewards.claim(h.key, automatic: true);
+    await h.rewards.claimAll();
     await h.rewards.refresh(h.key);
     expect(zcode.claims, 1);
     expect(zcode.refreshes, 1);
-    expect(zcode.automatic, true);
     expect(h.hooks, isEmpty);
   });
 }

@@ -105,8 +105,6 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   final Map<String, Map<String, dynamic>> providers;
   List<PluginAccount> _rows;
   int refreshes = 0;
-  final automaticRequests = <(String, bool)>[];
-  bool failAutomatic = false;
   String? saved;
   @override
   String? error;
@@ -132,14 +130,6 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   }
 
   @override
-  Future<void> setAutomatic(String key, bool enabled) async {
-    automaticRequests.add((key, enabled));
-    if (failAutomatic) throw StateError('Synthetic save failure');
-    _rows.singleWhere((a) => a.key == key).facts['automatic'] = enabled;
-    notifyListeners();
-  }
-
-  @override
   Future<void> remove(String key) async {
     _rows = _rows.where((a) => a.key != key).toList();
     notifyListeners();
@@ -158,9 +148,13 @@ class _Rewards implements PluginRewards {
   int claims = 0, refreshes = 0;
   bool failRefresh = false;
   @override
-  Future<void> claim(String key, {bool automatic = false}) async {
+  Future<void> claim(String key) async {
     claims++;
   }
+
+  @override
+  bool supports(PluginAccount account) =>
+      account.provider == 'zcode' || accounts.providers[account.provider]?['checkin'] == true;
 
   @override
   Future<void> refresh(String key) async {
@@ -832,45 +826,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      accounts.failAutomatic = true;
-      final automatic = find.byType(FSwitch);
-      final automaticLabel = find.descendant(
-        of: automatic,
-        matching: find.text('辅助领取'),
-      );
-      await tester.ensureVisible(automaticLabel);
-      await tester.pumpAndSettle();
-      expect(automaticLabel.hitTestable(), findsOneWidget);
-      await tester.tap(automaticLabel);
-      await tester.pumpAndSettle();
-      expect(accounts.automaticRequests, [('zcode#one', false)]);
-      expect(accounts.accounts.single.automatic, isTrue);
-      expect(tester.widget<FSwitch>(automatic).value, isTrue);
-      expect(
-        find.descendant(
-          of: find.byType(FDialog),
-          matching: find.textContaining('操作未完成'),
-        ),
-        findsOneWidget,
-      );
-      accounts.failAutomatic = false;
-      await tester.ensureVisible(automaticLabel);
-      await tester.pumpAndSettle();
-      await tester.tap(automaticLabel);
-      await tester.pumpAndSettle();
-      expect(accounts.automaticRequests, [
-        ('zcode#one', false),
-        ('zcode#one', false),
-      ]);
-      expect(accounts.accounts.single.automatic, isFalse);
-      expect(tester.widget<FSwitch>(automatic).value, isFalse);
-      expect(
-        find.descendant(
-          of: find.byType(FDialog),
-          matching: find.textContaining('操作未完成'),
-        ),
-        findsNothing,
-      );
+      expect(find.byType(FSwitch), findsNothing);
       await tester.pumpWidget(const SizedBox());
       accounts.dispose();
     },

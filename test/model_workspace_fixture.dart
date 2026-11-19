@@ -11,6 +11,7 @@ import '../lib/plugin_rewards.dart';
 class ModelWorkspaceFixture implements PluginApplication {
   ModelWorkspaceFixture() {
     accounts = WorkspaceFixtureAccounts();
+    rewards = PluginRewards(accounts, timers: false);
     models = WorkspaceFixtureModels(accounts);
     connection = ModelConnection(models, '/synthetic/bridge');
   }
@@ -22,9 +23,10 @@ class ModelWorkspaceFixture implements PluginApplication {
   @override
   late final ModelConnection connection;
   @override
-  final rewards = _Rewards();
+  late final PluginRewards rewards;
 
   void dispose() {
+    rewards.close();
     connection.dispose();
     models.dispose();
     accounts.dispose();
@@ -34,15 +36,12 @@ class ModelWorkspaceFixture implements PluginApplication {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _Rewards implements PluginRewards {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
 class WorkspaceFixtureAccounts extends ChangeNotifier
     implements PluginAccounts {
   @override
   final providers = <String, Map<String, dynamic>>{};
+  @override
+  Set<String> get enabledProviders => {'qoder-cn', 'qoder'};
   @override
   String? get error => null;
   int refreshes = 0;

@@ -5,7 +5,7 @@ import 'zcode_api.dart';
 import 'zcode_rewards.dart';
 
 /// Owns only ZCode activity transactions. The native host owns credentials and
-/// paid-plan usage; the account scheduler decides when to invoke these methods.
+/// paid-plan usage.
 class PluginZcodeRewards {
   PluginZcodeRewards(
     this.accounts, {
@@ -34,9 +34,8 @@ class PluginZcodeRewards {
       _exclusive(key, submit: false, bindingOnly: true);
   Future<void> claim(
     String key, {
-    bool automatic = false,
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
-  }) => _exclusive(key, submit: true, automatic: automatic, verify: verify);
+  }) => _exclusive(key, submit: true, verify: verify);
   Future<void> close() async {
     _closed = true;
   }
@@ -54,13 +53,12 @@ class PluginZcodeRewards {
     throw const ZcodeFailure('account_missing');
   }
 
-  bool _current(PluginAccount captured, bool automatic) {
+  bool _current(PluginAccount captured) {
     try {
       final a = _account(captured.key);
       return a.registrationId == captured.registrationId &&
           a.uid == captured.uid &&
-          a.realm == captured.realm &&
-          (!automatic || a.automatic);
+          a.realm == captured.realm;
     } on ZcodeFailure {
       return false;
     }
@@ -69,7 +67,6 @@ class PluginZcodeRewards {
   Future<void> _exclusive(
     String key, {
     required bool submit,
-    bool automatic = false,
     bool bindingOnly = false,
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
   }) async {
@@ -78,7 +75,7 @@ class PluginZcodeRewards {
         '${accounts.store.identity}\u0000${zcodeRewardIdentity(account.realm, account.uid)}';
     if (!_writers.add(lock)) throw const ZcodeFailure('busy');
     try {
-      final session = _RewardSession(this, account, automatic);
+      final session = _RewardSession(this, account);
       await session.open();
       if (bindingOnly) {
         if (session.claims.any((e) => _unknown(e.value))) {
@@ -265,17 +262,15 @@ class PluginZcodeRewards {
 }
 
 class _RewardSession {
-  _RewardSession(this.owner, this.account, this.automatic);
+  _RewardSession(this.owner, this.account);
   final PluginZcodeRewards owner;
   final PluginAccount account;
-  final bool automatic;
   late Map<String, dynamic> reward;
   late Map<String, String> context;
   late String _persisted;
 
   void check() {
-    if (!owner._current(account, automatic))
-      throw const ZcodeFailure('cancelled');
+    if (!owner._current(account)) throw const ZcodeFailure('cancelled');
   }
 
   Future<Map<String, dynamic>> credential() async {
@@ -398,7 +393,7 @@ class _RewardSession {
       context,
       body: body,
       verification: verification,
-      isCurrent: () => owner._current(account, automatic),
+      isCurrent: () => owner._current(account),
     );
   }
 
@@ -516,7 +511,6 @@ class _RewardSession {
     if (row is! Map ||
         row['removed'] == true ||
         row['quarantine'] != null ||
-        automatic && row['automatic'] != true ||
         row['registrationId'] != account.registrationId ||
         row['uid'] != account.uid ||
         row['realm'] != account.realm) {

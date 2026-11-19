@@ -286,6 +286,10 @@ class _AccountPageState extends State<_AccountPage> {
           WorkspaceSection.overview: WorkspaceOverviewPage(
             registry: _registry,
             onOpenApp: _openApp,
+            rewards: _application?.rewards,
+            onOpenRewards: () => _workspace.currentState?.selectSection(
+              WorkspaceSection.activity,
+            ),
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.accounts: WorkspaceAccountsPage(
@@ -295,6 +299,7 @@ class _AccountPageState extends State<_AccountPage> {
           ),
           WorkspaceSection.activity: WorkspaceActivityPage(
             registry: _registry,
+            rewards: _application?.rewards,
             serviceStatus: _application == null ? _status : null,
           ),
         },
