@@ -261,6 +261,132 @@ void _identityTests() {
     'automatic': true,
   };
 
+  test(
+    'ZCode refresh retains the last gift across Coding Plan and failed reads',
+    () async {
+      final h = await open(
+        provider: 'zcode',
+        auth: {
+          'metadata': {'site': 'bigmodel'},
+        },
+      );
+      final expiry = DateTime.utc(2099, 1, 3);
+      final coding = {
+        'name': 'Coding Plan',
+        'unit': 'requests',
+        'limit': 50,
+        'amount': 3,
+      };
+      Future<PluginAccount> observe(List<Map> windows) async {
+        await h.control({
+          'usageResult': {'windows': windows},
+        });
+        await h.accounts.refresh();
+        return h.accounts.accounts.single;
+      }
+
+      final gift = {
+        'name': 'Start Plan',
+        'runsOutAt': expiry.toIso8601String(),
+        'unit': 'tokens',
+        'runsOut': 100,
+      };
+      final first = await observe([coding, gift]);
+      expect(first.creditExpiry!.amount!.amount, 100);
+      expect(first.creditExpiryObservedAt, first.queriedAt);
+      final paid = await observe([coding]);
+      expect(paid.queriedAt!.isAfter(first.queriedAt!), isTrue);
+      expect(
+        (paid.usage!['windows'] as List).single,
+        containsPair('limit', 50),
+      );
+      expect(paid.models, first.models);
+      void checkGift(PluginAccount a, num amount) {
+        final batch = a.creditExpiryBatches.single;
+        expect(
+          (batch.at, batch.amount?.amount, batch.amount?.unit),
+          (expiry, amount, 'tokens'),
+        );
+      }
+
+      checkGift(paid, 100);
+      expect(paid.creditExpiryObservedAt, first.queriedAt);
+      await h.control({'usageThrows': true});
+      await h.accounts.refresh();
+      final failed = h.accounts.accounts.single;
+      expect(failed.error, 'usage_unavailable');
+      checkGift(failed, 100);
+      expect(failed.creditExpiryObservedAt, first.queriedAt);
+
+      final checkedAt = paid.queriedAt!.millisecondsSinceEpoch;
+      await h.accounts.edit((data) {
+        data['zcode'] = {
+          'rewards': {
+            zcodeRewardIdentity('bigmodel', first.uid): {
+              'checkedAt': checkedAt,
+              'buckets': [],
+            },
+          },
+        };
+      });
+      final cleared = await observe([coding]);
+      expect(cleared.usesZcodeRewardExpiry, isTrue);
+      expect(cleared.creditExpiryBatches, isEmpty);
+      expect(cleared.creditExpiryObservedAt!.millisecondsSinceEpoch, checkedAt);
+      final renewed = await observe([
+        coding,
+        {...gift, 'runsOut': 19.75},
+      ]);
+      expect(renewed.usesZcodeRewardExpiry, isFalse);
+      checkGift(renewed, 19.75);
+      expect(renewed.creditExpiryObservedAt, renewed.queriedAt);
+    },
+  );
+
+  test(
+    'ZCode gift evidence is scoped to the live identity and registration',
+    () async {
+      final h = await open(
+        provider: 'zcode',
+        auth: {
+          'metadata': {'site': 'bigmodel'},
+        },
+      );
+      final gift = {
+        'name': 'Start Plan',
+        'runsOutAt': '2099-01-03T00:00:00Z',
+        'unit': 'tokens',
+        'runsOut': 100,
+      };
+      await h.control({
+        'usageResult': {
+          'windows': [gift],
+        },
+      });
+      await h.accounts.refresh();
+      final original = h.accounts.accounts.single;
+      expect(original.creditExpiry!.amount!.amount, 100);
+      await h.control({'usageThrows': true});
+      await h.accounts.authorizationSaved(h.key);
+      final replacement = h.accounts.accounts.single;
+      expect(replacement.registrationId, isNot(original.registrationId));
+      expect(replacement.creditExpiryBatches, isEmpty);
+      expect(replacement.creditExpiryObservedAt, isNull);
+      await h.control({
+        'usageResult': {
+          'windows': [gift],
+        },
+      });
+      await h.accounts.refresh();
+      expect(h.accounts.accounts.single.creditExpiryBatches, hasLength(1));
+      await h.replace({'uid': 'different'});
+      await h.accounts.refresh();
+      expect(h.accounts.accounts.single.active, isFalse);
+      expect(h.accounts.accounts.single.creditExpiryBatches, isEmpty);
+      expect(h.accounts.accounts.single.creditExpiryObservedAt, isNull);
+    },
+  );
+
   for (final failure in ['reply', 'transport']) {
     test(
       'failed $failure usage read preserves the last verified quantities and time',

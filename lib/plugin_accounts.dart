@@ -26,9 +26,15 @@ class PluginAccount {
     required this.models,
     this.usage,
     this.queriedAt,
+    ZcodeGiftExpiry? nativeGift,
     this.error,
     this.source,
-  });
+  }) : _nativeGift =
+           nativeGift ??
+           (facts['provider'] == 'zcode'
+               ? ZcodeGiftExpiry.fromUsage(usage, queriedAt)
+               : null);
+  final ZcodeGiftExpiry? _nativeGift;
   final String key;
   final Map<String, dynamic> facts;
   final List<Map<String, dynamic>> models;
@@ -47,18 +53,36 @@ class PluginAccount {
   PluginCreditBalance? get creditBalance =>
       pluginCreditBalance(provider, usage);
   Map get _reward => facts['reward'] is Map ? facts['reward'] : const {};
-  bool get usesZcodeRewardExpiry =>
-      pluginUsesZcodeRewardExpiry(provider, usage, _reward, queriedAt);
+  bool get usesZcodeRewardExpiry => _nativeGift?.usesReward(_reward) ?? false;
+  DateTime? get creditExpiryObservedAt => usesZcodeRewardExpiry
+      ? ZcodeGiftExpiry.rewardObservedAt(_reward)
+      : provider == 'zcode'
+      ? _nativeGift?.observedAt
+      : queriedAt;
   List<PluginCreditExpiry> get creditExpiryBatches => pluginCreditExpiryBatches(
     usage,
     _reward,
     DateTime.now(),
     provider: provider,
     queriedAt: queriedAt,
+    nativeGift: _nativeGift,
   );
   PluginCreditExpiry? get creditExpiry =>
       nextPluginCreditExpiry(creditExpiryBatches);
 }
+
+typedef _GiftOwner = ({
+  String? registration,
+  String uid,
+  String realm,
+  String? accountId,
+});
+_GiftOwner _giftOwner(Map row) => (
+  registration: row['registrationId'],
+  uid: row['uid'],
+  realm: row['realm'],
+  accountId: row['uid'] == '' ? row['accountId'] : null,
+);
 
 /// Data-layer owner of account projections and maintenance. The native host
 /// alone writes or refreshes credentials. Getters only expose cached facts.
@@ -79,6 +103,7 @@ class PluginAccounts extends ChangeNotifier {
   final _catalogs = <String, List<Map<String, dynamic>>>{};
   final _usage = <String, Map<String, dynamic>>{};
   final _queried = <String, DateTime>{};
+  final _gifts = <String, ({_GiftOwner owner, ZcodeGiftExpiry expiry})>{};
   final _errors = <String, String>{};
   Future<void> _writes = Future.value();
   Future<void>? _refreshing;
@@ -103,6 +128,9 @@ class PluginAccounts extends ChangeNotifier {
           queriedAt: _active(entry.key, entry.value)
               ? _queried[entry.key]
               : null,
+          nativeGift: entry.value['provider'] == 'zcode'
+              ? _giftFor(entry.key, entry.value)
+              : null,
           error: _errors[entry.key],
           source:
               _active(entry.key, entry.value) &&
@@ -111,6 +139,13 @@ class PluginAccounts extends ChangeNotifier {
               : null,
         ),
   ]);
+
+  ZcodeGiftExpiry _giftFor(String key, Map row) {
+    final gift = _gifts[key];
+    return gift != null && _active(key, row) && gift.owner == _giftOwner(row)
+        ? gift.expiry
+        : ZcodeGiftExpiry.unobserved;
+  }
 
   Map<String, dynamic> _accountFacts(Map row) {
     final facts = Map<String, dynamic>.from(row);
@@ -243,7 +278,7 @@ class PluginAccounts extends ChangeNotifier {
                     }),
               ]);
             }
-            Map<String, dynamic>? observedUsage;
+            ({Map<String, dynamic> value, DateTime at})? observedUsage;
             String? usageFailure;
             var signIn = '';
             if (provider['usage'] == true) {
@@ -261,8 +296,9 @@ class PluginAccounts extends ChangeNotifier {
                       ? 'authorization_required'
                       : 'usage_unavailable';
                 } else {
-                  observedUsage = Map.unmodifiable(
-                    Map<String, dynamic>.from(usage),
+                  observedUsage = (
+                    value: Map.unmodifiable(Map<String, dynamic>.from(usage)),
+                    at: DateTime.now(),
                   );
                 }
               } catch (_) {
@@ -272,8 +308,17 @@ class PluginAccounts extends ChangeNotifier {
             await _live(key, expected);
             if (models != null) _catalogs[key] = models;
             if (observedUsage != null) {
-              _usage[key] = observedUsage;
-              _queried[key] = DateTime.now();
+              _usage[key] = observedUsage.value;
+              _queried[key] = observedUsage.at;
+              if (provider['id'] == 'zcode') {
+                final gift = ZcodeGiftExpiry.fromUsage(
+                  observedUsage.value,
+                  observedUsage.at,
+                );
+                if (gift.observedAt != null) {
+                  _gifts[key] = (owner: _giftOwner(expected), expiry: gift);
+                }
+              }
             }
             if (usageFailure != null &&
                 signIn != 'renewed' &&
@@ -565,6 +610,7 @@ class PluginAccounts extends ChangeNotifier {
     _catalogs.remove(key);
     _usage.remove(key);
     _queried.remove(key);
+    _gifts.remove(key);
     _errors[key] = 'account_unavailable';
   }
 

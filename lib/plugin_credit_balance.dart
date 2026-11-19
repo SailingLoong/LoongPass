@@ -72,31 +72,62 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
 
 /// Only giftOf sets runsOutAt in ZCode. dualUsage can still return Coding
 /// Plan windows when giftOf fails, so queriedAt alone cannot clear gifts.
-bool pluginUsesZcodeRewardExpiry(
-  String? provider,
-  Map? usage,
-  Map reward,
-  DateTime? queriedAt,
-) {
-  final buckets = reward['buckets'];
-  if (provider != 'zcode' || buckets is! List) return false;
-  final checkedAt = reward['checkedAt'];
-  if (checkedAt is! int || checkedAt <= 0) {
-    // An initialized empty journal is unobserved. Populated legacy journals
-    // have exact units but no clock against which to order a native read.
-    return buckets.any((b) => b is Map);
+class ZcodeGiftExpiry {
+  const ZcodeGiftExpiry._(this.observedAt, this.batches);
+  static const unobserved = ZcodeGiftExpiry._(null, []);
+  final DateTime? observedAt;
+  final List<PluginCreditExpiry> batches;
+
+  factory ZcodeGiftExpiry.fromUsage(Map? usage, DateTime? queriedAt) {
+    final windows = usage?['windows'];
+    if (windows is! List) return unobserved;
+    final batches = <PluginCreditExpiry>[];
+    var observed = false;
+    for (final window in windows.whereType<Map>()) {
+      final at = _windowExpiryTime(window);
+      if (at == null) continue;
+      observed = true;
+      final batch = _expiry(at, window['runsOut'], window['unit']);
+      if (batch != null) batches.add(batch);
+    }
+    return observed
+        ? ZcodeGiftExpiry._(queriedAt, List.unmodifiable(batches))
+        : unobserved;
   }
-  if (queriedAt == null || queriedAt.millisecondsSinceEpoch <= checkedAt) {
-    return true;
+
+  bool usesReward(Map reward) {
+    final buckets = reward['buckets'];
+    if (buckets is! List) return false;
+    final checkedAt = rewardObservedAt(reward);
+    // Populated legacy journals have exact units but no comparable clock.
+    if (checkedAt == null) return buckets.any((b) => b is Map);
+    final native = observedAt;
+    return native == null ||
+        native.millisecondsSinceEpoch <= checkedAt.millisecondsSinceEpoch;
   }
-  final windows = usage?['windows'];
-  return windows is! List ||
-      !windows.whereType<Map>().any((w) => _windowExpiryTime(w) != null);
+
+  static DateTime? rewardObservedAt(Map reward) {
+    final millis = reward['checkedAt'];
+    return millis is int && millis > 0 && millis < 8640000000000000
+        ? DateTime.fromMillisecondsSinceEpoch(millis)
+        : null;
+  }
 }
 
 DateTime? _windowExpiryTime(Map window) {
   final at = window['runsOutAt'];
   return at is String ? DateTime.tryParse(at) : null;
+}
+
+PluginCreditExpiry? _expiry(DateTime? at, Object? amount, Object? unit) {
+  final value = _number(amount);
+  if (at == null || (value != null && value <= 0)) return null;
+  return PluginCreditExpiry(
+    at,
+    value != null && unit is String && unit.isNotEmpty
+        ? PluginCreditBalance(value, unit)
+        : null,
+  );
 }
 
 List<PluginCreditExpiry> pluginCreditExpiryBatches(
@@ -105,39 +136,29 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
   DateTime now, {
   String? provider,
   DateTime? queriedAt,
+  ZcodeGiftExpiry? nativeGift,
 }) {
-  PluginCreditExpiry? expiry(DateTime? at, Object? amount, Object? unit) {
-    final value = _number(amount);
-    if (at == null || !at.isAfter(now) || (value != null && value <= 0))
-      return null;
-    return PluginCreditExpiry(
-      at,
-      value != null && unit is String && unit.isNotEmpty
-          ? PluginCreditBalance(value, unit)
-          : null,
-    );
+  if (provider == 'zcode') {
+    final gift = nativeGift ?? ZcodeGiftExpiry.fromUsage(usage, queriedAt);
+    if (!gift.usesReward(reward)) {
+      return gift.batches.where((b) => b.at.isAfter(now)).toList()
+        ..sort((a, b) => a.at.compareTo(b.at));
+    }
+    // Both sources describe the same balance response. Neither exposes
+    // entitlement IDs for a row join.
+    usage = null;
   }
-
   final buckets = reward['buckets'];
-  // Neither normalized ZCode source retains entitlement IDs for a row join.
-  final useReward = pluginUsesZcodeRewardExpiry(
-    provider,
-    usage,
-    reward,
-    queriedAt,
-  );
-  final rawWindows = useReward
-      ? const []
-      : usage?['windows'] as List? ?? const [];
+  final rawWindows = usage?['windows'] as List? ?? const [];
   final windows = <({PluginCreditExpiry expiry, bool aside, Object? unit})>[];
   for (final window in rawWindows) {
     if (window is! Map) continue;
-    final value = expiry(
+    final value = _expiry(
       _windowExpiryTime(window),
       window['runsOut'],
       window['unit'],
     );
-    if (value != null)
+    if (value != null && value.at.isAfter(now))
       windows.add((
         expiry: value,
         aside: window['aside'] == true,
@@ -149,9 +170,7 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
   // those must survive, including packages denominated in tokens.
   final candidates = <PluginCreditExpiry>[
     for (final window in windows)
-      // ZCode's aside can be an independent gift serving the same model.
-      if (provider == 'zcode' ||
-          !window.aside ||
+      if (!window.aside ||
           !windows.any(
             (other) =>
                 !other.aside &&
@@ -161,11 +180,10 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
           ))
         window.expiry,
   ];
-  final includeBuckets = provider != 'zcode' || useReward;
-  for (final bucket in includeBuckets && buckets is List ? buckets : const []) {
+  for (final bucket in buckets is List ? buckets : const []) {
     if (bucket is! Map) continue;
     final seconds = _number(bucket['expiresAt']);
-    final value = expiry(
+    final value = _expiry(
       seconds != null && seconds > 0 && seconds < 8640000000000
           ? DateTime.fromMillisecondsSinceEpoch(
               (seconds * 1000).round(),
@@ -175,7 +193,7 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
       bucket['remaining'],
       bucket['unit'],
     );
-    if (value != null) candidates.add(value);
+    if (value != null && value.at.isAfter(now)) candidates.add(value);
   }
   candidates.sort((a, b) => a.at.compareTo(b.at));
   return candidates;
