@@ -194,13 +194,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final service = _Service();
-      const modelName =
-          'Long model name with native reasoning and tool support from the upstream catalog';
+      const modelName = 'kimi-k2.7-code-highspeed';
       const accountName =
           'Long account name with an official source and a recognizable identity';
       service.grants.first.account.models
         ..clear()
-        ..add({'id': 'long-model', 'name': modelName});
+        ..add({'id': modelName});
       service.grants.first.account.facts['label'] = accountName;
       final app = _Application(service);
       addTearDown(service.dispose);
@@ -265,8 +264,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('来源与额度详情'));
       await tester.pumpAndSettle();
-      expect(find.text('GLM-5.3-Flash-Trial · 仅赠送'), findsOneWidget);
-      expect(find.text('GLM-5.3-Flash · 赠送优先，可转套餐'), findsOneWidget);
+      expect(find.text('仅赠送'), findsOneWidget);
+      expect(find.text('赠送优先，可转套餐'), findsOneWidget);
       service.publish();
       await tester.pumpAndSettle();
       await tester.tap(find.text('Demo account').hitTestable());
@@ -294,12 +293,8 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final service = _Service();
-      const name =
-          'Long model name with native reasoning and tool support from the upstream catalog';
-      service.grants.single.account.models.add({
-        'id': 'long-model',
-        'name': name,
-      });
+      const name = 'kimi-k2.7-code-highspeed';
+      service.grants.single.account.models.add({'id': name});
       final app = _Application(service);
       addTearDown(service.dispose);
       addTearDown(app.connection.dispose);

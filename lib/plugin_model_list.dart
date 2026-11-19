@@ -51,7 +51,7 @@ class PluginModelList extends StatelessWidget {
                 child: Flexible(child: Text(model.name, softWrap: true)),
               ),
               Text(
-                '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}${model.official ? '' : ' · 标准名称待核实'}',
+                '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}',
                 style: muted,
               ),
             ],
