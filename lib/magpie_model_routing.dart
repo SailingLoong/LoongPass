@@ -24,6 +24,10 @@ class MagpieModelRouting {
         // it does not need a duplicate entry in the public native catalog.
         if (!model.generatesImages) {
           aliases['loongpass/${model.id}'] = model.publicId;
+          for (final id in model.previousPublishedIds) {
+            aliases['loongpass/$id'] = model.publicId;
+            aliases['group/${PluginModel.groupIdFor(id)}'] = model.publicId;
+          }
         }
       }
     }

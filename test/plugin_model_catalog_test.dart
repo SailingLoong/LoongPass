@@ -121,6 +121,89 @@ void main() {
     },
   );
 
+  test('published TRAE aliases merge without changing account request IDs', () {
+    final grants = [
+      grant('qoder', 'qoder-cn', [
+        {'id': 'glm-5.3'},
+        {'id': 'dfmodel'},
+      ]),
+      grant(
+        'trae',
+        'trae-cn',
+        [
+          {'id': 'DeepSeek-V4-Flash-Official', 'name': 'DeepSeek-V4-Flash'},
+          {
+            'id': 'DeepSeek-V4-Flash-Official-max',
+            'name': 'DeepSeek-V4-Flash (Max)',
+            'apiId': 'trae-max-wire',
+          },
+        ],
+        windows: [
+          {
+            'models': ['DeepSeek-V4-Flash-Official-max'],
+            'balance': 37.25,
+            'unit': 'credits',
+            'runsOut': 12.5,
+            'runsOutAt': '2026-11-16T03:00:00Z',
+          },
+        ],
+      ),
+    ];
+    final settings = {
+      'version': 2,
+      'defaultModelEnabled': false,
+      'order': ['deepseek-v4-flash-(max)', 'glm-5.3'],
+      'models': {'deepseek-v4-flash-(max)': true},
+      'published': {'deepseek-v4-flash-(max)': true},
+      'accounts': {
+        'deepseek-v4-flash': {'trae': false},
+      },
+    };
+
+    final catalog = pluginModelCatalog(grants, settings, now);
+    expect(catalog.map((model) => model.id), ['deepseek-flash', 'glm-5.3']);
+    final flash = catalog.first;
+    expect(flash.name, 'deepseek-flash');
+    expect(flash.published, isTrue);
+    expect(flash.enabled, isTrue);
+    expect(flash.bindings.map((b) => b.nativeId), [
+      'DeepSeek-V4-Flash-Official-max',
+      'dfmodel',
+      'DeepSeek-V4-Flash-Official',
+    ]);
+    expect(flash.bindings.first.native['apiId'], 'trae-max-wire');
+    expect(flash.bindings.first.expiry!.amount!.amount, 12.5);
+    expect(flash.bindings.first.expiry!.amount!.unit, 'credits');
+    expect(flash.bindings.last.enabled, isFalse);
+
+    final edited = upgradeModelRouting(settings)
+      ..['published'] = {'deepseek-flash': false};
+    expect(pluginModelCatalog(grants, edited, now).first.published, isFalse);
+    grants.last.account.models.clear();
+    expect(pluginModelCatalog(grants, settings, now).first.published, isTrue);
+  });
+
+  test('Qoder resolves a reused slot using each account model label', () {
+    for (final (name, expected) in [
+      ('Qwen3.7-Max', 'qwen3.7-max'),
+      ('Qwen4-Max', 'qwen4-max'),
+      ('Qwen4-Max-Preview', 'qwen4-max-preview'),
+      ('unknown', null),
+    ]) {
+      expect(
+        officialModelId('qoder-cn', {'id': 'qmodel_latest', 'name': name}),
+        expected,
+      );
+    }
+    expect(
+      officialModelId('qoder-cn', {
+        'id': 'qmodel_latest_preview',
+        'name': 'Qwen4-Max-Preview',
+      }),
+      'qwen4-max-preview',
+    );
+  });
+
   test('regional channel IDs resolve official model aliases', () {
     for (final (provider, native, expected) in [
       ('trae-cn', 'glm-5.3-max', 'glm-5.3'),
@@ -130,10 +213,46 @@ void main() {
       ('trae-cn', 'glm-4.7', 'glm-4.7'),
       ('trae-cn', 'glm-4.6', 'glm-4.6'),
       ('qoder-cn', 'dfmodel', 'deepseek-flash'),
+      ('trae-cn', 'DeepSeek-V4-Flash-Official-max', 'deepseek-flash'),
+      ('trae-cn', 'DeepSeek-V4-Pro-Official-max', 'deepseek-v4-pro'),
+      ('trae-cn', 'qwen4-max-max', 'qwen4-max'),
+      ('trae-cn', 'qwen3.8-max', 'qwen3.8-max'),
+      ('trae-cn', 'kimi-k2.8-preview-max', 'kimi-for-coding'),
+      ('trae-cn', 'kimi-k3.1-pro-auto-max', 'kimi-k3.1-pro'),
+      ('trae-cn', 'mimo-v2.6-flash-max', 'mimo-v2.6-flash'),
+      ('trae-cn', 'step-5-preview-max', 'step-5-preview'),
+      ('workbuddy', 'hy4std', 'hy4'),
+      ('workbuddy', 'hy4flash-free', 'hy4-flash'),
+      ('workbuddy', 'hy4flash', 'hy4-flash'),
+      ('zcode', 'GLM-5.3-Flash-Trial', 'glm-5.3-flash'),
+      ('qoder-cn', 'dfmodel@1m', 'deepseek-flash'),
     ]) {
       expect(officialModelId(provider, {'id': native}), expected);
     }
   });
+
+  test(
+    'channel labels identify Seed retargeting and the Loomy Spark alias',
+    () {
+      for (final (provider, id, name, expected) in [
+        (
+          'trae-cn',
+          'Doubao-Seed-2.0-Code',
+          'Doubao-Seed-2.1-Turbo',
+          'doubao-seed-2.1-turbo',
+        ),
+        (
+          'trae-cn',
+          'Doubao-Seed-2.1-Pro-max',
+          'Seed-2.1-Pro-0915 (Max)',
+          'doubao-seed-2.1-pro',
+        ),
+        ('loomy', 'spark-x', 'Spark-X2.5 (限时免费) (x0.0)', 'spark-x2.5'),
+      ]) {
+        expect(officialModelId(provider, {'id': id, 'name': name}), expected);
+      }
+    },
+  );
 
   test('a retained group does not enable a disabled alias when another catalog disappears', () {
     final grants = [

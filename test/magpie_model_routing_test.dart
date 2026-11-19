@@ -113,7 +113,7 @@ void main() {
   });
 
   test(
-    'manual publication is independent of Auto participation, including images',
+    'manual publication is independent of Auto and requires an official model',
     () async {
       final models = catalog({
         'version': 2,
@@ -121,15 +121,9 @@ void main() {
         'published': {'deepseek-flash': true, 'image': true},
       });
       final flash = models.singleWhere((m) => m.id == 'deepseek-flash');
-      final image = models.singleWhere((m) => m.generatesImages);
-      // Unknown native names keep their provider prefix, as the catalog owner defines.
       await client.syncRouting('/bridge', models);
       final groups = calls.where((c) => c.first == 'group').toList();
-      expect(groups.map((c) => c[2]), [
-        flash.groupId,
-        image.groupId,
-        'loongpass-auto',
-      ]);
+      expect(groups.map((c) => c[2]), [flash.groupId, 'loongpass-auto']);
       expect(
         groups.last.lastWhere((c) => c.startsWith('models=')),
         isNot(contains('/dfmodel')),
@@ -138,7 +132,11 @@ void main() {
         groups.first.lastWhere((c) => c.startsWith('models=')),
         contains('/dfmodel'),
       );
-      expect(groups[1], contains('name=Image'));
+      expect(groups.first, contains('name=deepseek-flash'));
+      expect(
+        groups.last.lastWhere((c) => c.startsWith('models=')),
+        contains('/image'),
+      );
       expect(flash.publicId, startsWith('group/'));
     },
   );

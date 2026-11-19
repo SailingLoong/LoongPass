@@ -207,15 +207,9 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
             ),
           ),
           if (_expanded.contains(account.key)) ...[
-            for (final source in bindings)
-              Text(
-                '${source.nativeId}${account.provider == 'zcode'
-                    ? source.giftOnly
-                          ? ' · 仅赠送'
-                          : ' · 赠送优先，可转套餐'
-                    : ''}',
-                style: muted,
-              ),
+            if (account.provider == 'zcode')
+              for (final giftOnly in bindings.map((b) => b.giftOnly).toSet())
+                Text(giftOnly ? '仅赠送' : '赠送优先，可转套餐', style: muted),
             Text(
               account.queriedAt == null
                   ? '额度尚无成功查询记录'

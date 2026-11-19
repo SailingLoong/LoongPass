@@ -71,11 +71,14 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
         final selectedId = widget.onSelectModel == null
             ? widget.selectedModelId ?? _localSelection
             : widget.selectedModelId;
-        final selected = catalog.where((m) => m.id == selectedId).firstOrNull;
+        final selected = catalog
+            .where((m) => m.official && m.id == selectedId)
+            .firstOrNull;
         final query = _search.text.trim().toLowerCase();
         final visible = catalog
             .where(
               (m) =>
+                  m.official &&
                   (_showAll || m.published || query.isNotEmpty) &&
                   m.searchText.contains(query),
             )
@@ -199,7 +202,9 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                                     if (mounted)
                                       setState(() => _showAll = false);
                                   }),
-                            child: Text('Auto 仅使用筛选结果（${visible.length}）'),
+                            child: Flexible(
+                              child: Text('Auto 仅使用筛选结果（${visible.length}）'),
+                            ),
                           ),
                       ],
                     ),

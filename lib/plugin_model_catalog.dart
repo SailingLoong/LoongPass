@@ -50,15 +50,18 @@ class PluginModel {
     this.enabled,
     this.bindings, {
     this.published = false,
+    this.previousPublishedIds = const {},
   });
   final String id;
   final String name;
   final bool official;
   final bool enabled;
   final bool published;
+  final Set<String> previousPublishedIds;
   bool get routed => enabled || published;
   final List<PluginModelBinding> bindings;
-  String get groupId =>
+  String get groupId => groupIdFor(id);
+  static String groupIdFor(String id) =>
       'loongpass-${sha256.convert(utf8.encode(id)).toString().substring(0, 20)}';
   bool get generatesImages => bindings.any((b) => b.generatesImages);
   String get publicId => 'group/$groupId';
@@ -85,8 +88,10 @@ bool supportedNativeModel(Map<String, dynamic> model) {
 /// snapshot also covers accounts whose model catalog is temporarily unavailable.
 Map<String, dynamic> upgradeModelRouting(Map settings) {
   final saved = Map<String, dynamic>.from(jsonDecode(jsonEncode(settings)));
-  if (saved['version'] == 2) return saved;
-  return {'version': 2, 'legacy': saved};
+  if (saved['version'] == 3) return saved;
+  if (saved['version'] != 2) return {'version': 3, 'legacy': saved};
+  final legacy = saved.remove('legacy') ?? {};
+  return {'version': 3, 'legacy': legacy, 'previous': saved};
 }
 
 List<PluginModel> pluginModelCatalog(
@@ -96,7 +101,12 @@ List<PluginModel> pluginModelCatalog(
 ) {
   settings = upgradeModelRouting(settings);
   final legacy = settings['legacy'] as Map? ?? {};
-  final legacyIds = <String, String>{};
+  final previous = settings['previous'] as Map? ?? {};
+  final previousModels = previous['models'] as Map? ?? {};
+  final previousPublished = previous['published'] as Map? ?? {};
+  final previousOrder = (previous['order'] as List?)?.whereType<String>();
+  final legacyTargets = <String, Set<String>>{};
+  final previousTargets = <String, Set<String>>{};
   final legacyEnabled = <String>{};
   final byId = <String, List<PluginModelBinding>>{};
   final names = <String, String>{};
@@ -109,14 +119,18 @@ List<PluginModel> pluginModelCatalog(
       now,
     );
     for (final native in grant.account.models.where(supportedNativeModel)) {
-      final canonical = officialModelId(grant.account.provider, native);
-      final id = modelId(grant.account.provider, native);
-      final oldId = legacyModelId(grant.account.provider, native);
-      legacyIds[oldId] = id;
+      final provider = grant.account.provider;
+      final canonical = officialModelId(provider, native);
+      final id = canonical ?? unverifiedModelId(native);
+      final oldId = legacyModelId(provider, native);
+      final previousId = previousModelId(provider, native);
+      legacyTargets.putIfAbsent(oldId, () => {}).add(id);
+      previousTargets.putIfAbsent(previousId, () => {}).add(id);
       final oldEnabled = legacy['models']?[oldId] != false;
-      if (oldEnabled) legacyEnabled.add(id);
+      if (oldEnabled) legacyEnabled.add(previousId);
       final accountEnabled =
           settings['accounts']?[id]?[grant.account.key] ??
+          previous['accounts']?[previousId]?[grant.account.key] ??
           (legacy['accounts']?[oldId]?[grant.account.key] != false &&
               oldEnabled);
       if (canonical != null) official.add(id);
@@ -133,11 +147,28 @@ List<PluginModel> pluginModelCatalog(
           );
     }
   }
+  // Live bindings disambiguate reused slots. For a missing source, a known
+  // past model name can still carry the explicit group choice and order.
+  for (final key in {
+    ...?previousOrder,
+    ...previousModels.keys.whereType<String>(),
+    ...previousPublished.keys.whereType<String>(),
+  }) {
+    final id = officialModelIdForPreviousKey(key) ?? key;
+    if (byId.containsKey(id)) previousTargets.putIfAbsent(key, () => {id});
+  }
+  final previousIds = <String, Set<String>>{};
+  for (final entry in previousTargets.entries) {
+    for (final id in entry.value) {
+      previousIds.putIfAbsent(id, () => {}).add(entry.key);
+    }
+  }
   final order =
-      (settings['order'] as List? ?? legacy['order'] as List? ?? const [])
-          .whereType<String>()
-          .map((id) => legacyIds[id] ?? id)
-          .toList();
+      (settings['order'] as List?)?.whereType<String>() ??
+      previousOrder?.expand((id) => previousTargets[id] ?? {id}) ??
+      (legacy['order'] as List? ?? const []).whereType<String>().expand(
+        (id) => legacyTargets[id] ?? {id},
+      );
   final ids = {...order.where(byId.containsKey), ...byId.keys};
   return List.unmodifiable([
     for (final id in ids)
@@ -147,7 +178,12 @@ List<PluginModel> pluginModelCatalog(
         official.contains(id),
         settings['models']?[id] ??
             (settings['defaultModelEnabled'] != false &&
-                legacyEnabled.contains(id)),
+                previousIds[id]!.any(
+                  (key) =>
+                      previousModels[key] ??
+                      (previous['defaultModelEnabled'] != false &&
+                          legacyEnabled.contains(key)),
+                )),
         List.unmodifiable(
           byId[id]!..sort((a, b) {
             if (a.available != b.available) return a.available ? -1 : 1;
@@ -164,7 +200,18 @@ List<PluginModel> pluginModelCatalog(
             return account != 0 ? account : a.nativeId.compareTo(b.nativeId);
           }),
         ),
-        published: settings['published']?[id] == true,
+        published:
+            official.contains(id) &&
+            (settings['published']?[id] ??
+                previousIds[id]!.any((key) => previousPublished[key] == true)),
+        previousPublishedIds: {
+          for (final key in previousIds[id]!)
+            if (key != id &&
+                !byId.containsKey(key) &&
+                previousTargets[key]!.length == 1 &&
+                previousPublished[key] == true)
+              key,
+        },
       ),
   ]);
 }

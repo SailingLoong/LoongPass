@@ -26,7 +26,13 @@ class _Accounts extends PluginAccounts {
         key: account.key,
         facts: account.facts,
         active: account.active,
-        models: account.models,
+        models: [
+          for (final model in account.models)
+            if (model['id'] == 'fixture-model')
+              {...model, 'name': 'DeepSeek-V4-Flash'}
+            else
+              model,
+        ],
         usage: usageOverride ?? account.usage,
         queriedAt: account.queriedAt,
         error: authorizationError ?? account.error,
@@ -245,16 +251,22 @@ void main() {
         await bridgeDir.delete(recursive: true);
       }
       // Reading either side of the many-to-many view uses the same grants.
-      await service.setModelAccountEnabled('fixture', 'fixture#a', false);
+      await service.setModelAccountEnabled(
+        'deepseek-flash',
+        'fixture#a',
+        false,
+      );
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
         429,
       );
       expect(
-        service.catalog.singleWhere((m) => m.id == 'fixture').availableAccounts,
+        service.catalog
+            .singleWhere((m) => m.id == 'deepseek-flash')
+            .availableAccounts,
         1,
       );
-      await service.setModelAccountEnabled('fixture', 'fixture#a', true);
+      await service.setModelAccountEnabled('deepseek-flash', 'fixture#a', true);
       accounts.authorizationError = 'authorization_required';
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
@@ -304,28 +316,28 @@ void main() {
         200,
       );
       accounts.usageOverride = null;
-      await service.reorderModels(['image', 'fixture']);
+      await service.reorderModels(['image', 'deepseek-flash']);
       expect(service.catalog.first.id, 'image');
-      expect(modelStore.data['routing']['order'], ['image', 'fixture']);
-      await service.setModelEnabled('fixture', false);
+      expect(modelStore.data['routing']['order'], ['image', 'deepseek-flash']);
+      await service.setModelEnabled('deepseek-flash', false);
       expect(
         (jsonDecode((await request('/plugin/catalog')).$3)['models'] as List)
             .map((m) => m['id']),
         ['image'],
       );
-      await service.setModelPublished('fixture', true);
+      await service.setModelPublished('deepseek-flash', true);
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
         200,
         reason:
             'A separately published model can be used without joining Auto.',
       );
-      await service.setModelPublished('fixture', false);
+      await service.setModelPublished('deepseek-flash', false);
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
         429,
       );
-      await service.setModelEnabled('fixture', true);
+      await service.setModelEnabled('deepseek-flash', true);
       final refused = await request('/plugin/fetch', body: envelope('refused'));
       expect(refused.$1, 429);
       expect(refused.$2['retry-after'], '7');

@@ -29,6 +29,8 @@ LoongPass 是统一的多平台、多账号与积分管理桌面工具。核心�
 
 ## 模型调用与 Magpie
 
+模型连接与 Magpie 的具体模型列表统一展示模型厂商官网 API 的标准模型 ID，并按该 ID 归组。为每个账号保留该 App 接受的原始模型 ID 和协议元数据，用于实际请求及额度匹配。仅发布有官方映射的具体模型，LoongPass Auto 是独立的路由入口。
+
 Codex 官方多账号管理是独立的账号切换需求，不属于奖励渠道。复用原 Codex 数据目录，切换官方身份并延续可核实的本机项目和对话偏好，不改写配置文件或对话数据库，不复制目标账号的云端缓存、权限和排队操作；不把本机认证记录等同于运行中客户端已核实的身份。当前接入与验收边界见 `docs/verification/2026-11-07-codex-accounts.md`。
 
 macOS 主线提供本机 Anthropic Messages/Chat 服务和官方 Magpie 接入。MiniMax CN、Loomy、WorkBuddy CN、Qoder CN、ZCode BigModel 赠送模型曾完成精简隔离 Claude Code 的真实文本、流式及工具闭环，详情与覆盖边界见 `docs/verification/2026-11-07-model-pooling.md`；早期单账号基线见 `docs/verification/2026-11-07-magpie-connection.md`。默认提示词、环境消息和 ToolSearch 另按 `docs/verification/2026-11-08-upstream-alignment.md` 验收，不能由精简模式推导。Windows/Intel 真机与各来源其他模型分别验收。官方余额观测与逐请求账单归因分别报告。

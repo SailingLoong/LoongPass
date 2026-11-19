@@ -169,7 +169,7 @@ class PluginModelService extends ChangeNotifier {
   });
 
   Future<void> setModelPublished(String id, bool value) => _edit((data) {
-    catalog.singleWhere((model) => model.id == id);
+    catalog.singleWhere((model) => model.id == id && model.official);
     final routing = _routingForEdit(data);
     (routing.putIfAbsent('published', () => {}) as Map)[id] = value;
   });
