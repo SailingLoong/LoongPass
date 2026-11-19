@@ -63,6 +63,9 @@ jobs:
       - name: Build universal macOS app
         if: env.PACKAGE_APP == 'true'
         run: python3 tool/build_macos_release.py
+      - name: Open the release window on the clean macOS runner
+        if: env.PACKAGE_APP == 'true'
+        run: swift tool/check_macos_window.swift build/macos/Build/Products/Release/LoongPass.app
       - name: Check native macOS selector accessibility
         if: env.PACKAGE_APP == 'true'
         run: python3 tool/check_macos_select_semantics.py
@@ -73,7 +76,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/LoongPass.app dist/LoongPass-macOS-universal.zip
           shasum -a 256 dist/LoongPass-macOS-universal.zip > dist/SHA256SUMS
           git rev-parse HEAD > dist/SOURCE_COMMIT
-          cp LICENSE *-LICENSE *-LICENSE.txt THIRD_PARTY_NOTICES.md SOURCE-ORIGIN.md dist/
+          cp LICENSE ./*-LICENSE ./*-LICENSE.txt THIRD_PARTY_NOTICES.md SOURCE-ORIGIN.md dist/
           ditto -c -k --keepParent THIRD_PARTY_RUST dist/THIRD_PARTY_RUST.zip
       - name: Sign and verify update feed
         if: startsWith(github.ref, 'refs/tags/')
@@ -169,6 +172,7 @@ jobs:
       - name: Build Windows application and native checks
         run: |
           flutter build windows --release
+          if ($LASTEXITCODE -ne 0) { throw 'Windows release build failed' }
           cmake --build build/windows/x64 --config Release --target loongpass_storage_checks loongpass_authorization_checks loongpass_update_checks loongpass_codex_checks
           if ($LASTEXITCODE -ne 0) { throw 'Windows native check compilation failed' }
           & build/windows/x64/runner/Release/loongpass_codex_checks.exe test/fixtures/codex_account_contract.json
@@ -179,6 +183,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows native authorization checks failed' }
           & $env:LOONGPASS_BUN test/winsparkle_integration_test.mjs build/windows/x64/runner/Release/loongpass_update_checks.exe
           if ($LASTEXITCODE -ne 0) { throw 'Windows native update integration checks failed' }
+      - name: Open the release window on the clean Windows runner
+        run: |
+          $exe = Get-Item 'build/windows/x64/runner/Release/LoongPass.exe'
+          $app = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          try {
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            do {
+              $app.Refresh()
+              if ($app.HasExited) { throw "LoongPass exited before its window appeared" }
+              if ($app.MainWindowHandle -ne [IntPtr]::Zero -and $app.MainWindowTitle -eq 'LoongPass') { break }
+              Start-Sleep -Milliseconds 250
+            } while ([DateTime]::UtcNow -lt $deadline)
+            if ($app.MainWindowHandle -eq [IntPtr]::Zero -or $app.MainWindowTitle -ne 'LoongPass') { throw 'LoongPass did not present its main window' }
+            Write-Output "Windows release window: $($app.MainWindowTitle)"
+          } finally {
+            if (!$app.HasExited) {
+              $app.CloseMainWindow() | Out-Null
+              if (!$app.WaitForExit(5000)) { $app.Kill($true) }
+            }
+          }
       - name: Package source-matched Windows app
         run: tool/package_windows.ps1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

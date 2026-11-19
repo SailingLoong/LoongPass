@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_accounts.dart';
+import '../lib/credit_summary_view.dart';
+import '../lib/compact_accounts_table.dart';
 import '../lib/plugin_accounts_panel.dart';
 import '../lib/plugin_rewards.dart';
 import '../lib/plugin_runtime.dart';
@@ -154,7 +156,8 @@ class _Rewards implements PluginRewards {
 
   @override
   bool supports(PluginAccount account) =>
-      account.provider == 'zcode' || accounts.providers[account.provider]?['checkin'] == true;
+      account.provider == 'zcode' ||
+      accounts.providers[account.provider]?['checkin'] == true;
 
   @override
   Future<void> refresh(String key) async {
@@ -219,6 +222,56 @@ void main() {
       'label': 'Synthetic account',
       'registrationId': 'one',
       if (reward != null) 'reward': reward,
+    },
+  );
+
+  testDesktopWidgets(
+    'account info identifies the official account and exact balance at 200 percent',
+    (tester) async {
+      tester.view.physicalSize = const Size(480, 800);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final at = DateTime.utc(2026, 11, 12, 1, 20);
+      await mountAccount(
+        tester,
+        observed(usage: {'balance': 860.25, 'unit': 'credits'}, queriedAt: at),
+      );
+      final open = find.byKey(const Key('account-fixture#one'));
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      final sheet = find.byKey(const Key('account-detail-sheet'));
+      expect(MediaQuery.textScalerOf(tester.element(sheet)).scale(14), 28);
+      double previous = 0;
+      for (final (label, value) in [
+        ('平台', 'Synthetic · cn'),
+        ('账号 ID', 'synthetic'),
+        ('授权状态', '已保存授权'),
+        ('可用余额', '860.25 credits'),
+        ('额度查询时间', creditTime(at)),
+      ]) {
+        final name = find.descendant(of: sheet, matching: find.text(label));
+        final data = find.descendant(of: sheet, matching: find.text(value));
+        expect(name, findsOneWidget);
+        expect(data, findsOneWidget);
+        final rect = tester.getRect(name);
+        expect(rect.top, greaterThan(previous));
+        expect(tester.getRect(data).left, greaterThanOrEqualTo(rect.right));
+        await tester.ensureVisible(data);
+        await tester.pumpAndSettle();
+        expect(data.hitTestable(), findsOneWidget);
+        previous = tester.getRect(name).top;
+      }
+      for (final label in ['官方套餐与额度', '更多操作']) {
+        final item = find.descendant(of: sheet, matching: find.text(label));
+        await tester.ensureVisible(item);
+        await tester.pumpAndSettle();
+        expect(item.hitTestable(), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -369,26 +422,38 @@ void main() {
         ),
       );
       expect(findTooltip('已确认领取，具体时间未知'), findsOneWidget);
+      final row = tester
+          .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
+          .entries
+          .single;
+      expect(row.attention, AccountAttention.awaitingVerification);
+      expect(row.resolution, isNull);
       expect(find.text('额度查询未完成'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('已确认领取。'), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('核验于'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('时间未知'),
         ),
         findsNothing,
       );
       expect(find.textContaining('请核对授权、权益或网络'), findsOneWidget);
-      expect(find.text('尚无成功的额度查询。'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('detail-fact-额度查询时间')),
+          matching: find.text('未知'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -411,7 +476,13 @@ void main() {
       expect(find.text('12224 credits'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('上次成功查询于'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('detail-fact-额度查询时间')),
+          matching: find.text(creditTime(DateTime.utc(2026, 11, 12, 1, 20))),
+        ),
+        findsOneWidget,
+      );
     },
   );
 
@@ -428,8 +499,16 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      final row = tester
+          .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
+          .entries
+          .single;
+      expect(row.attention, AccountAttention.actionRequired);
+      expect(row.resolution!.label, '重新授权');
       expect(find.textContaining('不会重复发送领取请求'), findsOneWidget);
       expect(find.textContaining('额度授权已失效'), findsOneWidget);
+      await tester.ensureVisible(find.text('更多操作'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('更多操作'));
       await tester.pumpAndSettle();
       expect(find.text('核验领取结果'), findsOneWidget);
@@ -821,7 +900,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('操作未完成'),
         ),
         findsOneWidget,
@@ -1161,7 +1240,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('请打开 WorkBuddy 核对当前身份'),
         ),
         findsNothing,

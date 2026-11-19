@@ -111,8 +111,8 @@ void main() {
       final add = actionBounds('添加账号');
       final recover = actionBounds('恢复已保存账号');
       final help = tester.getRect(findTooltip('使用说明'));
-      expect(metadata.left, greaterThan(title.right));
-      expect(metadata.center.dy, closeTo(title.center.dy, 1));
+      expect(metadata.left, closeTo(title.left, 1));
+      expect(metadata.top, greaterThanOrEqualTo(title.bottom));
       expect(add.left, greaterThan(metadata.right));
       expect(recover.left, greaterThanOrEqualTo(add.right));
       expect(help.left, greaterThanOrEqualTo(recover.right));
@@ -181,14 +181,12 @@ void main() {
         home: Scaffold(body: WorkspaceSettingsPage(preferences: preferences)),
       ),
     );
-    final label = tester
-        .state<EditableTextState>(
-          find.descendant(
-            of: find.byKey(const Key('appearance-theme')),
-            matching: find.byType(EditableText),
-          ),
-        )
-        .renderEditable;
+    final label = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.byKey(const Key('appearance-theme')),
+        matching: find.text('跟随系统'),
+      ),
+    );
     expect(
       label.getBoxesForSelection(
         const TextSelection(baseOffset: 0, extentOffset: 4),
@@ -351,7 +349,21 @@ void main() {
       await tester.ensureVisible(account);
       await tester.tap(account);
       await tester.pumpAndSettle();
-      expect(find.text('精确余额：3899.96 credits').hitTestable(), findsOneWidget);
+      final sheet = find.byKey(const Key('account-detail-sheet'));
+      final summaryAmount = find.descendant(
+        of: sheet,
+        matching: find.text('3899.96 credits'),
+      );
+      await tester.ensureVisible(summaryAmount);
+      await tester.pumpAndSettle();
+      expect(summaryAmount.hitTestable(), findsOneWidget);
+      final platformDetail = find.descendant(
+        of: sheet,
+        matching: find.text('精确余额：3899.96 credits'),
+      );
+      await tester.ensureVisible(platformDetail);
+      await tester.pumpAndSettle();
+      expect(platformDetail.hitTestable(), findsOneWidget);
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -180,48 +179,54 @@ void main() {
         await tester.pumpAndSettle();
         final appearance = find.byKey(const Key('appearance-theme'));
         final availableWidth = tester
-            .getSize(
-              find.ancestor(of: appearance, matching: find.byType(Wrap)).first,
-            )
+            .getSize(find.byType(WorkspaceSettingsPage))
             .width;
-        expect(
-          tester.getSize(appearance).width,
-          closeTo(math.min(180 * configuration.scale, availableWidth), 1),
-        );
-        expect(tester.takeException(), isNull);
-        Future<void> scrollTo(Finder target, double delta) async {
-          await tester.scrollUntilVisible(
-            target,
-            delta,
-            scrollable: find
-                .descendant(
-                  of: find.byType(WorkspaceSettingsPage),
-                  matching: find.byType(Scrollable),
-                )
-                .first,
+        expect(tester.getSize(appearance).width, lessThan(availableWidth));
+        for (final choice in ['跟随系统', '浅色', '深色']) {
+          expect(
+            find.descendant(of: appearance, matching: find.text(choice)),
+            findsOneWidget,
           );
+        }
+        expect(tester.takeException(), isNull);
+        Future<void> reveal(Finder target) async {
+          await tester.ensureVisible(target);
           await tester.pumpAndSettle();
         }
 
-        await scrollTo(find.text('检查更新'), 240);
+        Future<void> topic(SettingsSection section) async {
+          final label = find.byKey(ValueKey(section));
+          await reveal(label);
+          await tester.tap(label);
+          await tester.pumpAndSettle();
+        }
+
+        await topic(SettingsSection.updates);
+        await reveal(find.text('检查更新'));
         expect(find.text('检查更新').hitTestable(), findsOneWidget);
-        await scrollTo(find.text('接收 Beta 版更新'), 240);
+        await reveal(find.text('接收 Beta 版更新'));
         expect(find.text('接收 Beta 版更新').hitTestable(), findsOneWidget);
-        await scrollTo(find.text('WorkBuddy 邀请设置'), -240);
-        await tester.tap(find.text('WorkBuddy 邀请设置'));
+        await topic(SettingsSection.platforms);
+        final edit = find.byKey(const Key('invitation-workbuddy'));
+        await reveal(edit);
+        await tester.tap(edit);
         await tester.pumpAndSettle();
-        await scrollTo(find.byKey(const Key('workbuddy-invitation-code')), 240);
+        await reveal(find.byKey(const Key('workbuddy-invitation-code')));
         await tester.enterText(
           find.byKey(const Key('workbuddy-invitation-code')),
           'synthetic-invitation',
         );
         await tester.pumpAndSettle();
-        await scrollTo(find.byKey(const Key('workbuddy-invitation-save')), 240);
+        await reveal(find.byKey(const Key('workbuddy-invitation-save')));
         expect(
           find.byKey(const Key('workbuddy-invitation-save')).hitTestable(),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);
+        await reveal(find.text('关闭').last);
+        await tester.tap(find.text('关闭').last);
+        await tester.pumpAndSettle();
+        await topic(SettingsSection.updates);
         for (final phase in ['ready', 'downloading', 'error']) {
           native = {
             ...native,
@@ -236,12 +241,18 @@ void main() {
             'error': phase == 'error' ? '网络暂不可用，请稍后重新检查更新。' : null,
           };
           await updates.load();
-          await scrollTo(find.text('应用更新'), 240);
+          await tester.pump();
           final status = switch (phase) {
             'ready' => '更新已准备好，可重启并更新',
             'downloading' => '正在后台下载更新',
             _ => '更新未完成，可稍后重试',
           };
+          await reveal(
+            find.descendant(
+              of: find.byType(AppUpdateCard),
+              matching: find.text(status),
+            ),
+          );
           expect(
             find
                 .descendant(
@@ -258,7 +269,13 @@ void main() {
             native['downloadedBytes'] = 1048576;
             await updates.load();
             await tester.pump(const Duration(seconds: 1));
-            expect(find.text('1.0 MiB/s'), findsOneWidget);
+            expect(
+              find.descendant(
+                of: find.byType(AppUpdateCard),
+                matching: find.text('1.0 MiB/s'),
+              ),
+              findsOneWidget,
+            );
           }
           await _capturePreview(
             tester,

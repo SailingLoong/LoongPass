@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/main.dart';
 import '../lib/app_sidebar.dart';
+import '../lib/workspace_tools.dart';
 
 Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
   tester.view.physicalSize = Size(width, 900);
@@ -16,14 +17,21 @@ Future<void> desktop(WidgetTester tester, {double width = 1280}) async {
 }
 
 Future<void> openInvitation(WidgetTester tester, String platform) async {
+  if (find.text('关闭').hitTestable().evaluate().isNotEmpty) {
+    await tester.tap(find.text('关闭').hitTestable());
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.byKey(const Key('nav-settings')));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(
+    find.byKey(const ValueKey(SettingsSection.platforms)),
+  );
+  await tester.tap(find.byKey(const ValueKey(SettingsSection.platforms)));
   await tester.pumpAndSettle();
   final section = find.byKey(Key('invitation-$platform'));
   await tester.ensureVisible(section);
   await tester.pumpAndSettle();
-  await tester.tap(
-    find.descendant(of: section, matching: find.textContaining('邀请设置')).first,
-  );
+  await tester.tap(section);
   await tester.pumpAndSettle();
   await tester.ensureVisible(find.byKey(Key('$platform-invitation-code')));
   await tester.pumpAndSettle();
@@ -54,12 +62,14 @@ void main() {
         find.byKey(const Key('workbuddy-invitation-code')),
         'unsaved-workbuddy',
       );
+      await tester.tap(find.text('关闭').hitTestable());
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('workbuddy-invitation-code')), findsNothing);
-      await tester.tap(find.byKey(const Key('nav-settings')));
-      await tester.pumpAndSettle();
+      await openInvitation(tester, 'workbuddy');
       expect(find.text('unsaved-workbuddy'), findsOneWidget);
+      await openInvitation(tester, 'qoderCn');
       expect(find.text('custom-qoder-code'), findsOneWidget);
     },
   );
@@ -95,6 +105,10 @@ void main() {
           workspace.selectApp(app);
           await tester.pumpAndSettle();
           expect(find.byKey(ValueKey('page-${app.name}')), findsOneWidget);
+          if (width <= 864) {
+            await tester.tap(find.byKey(const Key('toggle-sidebar')));
+            await tester.pumpAndSettle();
+          }
           expect(find.byKey(const Key('account-apps')), findsOneWidget);
           expect(find.byKey(const Key('platform-filter')), findsNothing);
           expect(

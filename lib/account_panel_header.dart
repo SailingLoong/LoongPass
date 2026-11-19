@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'account_workspace_registry.dart';
+import 'workspace_page.dart';
 
 class AccountPanelToolbar extends StatelessWidget {
   const AccountPanelToolbar({
@@ -17,55 +18,22 @@ class AccountPanelToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = AccountPresentationScope.maybeOf(context)?.app;
-    final colors = context.theme.colors;
-    final identity = Wrap(
-      spacing: 10,
-      runSpacing: 2,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(
-          title,
-          style: context.theme.typography.display.xl.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        Text([if (app != null) app.region, '$accountCount 个账号'].join(' · ')),
-      ],
-    );
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: DefaultTextStyle.merge(
-        style: context.theme.typography.body.xs.copyWith(
-          color: colors.mutedForeground,
-        ),
-        child: LayoutBuilder(
-          builder: (context, box) {
-            final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-            final wide = box.maxWidth >= 520 * scale;
-            final controls = Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              alignment: wide ? WrapAlignment.end : WrapAlignment.start,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                ...actions,
-                AccountPanelHelp(text: helpText),
-              ],
-            );
-            return wide
-                ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(child: identity),
-                      const SizedBox(width: 16),
-                      Flexible(flex: 2, child: controls),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [identity, const SizedBox(height: 12), controls],
-                  );
-          },
+      padding: const EdgeInsets.only(bottom: 22),
+      child: WorkspaceHeading(
+        title: title,
+        subtitle: [
+          if (app != null) app.region,
+          '$accountCount 个账号',
+        ].join(' · '),
+        action: Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ...actions,
+            AccountPanelHelp(text: helpText),
+          ],
         ),
       ),
     );

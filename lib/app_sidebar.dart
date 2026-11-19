@@ -1,6 +1,11 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'package:material_ui/material_ui.dart'
+    show Drawer, Scaffold, ScaffoldState;
+
+import 'desktop_theme.dart';
+import 'workspace_toolbar.dart';
 import 'app_navigation_item.dart';
 import 'accounts_navigation.dart';
 import 'models_navigation.dart';
@@ -60,9 +65,13 @@ class AppWorkspaceState extends State<AppWorkspace> {
       : WorkspaceSection.accounts;
   late final UiPreferences _preferences = widget.preferences ?? UiPreferences();
 
+  final _shell = GlobalKey<ScaffoldState>();
+  bool? _compactOverride;
+
   void selectApp(ManagedApp app) {
     if (widget.enabledApps != null && !widget.enabledApps!.contains(app))
       return;
+    _shell.currentState?.closeDrawer();
     _preferences.setAppVisible(app, true);
     _preferences.setAppsExpanded(true);
     setState(() {
@@ -77,6 +86,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
       _preferences.setAppsExpanded(true);
     if (section == WorkspaceSection.models)
       _preferences.setModelsExpanded(true);
+    _shell.currentState?.closeDrawer();
     setState(() {
       if (section == WorkspaceSection.accounts) _all = true;
       _section = section;
@@ -132,7 +142,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
     };
     // Primary entries keep their height. Only the open child list can scroll
     // within the space left over, and short lists keep their natural height.
-    return expanded ? Flexible(child: entry) : entry;
+    return expanded && section == _section ? Flexible(child: entry) : entry;
   }
 
   void _hideApp(ManagedApp app) {
@@ -155,7 +165,10 @@ class AppWorkspaceState extends State<AppWorkspace> {
         builder: (context, constraints) {
           final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
               .clamp(1.0, double.infinity);
-          final compact = constraints.maxWidth < 900 * textScale;
+          final narrow = constraints.maxWidth < 756;
+          final compact =
+              !narrow &&
+              (_compactOverride ?? (constraints.maxWidth < 900 * textScale));
           final colors = context.theme.colors;
           final sections = {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
@@ -171,114 +184,163 @@ class AppWorkspaceState extends State<AppWorkspace> {
           final brand = Image.asset(
             'assets/branding/loongpass.png',
             key: const Key('app-brand'),
-            width: 24,
-            height: 24,
+            width: 30,
+            height: 30,
             excludeFromSemantics: true,
             filterQuality: FilterQuality.high,
           );
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          final sidebarWidth = narrow
+              ? (264 * textScale)
+                    .clamp(0, constraints.maxWidth * .86)
+                    .toDouble()
+              : compact
+              ? 56.0
+              : (constraints.maxWidth <= 1088 ? 196 : 201.6) * textScale;
+          final sidebar = DecoratedBox(
+            decoration: BoxDecoration(
+              color: context.desktopPalette.sidebar,
+              border: Border(right: BorderSide(color: colors.border)),
+            ),
+            child: SizedBox(
+              key: const Key('app-sidebar'),
+              width: sidebarWidth,
+              child: Column(
+                children: [
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: compact ? 8 : 18,
+                      vertical: constraints.maxHeight < 500 ? 8 : 30,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: compact
+                          ? MainAxisAlignment.center
+                          : MainAxisAlignment.start,
+                      children: [
+                        brand,
+                        if (!compact) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'LoongPass',
+                              style: context.theme.typography.body.sm.copyWith(
+                                fontSize: 21,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -1,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (narrow)
+                          FButton.icon(
+                            variant: FButtonVariant.ghost,
+                            semanticsLabel: '收起主导航',
+                            onPress: () => _shell.currentState?.closeDrawer(),
+                            child: const Icon(FLucideIcons.x, size: 16),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (!compact && constraints.maxHeight >= 500)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 12, 10),
+                        child: Text(
+                          '工作区',
+                          style: context.theme.typography.body.xs.copyWith(
+                            color: colors.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final section in order.where(
+                          (s) => s != WorkspaceSection.settings,
+                        ))
+                          _navigation(section, compact),
+                      ],
+                    ),
+                  ),
+                  _navigation(WorkspaceSection.settings, compact),
+                  if (widget.footerBuilder != null)
+                    widget.footerBuilder!(context, compact),
+                  if (_preferences.error != null)
+                    FButton(
+                      variant: FButtonVariant.ghost,
+                      size: FButtonSizeVariant.sm,
+                      mainAxisSize: MainAxisSize.min,
+                      onPress: () => selectSection(WorkspaceSection.settings),
+                      child: compact
+                          ? const Icon(FLucideIcons.triangleAlert, size: 16)
+                          : const Text('布局尚未保存'),
+                    ),
+                  const SizedBox(height: 6),
+                ],
+              ),
+            ),
+          );
+          final pages = IndexedStack(
+            index: platformPage
+                ? _selected.index
+                : ManagedApp.values.length + order.indexOf(_section),
+            sizing: StackFit.expand,
             children: [
-              ColoredBox(
-                color: colors.muted,
-                child: SizedBox(
-                  key: const Key('app-sidebar'),
-                  width: compact ? 56 : 208 * textScale,
+              for (final app in ManagedApp.values)
+                KeyedSubtree(
+                  key: ValueKey('page-${app.name}'),
+                  child:
+                      widget.pages[app] ??
+                      Center(child: Text('${app.label} 尚未接入')),
+                ),
+              for (final section in order)
+                KeyedSubtree(
+                  key: ValueKey('section-${section.name}'),
+                  child: sections[section]!,
+                ),
+            ],
+          );
+          return Scaffold(
+            key: _shell,
+            backgroundColor: colors.background,
+            drawer: narrow ? Drawer(width: sidebarWidth, child: sidebar) : null,
+            body: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!narrow) sidebar,
+                Expanded(
+                  key: const ValueKey('workspace-body'),
                   child: Column(
                     children: [
-                      Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: compact
-                              ? MainAxisAlignment.center
-                              : MainAxisAlignment.start,
-                          children: [
-                            brand,
-                            if (!compact) ...[
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  'LoongPass',
-                                  style: context.theme.typography.body.sm
-                                      .copyWith(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                      WorkspaceToolbar(
+                        section: _section.label,
+                        leaf: platformPage
+                            ? _selected.label
+                            : _section == WorkspaceSection.models
+                            ? (widget.selectedModelId == 'auto'
+                                  ? 'LoongPass Auto'
+                                  : widget.selectedModelId)
+                            : null,
+                        narrow: narrow,
+                        action: narrow
+                            ? widget.footerBuilder?.call(context, true)
+                            : null,
+                        onToggle: () {
+                          if (narrow) {
+                            _shell.currentState?.openDrawer();
+                          } else {
+                            setState(() => _compactOverride = !compact);
+                          }
+                        },
                       ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            for (final section in order)
-                              _navigation(section, compact),
-                          ],
-                        ),
-                      ),
-                      if (widget.footerBuilder != null)
-                        widget.footerBuilder!(context, compact),
-                      if (_preferences.error != null)
-                        FButton(
-                          variant: FButtonVariant.ghost,
-                          size: FButtonSizeVariant.sm,
-                          mainAxisSize: MainAxisSize.min,
-                          onPress: () =>
-                              selectSection(WorkspaceSection.settings),
-                          child: compact
-                              ? const Icon(FLucideIcons.triangleAlert, size: 16)
-                              : const Text('布局尚未保存'),
-                        ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        child: FTooltip(
-                          tipBuilder: (context, controller) =>
-                              const Text('账号保存在本机'),
-                          child: compact
-                              ? const Icon(FLucideIcons.monitor, size: 16)
-                              : Text(
-                                  '账号保存在本机',
-                                  style: context.theme.typography.body.xs
-                                      .copyWith(color: colors.mutedForeground),
-                                ),
-                        ),
-                      ),
+                      Expanded(child: pages),
                     ],
                   ),
                 ),
-              ),
-              const FDivider(
-                axis: Axis.vertical,
-                style: FDividerStyleDelta.delta(
-                  padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
-                ),
-              ),
-              Expanded(
-                child: IndexedStack(
-                  index: platformPage
-                      ? _selected.index
-                      : ManagedApp.values.length + order.indexOf(_section),
-                  sizing: StackFit.expand,
-                  children: [
-                    for (final app in ManagedApp.values)
-                      KeyedSubtree(
-                        key: ValueKey('page-${app.name}'),
-                        child:
-                            widget.pages[app] ??
-                            Center(child: Text('${app.label} 尚未接入')),
-                      ),
-                    for (final section in order)
-                      KeyedSubtree(
-                        key: ValueKey('section-${section.name}'),
-                        child: sections[section]!,
-                      ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),

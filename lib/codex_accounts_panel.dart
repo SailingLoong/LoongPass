@@ -10,10 +10,14 @@ class CodexAccountsPanel extends StatefulWidget {
   const CodexAccountsPanel({super.key, required this.owner});
   final CodexAccounts owner;
   @override
-  State<CodexAccountsPanel> createState() => _CodexAccountsPanelState();
+  CodexAccountsPanelState createState() => CodexAccountsPanelState();
 }
 
-class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
+class CodexAccountsPanelState extends State<CodexAccountsPanel> {
+  Future<void> addAccount() async {
+    if (widget.owner.canMutate) await widget.owner.startLogin();
+  }
+
   bool _confirming = false;
 
   Future<void> _confirm(String id, {bool remove = false}) async {
@@ -29,13 +33,20 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
         context: context,
         builder: (context, style, animation) => FDialog(
           animation: animation,
-          constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 512),
           builder: (context, style) => Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text(
+                  remove ? '账号管理' : '客户端账号',
+                  style: context.theme.typography.body.xs.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 DefaultTextStyle(
                   style: style.titleTextStyle,
                   child: Text(remove ? '移除保存的 Codex 账号？' : '切换 Codex 官方账号？'),
@@ -131,8 +142,9 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
                 key: const Key('codex-login'),
+                prefix: const Icon(FLucideIcons.plus, size: 16),
                 child: const Text('添加官方账号'),
-                onPress: owner.canMutate ? owner.startLogin : null,
+                onPress: owner.canMutate ? addAccount : null,
               ),
               FButton(
                 variant: FButtonVariant.outline,
@@ -211,6 +223,8 @@ class _CodexAccountsPanelState extends State<CodexAccountsPanel> {
                   label: account.email ?? '邮箱未知',
                   identity: account.workspaceId ?? '工作区未知',
                   balance: '未提供',
+                  detailPlatform: 'Codex · 官方账号',
+                  authorizationLabel: '已保存的官方登录',
                   hasCredits: false,
                   hasRewards: false,
                   accountSummary:
@@ -288,7 +302,7 @@ class _CodexAccountDetails extends StatelessWidget {
           Text('套餐：${account.plan ?? '未知'}'),
           const SizedBox(height: 8),
           Text(
-            state.currentId == id ? '本机登录记录，请在 Codex 中核对实际账号。' : '已保存的官方登录',
+            state.currentId == id ? '本机登录记录，请在 Codex 中核对实际账号。' : '客户端实际身份未核实。',
             style: context.theme.typography.body.xs.copyWith(
               color: context.theme.colors.mutedForeground,
             ),

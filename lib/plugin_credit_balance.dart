@@ -70,7 +70,11 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
   return windows.length == 1 ? pluginWindowBalance(windows.single) : null;
 }
 
-PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
+List<PluginCreditExpiry> pluginCreditExpiryBatches(
+  Map? usage,
+  Map reward,
+  DateTime now,
+) {
   PluginCreditExpiry? expiry(DateTime? at, Object? amount, Object? unit) {
     final value = _number(amount);
     if (at == null || !at.isAfter(now) || (value != null && value <= 0))
@@ -130,6 +134,16 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
     if (value != null) candidates.add(value);
   }
   candidates.sort((a, b) => a.at.compareTo(b.at));
+  return candidates;
+}
+
+PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) =>
+    nextPluginCreditExpiry(pluginCreditExpiryBatches(usage, reward, now));
+
+/// The input is the chronological projection from pluginCreditExpiryBatches.
+PluginCreditExpiry? nextPluginCreditExpiry(
+  List<PluginCreditExpiry> candidates,
+) {
   if (candidates.isEmpty) return null;
   final first = candidates.first;
   // Multiple independent model entitlements have no comparable account total.

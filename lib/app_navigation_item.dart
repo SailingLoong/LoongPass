@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 
 import 'managed_app.dart';
+import 'desktop_theme.dart';
 
 class AppNavigationItem extends StatefulWidget {
   const AppNavigationItem({
@@ -34,7 +35,7 @@ class AppNavigationItemState extends State<AppNavigationItem> {
     final app = widget.app;
     final actionsVisible = _hovered || _focused;
     Widget icon = ManagedAppIcon(app: app);
-    if (widget.onHide != null)
+    if (widget.onHide != null && !widget.compact)
       icon = ReorderableDragStartListener(
         key: ValueKey('drag-${app.name}'),
         index: widget.index,
@@ -218,7 +219,26 @@ class SidebarNavigationButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final variant = selected ? FButtonVariant.secondary : FButtonVariant.ghost;
-    final iconSlot = SizedBox.square(dimension: 20, child: Center(child: icon));
+    final palette = context.desktopPalette;
+    final selectedDecoration = selected
+        ? FVariantsDelta<
+            FTappableVariantConstraint,
+            FTappableVariant,
+            Decoration,
+            DecorationDelta
+          >.delta([.all(.boxDelta(color: palette.selected))])
+        : null;
+    final iconSlot = SizedBox.square(
+      dimension: 20,
+      child: Center(
+        child: selected
+            ? IconTheme.merge(
+                data: IconThemeData(color: palette.selectedForeground),
+                child: icon,
+              )
+            : icon,
+      ),
+    );
     final button = Semantics(
       tooltip: tooltip ?? label,
       child: compact
@@ -226,6 +246,7 @@ class SidebarNavigationButton extends StatelessWidget {
               variant: variant,
               size: nested ? FButtonSizeVariant.sm : FButtonSizeVariant.md,
               style: FButtonStyleDelta.delta(
+                decoration: selectedDecoration,
                 iconContentStyle: FButtonIconContentStyleDelta.delta(
                   padding: EdgeInsetsGeometryDelta.value(
                     EdgeInsets.all(nested ? 6 : 8),
@@ -241,11 +262,12 @@ class SidebarNavigationButton extends StatelessWidget {
               variant: variant,
               size: nested ? FButtonSizeVariant.sm : FButtonSizeVariant.md,
               style: FButtonStyleDelta.delta(
+                decoration: selectedDecoration,
                 contentStyle: FButtonContentStyleDelta.delta(
                   padding: EdgeInsetsGeometryDelta.value(
                     EdgeInsets.symmetric(
                       horizontal: 8,
-                      vertical: nested ? 6 : 8,
+                      vertical: nested ? 6 : 10,
                     ),
                   ),
                   spacing: 8,
@@ -266,10 +288,15 @@ class SidebarNavigationButton extends StatelessWidget {
                               ? FontWeight.w500
                               : FontWeight.w400,
                           color: selected
-                              ? context.theme.colors.foreground
+                              ? palette.selectedForeground
                               : context.theme.colors.mutedForeground,
                         )
-                      : null,
+                      : (selected
+                            ? TextStyle(
+                                color: palette.selectedForeground,
+                                fontWeight: FontWeight.w600,
+                              )
+                            : null),
                   maxLines: maxLines,
                   overflow: TextOverflow.ellipsis,
                 ),

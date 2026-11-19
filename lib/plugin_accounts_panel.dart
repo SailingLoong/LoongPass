@@ -1,12 +1,12 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
-import 'package:material_ui/material_ui.dart' show SelectableText;
 
 import 'claim_receipt.dart';
 import 'compact_accounts_table.dart';
 import 'credit_summary_view.dart';
 import 'native_zcode_activity.dart';
 import 'plugin_accounts.dart';
+import 'plugin_credit_balance.dart';
 import 'plugin_rewards.dart';
 import 'plugin_sign_in_dialog.dart';
 import 'plugin_zcode_binding.dart';
@@ -30,10 +30,12 @@ class PluginAccountsPanel extends StatefulWidget {
   final Future<String> Function(String)? activate;
   final Uri? Function()? registrationUrl;
   @override
-  State<PluginAccountsPanel> createState() => _PluginAccountsPanelState();
+  PluginAccountsPanelState createState() => PluginAccountsPanelState();
 }
 
-class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
+class PluginAccountsPanelState extends State<PluginAccountsPanel> {
+  Future<void> addAccount() => _authorize();
+
   bool _busy = false;
   bool _confirming = false;
   String? _message;
@@ -159,13 +161,20 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         context: context,
         builder: (context, style, animation) => FDialog(
           animation: animation,
-          constraints: const BoxConstraints(minWidth: 280, maxWidth: 640),
+          constraints: const BoxConstraints(minWidth: 280, maxWidth: 512),
           builder: (context, style) => Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text(
+                  '客户端账号',
+                  style: context.theme.typography.body.xs.copyWith(
+                    color: context.theme.colors.mutedForeground,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 DefaultTextStyle(
                   style: style.titleTextStyle,
                   child: Text('切换 ${widget.title} 账号？'),
@@ -309,12 +318,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
       widget.rewards.supports(a) || _reward(a).isNotEmpty;
 
   Widget _actions(PluginAccount a) {
-    final needsAuthorization =
-        !a.active ||
-        a.error == 'authorization_required' ||
-        a.usage?['signIn'] == 'expired' ||
-        _reward(a)['status'] == 'authorization_required';
-    final primary = needsAuthorization
+    final primary = _needsAuthorization(a)
         ? 'authorize'
         : _pending(a)
         ? 'claim'
@@ -428,23 +432,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   Widget _expiryDetails(PluginAccount a) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text('官方额度窗口与活动批次分别列示，不合计重叠额度。'),
-      for (final window in _windows(a))
-        if (_date(window['runsOutAt']) case final at?)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              '${_text(window['name']) ?? '额度窗口'}：${_number(window['runsOut'])} ${_unit(window)} · ${creditTime(at)} 到期',
-            ),
-          ),
-      for (final bucket in _buckets(a))
-        if (bucket.expiresAt != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Text(
-              '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit} · ${creditTime(DateTime.fromMillisecondsSinceEpoch(bucket.expiresAt! * 1000))} 到期',
-            ),
-          ),
+      if (_windows(a).isNotEmpty && _buckets(a).isNotEmpty)
+        const Text('官方额度窗口与活动批次分别列示，不合计重叠额度。'),
       if (_millis(_reward(a)['checkedAt'] ?? _reward(a)['observedAt'])
           case final time?)
         Padding(
@@ -469,11 +458,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectableText(_identity(a)),
-        const SizedBox(height: 6),
         Text(_status(a), style: secondary),
         const SizedBox(height: 14),
-        _actions(a),
         const FDivider(),
         Text('官方套餐与额度', style: heading),
         const SizedBox(height: 8),
@@ -509,12 +495,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
         ],
         if (a.provider == 'zcode' && _usageFailure(a) != null)
           const Text('若已开通 Coding Plan，请重新授权后核对套餐权益。'),
-        Text(
-          a.queriedAt == null
-              ? '尚无成功的额度查询。'
-              : '${_usageFailure(a) == null ? '查询于' : '上次成功查询于'} ${creditTime(a.queriedAt!)}',
-          style: secondary,
-        ),
+
         if (a.provider == 'zcode') ...[
           const FDivider(),
           Text('Start Plan 活动额度', style: heading),
@@ -565,8 +546,9 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 variant: FButtonVariant.primary,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
+                prefix: const Icon(FLucideIcons.plus, size: 16),
                 child: const Text('添加账号'),
-                onPress: _busy ? null : _authorize,
+                onPress: _busy ? null : addAccount,
               ),
               FButton(
                 variant: FButtonVariant.ghost,
@@ -585,48 +567,76 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             ),
           if (widget.accounts.error != null)
             const Text('最近一次查询未完成，当前保留已保存的结果。'),
-          CompactAccountsTable(
-            entries: [
-              for (final a in rows)
-                AccountTableEntry(
-                  id: a.key,
-                  label: a.label.isEmpty ? '身份未提供' : a.label,
-                  identity: _identity(a),
-                  balance: _balance(a),
-                  status: _status(a),
-                  statusLabel: _statusLabel(a),
-                  hasRewards: _supportsRewards(a),
-                  expiryDetails: _expiryDetails(a),
-                  details: _details(a),
-                  observedAt: a.queriedAt,
-                  receipt: _receipt(a),
-                  notice: _messageAccount == a.key ? _message : null,
-                  expiryAt: a.creditExpiry?.at,
-                  expiringAmount: _expiryAmount(a),
-                  needsAttention:
-                      !a.active ||
-                      a.error != null ||
-                      _usageFailure(a) != null ||
-                      _pending(a) ||
-                      {
-                        'captcha',
-                        'verificationRequired',
-                        'activationRequired',
-                        'authorization_required',
-                      }.contains(_reward(a)['status']),
-                  onActivate: _canActivate(a) ? () => _activate(a) : null,
-                  activationEnabled: !_busy && a.active,
-                ),
-            ],
-          ),
+          CompactAccountsTable(entries: rows.map(_entry).toList()),
         ],
       );
     },
   );
+  AccountTableEntry _entry(PluginAccount a) {
+    final batches = pluginCreditExpiryBatches(
+      a.usage,
+      _reward(a),
+      DateTime.now(),
+    );
+    final next = nextPluginCreditExpiry(batches);
+    return AccountTableEntry(
+      id: a.key,
+      label: a.label.isEmpty ? '身份未提供' : a.label,
+      identity: _identity(a),
+      detailPlatform: [
+        widget.title,
+        if (a.realm.isNotEmpty) a.realm,
+      ].join(' · '),
+      officialId: a.uid.isEmpty ? null : a.uid,
+      authorizationLabel: _needsAuthorization(a) ? '需要重新授权' : '已保存授权',
+      balance: _balance(a),
+      status: _status(a),
+      statusLabel: _statusLabel(a),
+      hasRewards: _supportsRewards(a),
+      actions: _actions(a),
+      expiryDetails: _expiryDetails(a),
+      details: _details(a),
+      observedAt: a.queriedAt,
+      receipt: _receipt(a),
+      notice: _messageAccount == a.key ? _message : null,
+      expiryAt: next?.at,
+      expiringAmount: _formatBalance(next?.amount),
+      attention: _attention(a),
+      resolution: !_busy && _needsAuthorization(a)
+          ? (label: '重新授权', run: () => _authorize(a))
+          : null,
+      expiryBatches: [
+        for (final batch in batches)
+          (at: batch.at, amount: _formatBalance(batch.amount)),
+      ],
+      onActivate: _canActivate(a) ? () => _activate(a) : null,
+      activationEnabled: !_busy && a.active,
+    );
+  }
 }
 
 Map _reward(PluginAccount a) =>
     a.facts['reward'] is Map ? a.facts['reward'] : const {};
+bool _needsAuthorization(PluginAccount a) =>
+    !a.active ||
+    a.error == 'authorization_required' ||
+    a.usage?['signIn'] == 'expired' ||
+    _rewardState(a) == 'authorization_required';
+
+AccountAttention _attention(PluginAccount a) {
+  if (_needsAuthorization(a) ||
+      {
+        'captcha',
+        'verificationRequired',
+        'activationRequired',
+      }.contains(_rewardState(a))) {
+    return AccountAttention.actionRequired;
+  }
+  return _pending(a) || _usageFailure(a) != null || a.error != null
+      ? AccountAttention.awaitingVerification
+      : AccountAttention.none;
+}
+
 bool _pending(PluginAccount a) =>
     {'pending', 'unknown'}.contains(_reward(a)['status']);
 String _identity(PluginAccount a) =>
@@ -646,9 +656,7 @@ DateTime? _date(Object? value) =>
     value is String ? DateTime.tryParse(value) : null;
 String? _text(Object? value) =>
     value is String && value.trim().isNotEmpty ? value.trim() : null;
-String? _usageBalance(Map? usage) => usage?['balance'] is num
-    ? '${_number(usage!['balance'])} ${_unit(usage)}'
-    : _text(usage?['balance']);
+String? _usageBalance(Map? usage) => _text(usage?['balance']);
 String? _usageFailure(PluginAccount a) {
   if (a.error == 'authorization_required' || a.usage?['signIn'] == 'expired')
     return '额度授权已失效，请重新授权后刷新。';
@@ -781,9 +789,5 @@ ClaimReceipt? _receipt(PluginAccount a) {
   return null;
 }
 
-String? _expiryAmount(PluginAccount a) {
-  final amount = a.creditExpiry?.amount;
-  return amount == null
-      ? null
-      : '${accountPoints(amount.amount)} ${amount.unit}';
-}
+String? _formatBalance(PluginCreditBalance? amount) =>
+    amount == null ? null : '${accountPoints(amount.amount)} ${amount.unit}';

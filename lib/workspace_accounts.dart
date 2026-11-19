@@ -1,343 +1,289 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'account_details.dart';
 import 'account_workspace_registry.dart';
 import 'compact_accounts_table.dart';
+import 'desktop_theme.dart';
 import 'managed_app.dart';
-import 'workspace_tools.dart';
-import 'account_details.dart';
 import 'plugin_rewards.dart';
 import 'reward_batch_action.dart';
+import 'ui_preferences.dart';
+import 'workspace_expiry_week.dart';
+import 'workspace_page.dart';
+
+part 'workspace_overview.dart';
+part 'workspace_expiry_calendar.dart';
+part 'workspace_activity.dart';
+part 'workspace_account_empty.dart';
 
 class WorkspaceAccountsPage extends StatefulWidget {
   const WorkspaceAccountsPage({
     super.key,
     required this.registry,
     this.serviceStatus,
+    this.onOpenApp,
   });
   final AccountWorkspaceRegistry registry;
   final Widget? serviceStatus;
+
+  /// Starts the chosen platform's add-account flow after explicit selection.
+  final ValueChanged<ManagedApp>? onOpenApp;
   @override
   State<WorkspaceAccountsPage> createState() => WorkspaceAccountsPageState();
 }
 
 class WorkspaceAccountsPageState extends State<WorkspaceAccountsPage> {
   final _table = GlobalKey<CompactAccountsTableState>();
-
   bool revealAccount(String id) =>
       _table.currentState?.revealAccount(id) ?? false;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.registry,
-    builder: (context, _) => WorkspacePage(
-      title: '账号与积分',
-      subtitle: '${widget.registry.entries.length} 个账号',
-      children: [
-        if (widget.serviceStatus != null) widget.serviceStatus!,
-        if (widget.serviceStatus == null || widget.registry.entries.isNotEmpty)
-          CompactAccountsTable(key: _table, entries: widget.registry.entries),
-      ],
-    ),
+    builder: (context, _) {
+      final entries = widget.registry.entries;
+      return WorkspacePage(
+        title: '账号与积分',
+        subtitle: '按账号查看余额、到期批次和最近领取。',
+        action: widget.onOpenApp == null
+            ? null
+            : _AddAccount(onSelected: widget.onOpenApp!),
+        children: [
+          if (widget.serviceStatus != null) widget.serviceStatus!,
+          if (entries.isNotEmpty)
+            CompactAccountsTable(key: _table, entries: entries)
+          else if (widget.serviceStatus == null)
+            const _AccountEmpty(
+              title: '暂无已保存账号',
+              description: '选择平台并添加账号，开始管理你的账号与额度。',
+              icon: Icon(FLucideIcons.wallet, size: 28),
+            ),
+        ],
+      );
+    },
   );
 }
 
-class WorkspaceOverviewPage extends StatefulWidget {
-  const WorkspaceOverviewPage({
-    super.key,
-    required this.registry,
-    required this.onOpenApp,
-    this.rewards,
-    this.onOpenRewards,
-    this.serviceStatus,
-  });
-  final AccountWorkspaceRegistry registry;
-  final Widget? serviceStatus;
-  final ValueChanged<ManagedApp> onOpenApp;
-  final PluginRewards? rewards;
-  final VoidCallback? onOpenRewards;
+class _AddAccount extends StatelessWidget {
+  const _AddAccount({required this.onSelected});
+  final ValueChanged<ManagedApp> onSelected;
   @override
-  State<WorkspaceOverviewPage> createState() => _WorkspaceOverviewPageState();
-}
-
-class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
-  bool _allAttention = false, _allExpiring = false;
-  AccountWorkspaceRegistry get registry => widget.registry;
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: registry,
-    builder: (context, _) {
-      final accounts = registry.accounts;
-      final now = DateTime.now(),
-          week = DateTime.now().add(const Duration(days: 7));
-      final expiring =
-          accounts
-              .where(
-                (a) =>
-                    a.entry.nextExpiry != null &&
-                    a.entry.nextExpiry!.isAfter(now) &&
-                    !a.entry.nextExpiry!.isAfter(week),
-              )
-              .toList()
-            ..sort(
-              (a, b) => a.entry.nextExpiry!.compareTo(b.entry.nextExpiry!),
-            );
-      final attention = accounts.where((a) => a.entry.needsAttention).toList();
-      final secondary = context.theme.typography.body.xs.copyWith(
-        color: context.theme.colors.mutedForeground,
-      );
-      return WorkspacePage(
-        title: '总览',
-        subtitle: '',
-        children: [
-          if (widget.serviceStatus != null) widget.serviceStatus!,
-          if (widget.rewards case final rewards?) ...[
-            RewardBatchAction(
-              rewards: rewards,
-              onStarted: widget.onOpenRewards,
-            ),
-            const SizedBox(height: 16),
-          ],
-          Wrap(
-            spacing: 32,
-            runSpacing: 12,
-            children: [
-              for (final metric in [
-                ('${accounts.length}', '已保存账号'),
-                ('${attention.length}', '待处理'),
-                ('${expiring.length}', '7 天内到期'),
-              ])
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      metric.$1,
-                      style: context.theme.typography.display.xl.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(metric.$2, style: secondary),
-                  ],
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (attention.isNotEmpty)
-            WorkspaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '需要处理',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  for (final account
-                      in _allAttention ? attention : attention.take(5))
-                    FItem(
-                      title: Text(account.entry.label),
-                      subtitle: Text(
-                        '${account.app.label} · ${account.entry.statusLabel ?? account.entry.status}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      suffix: const Icon(FLucideIcons.chevronRight, size: 16),
-                      onPress: () =>
-                          _openAccount(context, registry, account.entry.id),
-                    ),
-                  if (attention.length > 5)
-                    FButton(
-                      key: const Key('overview-all-attention'),
-                      variant: FButtonVariant.ghost,
-                      size: FButtonSizeVariant.sm,
-                      mainAxisSize: MainAxisSize.min,
-                      onPress: () =>
-                          setState(() => _allAttention = !_allAttention),
-                      child: Text(
-                        _allAttention ? '收起' : '查看全部 ${attention.length} 个账号',
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          WorkspaceCard(
+  Widget build(BuildContext context) => FButton(
+    size: FButtonSizeVariant.sm,
+    mainAxisSize: MainAxisSize.min,
+    prefix: const Icon(FLucideIcons.plus, size: 16),
+    onPress: () async {
+      final platforms =
+          UiPreferencesScope.maybeOf(context)?.appOrder ?? ManagedApp.values;
+      final selected = await showFDialog<ManagedApp>(
+        context: context,
+        builder: (context, style, animation) => FDialog(
+          animation: animation,
+          constraints: const BoxConstraints(maxWidth: 440),
+          builder: (context, style) => Padding(
+            padding: const EdgeInsets.all(20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  '最近到期',
-                  style: TextStyle(fontWeight: FontWeight.w600),
+                Text('选择平台', style: style.titleTextStyle),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final app in platforms)
+                          FItem(
+                            prefix: Image.asset(
+                              app.iconAsset,
+                              width: 24,
+                              height: 24,
+                            ),
+                            title: Text(app.label),
+                            subtitle: Text(app.region),
+                            onPress: () => Navigator.pop(context, app),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 8),
-                if (expiring.isEmpty) Text('暂无已知的 7 天内到期额度', style: secondary),
-                for (final account
-                    in _allExpiring ? expiring : expiring.take(5))
-                  FItem(
-                    title: Text(account.entry.label),
-                    subtitle: Text(
-                      '${account.app.label} · ${account.entry.upcomingExpiryText}',
-                    ),
-                    suffix: const Icon(FLucideIcons.chevronRight, size: 16),
-                    onPress: () => _openAccount(
-                      context,
-                      registry,
-                      account.entry.id,
-                      expiry: true,
-                    ),
-                  ),
-                if (expiring.length > 5)
-                  FButton(
-                    key: const Key('overview-all-expiring'),
-                    variant: FButtonVariant.ghost,
-                    size: FButtonSizeVariant.sm,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: () => setState(() => _allExpiring = !_allExpiring),
-                    child: Text(
-                      _allExpiring ? '收起' : '查看全部 ${expiring.length} 个账号',
-                    ),
-                  ),
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  onPress: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
               ],
             ),
           ),
-          if (accounts.isEmpty && widget.serviceStatus == null)
-            WorkspaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('从第一个账号开始', style: context.theme.typography.display.lg),
-                  const SizedBox(height: 8),
-                  const Text('选择平台，在官方窗口完成授权。账号与可用额度会显示在这里。'),
-                  const SizedBox(height: 12),
-                  FButton(
-                    size: FButtonSizeVariant.sm,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: () => widget.onOpenApp(ManagedApp.workbuddy),
-                    child: const Text('添加账号'),
-                  ),
-                ],
+        ),
+      );
+      if (selected != null && context.mounted) onSelected(selected);
+    },
+    child: const Text('添加账号'),
+  );
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.title, this.count, {this.actionable = false});
+  final String title;
+  final int count;
+  final bool actionable;
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.theme.colors;
+    final palette = context.desktopPalette;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Wrap(
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            title,
+            style: context.theme.typography.display.lg.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: actionable && count > 0
+                  ? palette.warningSurface
+                  : colors.muted,
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text(
+              '$count',
+              style: context.theme.typography.body.xs.copyWith(
+                color: actionable && count > 0
+                    ? palette.warning
+                    : colors.mutedForeground,
               ),
             ),
+          ),
         ],
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
-class WorkspaceActivityPage extends StatefulWidget {
-  const WorkspaceActivityPage({
-    super.key,
-    required this.registry,
-    this.rewards,
-    this.serviceStatus,
+class _AccountLine extends StatelessWidget {
+  const _AccountLine(
+    this.account,
+    this.registry, {
+    this.status,
+    this.amount,
+    this.expiry = false,
+    this.showResolution = false,
   });
+  final WorkspaceAccount account;
   final AccountWorkspaceRegistry registry;
-  final PluginRewards? rewards;
-  final Widget? serviceStatus;
+  final String? status, amount;
+  final bool expiry, showResolution;
+
   @override
-  State<WorkspaceActivityPage> createState() => _WorkspaceActivityPageState();
-}
-
-enum _RewardView {
-  accounts('签到账号'),
-  receipts('最近成功领取'),
-  attention('待处理');
-
-  const _RewardView(this.label);
-  final String label;
-}
-
-class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
-  _RewardView _view = _RewardView.accounts;
-  @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.registry,
-    builder: (context, _) {
-      final records = widget.registry.accounts
-          .where(
-            (a) => switch (_view) {
-              _RewardView.accounts => a.entry.hasRewards,
-              _RewardView.receipts => a.entry.receipt != null,
-              _RewardView.attention =>
-                a.entry.hasRewards && a.entry.needsAttention,
-            },
-          )
-          .toList();
-      if (_view == _RewardView.receipts)
-        records.sort((a, b) {
-          final x = a.entry.receipt!.confirmedAt,
-              y = b.entry.receipt!.confirmedAt;
-          return x == null
-              ? (y == null ? 0 : 1)
-              : y == null
-              ? -1
-              : y.compareTo(x);
-        });
-      return WorkspacePage(
-        title: '辅助签到',
-        subtitle: '',
-        children: [
-          if (widget.serviceStatus != null) widget.serviceStatus!,
-          if (widget.rewards case final rewards?) ...[
-            RewardBatchAction(rewards: rewards),
-            const SizedBox(height: 16),
-          ],
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
+  Widget build(BuildContext context) {
+    final entry = account.entry;
+    final resolution = showResolution ? entry.resolution : null;
+    final action = resolution == null
+        ? null
+        : FButton(
+            variant: FButtonVariant.outline,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: resolution.run,
+            child: Text(resolution.label),
+          );
+    final stateText = status ?? entry.statusLabel ?? entry.status;
+    final muted = context.theme.typography.body.xs.copyWith(
+      color: context.theme.colors.mutedForeground,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.theme.colors.border)),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final wide =
+              box.maxWidth >=
+              380 * MediaQuery.textScalerOf(context).scale(14) / 14;
+          final facts = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: wide
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
-              for (final view in _RewardView.values)
-                FButton(
-                  variant: _view == view
-                      ? FButtonVariant.secondary
-                      : FButtonVariant.ghost,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  child: Text(view.label),
-                  selected: _view == view,
-                  onPress: () => setState(() => _view = view),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          WorkspaceCard(
-            child: records.isEmpty
-                ? Text(switch (_view) {
-                    _RewardView.accounts => '暂无支持辅助签到的已保存账号。',
-                    _RewardView.receipts => '暂无已确认的领取记录。',
-                    _RewardView.attention => '暂无待处理的领取记录。',
-                  })
-                : Column(
-                    children: [
-                      for (final account in records)
-                        FItem(
-                          title: Text(account.entry.label),
-                          subtitle: Text(
-                            '${account.app.label} · ${account.app.region} · ${_view == _RewardView.receipts ? account.entry.receipt!.display : account.entry.statusLabel ?? account.entry.status}',
-                          ),
-                          prefix: Icon(
-                            _view == _RewardView.receipts
-                                ? FLucideIcons.circleCheck
-                                : FLucideIcons.info,
-                            size: 16,
-                            color: context.theme.colors.mutedForeground,
-                          ),
-                          suffix: const Icon(
-                            FLucideIcons.chevronRight,
-                            size: 16,
-                          ),
-                          onPress: () => _openAccount(
-                            context,
-                            widget.registry,
-                            account.entry.id,
-                          ),
-                        ),
-                    ],
+              if (amount != null)
+                Text(
+                  amount!,
+                  style: context.theme.typography.body.sm.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-          ),
-        ],
-      );
-    },
-  );
+                ),
+              Text(
+                stateText,
+                style: muted,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          );
+          final item = FItem(
+            prefix: Image.asset(account.app.iconAsset, width: 26, height: 26),
+            title: Text(
+              entry.label,
+              style: context.theme.typography.body.sm.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: wide
+                ? Text(account.app.label)
+                : amount == null
+                ? Text(
+                    '${account.app.label} · $stateText',
+                    style: muted,
+                    maxLines: 3,
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [Text(account.app.label), facts],
+                  ),
+            details: wide
+                ? ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: box.maxWidth * .38),
+                    child: facts,
+                  )
+                : null,
+            onPress: () =>
+                _openAccount(context, registry, entry.id, expiry: expiry),
+            suffix: action == null
+                ? const Icon(FLucideIcons.chevronRight, size: 15)
+                : null,
+          );
+          if (action == null) return item;
+          if (wide)
+            return Row(
+              children: [
+                Expanded(child: item),
+                action,
+              ],
+            );
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              item,
+              Align(alignment: Alignment.centerRight, child: action),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 void _openAccount(

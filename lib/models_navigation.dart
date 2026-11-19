@@ -78,7 +78,7 @@ class _ModelsNavigationState extends State<ModelsNavigation> {
               for (final id in visible)
                 SidebarNavigationButton(
                   key: ValueKey('model-nav-$id'),
-                  label: id,
+                  label: id == 'auto' ? 'LoongPass Auto' : id,
                   icon: const Icon(FLucideIcons.dot, size: 16),
                   compact: false,
                   nested: true,
@@ -143,10 +143,10 @@ class _ModelsNavigationState extends State<ModelsNavigation> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Semantics(
-          expanded: widget.preferences.modelsExpanded,
+          expanded: widget.active && widget.preferences.modelsExpanded,
           child: navigation,
         ),
-        if (widget.preferences.modelsExpanded)
+        if (widget.active && widget.preferences.modelsExpanded)
           Flexible(
             child: Container(
               margin: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
