@@ -6,6 +6,8 @@ import 'compact_accounts_table.dart';
 import 'managed_app.dart';
 import 'workspace_tools.dart';
 import 'account_details.dart';
+import 'plugin_rewards.dart';
+import 'reward_batch_action.dart';
 
 class WorkspaceAccountsPage extends StatefulWidget {
   const WorkspaceAccountsPage({
@@ -45,11 +47,15 @@ class WorkspaceOverviewPage extends StatefulWidget {
     super.key,
     required this.registry,
     required this.onOpenApp,
+    this.rewards,
+    this.onOpenRewards,
     this.serviceStatus,
   });
   final AccountWorkspaceRegistry registry;
   final Widget? serviceStatus;
   final ValueChanged<ManagedApp> onOpenApp;
+  final PluginRewards? rewards;
+  final VoidCallback? onOpenRewards;
   @override
   State<WorkspaceOverviewPage> createState() => _WorkspaceOverviewPageState();
 }
@@ -85,6 +91,13 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
         subtitle: '',
         children: [
           if (widget.serviceStatus != null) widget.serviceStatus!,
+          if (widget.rewards case final rewards?) ...[
+            RewardBatchAction(
+              rewards: rewards,
+              onStarted: widget.onOpenRewards,
+            ),
+            const SizedBox(height: 16),
+          ],
           Wrap(
             spacing: 32,
             runSpacing: 12,
@@ -93,11 +106,6 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
                 ('${accounts.length}', '已保存账号'),
                 ('${attention.length}', '待处理'),
                 ('${expiring.length}', '7 天内到期'),
-                if (accounts.any((a) => a.entry.automatic != null))
-                  (
-                    '${accounts.where((a) => a.entry.automatic == true).length}',
-                    '辅助领取已开启',
-                  ),
               ])
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -219,27 +227,42 @@ class WorkspaceActivityPage extends StatefulWidget {
   const WorkspaceActivityPage({
     super.key,
     required this.registry,
+    this.rewards,
     this.serviceStatus,
   });
   final AccountWorkspaceRegistry registry;
+  final PluginRewards? rewards;
   final Widget? serviceStatus;
   @override
   State<WorkspaceActivityPage> createState() => _WorkspaceActivityPageState();
 }
 
+enum _RewardView {
+  accounts('签到账号'),
+  receipts('最近成功领取'),
+  attention('待处理');
+
+  const _RewardView(this.label);
+  final String label;
+}
+
 class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
-  bool _attention = false;
+  _RewardView _view = _RewardView.accounts;
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.registry,
     builder: (context, _) {
       final records = widget.registry.accounts
           .where(
-            (a) =>
-                _attention ? a.entry.needsAttention : a.entry.receipt != null,
+            (a) => switch (_view) {
+              _RewardView.accounts => a.entry.hasRewards,
+              _RewardView.receipts => a.entry.receipt != null,
+              _RewardView.attention =>
+                a.entry.hasRewards && a.entry.needsAttention,
+            },
           )
           .toList();
-      if (!_attention)
+      if (_view == _RewardView.receipts)
         records.sort((a, b) {
           final x = a.entry.receipt!.confirmedAt,
               y = b.entry.receipt!.confirmedAt;
@@ -250,51 +273,51 @@ class _WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
               : y.compareTo(x);
         });
       return WorkspacePage(
-        title: '最近领取',
-        subtitle: '各账号最近一次已确认的领取记录',
+        title: '辅助签到',
+        subtitle: '',
         children: [
           if (widget.serviceStatus != null) widget.serviceStatus!,
+          if (widget.rewards case final rewards?) ...[
+            RewardBatchAction(rewards: rewards),
+            const SizedBox(height: 16),
+          ],
           Wrap(
             spacing: 8,
+            runSpacing: 4,
             children: [
-              FButton(
-                variant: !_attention
-                    ? FButtonVariant.secondary
-                    : FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: const Text('最近成功领取'),
-                selected: !_attention,
-                onPress: () => setState(() => _attention = false),
-              ),
-              FButton(
-                variant: _attention
-                    ? FButtonVariant.secondary
-                    : FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: const Text('待处理'),
-                selected: _attention,
-                onPress: () => setState(() => _attention = true),
-              ),
+              for (final view in _RewardView.values)
+                FButton(
+                  variant: _view == view
+                      ? FButtonVariant.secondary
+                      : FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  child: Text(view.label),
+                  selected: _view == view,
+                  onPress: () => setState(() => _view = view),
+                ),
             ],
           ),
           const SizedBox(height: 16),
           WorkspaceCard(
             child: records.isEmpty
-                ? const Text('暂无对应记录。尚未确认的领取不会显示为成功。')
+                ? Text(switch (_view) {
+                    _RewardView.accounts => '暂无支持辅助签到的已保存账号。',
+                    _RewardView.receipts => '暂无已确认的领取记录。',
+                    _RewardView.attention => '暂无待处理的领取记录。',
+                  })
                 : Column(
                     children: [
                       for (final account in records)
                         FItem(
                           title: Text(account.entry.label),
                           subtitle: Text(
-                            '${account.app.label} · ${_attention ? account.entry.statusLabel ?? account.entry.status : account.entry.receipt!.display}',
+                            '${account.app.label} · ${account.app.region} · ${_view == _RewardView.receipts ? account.entry.receipt!.display : account.entry.statusLabel ?? account.entry.status}',
                           ),
                           prefix: Icon(
-                            _attention
-                                ? FLucideIcons.info
-                                : FLucideIcons.circleCheck,
+                            _view == _RewardView.receipts
+                                ? FLucideIcons.circleCheck
+                                : FLucideIcons.info,
                             size: 16,
                             color: context.theme.colors.mutedForeground,
                           ),

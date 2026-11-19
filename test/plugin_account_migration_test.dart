@@ -123,7 +123,7 @@ void main() {
     expect(mm.auth!['realUserID'], '17');
     expect(mm.auth!['refresh'], 'mm-refresh');
     expect(mm.auth!['expires'], 1800000000000);
-    expect(mm.facts['automatic'], false);
+    expect(mm.facts.containsKey('automatic'), false);
     expect(mm.facts['legacy']['operation'], {
       'state': 'unknown',
       'points': 12.5,

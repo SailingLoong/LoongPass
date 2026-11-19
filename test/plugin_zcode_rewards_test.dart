@@ -588,7 +588,7 @@ void main() {
     expect(reward()['status'], 'claimed');
   });
 
-  test('cancelled captcha and automatic invocations never dispatch an unverified claim', () async {
+  test('cancelled or missing captcha proof never dispatches an unverified claim', () async {
     official.captcha = true;
     var prompts = 0;
     await rewards.claim(
@@ -669,7 +669,7 @@ void main() {
   );
 
   test(
-    'disabling assisted claims during discovery prevents POST and publication',
+    'replacing the account during discovery prevents POST and publication',
     () async {
       final started = Completer<void>(), resume = Completer<void>();
       official.beforeRequest = (r) async {
@@ -679,9 +679,9 @@ void main() {
         }
       };
       final before = jsonEncode(reward());
-      final claim = rewards.claim(_key, automatic: true);
+      final claim = rewards.claim(_key);
       await started.future;
-      await accounts.setAutomatic(_key, false);
+      await accounts.edit((data) => data['accounts'][_key]['registrationId'] = 'new-grant');
       final cancelled = expectLater(
         claim,
         throwsA(isA<ZcodeFailure>().having((e) => e.code, 'code', 'cancelled')),
@@ -693,36 +693,16 @@ void main() {
     },
   );
 
-  test(
-    'disabling assisted claims during captcha prevents the verified POST',
-    () async {
-      official.captcha = true;
-      await expectLater(
-        rewards.claim(
-          _key,
-          automatic: true,
-          verify: (_) async {
-            await accounts.setAutomatic(_key, false);
-            return 'proof';
-          },
-        ),
-        throwsA(isA<ZcodeFailure>().having((e) => e.code, 'code', 'cancelled')),
-      );
-      expect(official.posts, 0);
-      expect(reward()['claims']['night']['state'], 'verificationRequired');
-    },
-  );
-
-  test('disabling assisted claims after dispatch preserves pending for reconciliation', () async {
+  test('replacing a grant after dispatch preserves pending for reconciliation', () async {
     final started = Completer<void>(), resume = Completer<void>();
     official.afterClaim = () async {
       started.complete();
       await resume.future;
     };
-    final claim = rewards.claim(_key, automatic: true);
+    final claim = rewards.claim(_key);
     await started.future;
     expect(reward()['claims']['night']['state'], 'pending');
-    await accounts.setAutomatic(_key, false);
+    await accounts.edit((data) => data['accounts'][_key]['registrationId'] = 'new-grant');
     final cancelled = expectLater(
       claim,
       throwsA(isA<ZcodeFailure>().having((e) => e.code, 'code', 'cancelled')),
@@ -738,9 +718,9 @@ void main() {
   });
 
   test(
-    'manual claims remain available when assisted claims are disabled',
+    'an old scheduling preference does not prevent a manual activity claim',
     () async {
-      await accounts.setAutomatic(_key, false);
+      await accounts.edit((data) => data['accounts'][_key]['automatic'] = false);
       await rewards.claim(_key);
       expect(official.posts, 1);
       expect(reward()['claims']['night']['state'], 'claimed');

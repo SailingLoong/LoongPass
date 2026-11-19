@@ -57,9 +57,8 @@ void main() {
         expect(jsonEncode(store.data), isNot(contains('secret-access')));
         expect(jsonEncode(account.models), isNot(contains('secret-access')));
         final registration = account.registrationId;
-        await accounts.setAutomatic(account.key, false);
         await accounts.refresh();
-        expect(accounts.accounts.single.automatic, false);
+        expect(accounts.accounts.single.facts.containsKey('automatic'), false);
         expect(accounts.accounts.single.registrationId, registration);
         expect(
           (await accounts.currentCredential(account.key))['access'],
@@ -538,26 +537,6 @@ void _identityTests() {
   );
 
   test(
-    'lost automatic opt-out acknowledgement publishes durable scheduling facts',
-    () async {
-      final h = await open();
-      var automatic = true;
-      h.accounts.addListener(() {
-        automatic = h.accounts.accounts.single.automatic;
-      });
-      h.store.afterWrite = () async => throw StateError('Lost acknowledgement');
-      await expectLater(
-        h.accounts.setAutomatic(h.key, false),
-        throwsStateError,
-      );
-      expect(h.store.data['accounts'][h.key]['automatic'], false);
-      expect(h.accounts.accounts.single.automatic, false);
-      expect(automatic, false);
-      h.store.afterWrite = null;
-    },
-  );
-
-  test(
     'native authorization source is projected only for a verified identity',
     () async {
       final h = await open(auth: {'source': 'desktop'});
@@ -672,7 +651,6 @@ void _identityTests() {
       );
       expect(h.accounts.accounts.single.active, true);
       expect(h.accounts.accounts.single.uid, '');
-      expect(h.accounts.accounts.single.automatic, false);
       expect(h.store.data['accounts'][h.key]['accountId'], 'api:scoped-first');
       await h.clearCalls();
       await h.accounts.verifyCredential(h.key);
@@ -727,10 +705,6 @@ void _identityTests() {
     expect(one['accountId'], startsWith('api:'));
     expect(two['accountId'], isNot(one['accountId']));
     expect(h.store.data['accounts'][first]['accountId'], one['accountId']);
-    expect(
-      h.accounts.accounts.firstWhere((a) => a.key == first).automatic,
-      false,
-    );
     await expectLater(h.accounts.currentCredential(first), throwsStateError);
     final authorized = await login('three', method: 1);
     expect(

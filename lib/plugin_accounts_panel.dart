@@ -298,10 +298,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   }
 
   bool _canClaim(PluginAccount a) =>
-      a.active &&
-      a.uid.isNotEmpty &&
-      (a.provider == 'zcode' ||
-          widget.accounts.providers[a.provider]?['checkin'] == true);
+      a.active && a.uid.isNotEmpty && widget.rewards.supports(a);
   bool _canActivate(PluginAccount a) =>
       widget.activate != null &&
       a.provider == 'workbuddy' &&
@@ -309,9 +306,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
       a.source != 'desktop';
 
   bool _supportsRewards(PluginAccount a) =>
-      a.provider == 'zcode' ||
-      widget.accounts.providers[a.provider]?['checkin'] == true ||
-      _reward(a).isNotEmpty;
+      widget.rewards.supports(a) || _reward(a).isNotEmpty;
 
   Widget _actions(PluginAccount a) {
     final needsAuthorization =
@@ -545,21 +540,6 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             style: secondary,
           ),
         ],
-        const FDivider(),
-        if (_supportsRewards(a))
-          FSwitch(
-            value: a.automatic,
-            label: const Text('辅助领取'),
-            description: Text(
-              a.uid.isEmpty ? '此授权未提供可核实的账号身份。' : '应用运行期间检查并领取；退出应用后停止。',
-            ),
-            leadingLabel: true,
-            enabled: !(_busy || a.uid.isEmpty),
-            onChange: (value) => _run(
-              () => widget.accounts.setAutomatic(a.key, value),
-              accountKey: a.key,
-            ),
-          ),
       ],
     );
   }
@@ -615,7 +595,6 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
                   balance: _balance(a),
                   status: _status(a),
                   statusLabel: _statusLabel(a),
-                  automatic: _supportsRewards(a) ? a.automatic : null,
                   hasRewards: _supportsRewards(a),
                   expiryDetails: _expiryDetails(a),
                   details: _details(a),
@@ -724,7 +703,7 @@ String _status(PluginAccount a) {
   final failure = _usageFailure(a) ?? '';
   if (_pending(a)) return '待核验：不会重复发送领取请求。$failure';
   if (!a.active) return '需要重新授权。';
-  final reward = switch (_reward(a)['status']) {
+  final reward = switch (_rewardState(a)) {
     'claimed' => '已确认领取。',
     'done' || 'observedClaimed' => '官方确认已有权益。',
     'claimable' => '当前有可领取活动。',
@@ -734,6 +713,7 @@ String _status(PluginAccount a) {
     'ineligible' => '本次不符合官方领取条件。',
     'authorization_required' => '授权需要更新，请重新授权。',
     'discoveryIncomplete' => '活动信息暂不完整。',
+    'unknown' => '领取状态暂未核实。',
     _ =>
       failure.isNotEmpty
           ? ''
@@ -751,7 +731,7 @@ String _statusLabel(PluginAccount a) {
     return '需要重新授权';
   if (_pending(a)) return '领取结果待核验';
   if (_usageFailure(a) != null) return '额度查询未完成';
-  return switch (_reward(a)['status']) {
+  return switch (_rewardState(a)) {
     'claimed' => '已确认领取',
     'done' || 'observedClaimed' => '官方已确认权益',
     'claimable' => '有可领取活动',
@@ -761,13 +741,16 @@ String _statusLabel(PluginAccount a) {
     'ineligible' => '不符合本次领取条件',
     'noOffer' || 'inactive' => '暂无可领取活动',
     'discoveryIncomplete' => '活动信息待核对',
-    _ =>
-      a.error != null
-          ? '最近查询未完成'
-          : a.automatic
-          ? '辅助领取已开启'
-          : '已保存',
+    'unknown' => '领取状态待核实',
+    _ => a.error != null ? '最近查询未完成' : '已保存',
   };
+}
+
+String? _rewardState(PluginAccount account) {
+  final reward = _reward(account);
+  return reward['status'] == 'unavailable'
+      ? reward['outcome'] as String?
+      : reward['status'] as String?;
 }
 
 ClaimReceipt? _receipt(PluginAccount a) {

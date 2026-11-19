@@ -235,6 +235,10 @@ void main() {
           home: Scaffold(body: WorkspaceActivityPage(registry: registry)),
         ),
       );
+      expect(find.text('Pending'), findsOneWidget);
+      expect(find.text('Confirmed'), findsOneWidget);
+      await tester.tap(find.text('最近成功领取'));
+      await tester.pumpAndSettle();
       expect(find.textContaining('Confirmed'), findsOneWidget);
       expect(find.textContaining('金额未知'), findsOneWidget);
       expect(find.textContaining('500000000'), findsNothing);

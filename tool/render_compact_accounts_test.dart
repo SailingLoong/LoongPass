@@ -92,7 +92,6 @@ void main() {
                   confirmedAt: DateTime(2026, 11, 14, 9, 30),
                 ),
                 onActivate: () {},
-                automatic: true,
                 details: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

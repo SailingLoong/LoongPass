@@ -13,7 +13,7 @@ enum WorkspaceSection {
   overview('总览', FLucideIcons.layoutDashboard),
   accounts('账号与积分', FLucideIcons.wallet),
   models('模型连接', FLucideIcons.route),
-  activity('最近领取', FLucideIcons.receiptText),
+  activity('辅助签到', FLucideIcons.calendarCheck),
   settings('设置', FLucideIcons.slidersHorizontal);
 
   const WorkspaceSection(this.label, this.icon);
@@ -236,7 +236,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         child: FTooltip(
                           tipBuilder: (context, controller) =>
-                              const Text('账号保存在本机；自动任务仅在 LoongPass 运行期间执行'),
+                              const Text('账号保存在本机'),
                           child: compact
                               ? const Icon(FLucideIcons.monitor, size: 16)
                               : Text(
