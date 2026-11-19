@@ -456,6 +456,42 @@ void main() {
     expect(h.reward['creditExpiresAt'], '2026-12-20T06:30:00.125314Z');
   });
 
+  for (final issued in [true, false]) {
+    test('Qoder ignores a stale offer after a confirmed ${issued ? 'issue' : 'hold'} and admits a distinct campaign', () async {
+      final h = await open(provider: 'qoder-cn', nativeQoder: true);
+      final a = qoderCampaign('campaign-a');
+      final b = {...a, 'campaignId': 'campaign-b'};
+      await h.control({
+        'campaigns': [{...a, 'claimStatus': issued ? 'CLAIMABLE' : 'CLAIMED'}],
+        'receipt': qoderGrant,
+      });
+      if (issued) {
+        await h.rewards.claim(h.key);
+      } else {
+        await h.rewards.refresh(h.key);
+      }
+      final confirmed = Map.of(h.reward);
+      h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+      await h.control({'campaigns': [a], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(issued ? 1 : 0));
+      expect(h.reward, confirmed);
+
+      await h.control({'campaigns': [b], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(issued ? 2 : 1));
+      expect(h.hooks.last['path'], endsWith('/campaign-b/claim'));
+      expect(h.reward['credit'], 3.125);
+      expect((h.reward['history'] as List).single['scope'], confirmed['scope']);
+      h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+      await h.control({'campaigns': [a], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(issued ? 2 : 1));
+      expect(h.reward['scope'], confirmed['scope']);
+      expect(h.reward['credit'], issued ? 3.125 : null);
+    });
+  }
+
   test('an unverified Qoder POST cannot authorize a replacement campaign', () async {
     for (final receipt in [
       {'status': 'BLOCKED', 'failureCode': 'UNKNOWN'},
@@ -511,29 +547,35 @@ void main() {
       expect(h.reward['status'], 'inactive');
       final closedScope = h.reward['scope'];
       expect(closedScope, contains('campaign-a'));
+      expect(h.reward['dispatched'], changedBeforePost ? false : null);
       expect(h.reward.containsKey('credit'), false);
       expect(h.reward.containsKey('creditExpiresAt'), false);
 
       h.now = DateTime.now().toUtc().add(const Duration(seconds: 1));
       await h.control({'campaigns': [a], 'receipt': qoderGrant});
       await h.rewards.claim(h.key);
-      expect(h.hooks, hasLength(postCount));
-      expect(h.reward['status'], 'inactive');
+      expect(h.hooks, hasLength(1));
+      expect(h.reward['status'], changedBeforePost ? 'claimed' : 'inactive');
+      if (changedBeforePost) {
+        expect((h.reward['history'] as List).single['dispatched'], false);
+        h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+      }
 
       await h.control({'campaigns': [b], 'receipt': qoderGrant});
       await h.rewards.claim(h.key);
-      expect(h.hooks, hasLength(postCount + 1));
+      expect(h.hooks, hasLength(2));
       expect(h.hooks.last['path'], endsWith('/campaign-b/claim'));
       expect(h.reward['scope'], contains('campaign-b'));
       expect(h.reward['status'], 'claimed');
       expect(h.reward['credit'], 3.125);
-      expect((h.reward['history'] as List).single['scope'], closedScope);
+      expect((h.reward['history'] as List).every((r) => r['scope'] == closedScope), true);
 
       h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
       await h.control({'campaigns': [a], 'receipt': qoderGrant});
       await h.rewards.claim(h.key);
-      expect(h.hooks, hasLength(postCount + 1));
+      expect(h.hooks, hasLength(2));
       expect(h.reward['scope'], closedScope);
+      expect(h.reward['status'], changedBeforePost ? 'claimed' : 'inactive');
       await h.control({'campaigns': [{...b, 'claimStatus': 'CLAIMED'}]});
       await h.rewards.refresh(h.key);
       expect(h.reward['status'], 'claimed');

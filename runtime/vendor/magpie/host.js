@@ -3495,7 +3495,10 @@ async function checkinOf(provider, account, expectedScope) {
     const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
     return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
   }
-  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
+  const intent = typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}
+  if (r.outcome === "inactive" && r.dispatched === false && intent.scope && intent.scope === expectedScope)
+    intent.dispatched = false
+  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...intent }
 }
 
 // ---- calls made outside magpie -------------------------------------------------

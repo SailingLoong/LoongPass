@@ -82,7 +82,7 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "8ef010ae5c127307f455d2bc19b1083d8ecf2019bd36a00e82da4ba8a5809eef",
+      "sha256": "a4c94625d80e29fc137db67ac3db4e0d623df10cc284b3b7252c4d0136882441",
       "upstreamSha256": "d51d1712e89d5e1d94c719c36eaa7f49edd52c671f984c39aaf5ffab317f1179"
     },
     {
@@ -144,7 +144,7 @@
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "071d1b9c1c29a04445d708eb304f01cab422c63de22c2eda422c02d363d51c0e",
+      "sha256": "135d3253b406a6f6121c769008da3d1185659cd2fc3b49a362c5c8e54de491bf",
       "upstreamSha256": "3a0eff3997d17322f430c449256c7bba0406a5c89de83dfeeb6e60baba1f53f2"
     },
     {

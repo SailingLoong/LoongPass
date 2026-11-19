@@ -3864,7 +3864,7 @@ const makePlugin = (site) => async ({ client }) => {
         if (done) return { outcome: "done", ...askAgain(nextOpens(done)), ...campaignScope(done) }
         // The bound campaign disappeared before POST. A separate action may select a replacement.
         if (expectedScope !== undefined)
-          return { outcome: "inactive", scope: expectedScope, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
+          return { outcome: "inactive", scope: expectedScope, dispatched: false, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
         // the next day's credits open at a time the list says: ask then,
         // not half an hour later
         if (campaigns.length) {

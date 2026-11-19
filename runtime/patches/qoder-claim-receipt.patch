@@ -9,6 +9,18 @@
    const message = typeof r.message === "string" ? r.message : ""
    // a time that doesn't read is not told
    const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
+@@ -3470,7 +3472,10 @@
+     const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
+     return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
+   }
+-  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
++  const intent = typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}
++  if (r.outcome === "inactive" && r.dispatched === false && intent.scope && intent.scope === expectedScope)
++    intent.dispatched = false
++  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...intent }
+ }
+ 
+ // ---- calls made outside magpie -------------------------------------------------
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
 @@ -2985,6 +2985,39 @@
@@ -73,7 +85,7 @@
 +        if (done) return { outcome: "done", ...askAgain(nextOpens(done)), ...campaignScope(done) }
 +        // The bound campaign disappeared before POST. A separate action may select a replacement.
 +        if (expectedScope !== undefined)
-+          return { outcome: "inactive", scope: expectedScope, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
++          return { outcome: "inactive", scope: expectedScope, dispatched: false, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
          // the next day's credits open at a time the list says: ask then,
          // not half an hour later
          if (campaigns.length) {

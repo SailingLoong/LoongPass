@@ -145,6 +145,7 @@ test('Qoder binds the actual claim to the observed cycle and refuses a cycle tur
   const changed = await native('qoder', next, { claim: true, expectedScope: status.result.scope })
   expect(changed.result.outcome).toBe('inactive')
   expect(changed.result.scope).toBe(status.result.scope)
+  expect(changed.result.dispatched).toBe(false)
   expect(changed.result.credit).toBeUndefined()
   expect(Date.parse(changed.result.until)).toBeLessThanOrEqual(Date.now())
   expect(changed.calls.map(c => c.method)).toEqual(['GET'])
@@ -244,6 +245,8 @@ test('native host advertises only declared status hooks, isolates accounts and s
       { uid: 'negative', claim: { outcome: 'claimed', credit: -1 } },
       { uid: 'text-credit', claim: { outcome: 'claimed', credit: '12.5' } },
       { uid: 'missing-failed', claim: { outcome: 'failed' } },
+      { uid: 'no-dispatch', claim: { outcome: 'inactive', scope: 'cycle-a', dispatched: false } },
+      { uid: 'uncertain', claim: { outcome: 'failed', scope: 'cycle-a', dispatched: false } },
       { uid: 'invalid-outcome', claim: { outcome: 'unexpected' } },
     ]
     for (const a of fixtures) await rpc('import', { provider: 'fixture', key: `fixture#${a.uid}`, auth: { type: 'oauth', access: 'fake', refresh: '', expires: 0, ...a } })
@@ -269,6 +272,12 @@ test('native host advertises only declared status hooks, isolates accounts and s
     for (const uid of ['zero', 'decimal', 'negative', 'text-credit', 'missing-failed', 'invalid-outcome']) {
       const receipt = await rpc('checkin', {provider: 'fixture', account: `fixture#${uid}`})
       expect(receipt.credit).toBe(uid === 'zero' ? 0 : uid === 'decimal' ? 12.5 : undefined)
+    }
+    for (const [uid, expectedScope, dispatched] of [
+      ['no-dispatch', 'cycle-a', false], ['no-dispatch', 'cycle-b'], ['no-dispatch'], ['uncertain', 'cycle-a'],
+    ]) {
+      const receipt = await rpc('checkin', {provider: 'fixture', account: `fixture#${uid}`, expectedScope})
+      expect(receipt.dispatched).toBe(dispatched)
     }
     child.kill(); await child.exited; await errors
   } finally {
