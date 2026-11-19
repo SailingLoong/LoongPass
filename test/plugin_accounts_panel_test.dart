@@ -429,6 +429,14 @@ void main() {
   );
 
   testDesktopWidgets(
+    'an unresolved provider claim identifies the missing official receipt',
+    (tester) async {
+      await mountAccount(tester, observed(reward: {'status': 'pending'}));
+      expect(find.text('领取回执未确认'), findsOneWidget);
+    },
+  );
+
+  testDesktopWidgets(
     'a pending claim does not mask expired usage authorization',
     (tester) async {
       await mountAccount(
@@ -441,7 +449,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('不会重复发送领取请求'), findsOneWidget);
+      expect(find.textContaining('未能确认本次领取的官方回执。'), findsOneWidget);
       expect(find.textContaining('额度授权已失效'), findsOneWidget);
       await tester.tap(find.text('更多操作'));
       await tester.pumpAndSettle();

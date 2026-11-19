@@ -700,9 +700,7 @@ String _balance(PluginAccount a) {
 String _status(PluginAccount a) {
   final failure = _usageFailure(a) ?? '';
   if (_pending(a))
-    return a.provider == 'zcode'
-        ? '未能确认本次领取的官方回执。同一活动不会重复提交。$failure'
-        : '待核验：不会重复发送领取请求。$failure';
+    return '未能确认本次领取的官方回执。同一活动不会重复提交。$failure';
   if (!a.active) return '需要重新授权。';
   final state = _rewardState(a);
   final reward = switch (state) {
@@ -744,7 +742,7 @@ String _statusLabel(PluginAccount a) {
       a.error == 'authorization_required' ||
       a.usage?['signIn'] == 'expired')
     return '需要重新授权';
-  if (_pending(a)) return a.provider == 'zcode' ? '领取回执未确认' : '领取结果待核验';
+  if (_pending(a)) return '领取回执未确认';
   if (a.provider != 'zcode' && _usageFailure(a) != null) return '额度查询未完成';
   return switch (_rewardState(a)) {
     'claimed' => '已确认领取',
