@@ -116,7 +116,7 @@
  // located gives a sign-in that has only ZCode's key location (ownLocation)
  // its key: the secret of the key it names, read as ZCode lists the
  // project's keys (BigModel's token bare, Z.ai's as a Bearer). Nothing is
-@@ -1880,42 +1772,24 @@
+@@ -1880,43 +1772,31 @@
    const store = readJSON(join(zcodeDir(), "credentials.json"))
    if (!store || typeof store !== "object") return null
    const key = secret()
@@ -148,7 +148,8 @@
 -  }
 -  if (!s.key && !s.jwt && !isTeam(s)) return null
 -  let info = {}
-+  const selected = readJSON(join(settingDir(), "setting.json"))?.providerFamilyDomain
++  const settings = readJSON(join(settingDir(), "setting.json"))
++  const selected = settings?.providerFamilyDomain
    const active = decrypt(key, store["oauth:active_provider"])
 -  const family = active || s.site
 -  const region = family === "zai_cn" ? "bigmodel" : family
@@ -161,8 +162,12 @@
      info = JSON.parse(decrypt(key, store[`oauth:${family}:user_info`]) ?? "{}")
 -  } catch {}
 -  return { ...s, user: who(info), uid: uidOf(info) }
+-}
 +  } catch { return null }
 +  const uid = uidOf(info)
++  const choice = settings?.providerFamilyConnectionSelections?.[site]
++  const team = choice ? choice.kind === "team-coding-plan" : first(settings?.modelProviderFamilySelectedKeys?.[site]).startsWith("team-plan:")
++  if (team) return { uid, site, teamSignIn: true }
 +  const jwt = first(first(decrypt(key, store.zcodejwttoken)).replace(/^Bearer /, ""))
 +  // Only a slot explicitly owned by this region and official UID can pay.
 +  // Legacy configuration and team locators do not establish that ownership.
@@ -171,12 +176,25 @@
 +  const boundKey = typeof paid === "string" && paid.includes(".") ? paid : ""
 +  if (!jwt && !boundKey) return null
 +  return { site, base: SITES[site].base, key: boundKey, jwt, uid, user: who(info), desktopUid: uid }
- }
++}
++
++const TEAM_SIGN_IN = "Use the official team browser sign-in to verify the selected ZCode seat"
  
  // asZCode is the sign-in "as ZCode": what it reads is ZCode's own.
-@@ -1952,7 +1826,9 @@
+ function asZCode() {
+@@ -1927,6 +1807,7 @@
+     async callback() {
+       const own = ownSignIn()
+       if (!own) return { type: "failed", error: ownStoreUnreadable() ? UNREADABLE_SIGN_IN : "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
++      if (own.teamSignIn) return { type: "failed", error: TEAM_SIGN_IN }
+       const { user, uid, ...s } = own
+       if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
+       const state = { source: "zcode", device: anyDevice, ...s }
+@@ -1951,8 +1832,11 @@
+       const own = ownSignIn()
        // Display names can change and IDs can repeat across regions.
        if (own?.uid && own.site === s.site && own.uid === auth.uid && accountIdOf(own.site, own.uid) === auth.accountId) {
++        if (own.teamSignIn) throw new Error(TEAM_SIGN_IN)
          const { user, uid: _uid, ...now } = own
 -        s = { source: "zcode", device: s.device, plan: s.plan, ...now }
 +        s = { source: "zcode", device: s.device, ...now }

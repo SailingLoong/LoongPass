@@ -316,7 +316,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "71876c42ced078f17b66116e6d2be698919a285f155b75c16e9e9afee85032ae",
+      "sha256": "2fc6047d5be1e5b45c0682883287bf9c8f2c798cbf586bdab0d172c1792ade45",
       "upstreamSha256": "804410b252752a21f2b43074b90bb2443a76094b2e77faebf50c0310d9337ca3"
     },
     {

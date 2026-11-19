@@ -225,6 +225,22 @@ test('ZCode 3.18 binds the active China profile and rejects a conflicting region
   expect(conflict.type).toBe('failed');
 });
 
+for (const selected of [
+  {providerFamilyConnectionSelections: {bigmodel: {kind: 'team-coding-plan'}}},
+  {modelProviderFamilySelectedKeys: {bigmodel: 'team-plan:builtin:bigmodel-coding-plan:legacy'}},
+]) {
+  test(`ZCode desktop keeps a selected team away from individual billing (${Object.keys(selected)[0]})`, async () => {
+    const current = desktopState('bigmodel');
+    current.settings = {...current.settings, ...selected};
+    const [imported] = await desktop([current]);
+    expect(imported.type).toBe('failed');
+    expect(imported.error).toContain('team');
+    const [, loaded] = await desktop([desktopState('bigmodel'), current]);
+    expect(loaded.error).toContain('team');
+    expect(loaded.apiKey).toBeUndefined();
+  });
+}
+
 test('ZCode desktop JWT-only sign-in retains the selected region', async () => {
   const [result] = await desktop([desktopState('bigmodel', { key: '' })]);
   expect(result).toMatchObject({ type: 'success', uid: 'shared-uid', accountId: 'bigmodel:shared-uid' });
