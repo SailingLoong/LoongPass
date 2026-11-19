@@ -70,29 +70,95 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
   return windows.length == 1 ? pluginWindowBalance(windows.single) : null;
 }
 
-PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
-  PluginCreditExpiry? expiry(DateTime? at, Object? amount, Object? unit) {
-    final value = _number(amount);
-    if (at == null || !at.isAfter(now) || (value != null && value <= 0))
-      return null;
-    return PluginCreditExpiry(
-      at,
-      value != null && unit is String && unit.isNotEmpty
-          ? PluginCreditBalance(value, unit)
-          : null,
-    );
+/// Only giftOf sets runsOutAt in ZCode. dualUsage can still return Coding
+/// Plan windows when giftOf fails, so queriedAt alone cannot clear gifts.
+class ZcodeGiftExpiry {
+  const ZcodeGiftExpiry._(this.observedAt, this.batches);
+  static const unobserved = ZcodeGiftExpiry._(null, []);
+  final DateTime? observedAt;
+  final List<PluginCreditExpiry> batches;
+
+  factory ZcodeGiftExpiry.fromUsage(Map? usage, DateTime? queriedAt) {
+    final windows = usage?['windows'];
+    if (windows is! List) return unobserved;
+    final batches = <PluginCreditExpiry>[];
+    var observed = false;
+    for (final window in windows.whereType<Map>()) {
+      final at = _windowExpiryTime(window);
+      if (at == null) continue;
+      observed = true;
+      final batch = _expiry(at, window['runsOut'], window['unit']);
+      if (batch != null) batches.add(batch);
+    }
+    return observed
+        ? ZcodeGiftExpiry._(queriedAt, List.unmodifiable(batches))
+        : unobserved;
   }
 
+  bool usesReward(Map reward) {
+    final buckets = reward['buckets'];
+    if (buckets is! List) return false;
+    final checkedAt = rewardObservedAt(reward);
+    // Populated legacy journals have exact units but no comparable clock.
+    if (checkedAt == null) return buckets.any((b) => b is Map);
+    final native = observedAt;
+    return native == null ||
+        native.millisecondsSinceEpoch <= checkedAt.millisecondsSinceEpoch;
+  }
+
+  static DateTime? rewardObservedAt(Map reward) {
+    final millis = reward['checkedAt'];
+    return millis is int && millis > 0 && millis < 8640000000000000
+        ? DateTime.fromMillisecondsSinceEpoch(millis)
+        : null;
+  }
+}
+
+DateTime? _windowExpiryTime(Map window) {
+  final at = window['runsOutAt'];
+  return at is String ? DateTime.tryParse(at) : null;
+}
+
+PluginCreditExpiry? _expiry(DateTime? at, Object? amount, Object? unit) {
+  final value = _number(amount);
+  if (at == null || (value != null && value <= 0)) return null;
+  return PluginCreditExpiry(
+    at,
+    value != null && unit is String && unit.isNotEmpty
+        ? PluginCreditBalance(value, unit)
+        : null,
+  );
+}
+
+List<PluginCreditExpiry> pluginCreditExpiryBatches(
+  Map? usage,
+  Map reward,
+  DateTime now, {
+  String? provider,
+  DateTime? queriedAt,
+  ZcodeGiftExpiry? nativeGift,
+}) {
+  if (provider == 'zcode') {
+    final gift = nativeGift ?? ZcodeGiftExpiry.fromUsage(usage, queriedAt);
+    if (!gift.usesReward(reward)) {
+      return gift.batches.where((b) => b.at.isAfter(now)).toList()
+        ..sort((a, b) => a.at.compareTo(b.at));
+    }
+    // Both sources describe the same balance response. Neither exposes
+    // entitlement IDs for a row join.
+    usage = null;
+  }
+  final buckets = reward['buckets'];
+  final rawWindows = usage?['windows'] as List? ?? const [];
   final windows = <({PluginCreditExpiry expiry, bool aside, Object? unit})>[];
-  for (final window in usage?['windows'] as List? ?? const []) {
+  for (final window in rawWindows) {
     if (window is! Map) continue;
-    final at = window['runsOutAt'];
-    final value = expiry(
-      at is String ? DateTime.tryParse(at) : null,
+    final value = _expiry(
+      _windowExpiryTime(window),
       window['runsOut'],
       window['unit'],
     );
-    if (value != null)
+    if (value != null && value.at.isAfter(now))
       windows.add((
         expiry: value,
         aside: window['aside'] == true,
@@ -114,10 +180,10 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
           ))
         window.expiry,
   ];
-  for (final bucket in reward['buckets'] as List? ?? const []) {
+  for (final bucket in buckets is List ? buckets : const []) {
     if (bucket is! Map) continue;
     final seconds = _number(bucket['expiresAt']);
-    final value = expiry(
+    final value = _expiry(
       seconds != null && seconds > 0 && seconds < 8640000000000
           ? DateTime.fromMillisecondsSinceEpoch(
               (seconds * 1000).round(),
@@ -127,9 +193,32 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
       bucket['remaining'],
       bucket['unit'],
     );
-    if (value != null) candidates.add(value);
+    if (value != null && value.at.isAfter(now)) candidates.add(value);
   }
   candidates.sort((a, b) => a.at.compareTo(b.at));
+  return candidates;
+}
+
+PluginCreditExpiry? pluginCreditExpiry(
+  Map? usage,
+  Map reward,
+  DateTime now, {
+  String? provider,
+  DateTime? queriedAt,
+}) => nextPluginCreditExpiry(
+  pluginCreditExpiryBatches(
+    usage,
+    reward,
+    now,
+    provider: provider,
+    queriedAt: queriedAt,
+  ),
+);
+
+/// The input is the chronological projection from pluginCreditExpiryBatches.
+PluginCreditExpiry? nextPluginCreditExpiry(
+  List<PluginCreditExpiry> candidates,
+) {
   if (candidates.isEmpty) return null;
   final first = candidates.first;
   // Multiple independent model entitlements have no comparable account total.

@@ -7,10 +7,16 @@ import 'package:forui/forui.dart';
 
 import '../lib/app_navigation_item.dart';
 import '../lib/app_sidebar.dart';
+import '../lib/app_updates.dart';
 import '../lib/ui_preferences.dart';
 import 'desktop_test_app.dart';
 
 void main() {
+  Future<void> openDrawer(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('toggle-sidebar')));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> mount(
     WidgetTester tester, {
     UiPreferences? preferences,
@@ -18,6 +24,7 @@ void main() {
     double height = 900,
     double textScale = 1,
     Set<ManagedApp>? enabledApps,
+    bool enterAccounts = true,
   }) async {
     tester.view.physicalSize = Size(width, height);
     tester.view.devicePixelRatio = 1;
@@ -49,12 +56,123 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    if (width < 756) {
+      await openDrawer(tester);
+    }
+    if (enterAccounts) {
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+    }
   }
+
+  testDesktopWidgets(
+    'overview hides inactive groups and shows the local date',
+    (tester) async {
+      await mount(tester, enterAccounts: false);
+      expect(find.byKey(const Key('account-apps')), findsNothing);
+      expect(find.byKey(const PageStorageKey('model-list')), findsNothing);
+      expect(find.text('本机工作区'), findsOneWidget);
+      final now = DateTime.now();
+      expect(
+        find.textContaining('${now.month} 月 ${now.day} 日'),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-apps')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-activity')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-apps')), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'narrow toolbar opens download details while navigation is closed',
+    (tester) async {
+      tester.view.physicalSize = const Size(480, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const channel = MethodChannel('com.sailingloong.loongpass/updates');
+      final calls = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
+        call,
+      ) async {
+        calls.add(call.method);
+        return {'phase': 'downloading', 'progress': .25, 'canCheck': false};
+      });
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        ),
+      );
+      final updates = AppUpdates();
+      await updates.load();
+      addTearDown(updates.dispose);
+      var opened = 0;
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: AppWorkspace(
+            pages: const {},
+            sections: const {WorkspaceSection.overview: Text('Overview')},
+            footerBuilder: (_, compact) => AppUpdateBadge(
+              updates: updates,
+              compact: compact,
+              onOpen: () => opened++,
+            ),
+          ),
+        ),
+      );
+      expect(find.byKey(const Key('app-sidebar')), findsNothing);
+      await tester.tap(find.text('25%'));
+      expect(opened, 1);
+      expect(calls, ['state']);
+    },
+  );
+
+  testDesktopWidgets('480px toolbar shows full compact failure label at 200%', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(480, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final updates = AppUpdates()..phase = UpdatePhase.error;
+    addTearDown(updates.dispose);
+    var opens = 0;
+    await tester.pumpWidget(
+      DesktopTestApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: AppWorkspace(
+          pages: const {},
+          sections: const {WorkspaceSection.overview: Text('Overview')},
+          footerBuilder: (_, compact) => AppUpdateBadge(
+            updates: updates,
+            compact: compact,
+            onOpen: () => opens++,
+          ),
+        ),
+      ),
+    );
+    final label = find.text('更新失败');
+    expect(label.hitTestable(), findsOneWidget);
+    final paragraph = tester.renderObject<RenderParagraph>(label);
+    expect(paragraph.textScaler.scale(14), 28);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(find.bySemanticsLabel('更新未完成，可稍后重试'), findsOneWidget);
+    await tester.tap(label);
+    expect(opens, 1);
+  });
 
   Future<void> order(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('nav-settings')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('平台顺序'));
+    await tester.tap(find.text('平台与邀请'));
     await tester.pumpAndSettle();
   }
 
@@ -69,6 +187,7 @@ void main() {
           preferences: preferences,
           width: width,
           height: 480,
+          enterAccounts: false,
         );
         final accounts = find.byKey(const Key('nav-accounts'));
         final models = find.byKey(const Key('nav-models'));
@@ -179,6 +298,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
       final positions = {
         for (final section in WorkspaceSection.values)
           section: tester.getRect(find.byKey(ValueKey('nav-${section.name}'))),
@@ -254,8 +375,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      if (width < 756) await openDrawer(tester);
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
+      if (width < 756) await openDrawer(tester);
       expect(
         tester.getTopLeft(find.byKey(const Key('model-nav-MiniMax-M3'))).dy,
         lessThan(
@@ -282,9 +405,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(selection.value, 'deepseek-flash');
       expect(find.text('Selection deepseek-flash'), findsOneWidget);
+      if (width < 756) await openDrawer(tester);
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
       expect(find.text('All accounts'), findsOneWidget);
+      if (width < 756) await openDrawer(tester);
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(selection.value, isNull);
@@ -300,10 +425,10 @@ void main() {
   }
 
   for (final (width, textScale, sidebarWidth) in [
-    (1024.0, 1.0, 208.0),
-    (1280.0, 1.3, 270.4),
-    (1920.0, 2.0, 416.0),
-    (1024.0, 0.8, 208.0),
+    (1024.0, 1.0, 196.0),
+    (1280.0, 1.3, 262.08),
+    (1920.0, 2.0, 403.2),
+    (1024.0, 0.8, 196.0),
   ]) {
     testDesktopWidgets(
       'expanded navigation keeps names clear of actions at $width and scale $textScale',
@@ -388,8 +513,8 @@ void main() {
   }
 
   for (final (wide, narrow, textScale, sidebarWidth) in [
-    (1024.0, 800.0, 1.0, 208.0),
-    (1920.0, 1080.0, 2.0, 416.0),
+    (1024.0, 800.0, 1.0, 196.0),
+    (1920.0, 1080.0, 2.0, 403.2),
   ]) {
     testDesktopWidgets(
       'automatic compact navigation preserves preferences and drafts at scale $textScale',
@@ -424,7 +549,7 @@ void main() {
           tester.getSize(find.byKey(const Key('app-sidebar'))).width,
           closeTo(sidebarWidth, 0.001),
         );
-        expect(find.byKey(const Key('toggle-sidebar')), findsNothing);
+        expect(find.byKey(const Key('toggle-sidebar')), findsOneWidget);
         expect(writes, isEmpty);
         expect(find.text('keep on resize'), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -514,7 +639,7 @@ void main() {
         expect(find.text('Recent claims'), findsOneWidget);
         await tester.tap(find.byKey(const Key('nav-settings')));
         await tester.pumpAndSettle();
-        expect(find.text('平台偏好'), findsOneWidget);
+        expect(find.text('平台与邀请'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );
@@ -557,9 +682,9 @@ void main() {
       addTearDown(preferences.dispose);
       await preferences.load();
       await mount(tester, preferences: preferences);
-      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 208);
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 196);
       expect(find.byKey(const Key('platform-filter')), findsNothing);
-      expect(find.byKey(const Key('toggle-sidebar')), findsNothing);
+      expect(find.byKey(const Key('toggle-sidebar')), findsOneWidget);
       expect(find.byKey(const Key('app-all')), findsNothing);
       expect(find.text('Qoder CN'), findsOneWidget);
       for (final app in ManagedApp.values) {
@@ -589,15 +714,16 @@ void main() {
       expect(find.text('keep me'), findsOneWidget);
       tester.view.physicalSize = const Size(480, 900);
       await tester.pumpAndSettle();
-      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+      expect(find.byKey(const Key('app-sidebar')), findsNothing);
+      await openDrawer(tester);
       expect(findTooltip('账号与积分'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('app-brand')));
+      await tester.tap(find.bySemanticsLabel('收起主导航'));
       await tester.pumpAndSettle();
-      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+      expect(find.byKey(const Key('app-sidebar')), findsNothing);
       expect(find.text('keep me'), findsOneWidget);
       tester.view.physicalSize = const Size(1024, 900);
       await tester.pumpAndSettle();
-      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 208);
+      expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 196);
       expect(find.text('keep me'), findsOneWidget);
     },
   );
@@ -656,7 +782,7 @@ void main() {
     );
     await tester.tap(item);
     await tester.pumpAndSettle();
-    expect(find.text('平台偏好'), findsOneWidget);
+    expect(find.text('平台与邀请'), findsOneWidget);
     expect(find.byKey(const Key('draft')), findsNothing);
   });
 
@@ -681,7 +807,7 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
     await tester.pumpAndSettle();
     expect(prefs.appOrder[1], ManagedApp.qoder);
-    expect(find.text('平台偏好'), findsOneWidget);
+    expect(find.text('平台与邀请'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -728,10 +854,12 @@ void main() {
           preferences: preferences,
           width: width,
           enabledApps: {ManagedApp.zcode, ManagedApp.qoder},
+          enterAccounts: false,
         );
         await tester.tap(find.byKey(const Key('nav-accounts')));
         await tester.pumpAndSettle();
         expect(find.text('All accounts'), findsOneWidget);
+        if (width < 756) await openDrawer(tester);
         expect(find.byKey(const Key('account-apps')), findsOneWidget);
         expect(find.byKey(const Key('toggle-account-apps')), findsNothing);
         expect(
@@ -742,13 +870,16 @@ void main() {
         await tester.tap(find.byKey(const Key('app-zcode')));
         await tester.pumpAndSettle();
         expect(find.text('ZCode content'), findsOneWidget);
+        if (width < 756) await openDrawer(tester);
         await tester.tap(find.byKey(const Key('nav-accounts')));
         await tester.pumpAndSettle();
+        if (width < 756) await openDrawer(tester);
         expect(find.byKey(const Key('account-apps')), findsOneWidget);
         expect(find.text('All accounts'), findsOneWidget);
         expect(find.byKey(const Key('app-all')), findsNothing);
         await tester.tap(find.byKey(const Key('nav-accounts')));
         await tester.pumpAndSettle();
+        if (width < 756) await openDrawer(tester);
         expect(find.byKey(const Key('account-apps')), findsOneWidget);
         final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
         await mouse.addPointer();

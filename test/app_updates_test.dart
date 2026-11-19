@@ -70,6 +70,7 @@ void main() {
     (tester) async {
       final updates = await render(tester);
       addTearDown(updates.dispose);
+      expect(find.text('版本与更新'), findsOneWidget);
       expect(find.text('当前版本 1.0.0 (30)'), findsOneWidget);
       expect(calls.map((c) => c.method), ['state']);
       await tester.tap(find.text('检查更新'));
@@ -155,6 +156,46 @@ void main() {
   }
 
   testDesktopWidgets(
+    'locked channel guidance follows native update permissions',
+    (tester) async {
+      final updates = await render(tester);
+      addTearDown(updates.dispose);
+      final channelSwitch = find.widgetWithText(FSwitch, '接收 Beta 版更新');
+      var revision = 0;
+      for (final (phase, install, skip, description) in [
+        ('downloading', false, false, '正在下载更新，暂时无法切换渠道。'),
+        ('ready', true, false, '安装本次更新后可切换渠道。'),
+        ('ready', true, true, '安装或放弃本次更新后可切换渠道。'),
+        ('installing', false, false, '暂时无法切换更新渠道。'),
+      ]) {
+        await event(tester, {
+          ...native,
+          'revision': ++revision,
+          'phase': phase,
+          'canChangeChannel': false,
+          'canInstall': install,
+          'canSkip': skip,
+          'canCheck': false,
+        });
+        expect(tester.widget<FSwitch>(channelSwitch).enabled, isFalse);
+        expect(
+          find.descendant(of: channelSwitch, matching: find.text(description)),
+          findsOneWidget,
+        );
+        expect(find.text('放弃本次更新'), skip ? findsOneWidget : findsNothing);
+        expect(find.text('重启并更新'), install ? findsOneWidget : findsNothing);
+      }
+      await event(tester, {
+        ...native,
+        'revision': ++revision,
+        'phase': 'upToDate',
+      });
+      expect(tester.widget<FSwitch>(channelSwitch).enabled, isTrue);
+      expect(calls.map((call) => call.method), ['state']);
+    },
+  );
+
+  testDesktopWidgets(
     'a prepared update installs once without checking or downloading again',
     (tester) async {
       native.addAll({
@@ -169,8 +210,14 @@ void main() {
       expect(find.text('更新已准备好，可重启并更新'), findsOneWidget);
       pending = Completer<Object?>();
       await tester.tap(find.text('重启并更新'));
-      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(calls.map((c) => c.method), ['state']);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(calls.map((c) => c.method), ['state']);
       await tester.tap(find.text('重启并更新'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认重启'));
       await tester.pump();
       expect(calls.map((c) => c.method), ['state', 'install']);
       pending!.complete({
@@ -277,12 +324,12 @@ void main() {
       });
       final updates = await render(tester);
       addTearDown(updates.dispose);
-      expect(find.text('上次检查：11-15 12:00'), findsOneWidget);
-      expect(find.text('下次检查：约 11-15 13:00'), findsOneWidget);
+      expect(find.text('11-15 12:00'), findsOneWidget);
+      expect(find.text('约 11-15 13:00'), findsOneWidget);
       await tester.tap(find.text('自动检查并预下载更新'));
       await tester.pumpAndSettle();
-      expect(find.text('下次检查：约 11-15 13:00'), findsNothing);
-      expect(find.text('上次检查：11-15 12:00'), findsOneWidget);
+      expect(find.text('约 11-15 13:00'), findsNothing);
+      expect(find.text('11-15 12:00'), findsOneWidget);
     },
   );
 
@@ -306,6 +353,57 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('更新已准备好，可重启并更新'), findsOneWidget);
       expect(find.text('正在检查更新'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'download rail uses the reference colors with readable fill contrast',
+    (tester) async {
+      native.addAll({'phase': 'downloading', 'progress': .25});
+      final updates = AppUpdates();
+      await updates.load();
+      addTearDown(updates.dispose);
+      for (final (mode, trackColor, fillColor) in const [
+        (Brightness.light, Color(0xffe5e5e5), Color(0xff2658d9)),
+        (Brightness.dark, Color(0xff35373b), Color(0xff86a9ff)),
+      ]) {
+        await tester.pumpWidget(
+          DesktopTestApp(
+            key: ValueKey(mode),
+            theme: loongPassTheme(mode),
+            home: Center(
+              child: SizedBox(
+                width: 196,
+                child: AppUpdateBadge(
+                  updates: updates,
+                  compact: false,
+                  onOpen: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        final progress = find.byType(FDeterminateProgress);
+        final decorations = tester.widgetList<DecoratedBox>(
+          find.descendant(of: progress, matching: find.byType(DecoratedBox)),
+        );
+        final track = decorations.first.decoration;
+        final color = switch (track) {
+          BoxDecoration(:final color) ||
+          ShapeDecoration(:final color) => color!,
+          _ => throw StateError('Unknown track decoration'),
+        };
+        final fill = (decorations.last.decoration as BoxDecoration).color!;
+        expect(color, trackColor);
+        expect(fill, fillColor);
+        final luminances = [fill.computeLuminance(), color.computeLuminance()]
+          ..sort();
+        expect(
+          (luminances.last + .05) / (luminances.first + .05),
+          greaterThan(4.5),
+        );
+        expect(tester.widget<FDeterminateProgress>(progress).value, .25);
+      }
     },
   );
 
@@ -378,23 +476,30 @@ void main() {
           await mouse.addPointer(location: Offset.zero);
           await mouse.moveTo(tester.getCenter(find.byType(FButton)));
           await tester.pump(const Duration(seconds: 1));
-          await tester.pumpAndSettle();
+          await tester.pump(const Duration(milliseconds: 300));
           expect(
             find.text(label),
-            phase == UpdatePhase.downloading
+            (phase == UpdatePhase.downloading || phase == UpdatePhase.error)
                 ? findsOneWidget
                 : findsNWidgets(2),
           );
           await mouse.removePointer();
-          await tester.pumpAndSettle();
+          await tester.pump(const Duration(milliseconds: 300));
           final callsBeforePress = calls.length;
-          await tester.tap(find.byType(FButton));
-          await tester.pumpAndSettle();
+          expect(find.byType(FButton), findsOneWidget);
+          final target = phase == UpdatePhase.error
+              ? find.text('查看原因')
+              : find.byType(FButton);
+          await tester.tap(target);
+          await tester.pump(const Duration(milliseconds: 300));
           expect(opens, phase == UpdatePhase.ready ? 0 : 1);
-          expect(
-            calls.skip(callsBeforePress).map((call) => call.method),
-            phase == UpdatePhase.ready ? ['install'] : isEmpty,
-          );
+          expect(calls.skip(callsBeforePress), isEmpty);
+          if (phase == UpdatePhase.ready) {
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('取消'));
+            await tester.pumpAndSettle();
+            expect(calls.skip(callsBeforePress), isEmpty);
+          }
         }
       } finally {
         semantics.dispose();

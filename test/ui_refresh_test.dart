@@ -57,7 +57,7 @@ void main() {
                 identity: 'demo@example.test',
                 balance: '3899.96 credits',
                 status: '需要重新授权',
-                needsAttention: true,
+                attention: AccountAttention.actionRequired,
                 observedAt: DateTime(2026, 11, 14, 9, 30),
                 onActivate: () => activations++,
                 details: const Text('Details'),
@@ -103,7 +103,7 @@ void main() {
         identity: id,
         balance: '0 credits',
         status: '待核验',
-        needsAttention: true,
+        attention: AccountAttention.awaitingVerification,
         details: Text(detail),
       );
       registry.publish(ManagedApp.qoderCn, source, [

@@ -14,7 +14,70 @@ import '../lib/ui_preferences.dart';
 
 void main() {
   testDesktopWidgets(
-    'narrow account tables keep readable columns with a visible horizontal scrollbar',
+    'attention deep link clears previous filters and opens the right-side detail sheet',
+    (tester) async {
+      final key = GlobalKey<CompactAccountsTableState>();
+      final expiry = DateTime.now().add(const Duration(days: 2));
+      final entries = [
+        for (final attention in AccountAttention.values)
+          AccountTableEntry(
+            id: attention.name,
+            label: attention.name,
+            identity: 'fixture',
+            status: attention.name,
+            balance: '0 credits',
+            attention: attention,
+            expiryAt: expiry,
+            expiringAmount: '1.25 tokens',
+            details: const Text('官方身份明细'),
+          ).inApp('qoder', 'Qoder · 海外版'),
+      ];
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: CompactAccountsTable(key: key, entries: entries),
+            ),
+          ),
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const Key('account-search')),
+        'missing',
+      );
+      key.currentState!.showActionRequired();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('account-qoder/awaitingVerification')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const Key('expiry-qoder/actionRequired')));
+      await tester.pumpAndSettle();
+      final sheet = find.byKey(const Key('account-detail-sheet'));
+      expect(
+        tester.getRect(sheet).right,
+        tester.getSize(find.byType(Scaffold).first).width,
+      );
+      expect(tester.getSize(sheet).width, 462);
+      final decoration =
+          tester.widget<Container>(sheet).decoration! as BoxDecoration;
+      expect(decoration.color!.a, 1);
+      expect(tester.getRect(sheet).left, greaterThan(0));
+      expect(
+        find.descendant(of: sheet, matching: find.text('1.25 tokens')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: sheet, matching: find.text('0 credits')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('账号信息'));
+      await tester.pumpAndSettle();
+      expect(find.text('官方身份明细'), findsOneWidget);
+    },
+  );
+  testDesktopWidgets(
+    'narrow account rows label the values without horizontal scrolling',
     (tester) async {
       await tester.runAsync(() async {
         final inter = FontLoader(FTypeface.defaultFontFamily)
@@ -58,45 +121,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final labels = ['账号', '即将到期额度', '到期时间', '最近领取时间', '余额'];
-      var previous = -1.0;
-      for (final label in labels) {
-        expect(find.text(label), findsOneWidget);
-        final bounds = tester.getRect(find.text(label));
-        expect(bounds.left, greaterThan(previous));
-        expect(bounds.height, lessThan(30));
-        previous = bounds.left;
+      for (final label in ['即将到期额度', '到期时间', '最近领取时间', '余额']) {
+        expect(find.text(label).first.hitTestable(), findsOneWidget);
       }
-      for (final (label, key) in [
-        ('即将到期额度', 'expiry-one'),
-        ('到期时间', 'expiry-time-one'),
-        ('最近领取时间', 'claim-one'),
-        ('余额', 'balance-one'),
-      ]) {
-        final heading = tester.getRect(find.text(label));
-        final cell = tester.getRect(find.byKey(ValueKey(key)));
-        expect(heading.left, greaterThanOrEqualTo(cell.left));
-        expect(heading.right, lessThanOrEqualTo(cell.right));
-      }
-      final horizontal = find.byKey(const Key('account-table-scroll'));
-      final controller = tester
-          .widget<SingleChildScrollView>(horizontal)
-          .controller!;
-      expect(controller.position.maxScrollExtent, greaterThan(0));
-      expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is RawScrollbar &&
-              widget.controller == controller &&
-              widget.thumbVisibility == true,
-        ),
-        findsOneWidget,
-      );
-      await tester.drag(horizontal, const Offset(-500, 0));
+      expect(find.byKey(const Key('account-table-scroll')), findsNothing);
       await tester.pumpAndSettle();
       expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
       expect(find.text('09:30').hitTestable(), findsOneWidget);
-      expect(find.text('最近领取时间').hitTestable(), findsOneWidget);
+      expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -199,7 +231,7 @@ void main() {
                           sourceLabel: 'WorkBuddy 国内版',
                           balance: '3899.96 credits',
                           status: '额度查询未完成',
-                          needsAttention: true,
+                          attention: AccountAttention.awaitingVerification,
                           details: Text('Details'),
                         ),
                       ],
@@ -359,7 +391,7 @@ void main() {
             .selected,
         isTrue,
       );
-      await tester.tap(find.text('常用'));
+      await tester.tap(find.text('收藏'));
       await tester.pumpAndSettle();
       expect(find.text('Saved account'), findsOneWidget);
       await tester.enterText(
@@ -521,7 +553,7 @@ void main() {
   );
 
   testDesktopWidgets(
-    'narrow windows scroll all columns and page-size changes reset to the first page',
+    'narrow rows expose all fields and page-size changes reset to the first page',
     (tester) async {
       await mount(tester);
       await tester.ensureVisible(findTooltip('下一页'));
@@ -540,18 +572,9 @@ void main() {
       tester.view.physicalSize = const Size(400, 768);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      final horizontal = find.byWidgetPredicate(
-        (w) =>
-            w is SingleChildScrollView && w.scrollDirection == Axis.horizontal,
-      );
-      expect(horizontal, findsOneWidget);
-      await tester.drag(horizontal, const Offset(-600, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
-      expect(find.text('余额').first.hitTestable(), findsOneWidget);
-      await tester.drag(horizontal, const Offset(600, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('账号').first.hitTestable(), findsOneWidget);
+      expect(find.byKey(const Key('account-table-scroll')), findsNothing);
+      expect(find.text('余额'), findsNWidgets(5));
+      expect(find.text('最近领取时间'), findsWidgets);
     },
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );

@@ -1,0 +1,183 @@
+part of 'workspace_accounts.dart';
+
+class WorkspaceOverviewPage extends StatefulWidget {
+  const WorkspaceOverviewPage({
+    super.key,
+    required this.registry,
+    required this.onOpenApp,
+    this.rewards,
+    this.onOpenRewards,
+    this.onOpenAccounts,
+    this.onOpenReceipts,
+    this.serviceStatus,
+  });
+  final AccountWorkspaceRegistry registry;
+
+  /// Starts the chosen platform's add-account flow from the first-run prompt.
+  final ValueChanged<ManagedApp> onOpenApp;
+  final VoidCallback? onOpenRewards, onOpenAccounts, onOpenReceipts;
+  final PluginRewards? rewards;
+  final Widget? serviceStatus;
+  @override
+  State<WorkspaceOverviewPage> createState() => _WorkspaceOverviewPageState();
+}
+
+class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.registry,
+    builder: (context, _) {
+      final registry = widget.registry;
+      final accounts = registry.accounts;
+      if (accounts.isEmpty) {
+        return WorkspacePage(
+          title: '总览',
+          subtitle: '本机工作区',
+          children: [
+            widget.serviceStatus ?? _FirstAccountPrompt(widget.onOpenApp),
+          ],
+        );
+      }
+      Widget attention(AccountAttention kind) => _AttentionList(
+        key: ValueKey(kind),
+        registry: registry,
+        kind: kind,
+        records: accounts.where((a) => a.entry.attention == kind).toList(),
+      );
+      return WorkspacePage(
+        title: '总览',
+        subtitle:
+            '已保存 ${accounts.length} 个账号，分布在 ${accounts.map((a) => a.app).toSet().length} 个平台。',
+        action: widget.rewards == null
+            ? null
+            : RewardBatchAction(
+                rewards: widget.rewards!,
+                onStarted: widget.onOpenRewards,
+              ),
+        children: [
+          if (widget.serviceStatus != null) widget.serviceStatus!,
+          if (widget.rewards != null)
+            RewardBatchStatus(rewards: widget.rewards!),
+          attention(AccountAttention.actionRequired),
+          const SizedBox(height: 26),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final calendar = _ExpiryCalendar(
+                accounts: accounts,
+                registry: registry,
+              );
+              final pending = attention(AccountAttention.awaitingVerification);
+              if (constraints.maxWidth <
+                  580 * MediaQuery.textScalerOf(context).scale(14) / 14) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [calendar, const SizedBox(height: 20), pending],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 2, child: calendar),
+                  const SizedBox(width: 18),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.only(left: 16),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(color: context.theme.colors.border),
+                        ),
+                      ),
+                      child: pending,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          if (widget.onOpenAccounts != null ||
+              widget.onOpenReceipts != null) ...[
+            const SizedBox(height: 24),
+            Container(height: 1, color: context.theme.colors.border),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              children: [
+                if (widget.onOpenAccounts != null)
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    mainAxisSize: MainAxisSize.min,
+                    prefix: const Icon(FLucideIcons.wallet, size: 16),
+                    onPress: widget.onOpenAccounts,
+                    child: const Text('查看全部账号'),
+                  ),
+                if (widget.onOpenReceipts != null)
+                  FButton(
+                    variant: FButtonVariant.ghost,
+                    mainAxisSize: MainAxisSize.min,
+                    prefix: const Icon(FLucideIcons.history, size: 16),
+                    onPress: widget.onOpenReceipts,
+                    child: const Text('最近成功领取'),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      );
+    },
+  );
+}
+
+class _AttentionList extends StatefulWidget {
+  const _AttentionList({
+    super.key,
+    required this.records,
+    required this.registry,
+    required this.kind,
+  });
+  final List<WorkspaceAccount> records;
+  final AccountWorkspaceRegistry registry;
+  final AccountAttention kind;
+  @override
+  State<_AttentionList> createState() => _AttentionListState();
+}
+
+class _AttentionListState extends State<_AttentionList> {
+  bool expanded = false;
+  @override
+  Widget build(BuildContext context) {
+    final actionable = widget.kind == AccountAttention.actionRequired;
+    final records = widget.records;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(
+          actionable ? '需要你处理' : '待核验',
+          records.length,
+          actionable: actionable,
+        ),
+        if (actionable && records.isNotEmpty)
+          Container(height: 1, color: context.theme.colors.border),
+        if (records.isEmpty)
+          Text(
+            actionable ? '没有需要你操作的账号。' : '暂无待核验项目。',
+            style: context.theme.typography.body.sm.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+        for (final a in expanded ? records : records.take(3))
+          _AccountLine(a, widget.registry, showResolution: true),
+        if (records.length > 3)
+          FButton(
+            key: Key(
+              actionable ? 'overview-all-attention' : 'overview-all-pending',
+            ),
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            mainAxisSize: MainAxisSize.min,
+            onPress: () => setState(() => expanded = !expanded),
+            child: Text(expanded ? '收起' : '查看全部 ${records.length} 个账号'),
+          ),
+      ],
+    );
+  }
+}

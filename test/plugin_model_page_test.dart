@@ -1,3 +1,7 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -102,6 +106,123 @@ class _Application implements PluginApplication {
 }
 
 void main() {
+  for (final brightness in Brightness.values) {
+    testDesktopWidgets(
+      'connection sheet paints an opaque full-height surface in ${brightness.name}',
+      (tester) async {
+        final service = _Service(), capture = GlobalKey();
+        final app = _Application(service);
+        addTearDown(service.dispose);
+        addTearDown(app.connection.dispose);
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: capture,
+            child: DesktopTestApp(
+              theme: loongPassTheme(brightness),
+              home: Scaffold(body: PluginModelServicesPage(application: app)),
+            ),
+          ),
+        );
+        await tester.tap(find.text('连接设置'));
+        await tester.pumpAndSettle();
+        final colors = loongPassDesignTheme(brightness).colors;
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(capture),
+        );
+        await tester.runAsync(() async {
+          final frame = await boundary.toImage();
+          try {
+            final rgba = (await frame.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            ))!;
+            List<int> pixel(int x, int y) {
+              final offset = 4 * (frame.width * y + x);
+              return [for (var i = 0; i < 4; i++) rgba.getUint8(offset + i)];
+            }
+
+            List<int> opaque(Color color) {
+              final rgb = color.toARGB32();
+              return [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 255];
+            }
+
+            final left = frame.width - 462;
+            for (final y in [1, frame.height ~/ 2, frame.height - 2]) {
+              expect(pixel(left + 4, y), opaque(colors.background));
+              expect(
+                pixel(left, y),
+                opaque(Color.alphaBlend(colors.border, colors.background)),
+              );
+            }
+          } finally {
+            frame.dispose();
+          }
+        });
+      },
+    );
+  }
+  testDesktopWidgets(
+    'at 480px with large text the candidate order action occupies its own line',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(480, 800);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final service = _Service(), app = _Application(service);
+      addTearDown(service.dispose);
+      addTearDown(app.connection.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context)
+                .copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(body: PluginModelServicesPage(application: app)),
+        ),
+      );
+      final button = find.text('候选顺序');
+      final bounds = tester.getRect(button);
+      expect(
+        bounds.top,
+        greaterThan(tester.getRect(find.textContaining('个候选模型')).bottom),
+      );
+      final paragraph = tester.renderObject<RenderParagraph>(button);
+      expect(
+        paragraph
+            .getBoxesForSelection(
+              const TextSelection(baseOffset: 0, extentOffset: 4),
+            )
+            .map((b) => b.top)
+            .toSet()
+            .length,
+        1,
+      );
+      Focus.of(tester.element(button)).requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('按候选顺序选择模型，同会话、同模型优先复用账号。'), findsOneWidget);
+    },
+  );
+  testDesktopWidgets(
+    'empty model sources can be inspected without starting a connection',
+    (tester) async {
+      final service = _Service()..grants.clear();
+      final app = _Application(service);
+      addTearDown(service.dispose);
+      addTearDown(app.connection.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(body: PluginModelServicesPage(application: app)),
+        ),
+      );
+      expect(find.text('暂无账号来源'), findsOneWidget);
+      expect(find.text('连接设置'), findsOneWidget);
+      expect(app.connection.checkedAt, isNull);
+      expect(service.changes, 0);
+    },
+  );
+
   testDesktopWidgets(
     'concrete models start hidden until searched and explicitly published',
     (tester) async {
@@ -169,6 +290,8 @@ void main() {
         await tester.enterText(find.byKey(const Key('model-search')), '');
         await tester.pumpAndSettle();
         expect(find.text('MiniMax-M3'), findsNothing);
+        await tester.ensureVisible(find.byKey(const Key('show-all-models')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('show-all-models')));
         await tester.pumpAndSettle();
         expect(find.text('MiniMax-M3'), findsOneWidget);
@@ -221,11 +344,18 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('show-all-models')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(modelName));
       await tester.tap(find.text(modelName));
       await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.text(accountName).first,
+        find.byType(Scrollable).first,
+        const Offset(0, -300),
+      );
       await tester.ensureVisible(find.text(accountName).first);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -249,6 +379,8 @@ void main() {
           ),
         ),
       );
+      await tester.ensureVisible(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('show-all-models')));
       await tester.pumpAndSettle();
       expect(find.text('glm-5.3-flash'), findsOneWidget);
@@ -311,6 +443,8 @@ void main() {
       );
       service.publish();
       await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('show-all-models')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('show-all-models')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(name));
@@ -332,12 +466,59 @@ void main() {
         home: Scaffold(body: PluginModelServicesPage(application: app)),
       ),
     );
-    await tester.tap(find.byKey(const Key('show-all-models')));
+    expect(find.text('模型目录'), findsOneWidget);
+    expect(
+      tester.getSize(find.text('显示全部模型')).height,
+      lessThanOrEqualTo(
+        tester.getSize(find.byKey(const Key('model-search'))).height,
+      ),
+    );
+    await tester.tap(find.text('候选顺序'));
     await tester.pumpAndSettle();
-    await tester.tap(find.bySemanticsLabel('上移 deepseek-flash'));
+    expect(
+      find.byKey(const Key('model-published-deepseek-flash')),
+      findsNothing,
+    );
+    await tester.enterText(find.byKey(const Key('model-search')), '1017');
+    await tester.pumpAndSettle();
+    expect(find.text('glm-5.3-flash'), findsNothing);
+    expect(find.text('02'), findsOneWidget);
+    final arrow = find.descendant(
+      of: find.bySemanticsLabel('上移 deepseek-flash'),
+      matching: find.byType(Icon),
+    );
+    Focus.of(tester.element(arrow)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(service.catalog.first.id, 'deepseek-flash');
     expect(service.changes, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  testDesktopWidgets('connection sheet opens grants without writing settings', (
+    tester,
+  ) async {
+    final service = _Service();
+    final app = _Application(service);
+    addTearDown(service.dispose);
+    addTearDown(app.connection.dispose);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(body: PluginModelServicesPage(application: app)),
+      ),
+    );
+    expect(find.text('开放给 Magpie 的账号'), findsNothing);
+    await tester.tap(find.text('连接设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('开放给 Magpie 的账号'), findsOneWidget);
+    expect(find.text('Demo account'), findsOneWidget);
+    expect(service.changes, 0);
+    await tester.tap(find.text('Demo account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.bySemanticsLabel('关闭连接设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('开放给 Magpie 的账号'), findsNothing);
+    expect(service.changes, 1);
   });
 }

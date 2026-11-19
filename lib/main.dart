@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:forui/forui.dart';
 
 import 'desktop_platform.dart';
+import 'desktop_theme.dart';
 import 'app_theme.dart';
 export 'app_theme.dart';
 import 'app_sidebar.dart';
@@ -110,6 +111,13 @@ class _AccountPageState extends State<_AccountPage> {
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
   final _accountsPage = GlobalKey<WorkspaceAccountsPageState>();
+  final _activityPage = GlobalKey<WorkspaceActivityPageState>();
+  final _settingsTopic = ValueNotifier(SettingsSection.appearance);
+  final _codexPanel = GlobalKey<CodexAccountsPanelState>();
+  final _pluginPanels = {
+    for (final app in ManagedApp.values.where((app) => app != ManagedApp.codex))
+      app: GlobalKey<PluginAccountsPanelState>(),
+  };
   PluginApplication? _application;
   String? _selectedModelId;
   bool _starting = false;
@@ -147,24 +155,46 @@ class _AccountPageState extends State<_AccountPage> {
     }
   }
 
-  Widget get _status => Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(_starting ? '正在准备账号服务…' : _startError ?? '当前系统不支持原生账号服务。'),
-        if (_starting)
-          const Padding(padding: EdgeInsets.only(top: 12), child: FProgress()),
-        if (_startError != null)
-          FButton(
-            variant: FButtonVariant.ghost,
-            size: FButtonSizeVariant.sm,
-            mainAxisSize: MainAxisSize.min,
-            child: const Text('重试'),
-            onPress: _starting ? null : _start,
+  Widget get _status => Builder(
+    builder: (context) => Container(
+      margin: const EdgeInsets.only(bottom: 18),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: context.desktopPalette.sidebar,
+        borderRadius: context.theme.style.borderRadius.md,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _starting ? '正在准备账号服务' : '账号服务暂不可用',
+            style: context.theme.typography.display.sm.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            _starting ? '服务就绪后会显示本机已保存的账号。' : _startError ?? '当前系统不支持原生账号服务。',
+            style: context.theme.typography.body.sm.copyWith(
+              color: context.theme.colors.mutedForeground,
+            ),
+          ),
+          if (_starting)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: FProgress(),
+            ),
+          if (_startError != null)
+            FButton(
+              variant: FButtonVariant.ghost,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
+              child: const Text('重试'),
+              onPress: _starting ? null : _start,
+            ),
+        ],
+      ),
     ),
   );
   Map<ManagedApp, Widget> get _pages => {
@@ -178,10 +208,11 @@ class _AccountPageState extends State<_AccountPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               app == ManagedApp.codex
-                  ? CodexAccountsPanel(owner: _codex)
+                  ? CodexAccountsPanel(key: _codexPanel, owner: _codex)
                   : _application == null
                   ? _status
                   : PluginAccountsPanel(
+                      key: _pluginPanels[app],
                       accounts: _application!.accounts,
                       rewards: _application!.rewards,
                       providerIds: providersForApp(app),
@@ -203,7 +234,31 @@ class _AccountPageState extends State<_AccountPage> {
         ),
       ),
   };
-  void _openApp(ManagedApp app) => _workspace.currentState?.selectApp(app);
+  void _addAccount(ManagedApp app) {
+    _workspace.currentState?.selectApp(app);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (app == ManagedApp.codex) {
+        _codexPanel.currentState?.addAccount();
+      } else {
+        _pluginPanels[app]?.currentState?.addAccount();
+      }
+    });
+  }
+
+  void _openAccounts() =>
+      _workspace.currentState?.selectSection(WorkspaceSection.accounts);
+  void _openActivity() =>
+      _workspace.currentState?.selectSection(WorkspaceSection.activity);
+  void _openReceipts() {
+    _openActivity();
+    _activityPage.currentState?.showReceipts();
+  }
+
+  void _openUpdates() {
+    _settingsTopic.value = SettingsSection.updates;
+    _workspace.currentState?.selectSection(WorkspaceSection.settings);
+  }
 
   void _modelsChanged() {
     if (!mounted) return;
@@ -239,6 +294,7 @@ class _AccountPageState extends State<_AccountPage> {
     if (_application != null && widget.application == null)
       unawaited(_application!.close());
     _registry.dispose();
+    _settingsTopic.dispose();
     super.dispose();
   }
 
@@ -265,13 +321,12 @@ class _AccountPageState extends State<_AccountPage> {
         footerBuilder: (context, compact) => AppUpdateBadge(
           updates: _updates,
           compact: compact,
-          onOpen: () =>
-              _workspace.currentState?.selectSection(WorkspaceSection.settings),
+          onOpen: _openUpdates,
         ),
         pages: _pages,
         sections: {
           WorkspaceSection.models: _application == null
-              ? _status
+              ? WorkspacePage(title: '模型连接', children: [_status])
               : PluginModelServicesPage(
                   application: _application!,
                   selectedModelId: _selectedModelId,
@@ -279,25 +334,30 @@ class _AccountPageState extends State<_AccountPage> {
                   onOpenAccount: _openAccount,
                 ),
           WorkspaceSection.settings: WorkspaceSettingsPage(
+            section: _settingsTopic,
+            onOpenAccounts: _openAccounts,
+            onOpenRewards: _openActivity,
             preferences: widget.preferences,
             updates: _updates,
             invitations: widget.invitations,
           ),
           WorkspaceSection.overview: WorkspaceOverviewPage(
             registry: _registry,
-            onOpenApp: _openApp,
+            onOpenApp: _addAccount,
             rewards: _application?.rewards,
-            onOpenRewards: () => _workspace.currentState?.selectSection(
-              WorkspaceSection.activity,
-            ),
+            onOpenRewards: _openActivity,
+            onOpenAccounts: _openAccounts,
+            onOpenReceipts: _openReceipts,
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.accounts: WorkspaceAccountsPage(
             key: _accountsPage,
             registry: _registry,
+            onOpenApp: _addAccount,
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.activity: WorkspaceActivityPage(
+            key: _activityPage,
             registry: _registry,
             rewards: _application?.rewards,
             serviceStatus: _application == null ? _status : null,
@@ -322,7 +382,12 @@ class AccountWorkspacePage extends StatelessWidget {
   Widget build(BuildContext context) => DefaultTextStyle(
     style: context.theme.typography.body.sm,
     child: ListView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.fromLTRB(
+        context.desktopGutter,
+        26,
+        context.desktopGutter,
+        40,
+      ),
       children: [
         if (showTitle) Text(name, style: context.theme.typography.display.xl),
         if (showTitle) const SizedBox(height: 8),

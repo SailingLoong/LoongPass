@@ -11,7 +11,8 @@ class PluginModelList extends StatelessWidget {
     required this.busy,
     required this.onSelect,
     required this.onPublish,
-    required this.onReorder,
+    required this.candidates,
+    required this.onMove,
     this.filtered = false,
   });
   final List<PluginModel> models;
@@ -19,7 +20,8 @@ class PluginModelList extends StatelessWidget {
   final bool filtered;
   final ValueChanged<String> onSelect;
   final void Function(String, bool) onPublish;
-  final void Function(int, int) onReorder;
+  final List<PluginModel>? candidates;
+  final void Function(String, String) onMove;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -31,12 +33,16 @@ class PluginModelList extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: models.length,
         onReorderItem: (from, to) {
-          if (!busy && !filtered) onReorder(from, to);
+          if (!busy && !filtered && candidates != null) {
+            onMove(models[from].id, models[to].id);
+          }
         },
         proxyDecorator: (child, index, animation) =>
             ColoredBox(color: context.theme.colors.muted, child: child),
         itemBuilder: (context, index) {
           final model = models[index], preferred = models[index].preferred;
+          final order = candidates;
+          final rank = order?.indexWhere((m) => m.id == model.id) ?? -1;
           final muted = context.theme.typography.body.xs.copyWith(
             color: context.theme.colors.mutedForeground,
           );
@@ -76,18 +82,22 @@ class PluginModelList extends StatelessWidget {
                 variant: FButtonVariant.ghost,
                 size: FButtonSizeVariant.sm,
                 semanticsLabel: '上移 ${model.name}',
-                onPress: busy || index == 0
+                onPress: busy || order == null || rank <= 0
                     ? null
-                    : () => onReorder(index, index - 1),
+                    : () => onMove(model.id, order[rank - 1].id),
                 child: const Icon(FLucideIcons.arrowUp, size: 14),
               ),
               FButton.icon(
                 variant: FButtonVariant.ghost,
                 size: FButtonSizeVariant.sm,
                 semanticsLabel: '下移 ${model.name}',
-                onPress: busy || index == models.length - 1
+                onPress:
+                    busy ||
+                        order == null ||
+                        rank < 0 ||
+                        rank == order.length - 1
                     ? null
-                    : () => onReorder(index, index + 1),
+                    : () => onMove(model.id, order[rank + 1].id),
                 child: const Icon(FLucideIcons.arrowDown, size: 14),
               ),
             ],
@@ -103,7 +113,9 @@ class PluginModelList extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (!filtered)
+                if (order != null)
+                  Text((rank + 1).toString().padLeft(2, '0'), style: muted),
+                if (order != null && !filtered)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ReorderableDragStartListener(
@@ -119,11 +131,13 @@ class PluginModelList extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (wide) ...[
+                if (order == null)
+                  Expanded(child: name)
+                else if (wide) ...[
                   Expanded(flex: 3, child: name),
                   const SizedBox(width: 8),
                   Expanded(flex: 4, child: recommendation),
-                  if (!filtered) move,
+                  move,
                 ] else
                   Expanded(
                     child: Column(
@@ -132,18 +146,19 @@ class PluginModelList extends StatelessWidget {
                         name,
                         const SizedBox(height: 6),
                         recommendation,
-                        if (!filtered) move,
+                        move,
                       ],
                     ),
                   ),
                 const SizedBox(width: 8),
-                FSwitch(
-                  key: ValueKey('model-published-${model.id}'),
-                  semanticsLabel: '在 Magpie 中显示 ${model.name}',
-                  value: model.published,
-                  enabled: !busy,
-                  onChange: (value) => onPublish(model.id, value),
-                ),
+                if (order == null)
+                  FSwitch(
+                    key: ValueKey('model-published-${model.id}'),
+                    semanticsLabel: '在 Magpie 中显示 ${model.name}',
+                    value: model.published,
+                    enabled: !busy,
+                    onChange: (value) => onPublish(model.id, value),
+                  ),
               ],
             ),
           );
