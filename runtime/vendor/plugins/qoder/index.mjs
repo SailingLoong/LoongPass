@@ -1206,7 +1206,18 @@ function reasoningOf(m) {
 // thinking before the call said, and said it had none without it. A turn
 // with thinking and nothing else is still left out, as that client leaves
 // it.
-function qoderMessages(msgs) {
+// Kimi on QwenWork (kimi-k3.1-pro) answers 400 "Error in upstream response"
+// to an assistant turn with tool_calls and an empty content, which is how
+// every OpenAI client records a call-only turn (nanfei892, #1213: 9-token
+// bodies, DeepSeek, GLM and Qwen on the same account fine, " " served).
+// QwenWork's own client always writes text beside a call. A Kimi model's
+// call-only turn carries one space; other models get the turn as written.
+function kimiModel(m) {
+  const key = String(m?.key ?? "")
+  return /^kmodel/i.test(key) || /kimi/i.test(key + " " + (m?.config?.display_name ?? "") + " " + (m?.name ?? ""))
+}
+
+function qoderMessages(msgs, opts = {}) {
   const out = []
   const names = {}
   let seen = []
@@ -1265,7 +1276,7 @@ function qoderMessages(msgs) {
         return { id, type: "function", function: { name: c.function?.name, arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}) } }
       })
       const think = reasoningOf(m)
-      out.push({ role: "assistant", content: textOf(m.content), ...(think ? { reasoning_content: think } : {}), tool_calls: calls })
+      out.push({ role: "assistant", content: textOf(m.content) || (opts.callText ?? ""), ...(think ? { reasoning_content: think } : {}), tool_calls: calls })
       const open = calls.map((c) => c.id)
       const kept = new Set()
       for (let j = i + 1; j < msgs.length && msgs[j].role === "tool"; j++) {
@@ -1528,7 +1539,7 @@ function qoderBody(chat, m, named = "", task, site) {
     session_type: site?.sessionType ?? "app",
     model_config: modelConfig(m, thinking),
     system: [sys],
-    messages: [{ role: "system", content: [sys] }, ...cacheMarked(qoderMessages(chat.messages ?? []))],
+    messages: [{ role: "system", content: [sys] }, ...cacheMarked(qoderMessages(chat.messages ?? [], { callText: kimiModel(m) ? " " : "" }))],
   }
   if (tools.length)
     body.tools = tools.map((t) => ({
@@ -1724,6 +1735,21 @@ const QUEUE = {
   recoveries: 10, // the queue waited out this many times, at most, for one request
   failures: 3, // status asks failing in a row that end the wait
   ask: 30_000, // the longest one status ask may take
+  // the longest a call waits for Qoder's first event (headers included).
+  // Qoder CN once held a call 15 minutes with nothing sent and nothing to
+  // log (#1204); after this it is a 504 that says so, which magpie can
+  // fail over from. A queued call answers its 10605 at once, and a
+  // thinking model streams its reasoning, so a real answer starts sooner.
+  silent: 120_000,
+  // the longest a wait goes on with nothing ahead of the request
+  // (queueCount 1 or none) and the queue's state the same at every ask.
+  // Qoder CN once held such a RESOURCE_LIMIT queue unchanged, 1 in p4,
+  // for every request from one hour on (plugins#1220): the hour's hold
+  // then left the agent with keepalives only. After this it is the
+  // queue's 503 with Retry-After, which magpie can rest the account on
+  // or fail over from. A queue with others ahead is waited out as
+  // Qoder's client waits it (#807).
+  stuck: 5 * 60 * 1000,
   now: () => Date.now(),
   // every calls fn each ms until the returned stop is called
   every: (fn, ms) => {
@@ -1777,7 +1803,7 @@ function queueState(text) {
     if (isQueued !== undefined || serviceAvailable !== undefined) {
       const num = (v) => (v == null || v === "" || !Number.isFinite(Number(v)) ? undefined : Number(v))
       const str = (v) => (typeof v === "string" && v ? v : undefined)
-      return { isQueued, serviceAvailable, modelKey: str(o.modelKey), queueType: str(o.queueType), retryAfterSeconds: num(o.retryAfterSeconds) }
+      return { isQueued, serviceAvailable, modelKey: str(o.modelKey), queueType: str(o.queueType), retryAfterSeconds: num(o.retryAfterSeconds), queueCount: num(o.queueCount), subCode: str(o.subCode) }
     }
     for (const k of ["data", "result", "message", "body"]) {
       const v = o[k]
@@ -1809,13 +1835,25 @@ async function queueStatus(api, cred, { requestSetId, modelKey, queueType, reque
   return st
 }
 
+// stuckKey is what a queue's state says of the request's place in it, or
+// "" when others are ahead of it (a queue that moves while they are
+// served is waited out, QUEUE.stuck never ends it).
+function stuckKey(st) {
+  const n = Number(st?.queueCount)
+  if (Number.isFinite(n) && n > 1) return ""
+  return JSON.stringify([st?.isQueued, st?.serviceAvailable, Number.isFinite(n) ? n : null, st?.queueType ?? null, st?.subCode ?? null, st?.retryAfterSeconds ?? null])
+}
+
 // queueWait waits in Qoder's queue for the request, from the state its
 // refusal gave, until the queue lets it through (true) or the wait ends
-// (false). A cancelled request throws.
+// (false). A wait ended by QUEUE.stuck sets ask.stuck. A cancelled request
+// throws.
 async function queueWait(api, cred, ask, first, signal, deadline, site) {
   let q = first ?? {}
   let asked = false
   let failed = 0
+  let same = stuckKey(q)
+  let since = QUEUE.now()
   for (;;) {
     if (signal?.aborted) throw signal.reason ?? new DOMException("aborted", "AbortError")
     if (QUEUE.now() >= deadline) return false
@@ -1834,6 +1872,14 @@ async function queueWait(api, cred, ask, first, signal, deadline, site) {
     }
     failed = 0
     q = { ...st, modelKey: st.modelKey ?? q.modelKey, queueType: st.queueType ?? q.queueType }
+    const key = stuckKey(q)
+    if (!key || key !== same) {
+      same = key
+      since = QUEUE.now()
+    } else if (QUEUE.now() - since >= QUEUE.stuck && st.isQueued !== false) {
+      ask.stuck = true
+      return false
+    }
     if (st.isQueued === false) {
       if (st.retryAfterSeconds > 0) await QUEUE.pause(Math.min(queuePause(st.retryAfterSeconds), Math.max(0, deadline - QUEUE.now())), signal)
       return QUEUE.now() < deadline
@@ -2117,6 +2163,71 @@ class MarkdownCode {
 // the XML function form
 const callish = (v) => v.trimStart().startsWith("{") || v.includes("\x3cfunction=")
 
+// plugins#1113: a reply that is one JSON object holding OpenAI's own
+// tool_calls array, written as text ({"tool_calls":[{"name", "arguments"}]}),
+// is those calls. It is told apart from text by where it starts: a line of
+// its own whose object opens with the "tool_calls" key, outside code.
+const JSON_KEY = '{"tool_calls"'
+const JSON_AT_ALL = /(^|\n)[ \t]*\{\s*"tool_calls"\s*:/g
+
+// jsonHold is how much of comb's end may still become JSON_KEY on a line
+// of its own (start says comb starts a line), so it is held for more
+function jsonHold(comb, start) {
+  const n = comb.lastIndexOf("\n")
+  if (n < 0 && !start) return 0
+  const line = comb.slice(n + 1)
+  const s = line.replace(/\s+/g, "")
+  if (!JSON_KEY.startsWith(s)) return 0
+  return line.length
+}
+
+// jsonEnd is where the JSON object at the start of v ends, -1 while it is
+// not whole yet
+function jsonEnd(v) {
+  let depth = 0
+  let str = false
+  for (let k = 0; k < v.length; k++) {
+    const c = v[k]
+    if (str) {
+      if (c === "\\") k++
+      else if (c === '"') str = false
+    } else if (c === '"') str = true
+    else if (c === "{" || c === "[") depth++
+    else if (c === "}" || c === "]") {
+      if (--depth === 0) return k + 1
+    }
+  }
+  return -1
+}
+
+// jsonCalls reads a whole {"tool_calls": [...]} object: its calls, null
+// when it holds none (it stays text), or false when one can't be read
+function jsonCalls(v) {
+  let f
+  try {
+    f = JSON.parse(v)
+  } catch {
+    return false
+  }
+  const list = f?.tool_calls
+  if (!Array.isArray(list) || !list.length) return null
+  const calls = []
+  for (const e of list) {
+    const fn = e?.function ?? e
+    let args = fn?.arguments
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args)
+      } catch {
+        return false
+      }
+    }
+    if (!String(fn?.name ?? "").trim() || !args || typeof args !== "object" || Array.isArray(args)) return false
+    calls.push({ name: fn.name.trim(), args: JSON.stringify(args) })
+  }
+  return calls
+}
+
 const CUT_SHORT = "the model's tool call, written as text, was cut short; it is not sent on as the answer"
 const UNREADABLE = "the model's tool call, written as text, can't be read; it is not sent on as the answer"
 
@@ -2135,6 +2246,7 @@ class Splitter {
   sawTool = false
   after = false // a bare call just ended: the closes and blanks after it are dropped
   markdown = new MarkdownCode()
+  jsonBuf = null // a {"tool_calls": ...} object being read (plugins#1113)
   constructor(tools = []) {
     this.tools = tools.filter((t) => (t?.function ?? t)?.name)
   }
@@ -2180,6 +2292,32 @@ class Splitter {
     this.after = false
     return rest
   }
+  // json reads the {"tool_calls": ...} object held in jsonBuf: the input
+  // left after it, null while it is not whole, or false when the turn
+  // ended in an error
+  json(out, end) {
+    const v = this.jsonBuf
+    const e = jsonEnd(v)
+    if (e < 0) {
+      if (!end) return null
+      this.jsonBuf = null
+      out.push({ error: CUT_SHORT })
+      return false
+    }
+    this.jsonBuf = null
+    const calls = jsonCalls(v.slice(0, e))
+    if (calls === false) {
+      out.push({ error: UNREADABLE })
+      return false
+    }
+    if (!calls) {
+      this.text(out, v.slice(0, e))
+      return v.slice(e)
+    }
+    this.sawTool = true
+    for (const c of calls) out.push({ call: c })
+    return v.slice(e).replace(/^\s+/, "")
+  }
   feed(input) {
     const out = []
     if (!this.tools.length) {
@@ -2187,6 +2325,14 @@ class Splitter {
       return out
     }
     while (input) {
+      if (this.jsonBuf !== null) {
+        this.jsonBuf += input
+        const next = this.json(out, false)
+        if (next === false) return out
+        if (next === null) break
+        input = next
+        continue
+      }
       if (!this.inCall) {
         let comb = this.textBuf + input
         this.textBuf = ""
@@ -2201,6 +2347,25 @@ class Splitter {
         }
         const i = comb.indexOf(CALL_OPEN)
         const x = this.tools.length ? comb.search(XML_AT) : -1
+        const start = !this.sent || this.sent.endsWith("\n")
+        let k = -1
+        for (const jm of comb.matchAll(JSON_AT_ALL)) {
+          const at = jm.index + jm[1].length
+          if ((jm[1] || start) && !quoted(this.sent + comb.slice(0, at))) {
+            k = at
+            break
+          }
+        }
+        if (k >= 0 && (i < 0 || k < i) && (x < 0 || k < x)) {
+          if (k > 0) this.text(out, comb.slice(0, k))
+          this.jsonBuf = comb.slice(k).replace(/^[ \t]+/, "")
+          input = ""
+          const next = this.json(out, false)
+          if (next === false) return out
+          if (next === null) break
+          input = next
+          continue
+        }
         if (x >= 0 && (i < 0 || x < i)) {
           const next = this.bare(out, comb, x, false)
           if (next === false) return out
@@ -2218,6 +2383,7 @@ class Splitter {
               }
           const h = this.tools.length ? comb.search(XML_HOLD) : -1
           if (h >= 0) keep = Math.max(keep, comb.length - h)
+          keep = Math.max(keep, jsonHold(comb, !this.sent || this.sent.endsWith("\n")))
           if (keep < comb.length) this.text(out, comb.slice(0, comb.length - keep))
           this.textBuf = comb.slice(comb.length - keep)
           break
@@ -2254,6 +2420,12 @@ class Splitter {
     return out
   }
   flush() {
+    if (this.jsonBuf !== null) {
+      const out = []
+      const next = this.json(out, true)
+      if (next) this.text(out, next)
+      return out
+    }
     if (this.inCall) {
       const body = this.callBuf
       this.inCall = false
@@ -2906,6 +3078,39 @@ const campaignScope = (c) => {
 
 // askAgain is a check-in's until: when to ask again, with room.
 const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
+
+// A campaign advertises its offer. Only the receipt says what this transaction granted.
+function claimReceipt(campaign, reply) {
+  const receipt = typeof reply?.status === "string" ? reply : reply?.data ?? reply
+  if (receipt?.campaignId != null && receipt.campaignId !== campaign.campaignId)
+    return { outcome: "failed", message: "claim: receipt belongs to another campaign" }
+  const failure = receipt?.failureCode ?? receipt?.failure_code
+  const code = typeof failure === "string" ? failure.trim().toUpperCase() : ""
+  const cycle = { ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+  if ((failure != null && typeof failure !== "string") || (receipt?.replayed != null && typeof receipt.replayed !== "boolean"))
+    return { outcome: "failed", message: "claim: invalid receipt" }
+  if (code === "SAME_PERSON_ALREADY_CLAIMED")
+    return { outcome: "ineligible", message: "claim: this device's benefit is already claimed", ...cycle }
+  if (code === "CAMPAIGN_NOT_ACTIVE" && receipt?.status === "BLOCKED" && cycle.scope)
+    return { outcome: "inactive", scope: cycle.scope, until: new Date().toISOString(), message: "claim: this campaign is no longer active" }
+  if (code || receipt?.status !== "CLAIMED")
+    return { outcome: "failed", message: "claim: no confirmed receipt" }
+  if (receipt.replayed === true) return { outcome: "done", ...cycle }
+
+  const result = { outcome: "claimed", ...cycle }
+  const benefit = receipt.benefit
+  if (benefit?.kind != null && benefit.kind !== "CREDITS") return result
+  const raw = benefit?.amount
+  const amount = typeof raw === "string" && raw.trim() ? Number(raw) : raw
+  if (!Number.isFinite(amount) || amount < 0) return result
+  result.credit = amount
+  const expires = receipt.expiresAt ?? receipt.expires_at
+  if (amount > 0 && typeof expires === "string" && RFC3339.test(expires)) {
+    const date = new Date(expires)
+    if (date.getTime() > 0 && date.getUTCFullYear() < 9999) result.creditExpiresAt = expires
+  }
+  return result
+}
 
 // when is a time Qoder gives: an RFC 3339 string, else seconds or
 // milliseconds, as a number or its text.
@@ -3649,15 +3854,17 @@ const makePlugin = (site) => async ({ client }) => {
       if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
       const now = Date.now()
       const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
-      if (readOnly && !Array.isArray(list.campaigns)) return { outcome: "unknown" }
-      const campaigns = (Array.isArray(list.campaigns) ? list.campaigns : []).filter((x) => x?.actionType === "CLAIM_BENEFIT")
-      const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE")
+      if (!Array.isArray(list.campaigns)) return { outcome: readOnly ? "unknown" : "failed" }
+      const campaigns = list.campaigns.filter((x) => x?.actionType === "CLAIM_BENEFIT")
+      const matchesIntent = (c) => expectedScope === undefined || expectedScope === campaignScope(c).scope
+      const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE" && matchesIntent(x))
       if (!campaign) {
-        const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x))
-        if (done) {
-          const amount = Number(done.benefit?.amount)
-          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)), ...campaignScope(done) }
-        }
+        const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x) && matchesIntent(x))
+        // The listing confirms this account holds the offer. Only a POST receipt identifies issued credits.
+        if (done) return { outcome: "done", ...askAgain(nextOpens(done)), ...campaignScope(done) }
+        // The bound campaign disappeared before POST. A separate action may select a replacement.
+        if (expectedScope !== undefined)
+          return { outcome: "inactive", scope: expectedScope, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
         // the next day's credits open at a time the list says: ask then,
         // not half an hour later
         if (campaigns.length) {
@@ -3678,26 +3885,15 @@ const makePlugin = (site) => async ({ client }) => {
       if (readOnly) return typeof campaign.campaignId === "string" && campaign.campaignId.trim()
         ? { outcome: "claimable", ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
         : { outcome: "unknown" }
-      // Bind the write to the native campaign observed before durable intent.
-      // A cycle turn must not silently submit the newly offered campaign.
-      if (expectedScope !== undefined && expectedScope !== campaignScope(campaign).scope)
-        return { outcome: "failed", message: "campaigns: scope changed; check-in was not submitted" }
       const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
-      let claim = {}
-      let claimRaw = ""
-      try {
-        claimRaw = await claimRes.text()
-        claim = JSON.parse(claimRaw) ?? {}
-      } catch {
-        return { outcome: "failed", message: `claim: unreadable reply ${claimRaw.trim().slice(0, 120) || "(empty)"}` }
-      }
-      const said = claim?.status ?? claim?.data?.status
       if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
-      if (said === "CLAIMED") {
-        const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
-        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+      let claim
+      try {
+        claim = await claimRes.json()
+      } catch {
+        return { outcome: "failed", message: "claim: unreadable reply" }
       }
-      return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
+      return claimReceipt(campaign, claim)
     } catch (e) {
       // no Qoder on this machine: an answer for the day, not a failure
       // magpie would ask again every 30 minutes (plugins#304)
@@ -3805,11 +4001,22 @@ const makePlugin = (site) => async ({ client }) => {
         const call = new AbortController()
         const callSignal = signal ? AbortSignal.any([signal, call.signal]) : call.signal
         let res, open
+        let silent = false
+        const hush = setTimeout(() => {
+          silent = true
+          call.abort()
+        }, QUEUE.silent)
         try {
           res = await fetch(CHAT_URL, { method: "POST", headers, body: wire, signal: callSignal })
           if (res.ok) open = await opened(res, chat.tool_choice !== "none" ? (chat.tools ?? []).filter((t) => t?.type === "function") : [])
         } catch (e) {
+          if (silent) {
+            const who = siteOf(site, cred).name ?? "Qoder"
+            return errorResponse({ status: 504, message: `${who} sent nothing for ${Math.round(QUEUE.silent / 1000)}s after the request (${res ? "no first event" : "no reply headers"}); the call was dropped`, signIn: "" })
+          }
           return errorResponse({ status: 502, message: e.message })
+        } finally {
+          clearTimeout(hush)
         }
         const f = !res.ok ? failure(res.status, (await res.text()).slice(0, 1 << 20)) : open.first.value?.error
         if (f) call.abort()
@@ -3854,7 +4061,8 @@ const makePlugin = (site) => async ({ client }) => {
           onHeld(held.response)
         }
         try {
-          if (!(await queueWait(api, cred, ask, f.queue, signal, deadline, siteOf(site, cred)))) return errorResponse(f)
+          if (!(await queueWait(api, cred, ask, f.queue, signal, deadline, siteOf(site, cred))))
+            return errorResponse(ask.stuck ? { ...f, message: `${f.message} (the queue hasn't moved in ${Math.round(QUEUE.stuck / 60_000)} minutes with nothing ahead)` } : f)
         } catch (e) {
           return errorResponse({ status: 502, message: e?.message ?? String(e) })
         }
@@ -4240,4 +4448,4 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
 export const protocol = { makePlugin, deviceSignIn, exchangeDeviceGrant, openapi, siteOf }
 
 // for tests
-export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }
+export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, kimiModel, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }

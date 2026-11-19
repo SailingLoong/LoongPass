@@ -1,7 +1,7 @@
 
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2622,6 +2622,7 @@
+@@ -2632,6 +2632,7 @@
      usage: typeof a.auth.usage === "function",
      checkin: typeof a.auth.checkin === "function",
      calls: typeof a.auth.calls === "function",
@@ -9,7 +9,7 @@
      // its sign-ins are renewed in the background as they come due, so
      // long before expires (keepSignedIn)
      renews: keepsAlive(a.auth),
-@@ -3287,30 +3288,66 @@
+@@ -3414,30 +3415,66 @@
  // again later that day after a failure, or at until; a hook that throws is
  // a failure.
  // Run in the account's scope, a token it renews is saved to that account.
@@ -83,7 +83,7 @@
  }
  
  // ---- calls made outside magpie -------------------------------------------------
-@@ -3559,6 +3596,7 @@
+@@ -3689,6 +3726,7 @@
    usage,
    checkin,
    calls,
@@ -93,7 +93,7 @@
    // plugin reads them when it next asks (#2038)
 --- a/runtime/vendor/plugins/workbuddy/index.mjs
 +++ b/runtime/vendor/plugins/workbuddy/index.mjs
-@@ -2145,7 +2145,7 @@
+@@ -2656,7 +2656,7 @@
  // upstream failures are asked again twice (the bounded retry quota-hub
  // observed on the billing endpoint; callers may shorten the waits for a
  // test).
@@ -102,7 +102,7 @@
    let status
    try {
      status = await meter(site, a, "/v2/billing/meter/checkin-activity-status")
-@@ -2156,13 +2156,16 @@
+@@ -2667,13 +2667,16 @@
      if (e?.status !== undefined || e?.code !== undefined) return { outcome: "failed", message: e.message }
      throw e
    }
@@ -119,7 +119,7 @@
    const paths = ["/v2/billing/meter/daily-checkin"]
    for (let attempt = 0; ; attempt++) {
      let i = 0
-@@ -3813,6 +3816,15 @@
+@@ -4412,6 +4415,15 @@
    // account. Bounded as refusedSystems is.
    const commaSystems = new Set()
    return async ({ client, magpie }) => {
@@ -135,7 +135,7 @@
    // each account's list as last read, for FREE_ONLY: {at, list}
    const lists = new Map()
    const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
-@@ -3931,14 +3943,8 @@
+@@ -4530,14 +4542,8 @@
        // full 30 minutes (magpie-community/plugins#149). checkinOf returns
        // an outcome only for answers it read and classified.
        ...(site.ai ? {} : {
@@ -252,7 +252,7 @@
              type: "oauth",
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -2895,6 +2895,15 @@
+@@ -3067,6 +3067,15 @@
    return start === undefined ? end : Math.max(end, start + DAY_MS)
  }
  
@@ -268,7 +268,7 @@
  // askAgain is a check-in's until: when to ask again, with room.
  const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
  
-@@ -3582,7 +3591,7 @@
+@@ -3771,7 +3780,7 @@
    // checkin claims the daily credits through the same campaigns page as
    // Qoder's client. A campaign already claimed is done; one not available
    // is inactive, never an error that magpie would retry all day.
@@ -277,7 +277,7 @@
      let cred
      try {
        if ((await getAuth())?.lingma) return { outcome: "inactive", message: "a Lingma 1.0 dedicated domain has no daily credits" }
-@@ -3623,13 +3632,14 @@
+@@ -3812,13 +3821,14 @@
        if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
        const now = Date.now()
        const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
@@ -293,7 +293,7 @@
          }
          // the next day's credits open at a time the list says: ask then,
          // not half an hour later
-@@ -3648,6 +3658,13 @@
+@@ -3837,6 +3847,13 @@
          // say that much, and where the credits can still be claimed.
          return { outcome: "inactive", message: noCampaign(site.name) }
        }
@@ -307,7 +307,7 @@
        const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
        let claim = {}
        let claimRaw = ""
-@@ -3661,7 +3678,7 @@
+@@ -3850,7 +3867,7 @@
        if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
        if (said === "CLAIMED") {
          const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
@@ -316,7 +316,7 @@
        }
        return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
      } catch (e) {
-@@ -4078,7 +4095,7 @@
+@@ -4279,7 +4296,7 @@
        // the daily check-in reads the vendor's desktop device identity and
        // posts it to the campaign endpoint: a site without one (QwenWork)
        // sets checkin: false and gets none
@@ -327,7 +327,7 @@
        config.provider ??= {}
 --- a/runtime/vendor/plugins/trae/index.mjs
 +++ b/runtime/vendor/plugins/trae/index.mjs
-@@ -3547,15 +3547,18 @@
+@@ -3791,15 +3791,18 @@
      return { body }
    }
  
@@ -347,7 +347,7 @@
      const read = async (res) => {
        const text = await res.text()
        let v
-@@ -3988,7 +3991,8 @@
+@@ -4234,7 +4237,8 @@
      auth: {
        provider: site.id,
        usage,

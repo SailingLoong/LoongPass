@@ -69,6 +69,12 @@ component; they are not duplicated as client or Dart protocol workarounds.
 | `zcode-response.patch` | Await native JSON model naming before restoring tool names. Remove when upstream composes both transforms for gift JSON and SSE replies. |
 | `workbuddy-usage.patch` | Give admitted routing refusals the exact requested account identity. Remove when upstream composes case-insensitive trace matching with free-window accounting. |
 | `workbuddy-desktop-identity.patch` | Bind desktop reads and recovery to the saved UID/domain, while allowing same-account rotation. Remove when upstream enforces the same account boundary. |
+| `model-quota-expiry.patch` | Preserve the expiring daily wallet amount and model-specific remaining quota. Remove when the provider returns both for all supported windows. |
+| `qoder-claim-receipt.patch` | Bind fresh credit and finite expiry to the official campaign receipt. Remove when native check-in distinguishes replay, rejection, and fresh grants and the host retains receipt expiry. |
+| `trae-enterprise-billing.patch` | Keep TRAE CN enterprise seat traffic on the enterprise billing gateway. Remove when a seat refusal reliably stays within that entitlement. |
+| `workbuddy-renewal.patch` | Schedule renewal of browser-owned grants through the native host before an idle refresh grant is revoked. Remove when the provider and host expose the same renewal deadline. |
+| `zcode-desktop-owner.patch` | Admit a desktop paid key only when its official regional account ID matches the selected user. Older unbound grants require confirmation through official sign-in. Remove when upstream proves the same account ownership across cached profiles. |
+| `zcode-account-limit.patch` | Preserve the established limit of two simultaneous accounts using the native package setting. Revisit when the official service publishes a supported account concurrency policy. |
 
 Optional host hooks affect account management only. The native inference recovery
 policy is preserved. Unknown reward writes remain durable: status reads cannot
@@ -80,7 +86,7 @@ activity/captcha transaction remains a LoongPass feature.
 ## Official desktop credential formats
 
 ZCode enc:v2 desktop credentials are outside the adopted plugin's import
-capabilities. Fresh import reports the format and directs browser authorization;
+capabilities. The upstream plugin detects this format and directs the user to official browser authorization;
 existing usable grants are preserved. LoongPass does not import internal official
 cipher services, add OS key-store ownership, or raise the dormant native switch
 version gate. See the 2026-11-12 upstream verification record.

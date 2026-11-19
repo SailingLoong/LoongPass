@@ -98,3 +98,7 @@ MiniMax、Qoder 和独立 TRAE 授权的刷新由对应账号模块串行执行�
 ## 2026-11-12 upstream sync
 
 See [fixed native sources, regressions and acceptance boundaries](docs/verification/2026-11-12-upstream-sync.md). Browser authorization and stored rewards remain separate from ZCode 3.18 system-encrypted desktop import; this release does not enable the dormant native switch.
+
+## 2026-11-20 upstream sync
+
+The [beta 55 verification record](docs/verification/2026-11-20-upstream-sync.md) covers activity receipts, native account and credit changes, and desktop dependency versions.

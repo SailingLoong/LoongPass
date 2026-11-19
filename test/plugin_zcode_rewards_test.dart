@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_accounts.dart';
+import '../lib/plugin_rewards.dart';
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_zcode_binding.dart';
 import '../lib/plugin_zcode_rewards.dart';
@@ -42,11 +43,14 @@ Map<String, dynamic> _plan(String instance) => {
 /// registration, serialized facts writes and the reward transaction are real.
 class _Official implements ZcodeTransport {
   final requests = <ZcodeRequest>[];
+  final offers = ['night'];
   final plans = <Map<String, dynamic>>[];
   final buckets = <Map<String, dynamic>>[];
   bool captcha = false, loseReply = false, grant = true;
   int claimHttp = 200, claimCode = 0;
   int? retryAfterMs;
+  Map<String, dynamic>? claimBody;
+  ZcodeTransport? claimTransport;
   Future<void> Function(ZcodeRequest)? beforeRequest;
   Future<void> Function()? afterClaim;
 
@@ -75,22 +79,23 @@ class _Official implements ZcodeTransport {
         200,
         _envelope({
           'deliveries': [
-            {
-              'resource_position': 'banner',
-              'priority': 1,
-              'banner': {
-                'content': {
-                  'buttons': [
-                    {
-                      'action': {
-                        'type': 'claim_zcode_plan',
-                        'args': {'plan_id': 'night'},
+            for (final id in offers)
+              {
+                'resource_position': 'banner',
+                'priority': 1,
+                'banner': {
+                  'content': {
+                    'buttons': [
+                      {
+                        'action': {
+                          'type': 'claim_zcode_plan',
+                          'args': {'plan_id': id},
+                        },
                       },
-                    },
-                  ],
+                    ],
+                  },
                 },
               },
-            },
           ],
         }),
       );
@@ -111,18 +116,61 @@ class _Official implements ZcodeTransport {
       );
     }
     if (r.path == ZcodeApi.claimPath) {
-      if (claimCode != 0 || claimHttp != 200) {
-        return ZcodeReply(claimHttp, {
-          'code': claimCode,
-        }, retryAfterMs: retryAfterMs);
-      }
-      if (grant) plans.add(_plan('new-instance'));
+      if (claimTransport != null)
+        return claimTransport!.send(r, isCurrent: isCurrent);
+      final plan = {..._plan('new-instance'), 'plan_id': r.body!['plan_id']};
+      if (grant && claimCode == 0 && claimHttp == 200) plans.add(plan);
       await afterClaim?.call();
       if (loseReply) throw const ZcodeFailure('network_unavailable');
-      return ZcodeReply(200, _envelope({}));
+      return ZcodeReply(
+        claimHttp,
+        claimBody ??
+            {
+              'code': claimCode,
+              if (claimCode == 0 && claimHttp == 200) 'data': {'plan': plan},
+            },
+        retryAfterMs: retryAfterMs,
+      );
     }
     throw StateError('Unexpected ZCode endpoint');
   }
+}
+
+class _InterruptedHttp extends Fake implements HttpClient {
+  _InterruptedHttp(this.failToConnect);
+  final bool failToConnect;
+  final request = _InterruptedRequest();
+  @override
+  Duration? connectionTimeout;
+  @override
+  Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    if (failToConnect) throw const SocketException('synthetic connect failure');
+    return request;
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+class _InterruptedRequest extends Fake implements HttpClientRequest {
+  @override
+  final headers = _Headers();
+  @override
+  bool followRedirects = false;
+  int writes = 0;
+  @override
+  void write(Object? obj) {
+    writes++;
+  }
+
+  @override
+  Future<HttpClientResponse> close() async =>
+      throw const SocketException('synthetic lost response');
+}
+
+class _Headers extends Fake implements HttpHeaders {
+  @override
+  void set(String name, Object value, {bool preserveHeaderCase = false}) {}
 }
 
 void main() {
@@ -558,6 +606,384 @@ void main() {
     expect(official.posts, 1);
     expect(jsonEncode(store.data), isNot(contains('synthetic-jwt')));
     expect(jsonEncode(store.data), isNot(contains('synthetic-paid-api-key')));
+  });
+
+  test(
+    'no current offer leaves an old device intent in history only',
+    () async {
+      await legacy({
+        'context': {..._context, 'deviceMid': _oldDevice},
+        'status': 'pending',
+        'claims': {
+          'night': {
+            'state': 'pending',
+            'previous': [],
+            'submittedAt': _time - 1209600000,
+          },
+        },
+      });
+      official.offers.clear();
+      await rewards.refresh(_key);
+      expect(reward()['status'], 'noOffer');
+      await rewards.captureBinding(_key);
+      expect(reward()['status'], 'noOffer');
+      expect(
+        reward()['bindingHistory'][0]['claims']['night']['state'],
+        'pending',
+      );
+      official.beforeRequest = (_) async =>
+          throw const ZcodeFailure('network_unavailable');
+      await expectLater(rewards.refresh(_key), throwsA(isA<ZcodeFailure>()));
+      expect(reward()['status'], 'unavailable');
+      expect(official.posts, 0);
+    },
+  );
+
+  test('a batch with an old pending status can claim a separately offered plan once', () async {
+    await legacy({
+      'status': 'pending',
+      'bindingHistory': [
+        {
+          'context': {..._context, 'deviceMid': _oldDevice},
+          'claims': {
+            'night': {'state': 'unknown', 'previous': []},
+          },
+        },
+      ],
+    });
+    await rewards.captureBinding(_key);
+    official.offers.add('weekend');
+    final actions = PluginRewards(accounts, zcode: rewards, timers: false);
+    addTearDown(actions.close);
+    await Future.wait([actions.claimAll(), actions.claimAll()]);
+    expect(
+      official.requests
+          .where((r) => r.path == ZcodeApi.claimPath)
+          .map((r) => r.body),
+      [
+        {'plan_id': 'weekend'},
+      ],
+    );
+    expect(reward()['claims']['weekend']['state'], 'claimed');
+    expect(
+      reward()['bindingHistory'][0]['claims']['night']['state'],
+      'unknown',
+    );
+    official.offers.remove('night');
+    await actions.claim(_key);
+    expect(reward()['status'], 'observedClaimed');
+    expect(official.posts, 1);
+  });
+
+  test(
+    'official success survives a failed balance read and keeps its receipt',
+    () async {
+      official.grant = false;
+      official.claimBody = {
+        'code': '0',
+        'data': {'plan': _plan('direct-instance')},
+      };
+      official.beforeRequest = (r) async {
+        if (r.path == ZcodeApi.balancePath && official.posts > 0) {
+          throw const ZcodeFailure('network_unavailable');
+        }
+      };
+      await rewards.claim(_key);
+      final claim = reward()['claims']['night'];
+      expect(reward()['status'], 'claimed');
+      expect(claim['instance'], 'direct-instance');
+      expect(claim['endsAt'], 1793903600);
+      official.beforeRequest = null;
+      await rewards.claim(_key);
+      expect(official.posts, 1);
+    },
+  );
+
+  test('a balance rate limit after a confirmed claim preserves that receipt on refresh', () async {
+    official.beforeRequest = (r) async {
+      if (r.path == ZcodeApi.balancePath && official.posts > 0) {
+        throw const ZcodeFailure(
+          'service_unavailable',
+          httpStatus: 429,
+          retryAfterMs: 7000,
+        );
+      }
+    };
+    await rewards.claim(_key);
+    expect(reward()['status'], 'claimed');
+    await rewards.refresh(_key);
+    expect(reward()['status'], 'claimed');
+    expect(reward()['claims']['night']['instance'], 'new-instance');
+    expect(official.posts, 1);
+  });
+
+  test('a device change during the intent commit cannot dispatch the captured device', () async {
+    final original = await accounts.credentials.account(_key);
+    store.afterWrite = () async {
+      if (reward()['claims']?['night']?['state'] == 'pending') {
+        await runtime.call('import', {
+          'provider': 'zcode',
+          'key': _key,
+          'auth': {
+            ...original,
+            'refresh': jsonEncode({
+              ...jsonDecode(original['refresh'] as String) as Map,
+              'device': _oldDevice,
+            }),
+          },
+        });
+      }
+    };
+    await expectLater(
+      rewards.claim(_key),
+      throwsA(isA<ZcodeFailure>().having((e) => e.code, 'code', 'cancelled')),
+    );
+    expect(official.posts, 0);
+    expect(reward()['claims']['night']['state'], 'notSubmitted');
+    store.afterWrite = null;
+    await rewards.close();
+    rewards = PluginZcodeRewards(
+      accounts,
+      api: ZcodeApi(official),
+      now: () => _time,
+    );
+    await rewards.claim(_key);
+    expect(official.posts, 1);
+    expect(reward()['claims']['night']['state'], 'claimed');
+    expect(
+      reward()['bindingHistory'][0]['claims']['night']['state'],
+      'notSubmitted',
+    );
+  });
+
+  for (final beforeWrite in [true, false]) {
+    test(
+      'the transport records whether an interrupted POST could have been sent (beforeWrite=$beforeWrite)',
+      () async {
+        final http = _InterruptedHttp(beforeWrite);
+        official.claimTransport = ZcodeHttp();
+        await HttpOverrides.runZoned(
+          () => rewards.claim(_key),
+          createHttpClient: (_) => http,
+        );
+        expect(http.request.writes, beforeWrite ? 0 : 1);
+        expect(
+          reward()['claims']['night']['state'],
+          beforeWrite ? 'notSubmitted' : 'pending',
+        );
+        official.claimTransport = null;
+        await rewards.close();
+        rewards = PluginZcodeRewards(
+          accounts,
+          api: ZcodeApi(official),
+          now: () => _time,
+        );
+        await rewards.claim(_key);
+        expect(
+          reward()['claims']['night']['state'],
+          beforeWrite ? 'claimed' : 'pending',
+        );
+        expect(official.posts, beforeWrite ? 2 : 1);
+      },
+    );
+  }
+
+  test(
+    'a replacement registration can close only the unchanged unsent intent',
+    () async {
+      official.beforeRequest = (r) async {
+        if (r.path != ZcodeApi.claimPath) return;
+        await accounts.edit(
+          (data) => data['accounts'][_key]['registrationId'] = 'renewed',
+        );
+        throw const ZcodeFailure('cancelled', beforeDispatch: true);
+      };
+      await expectLater(rewards.claim(_key), throwsA(isA<ZcodeFailure>()));
+      expect(official.posts, 0);
+      expect(reward()['claims']['night']['state'], 'notSubmitted');
+      official.beforeRequest = (r) async {
+        if (r.path != ZcodeApi.claimPath) return;
+        await accounts.edit((data) {
+          final journal =
+              data['zcode']['rewards'][jsonEncode(['bigmodel', 'official-a'])];
+          journal['status'] = 'claimed';
+          journal['claims']['night'].addAll({
+            'state': 'claimed',
+            'instance': 'independent',
+          });
+        });
+        throw const ZcodeFailure('cancelled', beforeDispatch: true);
+      };
+      await expectLater(rewards.claim(_key), throwsA(isA<ZcodeFailure>()));
+      expect(official.posts, 0);
+      expect(reward()['claims']['night']['instance'], 'independent');
+      expect(reward()['status'], 'claimed');
+    },
+  );
+
+  test(
+    'an official claim plan may omit the request and instance IDs',
+    () async {
+      official.grant = false;
+      official.claimBody = {
+        'code': 0.0,
+        'data': {'plan': {'status': 'active', 'ends_at': 1793903600}},
+      };
+      await rewards.claim(_key);
+      expect(reward()['status'], 'claimed');
+      expect(reward()['claims']['night']['instance'], isNull);
+      expect(reward()['claims']['night']['endsAt'], 1793903600);
+      await rewards.claim(_key);
+      expect(official.posts, 1);
+    },
+  );
+
+  test('a different plan in a success envelope cannot settle the requested transaction', () async {
+    official.grant = false;
+    official.claimBody = _envelope({
+      'plan': {..._plan('unrelated-instance'), 'plan_id': 'unrelated'},
+    });
+    await rewards.claim(_key);
+    expect(reward()['status'], 'pending');
+    await rewards.claim(_key);
+    expect(official.posts, 1);
+    expect(reward()['claims']['night']['instance'], isNull);
+  });
+
+  test(
+    'a delayed balance may fill only the instance named in a successful POST',
+    () async {
+      official.grant = false;
+      official.claimBody = _envelope({
+        'plan': {'plan_id': 'night', 'user_plan_id': 'direct'},
+      });
+      await rewards.claim(_key);
+      official.plans.add(_plan('another'));
+      await rewards.refresh(_key);
+      expect(reward()['claims']['night']['endsAt'], isNull);
+      official.plans.add(_plan('direct'));
+      await rewards.refresh(_key);
+      expect(reward()['claims']['night']['endsAt'], 1793903600);
+      expect(reward()['claims']['night']['instance'], 'direct');
+      expect(official.posts, 1);
+    },
+  );
+
+  test('multiple new instances cannot identify which one settled a historical intent', () async {
+    await legacy({
+      'claims': {
+        'night': {'state': 'pending', 'previous': []},
+      },
+    });
+    official.plans.addAll([_plan('first'), _plan('second')]);
+    await rewards.claim(_key);
+    expect(reward()['status'], 'observedClaimed');
+    expect(reward()['claims']['night']['state'], 'pending');
+    expect(official.posts, 0);
+  });
+
+  test('a retained captcha rejection on an old binding pauses the same offered plan', () async {
+    await legacy({
+      'context': {..._context, 'deviceMid': _oldDevice},
+      'claims': {
+        'night': {
+          'state': 'unknown',
+          'previous': [],
+          'httpStatus': 400,
+          'serviceCode': 3007,
+        },
+      },
+    });
+    await rewards.claim(_key);
+    expect(official.posts, 0);
+    expect(reward()['status'], 'verificationRequired');
+    expect(
+      reward()['bindingHistory'][0]['claims']['night']['state'],
+      'verificationRequired',
+    );
+  });
+
+  for (final response in [
+    (http: 200, body: <String, dynamic>{'code': 0, 'data': {}}),
+    (http: 400, body: <String, dynamic>{'code': '4109'}),
+  ]) {
+    test(
+      'a returned rejection stays failed with HTTP ${response.http} and code ${response.body['code']}',
+      () async {
+        official.grant = false;
+        official.claimHttp = response.http;
+        official.claimBody = {
+          ...response.body,
+          'msg': 'synthetic internal diagnostic',
+          'data': {
+            ...?response.body['data'] as Map?,
+            'message': '本次活动未开放。\n请稍后查看。',
+          },
+        };
+        official.afterClaim = () async =>
+            official.plans.add(_plan('independent-instance'));
+        await rewards.claim(_key);
+        final claim = reward()['claims']['night'];
+        expect(reward()['status'], 'rejected');
+        expect(claim['state'], 'rejected');
+        expect(claim['message'], '本次活动未开放。\n请稍后查看。');
+        expect(claim['instance'], isNull);
+        expect(
+          jsonEncode(reward()),
+          isNot(contains('synthetic internal diagnostic')),
+        );
+      },
+    );
+  }
+
+  for (final body in <Map<String, dynamic>?>[
+    null,
+    {},
+    {'error': 'Bad gateway'},
+    {
+      'data': {'plan': _plan('no-code')},
+    },
+    {
+      'code': 'invalid',
+      'data': {'message': 'Gateway error'},
+    },
+    {'code': 0},
+  ]) {
+    test(
+      'an unreadable or incomplete reply never unlocks another POST ($body)',
+      () async {
+        official.grant = false;
+        official.claimBody = body;
+        if (body == null) {
+          official.afterClaim = () async =>
+              throw const ZcodeFailure('invalid_response', httpStatus: 200);
+        }
+        await rewards.claim(_key);
+        expect(reward()['status'], 'pending');
+        await rewards.close();
+        rewards = PluginZcodeRewards(
+          accounts,
+          api: ZcodeApi(official),
+          now: () => _time,
+        );
+        await rewards.claim(_key);
+        expect(official.posts, 1);
+        expect(reward()['claims']['night']['state'], 'pending');
+      },
+    );
+  }
+
+  test('already-held is distinct from a successful new claim', () async {
+    official.claimCode = 1003;
+    official.afterClaim = () async =>
+        official.plans.add(_plan('existing-instance'));
+    await rewards.claim(_key);
+    expect(reward()['status'], 'observedClaimed');
+    final claim = reward()['claims']['night'];
+    expect(claim['state'], 'observedClaimed');
+    expect(claim['instance'], 'existing-instance');
+    await rewards.claim(_key);
+    expect(official.posts, 1);
   });
 
   test('captcha is verified before the sole POST and concurrent dispatch is rejected', () async {

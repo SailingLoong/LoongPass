@@ -1,0 +1,111 @@
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -3462,6 +3462,8 @@
+   const num = (v) => (typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0)
+   // An absent or invalid receipt amount is unknown, never zero credits.
+   const credit = typeof r.credit === "number" && Number.isFinite(r.credit) && r.credit >= 0 ? { credit: r.credit } : {}
++  if (r.outcome === "claimed" && credit.credit > 0 && typeof r.creditExpiresAt === "string" && Number.isFinite(Date.parse(r.creditExpiresAt)))
++    credit.creditExpiresAt = r.creditExpiresAt
+   const message = typeof r.message === "string" ? r.message : ""
+   // a time that doesn't read is not told
+   const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
+--- a/runtime/vendor/plugins/qoder/index.mjs
++++ b/runtime/vendor/plugins/qoder/index.mjs
+@@ -2985,6 +2985,39 @@
+ // askAgain is a check-in's until: when to ask again, with room.
+ const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
+ 
++// A campaign advertises its offer. Only the receipt says what this transaction granted.
++function claimReceipt(campaign, reply) {
++  const receipt = typeof reply?.status === "string" ? reply : reply?.data ?? reply
++  if (receipt?.campaignId != null && receipt.campaignId !== campaign.campaignId)
++    return { outcome: "failed", message: "claim: receipt belongs to another campaign" }
++  const failure = receipt?.failureCode ?? receipt?.failure_code
++  const code = typeof failure === "string" ? failure.trim().toUpperCase() : ""
++  const cycle = { ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
++  if ((failure != null && typeof failure !== "string") || (receipt?.replayed != null && typeof receipt.replayed !== "boolean"))
++    return { outcome: "failed", message: "claim: invalid receipt" }
++  if (code === "SAME_PERSON_ALREADY_CLAIMED")
++    return { outcome: "ineligible", message: "claim: this device's benefit is already claimed", ...cycle }
++  if (code === "CAMPAIGN_NOT_ACTIVE" && receipt?.status === "BLOCKED" && cycle.scope)
++    return { outcome: "inactive", scope: cycle.scope, until: new Date().toISOString(), message: "claim: this campaign is no longer active" }
++  if (code || receipt?.status !== "CLAIMED")
++    return { outcome: "failed", message: "claim: no confirmed receipt" }
++  if (receipt.replayed === true) return { outcome: "done", ...cycle }
++
++  const result = { outcome: "claimed", ...cycle }
++  const benefit = receipt.benefit
++  if (benefit?.kind != null && benefit.kind !== "CREDITS") return result
++  const raw = benefit?.amount
++  const amount = typeof raw === "string" && raw.trim() ? Number(raw) : raw
++  if (!Number.isFinite(amount) || amount < 0) return result
++  result.credit = amount
++  const expires = receipt.expiresAt ?? receipt.expires_at
++  if (amount > 0 && typeof expires === "string" && RFC3339.test(expires)) {
++    const date = new Date(expires)
++    if (date.getTime() > 0 && date.getUTCFullYear() < 9999) result.creditExpiresAt = expires
++  }
++  return result
++}
++
+ // when is a time Qoder gives: an RFC 3339 string, else seconds or
+ // milliseconds, as a number or its text.
+ function when(v) {
+@@ -3688,15 +3721,17 @@
+       if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
+       const now = Date.now()
+       const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
+-      if (readOnly && !Array.isArray(list.campaigns)) return { outcome: "unknown" }
+-      const campaigns = (Array.isArray(list.campaigns) ? list.campaigns : []).filter((x) => x?.actionType === "CLAIM_BENEFIT")
+-      const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE")
++      if (!Array.isArray(list.campaigns)) return { outcome: readOnly ? "unknown" : "failed" }
++      const campaigns = list.campaigns.filter((x) => x?.actionType === "CLAIM_BENEFIT")
++      const matchesIntent = (c) => expectedScope === undefined || expectedScope === campaignScope(c).scope
++      const campaign = campaigns.find((x) => x.claimStatus === "CLAIMABLE" && matchesIntent(x))
+       if (!campaign) {
+-        const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x))
+-        if (done) {
+-          const amount = Number(done.benefit?.amount)
+-          return { outcome: "done", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(done)), ...campaignScope(done) }
+-        }
++        const done = campaigns.find((x) => x.claimStatus === "CLAIMED" && active(x) && matchesIntent(x))
++        // The listing confirms this account holds the offer. Only a POST receipt identifies issued credits.
++        if (done) return { outcome: "done", ...askAgain(nextOpens(done)), ...campaignScope(done) }
++        // The bound campaign disappeared before POST. A separate action may select a replacement.
++        if (expectedScope !== undefined)
++          return { outcome: "inactive", scope: expectedScope, until: new Date(now).toISOString(), message: "campaigns: scope changed; check-in was not submitted" }
+         // the next day's credits open at a time the list says: ask then,
+         // not half an hour later
+         if (campaigns.length) {
+@@ -3717,26 +3752,15 @@
+       if (readOnly) return typeof campaign.campaignId === "string" && campaign.campaignId.trim()
+         ? { outcome: "claimable", ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+         : { outcome: "unknown" }
+-      // Bind the write to the native campaign observed before durable intent.
+-      // A cycle turn must not silently submit the newly offered campaign.
+-      if (expectedScope !== undefined && expectedScope !== campaignScope(campaign).scope)
+-        return { outcome: "failed", message: "campaigns: scope changed; check-in was not submitted" }
+       const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
+-      let claim = {}
+-      let claimRaw = ""
++      if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
++      let claim
+       try {
+-        claimRaw = await claimRes.text()
+-        claim = JSON.parse(claimRaw) ?? {}
++        claim = await claimRes.json()
+       } catch {
+-        return { outcome: "failed", message: `claim: unreadable reply ${claimRaw.trim().slice(0, 120) || "(empty)"}` }
++        return { outcome: "failed", message: "claim: unreadable reply" }
+       }
+-      const said = claim?.status ?? claim?.data?.status
+-      if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
+-      if (said === "CLAIMED") {
+-        const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
+-        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
+-      }
+-      return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
++      return claimReceipt(campaign, claim)
+     } catch (e) {
+       // no Qoder on this machine: an answer for the day, not a failure
+       // magpie would ask again every 30 minutes (plugins#304)

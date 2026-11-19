@@ -14,6 +14,7 @@ import '../lib/plugin_rewards.dart';
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_sign_in_dialog.dart';
 import '../lib/plugin_zcode_rewards.dart';
+import '../lib/zcode_api.dart';
 import '../lib/invitation_settings.dart';
 import '../lib/managed_app.dart';
 
@@ -148,7 +149,10 @@ class _Rewards implements PluginRewards {
   int claims = 0, refreshes = 0;
   bool failRefresh = false;
   @override
-  Future<void> claim(String key) async {
+  Future<void> claim(
+    String key, {
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) async {
     claims++;
   }
 
@@ -357,6 +361,7 @@ void main() {
           reward: {
             'status': 'claimed',
             'credit': 100,
+            'creditExpiresAt': '2026-12-20T06:30:00.125314Z',
             'unit': 'credits',
             'observedAt': DateTime.utc(
               2026,
@@ -372,6 +377,14 @@ void main() {
       expect(find.text('额度查询未完成'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      final localExpiry = DateTime.utc(
+        2026,
+        12,
+        20,
+        6,
+        30,
+      ).toLocal().toString().substring(0, 16);
+      expect(find.textContaining('本次到账有效至 $localExpiry'), findsOneWidget);
       expect(find.textContaining('已确认领取。'), findsOneWidget);
       expect(
         find.descendant(
@@ -472,6 +485,63 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('上次：Start Plan'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'ZCode shows the official reason for the current rejected plan',
+    (tester) async {
+      final base = observed();
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#one',
+          active: true,
+          models: const [],
+          facts: {
+            ...base.facts,
+            'provider': 'zcode',
+            'reward': {
+              'status': 'rejected',
+              'planId': 'night',
+              'claims': {
+                'night': {'state': 'rejected', 'message': '本次活动未开放。'},
+                'old': {'state': 'rejected', 'message': '历史活动原因。'},
+              },
+            },
+          },
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('本次活动未开放。'), findsOneWidget);
+      expect(find.textContaining('历史活动原因。'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'an old unscoped ZCode status is not the current receipt',
+    (tester) async {
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#one',
+          active: true,
+          models: const [],
+          facts: {
+            ...observed().facts,
+            'provider': 'zcode',
+            'reward': {
+              'status': 'pending',
+              'claims': {
+                'old': {'state': 'unknown', 'previous': []},
+              },
+            },
+          },
+        ),
+      );
+      expect(find.text('活动信息暂不完整'), findsOneWidget);
+      expect(find.text('领取回执未确认'), findsNothing);
     },
   );
 
@@ -715,7 +785,7 @@ void main() {
   );
 
   testDesktopWidgets(
-    'details keep native amounts exact, isolate gifts, and only refresh pending claims',
+    'ZCode details keep amounts exact and delegate activity deduplication on an explicit claim',
     (tester) async {
       final expiry =
           DateTime.now().add(const Duration(days: 2)).millisecondsSinceEpoch ~/
@@ -737,6 +807,7 @@ void main() {
               'automatic': true,
               'reward': {
                 'status': 'pending',
+                'planId': 'night',
                 'checkedAt': 1793900000000,
                 'claims': {
                   'night': {'state': 'pending', 'previous': []},
@@ -791,6 +862,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('12345678 tokens / 0.875 credits'), findsNothing);
+      expect(find.text('领取回执未确认'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('expiry-time-zcode#one')),
         findsOneWidget,
@@ -798,6 +870,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
       expect(find.textContaining('verified-user'), findsWidgets);
+      expect(find.textContaining('未能确认本次领取的官方回执。同一活动不会重复提交。'), findsOneWidget);
       expect(find.textContaining('bigmodel'), findsWidgets);
       expect(find.textContaining('99999.125'), findsWidgets);
       expect(find.textContaining('100000'), findsWidgets);
@@ -809,12 +882,12 @@ void main() {
       expect(accounts.refreshes, 0);
       expect(rewards.refreshes, 0);
       expect(runtime.calls, isEmpty);
-      await tester.ensureVisible(find.text('核验领取结果'));
+      await tester.ensureVisible(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('核验领取结果'));
+      await tester.tap(find.text('核对并领取活动'));
       await tester.pumpAndSettle();
-      expect(rewards.refreshes, 1);
-      expect(rewards.claims, 0);
+      expect(rewards.refreshes, 0);
+      expect(rewards.claims, 1);
       rewards.failRefresh = true;
       await tester.ensureVisible(find.text('刷新额度'));
       await tester.tap(find.text('刷新额度'));

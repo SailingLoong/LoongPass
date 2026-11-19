@@ -1,8 +1,8 @@
 # Native host usage preserves unknown quantities for LoongPass.
-# Source: https://github.com/yetone/magpie @ 873b4987e97328071d4aeabd21996a3a8fcfab24
+# Source: https://github.com/yetone/magpie @ f534245f1c0893c5eaaa5b2a1c918ff27085a9c3
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -3223,6 +3223,7 @@
+@@ -3349,6 +3349,7 @@
    }
    const text = (v) => (typeof v === "string" ? v : "")
    const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
@@ -10,7 +10,7 @@
    const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
    return {
      plan: text(u.plan),
-@@ -3248,8 +3249,8 @@
+@@ -3374,8 +3375,8 @@
        resetsAt: when(w?.resetsAt),
        resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
        display: text(w?.display),
@@ -21,12 +21,12 @@
        unit: text(w?.unit),
        span: Math.max(0, num(w?.span)),
        model: text(w?.model),
-@@ -3259,7 +3260,7 @@
+@@ -3385,7 +3386,7 @@
        pool: text(w?.pool),
        aside: !!w?.aside,
        runsOutAt: when(w?.runsOutAt),
 -      runsOut: Math.max(0, num(w?.runsOut)),
 +      runsOut: quantity(w?.runsOut),
+       credits: !!w?.credits,
        balance: typeof w?.balance === "number" && isFinite(w.balance) ? Math.max(0, w.balance) : null, // null: not said
      })),
-   }

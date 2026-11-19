@@ -101,8 +101,10 @@ test('ZCode Start Plan slots separate regions and share one regional UID across 
       responses.push(await loader.fetch(state.base+'/v1/messages',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({model:'GLM-5.3-Flash-Trial',stream:true,max_tokens:16,messages:[{role:'user',content:'hi'}]})}));
     }
     expect(responses.map(r=>r.status)).toEqual([200,200,200]);
-    expect(native.startGate.lanes.size).toBe(2);
-    expect([...native.startGate.lanes.values()].map(lane=>lane.busy).sort()).toEqual([1,2]);
+    const lanes = native.startGate.lanes;
+    expect(lanes.get('bigmodel:official-a')?.busy).toBe(2);
+    expect(lanes.get('zai:official-a')?.busy).toBe(1);
+    expect([...lanes.values()].map(lane => lane.busy).sort()).toEqual([1, 2, 3]);
   } finally {
     for (const response of responses) await response.body?.cancel();
   }

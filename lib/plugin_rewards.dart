@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'account_registration.dart';
 import 'plugin_accounts.dart';
 import 'plugin_zcode_rewards.dart';
+import 'zcode_api.dart';
 
 const _definitive = {'claimed', 'done', 'ineligible', 'inactive', 'captcha'};
 
@@ -249,18 +250,20 @@ class PluginRewards {
     return finished;
   }
 
-  Future<void> claim(String key) async =>
-      _claim(_account(key), refreshUsage: true);
+  Future<void> claim(
+    String key, {
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) async => _claim(_account(key), refreshUsage: true, verify: verify);
 
-  Future<void> _claim(PluginAccount account, {required bool refreshUsage}) {
+  Future<void> _claim(
+    PluginAccount account, {
+    required bool refreshUsage,
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) {
     final key = account.key;
     return _exclusive(account, () async {
       if (account.provider == 'zcode') {
-        if (account.facts['reward']?['status'] == 'pending') {
-          await zcode.refresh(key);
-        } else {
-          await zcode.claim(key);
-        }
+        await zcode.claim(key, verify: verify);
         _check(account);
         return;
       }
@@ -379,6 +382,28 @@ class PluginRewards {
         return;
       }
       final history = [...reward['history'] as List];
+      final scope = _scope(status['scope']);
+      // A listing may confirm an issued receipt, or keep offering an already
+      // closed campaign. Preserve the journal evidence for that exact scope.
+      final priorStatus = switch (status['outcome']) {
+        'done' => 'claimed',
+        'claimable' => 'inactive',
+        _ => null,
+      };
+      final prior = scope == null || priorStatus == null
+          ? null
+          : [reward, ...history.reversed]
+                .whereType<Map>()
+                .where(
+                  (entry) =>
+                      entry['attemptId'] is String &&
+                      entry['scope'] == scope &&
+                      entry['status'] == priorStatus &&
+                      entry['uid'] == account.uid &&
+                      entry['realm'] == account.realm,
+                )
+                .firstOrNull;
+      if (identical(prior, reward)) return;
       if (reward['attemptId'] != null ||
           reward['source'] == 'legacy' ||
           _definitive.contains(reward['status'])) {
@@ -386,6 +411,11 @@ class PluginRewards {
           for (final e in reward.entries)
             if (e.key != 'history') e.key: e.value,
         });
+      }
+      if (prior != null) {
+        history.remove(prior);
+        _saveJournal(data, account, {...prior, 'history': history});
+        return;
       }
       final identity = {
         'registrationId': account.registrationId,
@@ -648,6 +678,10 @@ Map<String, dynamic> _nativeResult(Object? value, DateTime observed) {
     if (known && _scope(value['scope']) != null) 'scope': value['scope'],
     if (value['credit'] is num) 'credit': value['credit'],
     if (value['credit'] is num) 'unit': 'credits',
+    if (value['outcome'] == 'claimed' &&
+        (value['credit'] as num? ?? 0) > 0 &&
+        _time(value['creditExpiresAt']) != null)
+      'creditExpiresAt': value['creditExpiresAt'],
     if (value['streak'] is num) 'streak': value['streak'],
     'message': text.length > 2048 ? text.substring(0, 2048) : text,
     if (known || until != null)

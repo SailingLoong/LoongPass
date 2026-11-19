@@ -1,5 +1,7 @@
 # Source locks verify original bytes, including each upstream's line endings.
 runtime/** -text
+# Unified diff context preserves a space on an empty source line.
+runtime/patches/*.patch whitespace=-blank-at-eol
 # The compatibility patch is hashed verbatim and retains upstream whitespace.
 integrations/dsh-feishu/dsh-lark-channel.patch -text -whitespace
 integrations/dsh-feishu/atomic-write/** -text

@@ -7,14 +7,14 @@ import { fileURLToPath } from 'node:url'
 // Run against the pinned package, or a private replay of the source patch.
 const runtime = process.env.LOONGPASS_CHECKIN_RUNTIME || fileURLToPath(new URL('../runtime', import.meta.url))
 
-async function native(provider, answer, { claim = false, failure = false, expectedScope } = {}) {
+async function native(provider, answer, { claim = false, failure = false, expectedScope, claimReply } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'loongpass-status-plugin-'))
   try {
     await mkdir(join(directory, 'home'))
     const runner = join(directory, 'fixture.mjs')
     await writeFile(runner, `
       import { pathToFileURL } from 'node:url';
-      const input = ${JSON.stringify({ provider, answer, claim, failure, expectedScope })};
+      const input = ${JSON.stringify({ provider, answer, claim, failure, expectedScope, claimReply })};
       const calls = [];
       const endpoints = {
         workbuddy: ['/v2/billing/meter/checkin-activity-status', '/v2/billing/meter/daily-checkin'],
@@ -32,7 +32,7 @@ async function native(provider, answer, { claim = false, failure = false, expect
           ? {checked_in: true, enable: true, credits: 12.5} : input.answer) : ({
           workbuddy: {code: 0, data: {credit: 12.5, streak_days: 3}},
           minimax: {data: {claim_result: 1, points: 12.5}},
-          qoder: {status: 'CLAIMED', benefit: {amount: 12.5}},
+          qoder: input.claimReply ?? {status: 'CLAIMED', benefit: {amount: 12.5}},
           trae: {credits: 12.5},
         })[input.provider];
         return Response.json(answer);
@@ -120,16 +120,16 @@ for (const [provider, answer, outcome] of [
   })
 }
 
-test('Qoder status retains official campaign identity/boundaries and exact credits across claimable/done', async () => {
-  const offered = campaign()
+test('Qoder lists a held campaign without turning its advertised offer into a receipt', async () => {
+  const offered = campaign('CLAIMABLE', { expiresAt: '2027-01-01T00:00:00Z' })
   const read = await native('qoder', offered)
   offered.campaigns[0].claimStatus = 'CLAIMED'
-  const done = await native('qoder', offered)
   expect(read.result.scope).toBeTruthy()
-  expect(done.result.scope).toBe(read.result.scope)
-  expect(done.result.outcome).toBe('done')
-  expect(done.result.credit).toBe(12.5)
-  expect(done.result.until).toBe(read.result.until)
+  for (const claim of [false, true]) {
+    const done = await native('qoder', offered, { claim, expectedScope: read.result.scope })
+    expect(done.calls.map(c => c.method)).toEqual(['GET'])
+    expect(done.result).toEqual({ outcome: 'done', scope: read.result.scope, until: read.result.until })
+  }
   expect((await native('qoder', campaign('CLAIMABLE', { endAt: undefined }))).result.scope).toBeUndefined()
 })
 
@@ -143,10 +143,43 @@ test('Qoder binds the actual claim to the observed cycle and refuses a cycle tur
   next.campaigns[0].startAt += 86400
   next.campaigns[0].endAt += 86400
   const changed = await native('qoder', next, { claim: true, expectedScope: status.result.scope })
-  expect(changed.result.outcome).toBe('failed')
-  expect(changed.result.message).toContain('scope changed')
+  expect(changed.result.outcome).toBe('inactive')
+  expect(changed.result.scope).toBe(status.result.scope)
+  expect(changed.result.credit).toBeUndefined()
+  expect(Date.parse(changed.result.until)).toBeLessThanOrEqual(Date.now())
   expect(changed.calls.map(c => c.method)).toEqual(['GET'])
 })
+
+const grantExpiry = '2026-12-20T06:30:00.125314Z'
+const credited = { status: 'CLAIMED', benefit: { amount: 3.125 }, expiresAt: grantExpiry }
+for (const [description, reply, outcome, amount, expiry] of [
+  ['a new credit grant', credited, 'claimed', 3.125, grantExpiry],
+  ['a wrapped credit grant', { data: { status: 'CLAIMED', benefit: { amount: 3.125 }, expires_at: grantExpiry } }, 'claimed', 3.125, grantExpiry],
+  ['a replay of an earlier receipt', { ...credited, replayed: true }, 'done'],
+  ['a wrapped replay without a benefit', { data: { status: 'CLAIMED', replayed: true } }, 'done'],
+  ['a device-ineligible claim marked as a replay', { ...credited, replayed: true, failureCode: 'SAME_PERSON_ALREADY_CLAIMED' }, 'ineligible'],
+  ['a refused grant', { data: { ...credited, failure_code: 'CAMPAIGN_BLOCKED' } }, 'failed'],
+  ['an explicitly closed campaign', { ...credited, status: 'BLOCKED', failureCode: 'CAMPAIGN_NOT_ACTIVE', campaignId: 'campaign-a' }, 'inactive'],
+  ['an unrecognized block', { status: 'BLOCKED', failureCode: 'OTHER' }, 'failed'],
+  ['a contradictory claim', { ...credited, failureCode: 'CAMPAIGN_NOT_ACTIVE' }, 'failed'],
+  ['a malformed failure code', { ...credited, failureCode: 2 }, 'failed'],
+  ['a malformed replay flag', { ...credited, replayed: 'yes' }, 'failed'],
+  ['a block for another campaign', { status: 'BLOCKED', failureCode: 'CAMPAIGN_NOT_ACTIVE', campaignId: 'other' }, 'failed'],
+  ['a receipt for a different campaign', { ...credited, campaignId: 'another-campaign' }, 'failed'],
+  ['a grant without an amount', { status: 'CLAIMED', expiresAt: grantExpiry }, 'claimed'],
+  ['an explicit zero credit grant', { ...credited, benefit: { amount: 0 } }, 'claimed', 0],
+  ['a non-credit benefit', { ...credited, benefit: { kind: 'VOUCHER', amount: 5 } }, 'claimed'],
+  ['an unknown expiry', { ...credited, expiresAt: 'no date' }, 'claimed', 3.125],
+  ['the permanent-package sentinel', { ...credited, expiresAt: '9999-12-31T00:00:00Z' }, 'claimed', 3.125],
+]) {
+  test(`Qoder records ${description} from the claim response`, async () => {
+    const { result, calls } = await native('qoder', campaign(), { claim: true, claimReply: reply })
+    expect(calls.map(c => c.method)).toEqual(['GET', 'POST'])
+    expect(result.outcome).toBe(outcome)
+    expect(result.credit).toBe(amount)
+    expect(result.creditExpiresAt).toBe(expiry)
+  })
+}
 
 test('native host advertises only declared status hooks, isolates accounts and sanitizes failures', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'loongpass-status-host-'))

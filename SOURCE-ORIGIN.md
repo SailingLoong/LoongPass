@@ -2,7 +2,7 @@
 
 ## Interface fonts
 
-English text uses Forui 0.27.7's bundled Inter family. Chinese text uses the
+English text uses Forui's bundled Inter family. Chinese text uses the
 unmodified [Adobe Source Han Sans 2.005R](https://github.com/adobe-fonts/source-han-sans/tree/6c709ca72d3d7c46ab42ebecc1a26e7d69595a37)
 file `Variable/TTF/SourceHanSansSC-VF.ttf`, copied to
 `assets/fonts/SourceHanSansSC-VF.ttf`. SHA-256:
@@ -40,8 +40,10 @@ The beta 18 source handoff was the starting point for this repository. Current a
 
 ## 2026-11-12 review
 
-The current fixed native cohort, patch disposition, whole-ecosystem review and
+The November 12 fixed native cohort, patch disposition, whole-ecosystem review and
 official-client compatibility boundaries are recorded in
 [the upstream verification](docs/verification/2026-11-12-upstream-sync.md).
 Historical source hashes above remain provenance, not claims that a retired
 adapter owns the current runtime.
+
+The [November 20 update](docs/verification/2026-11-20-upstream-sync.md) records the current fixed sources, supported provider changes and acceptance scope.

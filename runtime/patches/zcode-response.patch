@@ -1,8 +1,8 @@
 # Compose native model and tool response transforms.
-# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
+# Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -3104,8 +3104,8 @@
+@@ -3240,8 +3240,8 @@
              let giftName = ""
              let asked = ""
              let renamed = false

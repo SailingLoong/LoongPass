@@ -19,36 +19,41 @@
     "patches/zcode-response.patch",
     "patches/workbuddy-usage.patch",
     "patches/loomy-models.patch",
-    "patches/model-quota-expiry.patch"
+    "patches/model-quota-expiry.patch",
+    "patches/qoder-claim-receipt.patch",
+    "patches/zcode-account-limit.patch",
+    "patches/trae-enterprise-billing.patch",
+    "patches/workbuddy-renewal.patch",
+    "patches/zcode-desktop-owner.patch"
   ],
   "sources": {
     "magpie": {
       "url": "https://github.com/yetone/magpie",
-      "commit": "873b4987e97328071d4aeabd21996a3a8fcfab24"
+      "commit": "f534245f1c0893c5eaaa5b2a1c918ff27085a9c3"
     },
     "plugins": {
       "url": "https://github.com/magpie-community/plugins",
-      "commit": "bb3f68a47a06174aecc5b8179bf2edef06e8415f"
+      "commit": "836f2e4e4cd899318c422d67cc1b2b30baaf1e06"
     }
   },
   "bun": {
-    "version": "1.4.4",
+    "version": "1.4.5",
     "archives": {
-      "bun-darwin-aarch64.zip": "c240d7f0ccb90c263a849fcdb09b7ee62630d921348ed6aafda86b9d577bc510",
-      "bun-darwin-x64.zip": "50a3491f73abc2fe81673171a85762d3bc2cc1680ccecadd983de99adf77977e",
-      "bun-windows-aarch64.zip": "2d57a0eec0cb44d95c918c3f9734f60455a1306ae5085d76fc68f44e3ee30d09",
-      "bun-windows-x64-baseline.zip": "0f20ce6674d4f2dbcc8c5d59fdf99f7ba45f8c3b367e0f5781cbfa30a1c78d99"
+      "bun-darwin-aarch64.zip": "b5d6bc2e13caf14e57c89661e89efd073ff16165b41bfe43882616410609cd10",
+      "bun-darwin-x64.zip": "a4972e778cce4b6a194d7d289f326aa61576d71d80b7a53e9da2f3739566e5fd",
+      "bun-windows-aarch64.zip": "41f57d49c3c6811888d9633c569e40b4eb1f7e92b5e5336e3abd3af03187d77a",
+      "bun-windows-x64-baseline.zip": "3c081c73865e7a3453a9d514cc2ba3d699880621bcf67bb17241ff5194cb1d4b"
     }
   },
   "packages": [
     {
       "name": "workbuddy",
-      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.31",
+      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.37",
       "target": "vendor/plugins/workbuddy"
     },
     {
       "name": "qoder",
-      "spec": "@magpie-community/opencode-qoder-auth@0.2.67",
+      "spec": "@magpie-community/opencode-qoder-auth@0.2.71",
       "target": "vendor/plugins/qoder"
     },
     {
@@ -58,17 +63,17 @@
     },
     {
       "name": "loomy",
-      "spec": "@magpie-community/opencode-loomy-auth@0.1.5",
+      "spec": "@magpie-community/opencode-loomy-auth@0.1.12",
       "target": "vendor/plugins/loomy"
     },
     {
       "name": "trae",
-      "spec": "@magpie-community/opencode-trae-auth@0.2.34",
+      "spec": "@magpie-community/opencode-trae-auth@0.2.46",
       "target": "vendor/plugins/trae"
     },
     {
       "name": "zcode",
-      "spec": "@magpie-community/opencode-zcode-auth@0.1.61",
+      "spec": "@magpie-community/opencode-zcode-auth@0.1.68",
       "target": "vendor/plugins/zcode"
     }
   ],
@@ -77,8 +82,8 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "531c010a0bfa8791a7c2eb416eb6169bcdfc7ffa7f697c30018018d0c04b6b10",
-      "upstreamSha256": "e6801c6cb0f61553ca747c2b02209bfe87720183b37bb8840d08bcfb5352c5f3"
+      "sha256": "8ef010ae5c127307f455d2bc19b1083d8ecf2019bd36a00e82da4ba8a5809eef",
+      "upstreamSha256": "d51d1712e89d5e1d94c719c36eaa7f49edd52c671f984c39aaf5ffab317f1179"
     },
     {
       "source": "magpie",
@@ -90,14 +95,14 @@
       "source": "plugins",
       "path": "packages/workbuddy/README.md",
       "target": "vendor/plugins/workbuddy/README.md",
-      "sha256": "fc07e873f7897a5dd2fe719404fcd8fc8ac7c01ccd1ba218d5308e9dd69c7e5d"
+      "sha256": "c6be6b5000134d11aef05e8c04f15dd674100ecdfb6d69f75ed0bc7ae6891920"
     },
     {
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "bef89b3141a0e87b409b62d03fca45fa44eb65e07a1493a071b314464150a4f2",
-      "upstreamSha256": "5f76ebebb9c8edc56f647d6906410b56b6a25fd7e4481bf61ce523a622659d34"
+      "sha256": "02b7736181094210dcdda7e133b39736ed14d6a2e82d6f4f66b053370856c7db",
+      "upstreamSha256": "3b44d8bad00b855c6001bc6ec37d69340f62c3a323de7a2037a59607c1c0471e"
     },
     {
       "source": "plugins",
@@ -109,13 +114,13 @@
       "source": "plugins",
       "path": "packages/workbuddy/opencode2.mjs",
       "target": "vendor/plugins/workbuddy/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
       "path": "packages/workbuddy/package.json",
       "target": "vendor/plugins/workbuddy/package.json",
-      "sha256": "1ab1cd53a0cae011ffbd0fe4bec7a37048aaac5b4a3b2fae6b024f43cf9dafee"
+      "sha256": "69523168b187fbb838e0b28f9fd788d0cc43bf30939333b5363cea8ab9096aa0"
     },
     {
       "source": "plugins",
@@ -133,14 +138,14 @@
       "source": "plugins",
       "path": "packages/qoder/README.md",
       "target": "vendor/plugins/qoder/README.md",
-      "sha256": "7d30e67aaf9fb0c9f69a39fb0f4fd1bee77c84effed1a6b93b798e20e2c5741e"
+      "sha256": "e82e33637d3aa7e2e582aec1ccf5ac4e51a072bf3f63b0a14c88fae4e3a2253a"
     },
     {
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "b99ed0c44d6e44426a1d5ca7c5a0cf2fe200de6cdaa9a53fb2b59a42f75b6342",
-      "upstreamSha256": "7290649066a01dbf14e82d88624bb22d0b57e2e32205c78c78d4deb3909153eb"
+      "sha256": "071d1b9c1c29a04445d708eb304f01cab422c63de22c2eda422c02d363d51c0e",
+      "upstreamSha256": "3a0eff3997d17322f430c449256c7bba0406a5c89de83dfeeb6e60baba1f53f2"
     },
     {
       "source": "plugins",
@@ -152,13 +157,13 @@
       "source": "plugins",
       "path": "packages/qoder/opencode2.mjs",
       "target": "vendor/plugins/qoder/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
       "path": "packages/qoder/package.json",
       "target": "vendor/plugins/qoder/package.json",
-      "sha256": "8cb68aefe4a6f3d8dc07764e2facefe5a84e893e665b92c1555498e7641a7965"
+      "sha256": "ddb20ceeab68690e46b10ba2ae4f8671b39f377a5c1a170985c690acecd8f34b"
     },
     {
       "source": "plugins",
@@ -207,7 +212,7 @@
       "source": "plugins",
       "path": "packages/minimax/opencode2.mjs",
       "target": "vendor/plugins/minimax/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
@@ -231,14 +236,14 @@
       "source": "plugins",
       "path": "packages/loomy/README.md",
       "target": "vendor/plugins/loomy/README.md",
-      "sha256": "ba9d351a70fbd013b618d864f6de94c90726a8dfb52d84b90e3c043361d7c3c2"
+      "sha256": "a0e9be171e93739b8f6a23a042869f78450395314149efaa2a8a182679fcc59b"
     },
     {
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "5871b526ed251fbca298bab3e78c2c8a01705333e8d7d2f40dbd7e1fd2fe92d2",
-      "upstreamSha256": "996caaf0da61c1edf92a23ccfde054899cc67a0900518aba11201759d040295e"
+      "sha256": "1d6616cbed8bb944d6f57567f932536304ff15ef1360a0e3f2a5d2b84c4c5b8d",
+      "upstreamSha256": "8d712a79a1dcd6dd368dc6bf63247d045c7bae099dc342458f7a3eaef19cffb4"
     },
     {
       "source": "plugins",
@@ -250,13 +255,13 @@
       "source": "plugins",
       "path": "packages/loomy/opencode2.mjs",
       "target": "vendor/plugins/loomy/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
       "path": "packages/loomy/package.json",
       "target": "vendor/plugins/loomy/package.json",
-      "sha256": "963f2c7f96e2d4fefd62a695b5a7895fbf406a9d3750801c95207e3260eb61bc"
+      "sha256": "d8f9da83b3d91d5d6c5d7c28fcb877963c94e55e5caf6b9fc81494bffc4419b6"
     },
     {
       "source": "plugins",
@@ -268,14 +273,14 @@
       "source": "plugins",
       "path": "packages/trae/README.md",
       "target": "vendor/plugins/trae/README.md",
-      "sha256": "82333e488f0109075f60116dfe7f1bdf8c72eb595943327edb01e40d6805663a"
+      "sha256": "c8afaa3757e6324fa05bd387e8ec9e09f0ec06a0817e8e98ec36b2988095e798"
     },
     {
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "e687e59b89bb8a0c5c91e9377a1e42e122cfd72db2d8a1a3c0dcca969c569766",
-      "upstreamSha256": "254c511fc02701e718fb377988c5e40e75548ff876ae99792bc8d09c5ba42443"
+      "sha256": "bc3e58e95769102104511f803e832413483cef16e88a09b4431dd3ef8528ad0b",
+      "upstreamSha256": "53e888c4709039c1387d1a392043390f08ca47fa8317e1e1acdcd43502930804"
     },
     {
       "source": "plugins",
@@ -287,13 +292,13 @@
       "source": "plugins",
       "path": "packages/trae/opencode2.mjs",
       "target": "vendor/plugins/trae/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
       "path": "packages/trae/package.json",
       "target": "vendor/plugins/trae/package.json",
-      "sha256": "92fc4f81ca4b549168dfd34cddbb91167fe6e7453d980aed71e2858e0dc5bc7b"
+      "sha256": "8ee96f64df388e923fdf5c2c187b9cdec008a7135570ae1ee9b5d098313dc812"
     },
     {
       "source": "plugins",
@@ -305,14 +310,14 @@
       "source": "plugins",
       "path": "packages/zcode/README.md",
       "target": "vendor/plugins/zcode/README.md",
-      "sha256": "360146b1f5a2720d70b39689f57ca2d4edfb2506f99d4fce5939a16d0d1a233f"
+      "sha256": "7a088a264b104040c880661fd99b1c9a1208ba36bc56bef72b95e07cbf98349b"
     },
     {
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "cad6b22e009e74e7ca61e0836affcdc56e6c7d4ec6a13c2885f9bd1ec77b7bbc",
-      "upstreamSha256": "b29c486235227c339807755872c020af0b8df61a26812fa160230d74778ef277"
+      "sha256": "71876c42ced078f17b66116e6d2be698919a285f155b75c16e9e9afee85032ae",
+      "upstreamSha256": "804410b252752a21f2b43074b90bb2443a76094b2e77faebf50c0310d9337ca3"
     },
     {
       "source": "plugins",
@@ -324,13 +329,14 @@
       "source": "plugins",
       "path": "packages/zcode/opencode2.mjs",
       "target": "vendor/plugins/zcode/opencode2.mjs",
-      "sha256": "2fdc96a5b5a6e3d0528b625b0e8e5e4cd29324bc013e198d188d3840c6beaf51"
+      "sha256": "062365696c3d64a6526f6514093a315ecb4d14be738ab779ffaf2394c4ead900"
     },
     {
       "source": "plugins",
       "path": "packages/zcode/package.json",
       "target": "vendor/plugins/zcode/package.json",
-      "sha256": "c3ba49c27df561cec86def92fabccb1b48e2ab93a9401694e5bf54b728c57bc2"
+      "sha256": "a754755b0268db9b076a273749230ab51acd72368e883dd31e8567931fbcb670",
+      "upstreamSha256": "33172a41cd1238f640153b26b81a4bbfd264416dea80cd220f7b810864563fe3"
     },
     {
       "source": "plugins",
@@ -365,6 +371,11 @@
     "patches/zcode-response.patch",
     "patches/workbuddy-usage.patch",
     "patches/loomy-models.patch",
-    "patches/model-quota-expiry.patch"
+    "patches/model-quota-expiry.patch",
+    "patches/qoder-claim-receipt.patch",
+    "patches/zcode-account-limit.patch",
+    "patches/trae-enterprise-billing.patch",
+    "patches/workbuddy-renewal.patch",
+    "patches/zcode-desktop-owner.patch"
   ]
 }

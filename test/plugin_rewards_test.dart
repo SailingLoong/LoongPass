@@ -106,6 +106,7 @@ class _Harness {
     bool checkin = true,
     bool checkinStatus = true,
     String provider = 'fixture',
+    bool nativeQoder = false,
     List<String> additionalProviders = const [],
   }) async {
     final directory = await Directory.systemTemp.createTemp(
@@ -151,9 +152,15 @@ class _Harness {
         for (final id in [provider, ...additionalProviders])
           {
             'spec': 'synthetic',
-            'target': plugin.path,
+            'target': nativeQoder
+                ? File('test/fixtures/qoder_campaign_journal.mjs').absolute.path
+                : plugin.path,
             'options': {
               'provider': id,
+              if (nativeQoder)
+                'qoderPlugin': File(
+                  '${Platform.environment['LOONGPASS_CHECKIN_RUNTIME'] ?? 'runtime'}/vendor/plugins/qoder/index.mjs',
+                ).absolute.path,
               'checkin': checkin,
               'checkinStatus': checkinStatus,
             },
@@ -218,6 +225,7 @@ void main() {
     bool checkin = true,
     bool checkinStatus = true,
     String provider = 'fixture',
+    bool nativeQoder = false,
     List<String> additionalProviders = const [],
   }) async {
     final h = await _Harness.open(
@@ -225,6 +233,7 @@ void main() {
       checkin: checkin,
       checkinStatus: checkinStatus,
       provider: provider,
+      nativeQoder: nativeQoder,
       additionalProviders: additionalProviders,
     );
     opened.add(h);
@@ -369,6 +378,169 @@ void main() {
     expect(h.reward.containsKey('attemptId'), false);
     expect(h.reward.containsKey('credit'), false);
   });
+
+  test('Qoder receipt keeps the awarded credit expiry separate from the next campaign', () async {
+    final h = await open(provider: 'qoder-cn');
+    await h.control({
+      'reply': {
+        'outcome': 'claimed',
+        'credit': 3.125,
+        'creditExpiresAt': '2026-12-20T06:30:00.125314Z',
+        'until': '2026-11-09T02:00:00Z',
+      },
+    });
+    await h.rewards.claim(h.key);
+    expect(h.reward['status'], 'claimed');
+    expect(h.reward['credit'], 3.125);
+    expect(h.reward['unit'], 'credits');
+    expect(h.reward['until'], '2026-11-09T02:00:00.000Z');
+    expect(h.reward['creditExpiresAt'], '2026-12-20T06:30:00.125314Z');
+    expect(h.reward.containsKey('buckets'), false);
+  });
+
+  Map<String, dynamic> qoderCampaign(String id) {
+    final start = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 - 3600;
+    return {
+      'campaignId': id,
+      'actionType': 'CLAIM_BENEFIT',
+      'claimStatus': 'CLAIMABLE',
+      'startAt': start,
+      'endAt': start + 7200,
+      'benefit': {'kind': 'CREDITS', 'amount': 125},
+      'expiresAt': '2027-01-01T00:00:00Z',
+    };
+  }
+
+  const qoderGrant = {
+    'status': 'CLAIMED',
+    'benefit': {'kind': 'CREDITS', 'amount': 3.125},
+    'expiresAt': '2026-12-20T06:30:00.125314Z',
+  };
+
+  test('Qoder reconciles a lost POST as held without recording the offer as a grant', () async {
+    final h = await open(provider: 'qoder-cn', nativeQoder: true);
+    final campaign = qoderCampaign('campaign-a');
+    await h.control({'campaigns': [campaign]});
+    await h.rewards.claim(h.key);
+    expect(h.reward['status'], 'pending');
+    final intent = h.reward['attemptId'];
+    final scope = h.reward['scope'];
+    expect(scope, isNotNull);
+
+    await h.control({'campaigns': [{...campaign, 'claimStatus': 'CLAIMED'}]});
+    await h.rewards.refresh(h.key);
+    expect(h.hooks, hasLength(1));
+    expect(h.reward['status'], 'done');
+    expect(h.reward['scope'], scope);
+    expect(h.reward['attemptId'], intent);
+    for (final field in ['credit', 'unit', 'creditExpiresAt']) {
+      expect(h.reward.containsKey(field), false, reason: field);
+    }
+  });
+
+  test('Qoder keeps a prior POST amount and expiry when observing the same held campaign', () async {
+    final h = await open(provider: 'qoder-cn', nativeQoder: true);
+    final campaign = qoderCampaign('campaign-a');
+    await h.control({'campaigns': [campaign], 'receipt': qoderGrant});
+    await h.rewards.claim(h.key);
+    final intent = h.reward['attemptId'];
+    h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+
+    await h.control({'campaigns': [{...campaign, 'claimStatus': 'CLAIMED'}]});
+    await h.rewards.refresh(h.key);
+    expect(h.hooks, hasLength(1));
+    expect(h.reward['attemptId'], intent);
+    expect(h.reward['status'], 'claimed');
+    expect(h.reward['credit'], 3.125);
+    expect(h.reward['unit'], 'credits');
+    expect(h.reward['creditExpiresAt'], '2026-12-20T06:30:00.125314Z');
+  });
+
+  test('an unverified Qoder POST cannot authorize a replacement campaign', () async {
+    for (final receipt in [
+      {'status': 'BLOCKED', 'failureCode': 'UNKNOWN'},
+      {...qoderGrant, 'campaignId': 'other'},
+    ]) {
+      final h = await open(provider: 'qoder-cn', nativeQoder: true);
+      final a = qoderCampaign('campaign-a');
+      await h.control({'campaigns': [a], 'receipt': receipt});
+      await h.rewards.claim(h.key);
+      expect(h.reward['status'], 'pending');
+      expect(h.reward.containsKey('credit'), false);
+      await h.control({
+        'campaigns': [{...a, 'campaignId': 'campaign-b'}],
+        'receipt': qoderGrant,
+      });
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(1));
+      expect(h.reward['status'], 'pending');
+      expect(h.reward['scope'], contains('campaign-a'));
+    }
+  });
+
+  test('a read-only inactive observation can become claimable within the same scope', () async {
+    final h = await open();
+    await h.control({'status': {'outcome': 'inactive', 'scope': 'cycle-a'}});
+    await h.rewards.refresh(h.key);
+    expect(h.reward.containsKey('attemptId'), false);
+    h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+    await h.control({'status': {'outcome': 'claimable', 'scope': 'cycle-a'}});
+    await h.rewards.claim(h.key);
+    expect(h.reward['status'], 'claimed');
+    expect(h.hooks, hasLength(1));
+  });
+
+  for (final changedBeforePost in [false, true]) {
+    test('Qoder settles ${changedBeforePost ? 'a campaign change before POST' : 'an explicitly inactive campaign'} and permits the next campaign', () async {
+      final h = await open(provider: 'qoder-cn', nativeQoder: true);
+      final a = qoderCampaign('campaign-a');
+      final b = {...a, 'campaignId': 'campaign-b'};
+      final postCount = changedBeforePost ? 0 : 1;
+      await h.control({
+        'campaigns': [a],
+        if (changedBeforePost) 'dispatchCampaigns': [b],
+        'receipt': {
+          ...qoderGrant,
+          'status': 'BLOCKED',
+          'failureCode': 'CAMPAIGN_NOT_ACTIVE',
+          'campaignId': 'campaign-a',
+        },
+      });
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(postCount));
+      expect(h.reward['status'], 'inactive');
+      final closedScope = h.reward['scope'];
+      expect(closedScope, contains('campaign-a'));
+      expect(h.reward.containsKey('credit'), false);
+      expect(h.reward.containsKey('creditExpiresAt'), false);
+
+      h.now = DateTime.now().toUtc().add(const Duration(seconds: 1));
+      await h.control({'campaigns': [a], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(postCount));
+      expect(h.reward['status'], 'inactive');
+
+      await h.control({'campaigns': [b], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(postCount + 1));
+      expect(h.hooks.last['path'], endsWith('/campaign-b/claim'));
+      expect(h.reward['scope'], contains('campaign-b'));
+      expect(h.reward['status'], 'claimed');
+      expect(h.reward['credit'], 3.125);
+      expect((h.reward['history'] as List).single['scope'], closedScope);
+
+      h.now = DateTime.parse(h.reward['until']).add(const Duration(seconds: 1));
+      await h.control({'campaigns': [a], 'receipt': qoderGrant});
+      await h.rewards.claim(h.key);
+      expect(h.hooks, hasLength(postCount + 1));
+      expect(h.reward['scope'], closedScope);
+      await h.control({'campaigns': [{...b, 'claimStatus': 'CLAIMED'}]});
+      await h.rewards.refresh(h.key);
+      expect(h.reward['status'], 'claimed');
+      expect(h.reward['credit'], 3.125);
+      expect(h.reward['creditExpiresAt'], qoderGrant['expiresAt']);
+    });
+  }
 
   for (final amount in [null, 0, 12.5]) {
     test(

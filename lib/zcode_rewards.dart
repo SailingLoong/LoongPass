@@ -70,6 +70,8 @@ int? _seconds(dynamic value) {
       : null;
 }
 
+int? zcodePlanExpiry(Map plan) => _seconds(plan['ends_at']);
+
 class ZcodeBucket {
   final String label, unit;
   final double? remaining;
@@ -142,7 +144,7 @@ class ZcodeBalance {
           !_usable(plan, time) ||
           expires != null && expires <= time)
         continue;
-      final planEnd = _seconds(plan['ends_at']);
+      final planEnd = zcodePlanExpiry(plan);
       final end = expires == null
           ? planEnd
           : planEnd == null
@@ -219,14 +221,26 @@ class ZcodeBalance {
     return null;
   }
 
-  Map<String, dynamic>? receipt(String id, List<dynamic> previous) {
+  Map<String, dynamic>? receipt(
+    String id,
+    List<dynamic> previous, {
+    Object? instance,
+    bool heldOnly = false,
+  }) {
+    Map<String, dynamic>? receipt;
     for (final p in plans) {
       if (p['plan_id'] == id &&
           zcodeText(p['user_plan_id']) &&
-          !previous.contains(p['user_plan_id']) &&
-          {'active', 'expired'}.contains(p['status']))
-        return p;
+          (instance == null
+              ? !previous.contains(p['user_plan_id'])
+              : p['user_plan_id'] == instance) &&
+          (heldOnly
+              ? _held(p, serverTime)
+              : {'active', 'expired'}.contains(p['status']))) {
+        if (receipt != null) return null;
+        receipt = p;
+      }
     }
-    return null;
+    return receipt;
   }
 }

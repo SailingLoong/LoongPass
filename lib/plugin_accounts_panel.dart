@@ -137,13 +137,10 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
   });
 
   Future<void> _claim(PluginAccount account) => _run(() async {
-    if (_pending(account)) {
+    if (account.provider == 'zcode') {
+      await widget.rewards.claim(account.key, verify: verifyNativeZcodeClaim);
+    } else if (_pending(account)) {
       await widget.rewards.refresh(account.key);
-    } else if (account.provider == 'zcode') {
-      await widget.rewards.zcode.claim(
-        account.key,
-        verify: verifyNativeZcodeClaim,
-      );
     } else {
       await widget.rewards.claim(account.key);
     }
@@ -341,10 +338,10 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
           if (_canClaim(a) || _pending(a))
             (
               id: 'claim',
-              label: _pending(a)
-                  ? '核验领取结果'
-                  : a.provider == 'zcode'
+              label: a.provider == 'zcode'
                   ? '核对并领取活动'
+                  : _pending(a)
+                  ? '核验领取结果'
                   : '核对并领取',
               enabled: !_busy && _canClaim(a),
               run: () => _claim(a),
@@ -559,7 +556,7 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
             accountCount: rows.length,
             helpText:
                 '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可辅助领取。'
-                '领取结果待核验时只查询官方状态。各额度窗口保留官方单位，不合计重叠额度。',
+                '同一活动的领取回执未确认时不会重复提交。各额度窗口保留官方单位，不合计重叠额度。',
             actions: [
               FButton(
                 variant: FButtonVariant.primary,
@@ -628,7 +625,8 @@ class _PluginAccountsPanelState extends State<PluginAccountsPanel> {
 Map _reward(PluginAccount a) =>
     a.facts['reward'] is Map ? a.facts['reward'] : const {};
 bool _pending(PluginAccount a) =>
-    {'pending', 'unknown'}.contains(_reward(a)['status']);
+    {'pending', 'unknown'}.contains(_reward(a)['status']) &&
+    (a.provider != 'zcode' || zcodeText(_reward(a)['planId']));
 String _identity(PluginAccount a) =>
     '${a.uid.isEmpty ? '身份未验证' : a.uid} · ${a.realm.isEmpty ? '地区未提供' : a.realm}';
 String _unit(Map value) =>
@@ -701,9 +699,13 @@ String _balance(PluginAccount a) {
 
 String _status(PluginAccount a) {
   final failure = _usageFailure(a) ?? '';
-  if (_pending(a)) return '待核验：不会重复发送领取请求。$failure';
+  if (_pending(a))
+    return a.provider == 'zcode'
+        ? '未能确认本次领取的官方回执。同一活动不会重复提交。$failure'
+        : '待核验：不会重复发送领取请求。$failure';
   if (!a.active) return '需要重新授权。';
-  final reward = switch (_rewardState(a)) {
+  final state = _rewardState(a);
+  final reward = switch (state) {
     'claimed' => '已确认领取。',
     'done' || 'observedClaimed' => '官方确认已有权益。',
     'claimable' => '当前有可领取活动。',
@@ -711,6 +713,10 @@ String _status(PluginAccount a) {
     'captcha' || 'verificationRequired' => '需要完成官方验证。',
     'activationRequired' => '请先使用官方客户端完成活动要求。',
     'ineligible' => '本次不符合官方领取条件。',
+    'notSubmitted' => '本次领取请求未发送，可以重新核对活动。',
+    'rejected' => '官方未接受本次领取。',
+    'throttled' => '官方请求受限，请稍后再试。',
+    'unavailable' => '当前活动查询未完成。',
     'authorization_required' => '授权需要更新，请重新授权。',
     'discoveryIncomplete' => '活动信息暂不完整。',
     'unknown' => '领取状态暂未核实。',
@@ -721,6 +727,15 @@ String _status(PluginAccount a) {
           ? '等待官方额度与领取检查。'
           : '最近一次查询未完成。',
   };
+  if (a.provider == 'zcode') {
+    final facts = _reward(a), claims = facts['claims'];
+    final claim = claims is Map ? claims[facts['planId']] : null;
+    final reason = claim is Map && claim['state'] == state
+        ? _text(claim['message'])
+        : null;
+    if (reason != null)
+      return [reward, reason, if (failure.isNotEmpty) failure].join('\n');
+  }
   return '$reward$failure';
 }
 
@@ -729,8 +744,8 @@ String _statusLabel(PluginAccount a) {
       a.error == 'authorization_required' ||
       a.usage?['signIn'] == 'expired')
     return '需要重新授权';
-  if (_pending(a)) return '领取结果待核验';
-  if (_usageFailure(a) != null) return '额度查询未完成';
+  if (_pending(a)) return a.provider == 'zcode' ? '领取回执未确认' : '领取结果待核验';
+  if (a.provider != 'zcode' && _usageFailure(a) != null) return '额度查询未完成';
   return switch (_rewardState(a)) {
     'claimed' => '已确认领取',
     'done' || 'observedClaimed' => '官方已确认权益',
@@ -739,15 +754,31 @@ String _statusLabel(PluginAccount a) {
     'activationRequired' => '需要完成官方活动要求',
     'authorization_required' => '需要重新授权',
     'ineligible' => '不符合本次领取条件',
+    'notSubmitted' => '领取请求未发送',
+    'rejected' => '官方拒绝领取',
+    'throttled' => '官方请求受限',
+    'unavailable' => '活动查询未完成',
     'noOffer' || 'inactive' => '暂无可领取活动',
-    'discoveryIncomplete' => '活动信息待核对',
+    'discoveryIncomplete' => '活动信息暂不完整',
     'unknown' => '领取状态待核实',
-    _ => a.error != null ? '最近查询未完成' : '已保存',
+    _ =>
+      _usageFailure(a) != null
+          ? '额度查询未完成'
+          : a.error != null
+          ? '最近查询未完成'
+          : '已保存',
   };
 }
 
 String? _rewardState(PluginAccount account) {
   final reward = _reward(account);
+  if (account.provider == 'zcode') {
+    if ({'pending', 'unknown'}.contains(reward['status']) &&
+        !zcodeText(reward['planId'])) {
+      return 'discoveryIncomplete';
+    }
+    return reward['status'] as String?;
+  }
   return reward['status'] == 'unavailable'
       ? reward['outcome'] as String?
       : reward['status'] as String?;
@@ -765,6 +796,7 @@ ClaimReceipt? _receipt(PluginAccount a) {
         unit: _unit(r),
         confirmedAt: _millis(r['confirmedAt']),
         observedAt: _millis(r['observedAt']),
+        creditExpiresAt: _date(r['creditExpiresAt']),
         day: r['day'] is String ? r['day'] : null,
       );
   }
