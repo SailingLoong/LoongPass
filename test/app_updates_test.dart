@@ -156,6 +156,46 @@ void main() {
   }
 
   testDesktopWidgets(
+    'locked channel guidance follows native update permissions',
+    (tester) async {
+      final updates = await render(tester);
+      addTearDown(updates.dispose);
+      final channelSwitch = find.widgetWithText(FSwitch, '接收 Beta 版更新');
+      var revision = 0;
+      for (final (phase, install, skip, description) in [
+        ('downloading', false, false, '正在下载更新，暂时无法切换渠道。'),
+        ('ready', true, false, '安装本次更新后可切换渠道。'),
+        ('ready', true, true, '安装或放弃本次更新后可切换渠道。'),
+        ('installing', false, false, '暂时无法切换更新渠道。'),
+      ]) {
+        await event(tester, {
+          ...native,
+          'revision': ++revision,
+          'phase': phase,
+          'canChangeChannel': false,
+          'canInstall': install,
+          'canSkip': skip,
+          'canCheck': false,
+        });
+        expect(tester.widget<FSwitch>(channelSwitch).enabled, isFalse);
+        expect(
+          find.descendant(of: channelSwitch, matching: find.text(description)),
+          findsOneWidget,
+        );
+        expect(find.text('放弃本次更新'), skip ? findsOneWidget : findsNothing);
+        expect(find.text('重启并更新'), install ? findsOneWidget : findsNothing);
+      }
+      await event(tester, {
+        ...native,
+        'revision': ++revision,
+        'phase': 'upToDate',
+      });
+      expect(tester.widget<FSwitch>(channelSwitch).enabled, isTrue);
+      expect(calls.map((call) => call.method), ['state']);
+    },
+  );
+
+  testDesktopWidgets(
     'a prepared update installs once without checking or downloading again',
     (tester) async {
       native.addAll({

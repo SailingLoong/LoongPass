@@ -24,6 +24,23 @@ FThemeData loongPassDesignTheme(Brightness brightness) {
   );
   final palette = DesktopPalette.of(brightness);
   return theme.copyWith(
+    buttonStyles: .delta([
+      .exact(
+        {FButtonVariant.primary},
+        .delta([
+          .exact(
+            {FButtonSizeVariant.sm},
+            .delta(
+              contentStyle: .delta(
+                padding: .value(
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                ),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    ]),
     switchStyle: FSwitchStyleDelta.delta(
       trackColor: .delta([
         .exact({FSwitchVariant.selected}, palette.brand),

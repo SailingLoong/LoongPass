@@ -138,10 +138,11 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     }
   });
 
+  Future<void> _verifyResult(PluginAccount account) =>
+      _run(() => widget.rewards.refresh(account.key), accountKey: account.key);
+
   Future<void> _claim(PluginAccount account) => _run(() async {
-    if (_pending(account)) {
-      await widget.rewards.refresh(account.key);
-    } else if (account.provider == 'zcode') {
+    if (account.provider == 'zcode') {
       await widget.rewards.zcode.claim(
         account.key,
         verify: verifyNativeZcodeClaim,
@@ -307,21 +308,65 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
   }
 
   bool _canClaim(PluginAccount a) =>
-      a.active && a.uid.isNotEmpty && widget.rewards.supports(a);
+      a.active && a.uid.trim().isNotEmpty && widget.rewards.supports(a);
+
+  bool _canVerifyResult(PluginAccount a) =>
+      _canClaim(a) &&
+      !_needsAuthorization(a) &&
+      a.registrationId.isNotEmpty &&
+      (a.provider == 'zcode' ||
+          widget.accounts.providers[a.provider]?['checkinStatus'] == true);
+
   bool _canActivate(PluginAccount a) =>
       widget.activate != null &&
       a.provider == 'workbuddy' &&
       a.uid.isNotEmpty &&
       a.source != 'desktop';
 
-  bool _supportsRewards(PluginAccount a) =>
-      widget.rewards.supports(a) || _reward(a).isNotEmpty;
+  ({String label, VoidCallback run})? _resolution(PluginAccount a) {
+    if (_busy) return null;
+    if (_needsAuthorization(a))
+      return (label: '重新授权', run: () => _authorize(a));
+    if (_pending(a) && _canVerifyResult(a))
+      return (label: '核验结果', run: () => _verifyResult(a));
+    return null;
+  }
+
+  AccountAttention _attention(PluginAccount a) {
+    final state = _rewardState(a);
+    if (_needsAuthorization(a) ||
+        {
+          'captcha',
+          'verificationRequired',
+          'activationRequired',
+        }.contains(state)) {
+      return AccountAttention.actionRequired;
+    }
+    // Without a status hook the generic owner can record an unknown outcome
+    // even though no observation was attempted.
+    final incompleteObservation =
+        _canClaim(a) &&
+        (a.provider == 'zcode' && state == 'discoveryIncomplete' ||
+            state == 'unknown' &&
+                widget.accounts.providers[a.provider]?['checkinStatus'] ==
+                    true);
+    return _pending(a) ||
+            incompleteObservation ||
+            _usageFailure(a) != null ||
+            a.error != null
+        ? AccountAttention.awaitingVerification
+        : AccountAttention.none;
+  }
 
   Widget _actions(PluginAccount a) {
+    final pending = _pending(a);
+    final verify = pending && _canVerifyResult(a);
     final primary = _needsAuthorization(a)
         ? 'authorize'
-        : _pending(a)
-        ? 'claim'
+        : verify
+        ? 'verify'
+        : pending
+        ? 'refresh'
         : _usageFailure(a) != null
         ? 'refresh'
         : _canActivate(a)
@@ -342,15 +387,18 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               accountKey: a.key,
             ),
           ),
-          if (_canClaim(a) || _pending(a))
+          if (verify)
+            (
+              id: 'verify',
+              label: '核验领取结果',
+              enabled: !_busy,
+              run: () => _verifyResult(a),
+            ),
+          if (!pending && _canClaim(a))
             (
               id: 'claim',
-              label: _pending(a)
-                  ? '核验领取结果'
-                  : a.provider == 'zcode'
-                  ? '核对并领取活动'
-                  : '核对并领取',
-              enabled: !_busy && _canClaim(a),
+              label: a.provider == 'zcode' ? '核对并领取活动' : '核对并领取',
+              enabled: !_busy && !_needsAuthorization(a),
               run: () => _claim(a),
             ),
           if (_canActivate(a))
@@ -429,26 +477,29 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     );
   }
 
-  Widget _expiryDetails(PluginAccount a) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (_windows(a).isNotEmpty && _buckets(a).isNotEmpty)
-        const Text('官方额度窗口与活动批次分别列示，不合计重叠额度。'),
-      if (_millis(_reward(a)['checkedAt'] ?? _reward(a)['observedAt'])
-          case final time?)
-        Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Text(
-            '活动额度查询于 ${creditTime(time)}',
-            style: context.theme.typography.body.xs,
-          ),
-        ),
-    ],
-  );
+  Widget? _expiryObservation(PluginAccount a) {
+    if (a.provider != 'zcode') return null;
+    final activity = a.usesZcodeRewardExpiry;
+    if (!activity && a.usage == null) return null;
+    final time = activity ? _millis(_reward(a)['checkedAt']) : a.queriedAt;
+    final source = activity ? '活动余额' : '套餐与额度';
+    return Text(
+      '到期数据来源：$source · ${time == null ? '观测时间未知' : creditTime(time)}',
+      style: context.theme.typography.body.xs.copyWith(
+        color: context.theme.colors.mutedForeground,
+      ),
+    );
+  }
 
-  Widget _details(PluginAccount a) {
-    final usage = a.usage, reward = _reward(a), buckets = _buckets(a);
-    final rewardTime = _millis(reward['checkedAt'] ?? reward['observedAt']);
+  Widget _details(
+    PluginAccount a,
+    List<AccountExpiryBatch> expiryBatches,
+    Widget? expiryObservation,
+  ) {
+    final plan = _text(a.usage?['plan']), summary = _usageBalance(a.usage);
+    final until = _date(a.usage?['until']), windows = _windows(a);
+    final buckets = _buckets(a);
+    final rewardTime = _millis(_reward(a)['checkedAt']);
     final secondary = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
     );
@@ -459,20 +510,37 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(_status(a), style: secondary),
+        if (a.provider == 'zcode' || expiryBatches.isNotEmpty) ...[
+          const FDivider(),
+          Text('已知到期批次', style: heading),
+          if (expiryObservation != null) expiryObservation,
+          if (expiryBatches.isEmpty) const Text('平台未提供可核实的到期明细。'),
+          for (final batch in expiryBatches)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                '${creditTime(batch.at)} · ${batch.amount ?? '额度未知'}',
+              ),
+            ),
+        ],
         const SizedBox(height: 14),
         const FDivider(),
         Text('官方套餐与额度', style: heading),
         const SizedBox(height: 8),
-        if (usage == null)
-          const Text('尚无可核实的官方额度快照。')
+        if (plan == null && summary == null && until == null && windows.isEmpty)
+          const Text('尚无可展示的官方套餐或窗口明细。')
         else ...[
-          if (_text(usage['plan']) case final plan?) Text('套餐：$plan'),
-          if (_usageBalance(usage) case final balance?) Text('官方额度摘要：$balance'),
-          if (_date(usage['until']) != null)
-            Text('套餐到期：${creditTime(_date(usage['until'])!)}'),
-          if (_windows(a).isNotEmpty)
-            Text('各额度窗口独立列出，可能重叠，不合计。', style: secondary),
-          for (final window in _windows(a))
+          Text(
+            a.queriedAt == null
+                ? '套餐与额度观测时间未知'
+                : '套餐与额度观测于 ${creditTime(a.queriedAt!)}',
+            style: secondary,
+          ),
+          if (plan != null) Text('套餐：$plan'),
+          if (summary != null) Text('官方额度摘要：$summary'),
+          if (until != null) Text('套餐到期：${creditTime(until)}'),
+          if (windows.isNotEmpty) Text('各额度窗口独立列出，可能重叠，不合计。', style: secondary),
+          for (final window in windows)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
@@ -483,12 +551,11 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
                       (window['display'] as String).isNotEmpty)
                     Text('官方摘要：${window['display']}', style: secondary),
                   if (window['aside'] == true) const Text('参考额度'),
-                  if (_date(window['resetsAt']) != null)
-                    Text('窗口重置：${creditTime(_date(window['resetsAt'])!)}'),
-                  if (_date(window['runsOutAt']) != null)
-                    Text(
-                      '到期额度：${_number(window['runsOut'])} ${_unit(window)} · ${creditTime(_date(window['runsOutAt'])!)}',
-                    ),
+                  if (_date(window['resetsAt']) case final reset?
+                      when _date(window['runsOutAt'])
+                              ?.isAtSameMomentAs(reset) !=
+                          true)
+                    Text('窗口重置：${creditTime(reset)}'),
                 ],
               ),
             ),
@@ -498,28 +565,27 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
 
         if (a.provider == 'zcode') ...[
           const FDivider(),
-          Text('Start Plan 活动额度', style: heading),
+          Text('Start Plan 活动额度观测', style: heading),
+          Text(
+            rewardTime == null
+                ? '活动额度观测时间未知'
+                : '活动额度观测于 ${creditTime(rewardTime)}',
+            style: secondary,
+          ),
           const SizedBox(height: 8),
           if (buckets.isEmpty)
             Text(
-              reward['checkedAt'] == null
+              rewardTime == null
                   ? '尚无已核实的活动额度明细。'
-                  : '本次查询未返回有效的 Start Plan 活动额度。',
+                  : '该次观测未返回有效的 Start Plan 活动额度。',
             ),
           for (final bucket in buckets)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
-                '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit}；'
-                '${bucket.expiresAt == null ? '到期时间未知' : '${creditTime(DateTime.fromMillisecondsSinceEpoch(bucket.expiresAt! * 1000))} 到期'}',
+                '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit}',
               ),
             ),
-          Text(
-            rewardTime == null
-                ? '活动额度查询时间未知'
-                : '活动额度查询于 ${creditTime(rewardTime)}',
-            style: secondary,
-          ),
         ],
       ],
     );
@@ -573,12 +639,14 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     },
   );
   AccountTableEntry _entry(PluginAccount a) {
-    final batches = pluginCreditExpiryBatches(
-      a.usage,
-      _reward(a),
-      DateTime.now(),
-    );
+    final batches = a.creditExpiryBatches;
     final next = nextPluginCreditExpiry(batches);
+    final expiryBatches = [
+      for (final batch in batches)
+        (at: batch.at, amount: _formatBalance(batch.amount)),
+    ];
+    final expiryObservation = _expiryObservation(a);
+    final receipt = _receipt(a);
     return AccountTableEntry(
       id: a.key,
       label: a.label.isEmpty ? '身份未提供' : a.label,
@@ -592,23 +660,18 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       balance: _balance(a),
       status: _status(a),
       statusLabel: _statusLabel(a),
-      hasRewards: _supportsRewards(a),
+      hasRewards: widget.rewards.supports(a) || _pending(a) || receipt != null,
       actions: _actions(a),
-      expiryDetails: _expiryDetails(a),
-      details: _details(a),
+      expiryDetails: expiryObservation,
+      details: _details(a, expiryBatches, expiryObservation),
       observedAt: a.queriedAt,
-      receipt: _receipt(a),
+      receipt: receipt,
       notice: _messageAccount == a.key ? _message : null,
       expiryAt: next?.at,
       expiringAmount: _formatBalance(next?.amount),
       attention: _attention(a),
-      resolution: !_busy && _needsAuthorization(a)
-          ? (label: '重新授权', run: () => _authorize(a))
-          : null,
-      expiryBatches: [
-        for (final batch in batches)
-          (at: batch.at, amount: _formatBalance(batch.amount)),
-      ],
+      resolution: _resolution(a),
+      expiryBatches: expiryBatches,
       onActivate: _canActivate(a) ? () => _activate(a) : null,
       activationEnabled: !_busy && a.active,
     );
@@ -622,20 +685,6 @@ bool _needsAuthorization(PluginAccount a) =>
     a.error == 'authorization_required' ||
     a.usage?['signIn'] == 'expired' ||
     _rewardState(a) == 'authorization_required';
-
-AccountAttention _attention(PluginAccount a) {
-  if (_needsAuthorization(a) ||
-      {
-        'captcha',
-        'verificationRequired',
-        'activationRequired',
-      }.contains(_rewardState(a))) {
-    return AccountAttention.actionRequired;
-  }
-  return _pending(a) || _usageFailure(a) != null || a.error != null
-      ? AccountAttention.awaitingVerification
-      : AccountAttention.none;
-}
 
 bool _pending(PluginAccount a) =>
     {'pending', 'unknown'}.contains(_reward(a)['status']);

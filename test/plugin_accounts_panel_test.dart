@@ -8,6 +8,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../lib/account_workspace_registry.dart';
+import '../lib/workspace_accounts.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/credit_summary_view.dart';
 import '../lib/compact_accounts_table.dart';
@@ -149,6 +151,8 @@ class _Rewards implements PluginRewards {
   final PluginZcodeRewards zcode;
   int claims = 0, refreshes = 0;
   bool failRefresh = false;
+  Completer<void>? refreshGate;
+  String? refreshedKey;
   @override
   Future<void> claim(String key) async {
     claims++;
@@ -162,6 +166,8 @@ class _Rewards implements PluginRewards {
   @override
   Future<void> refresh(String key) async {
     refreshes++;
+    refreshedKey = key;
+    await refreshGate?.future;
     if (failRefresh) throw StateError('Synthetic refresh failure');
   }
 
@@ -182,6 +188,186 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  testDesktopWidgets(
+    'reward journal shapes reach activity through the platform registry; verification only reads',
+    (tester) async {
+      PluginAccount snapshot(
+        String id,
+        String provider,
+        Map<String, dynamic> reward, {
+        String? error,
+        String? uid,
+      }) => PluginAccount(
+        key: '$provider#$id',
+        active: true,
+        models: const [],
+        error: error,
+        facts: {
+          'provider': provider,
+          'uid': uid ?? id,
+          'realm': 'cn',
+          'label': id,
+          'registrationId': id,
+          'reward': reward,
+        },
+      );
+      final accounts = _Accounts(
+        _Runtime(),
+        providers: {
+          'qoder-cn': {'checkin': true, 'checkinStatus': true},
+          'loomy': {'checkin': true},
+          'trae-cn': {'checkin': false},
+        },
+        rows: [
+          snapshot('submitted', 'qoder-cn', {
+            'status': 'pending',
+            'attemptId': 'attempt',
+            'submittedAt': 123,
+            'history': [],
+          }),
+          snapshot('observation', 'qoder-cn', {
+            'status': 'unavailable',
+            'outcome': 'unknown',
+            'observedAt': 123,
+            'history': [],
+          }),
+          snapshot('discovery', 'zcode', {
+            'status': 'discoveryIncomplete',
+            'claims': {},
+          }),
+          snapshot('ineligible', 'qoder-cn', {
+            'status': 'unavailable',
+            'outcome': 'ineligible',
+          }),
+          snapshot('no-evidence', 'qoder-cn', {
+            'status': 'unavailable',
+            'history': [],
+          }),
+          snapshot('no-status-hook', 'loomy', {
+            'status': 'unavailable',
+            'outcome': 'unknown',
+          }),
+          snapshot('loomy-pending', 'loomy', {
+            'status': 'pending',
+            'attemptId': 'loomy-attempt',
+          }),
+          snapshot('not-a-reward-provider', 'trae-cn', {
+            'status': 'unavailable',
+            'outcome': 'unknown',
+          }),
+          snapshot('expired', 'qoder-cn', {
+            'status': 'pending',
+          }, error: 'authorization_required'),
+          snapshot('missing-uid', 'qoder-cn', {'status': 'pending'}, uid: ''),
+        ],
+      );
+      final registry = AccountWorkspaceRegistry();
+      final rewards = _Rewards(accounts)..refreshGate = Completer<void>();
+      addTearDown(accounts.dispose);
+      addTearDown(registry.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: IndexedStack(
+              index: 0,
+              children: [
+                WorkspaceActivityPage(registry: registry),
+                for (final app in [
+                  ManagedApp.qoderCn,
+                  ManagedApp.zcode,
+                  ManagedApp.loomy,
+                  ManagedApp.traeCn,
+                ])
+                  AccountPresentationScope(
+                    app: app,
+                    registry: registry,
+                    child: SingleChildScrollView(
+                      child: PluginAccountsPanel(
+                        accounts: accounts,
+                        rewards: rewards,
+                        providerIds: app.nativeProviders,
+                        title: app.label,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      AccountTableEntry entry(String label) =>
+          registry.entries.singleWhere((entry) => entry.label == label);
+      for (final label in ['submitted', 'observation', 'discovery']) {
+        expect(
+          entry(label).attention,
+          AccountAttention.awaitingVerification,
+          reason: label,
+        );
+      }
+      for (final label in [
+        'ineligible',
+        'no-evidence',
+        'no-status-hook',
+        'not-a-reward-provider',
+      ]) {
+        expect(entry(label).attention, AccountAttention.none, reason: label);
+        expect(entry(label).resolution, isNull, reason: label);
+      }
+      expect(entry('not-a-reward-provider').hasRewards, isFalse);
+      expect(entry('expired').resolution?.label, '重新授权');
+      expect(entry('missing-uid').resolution, isNull);
+      expect(
+        entry('loomy-pending').attention,
+        AccountAttention.awaitingVerification,
+      );
+      expect(entry('loomy-pending').resolution, isNull);
+      expect(rewards.refreshes, 0);
+      await tester.tap(find.text('待处理'));
+      await tester.pumpAndSettle();
+      expect(find.text('observation'), findsOneWidget);
+      expect(find.text('discovery'), findsOneWidget);
+      expect(find.text('ineligible'), findsNothing);
+      expect(find.text('not-a-reward-provider'), findsNothing);
+      for (final label in ['loomy-pending', 'expired', 'missing-uid']) {
+        final item = find.text(label);
+        await tester.ensureVisible(item);
+        await tester.tap(item);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('不会重复发送领取请求'), findsOneWidget);
+        expect(find.text('核验领取结果'), findsNothing, reason: label);
+        expect(find.text('核对并领取'), findsNothing, reason: label);
+        final more = find.text('更多操作');
+        await tester.ensureVisible(more);
+        await tester.pumpAndSettle();
+        await tester.tap(more);
+        await tester.pumpAndSettle();
+        expect(find.text('移除账号'), findsOneWidget);
+        for (final action in ['核验领取结果', '核对并领取', '核对并领取活动']) {
+          expect(find.text(action), findsNothing, reason: label);
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-detail-sheet')), findsNothing);
+      }
+      expect(rewards.refreshes, 0);
+      expect(rewards.claims, 0);
+      await tester.ensureVisible(find.text('核验结果'));
+      await tester.tap(find.text('核验结果'));
+      await tester.pump();
+      await tester.pump();
+      expect(rewards.refreshedKey, 'qoder-cn#submitted');
+      expect(entry('submitted').resolution, isNull);
+      expect(rewards.refreshes, 1);
+      expect(rewards.claims, 0);
+      rewards.refreshGate!.complete();
+      await tester.pumpAndSettle();
+      expect(entry('submitted').resolution?.label, '核验结果');
+      expect(rewards.refreshes, 1);
+      expect(rewards.claims, 0);
+    },
+  );
 
   Future<void> mountAccount(WidgetTester tester, PluginAccount account) async {
     final accounts = _Accounts(_Runtime(), rows: [account]);
@@ -511,9 +697,127 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('更多操作'));
       await tester.pumpAndSettle();
-      expect(find.text('核验领取结果'), findsOneWidget);
+      expect(find.text('核验领取结果'), findsNothing);
     },
   );
+
+  for (final (activityNewer, hasGift) in [
+    (true, false),
+    (true, true),
+    (false, false),
+    (false, true),
+  ]) {
+    testDesktopWidgets(
+      'ZCode expiry follows the latest gift observation (activity newer: $activityNewer, has gift: $hasGift) across the table and both detail tabs',
+      (tester) async {
+        final usageAt = DateTime.utc(2026, 11, 10, 8);
+        final checkedAt = usageAt.add(Duration(hours: activityNewer ? 4 : -4));
+        final oldExpiry = DateTime.utc(2099, 1, 3, 7);
+        final newExpiry = DateTime.utc(2099, 1, 4, 4);
+        await mountAccount(
+          tester,
+          PluginAccount(
+            key: 'zcode#one',
+            active: true,
+            models: const [],
+            queriedAt: usageAt,
+            usage: {
+              'plan': 'GLM Coding Lite',
+              'windows': [
+                {
+                  'name': 'GLM gift',
+                  'unit': 'tokens',
+                  'runsOut': activityNewer ? 81.75 : (hasGift ? 13.25 : 0),
+                  'runsOutAt': (activityNewer ? oldExpiry : newExpiry)
+                      .toIso8601String(),
+                  'resetsAt': (activityNewer ? oldExpiry : newExpiry)
+                      .toIso8601String(),
+                },
+              ],
+            },
+            facts: {
+              ...observed().facts,
+              'provider': 'zcode',
+              'reward': {
+                'checkedAt': checkedAt.millisecondsSinceEpoch,
+                'buckets': [
+                  if (!activityNewer || hasGift)
+                    {
+                      'label': 'Start Plan gift',
+                      'unit': 'tokens',
+                      'remaining': activityNewer ? 13.25 : 81.75,
+                      'expiresAt':
+                          (activityNewer ? newExpiry : oldExpiry)
+                              .millisecondsSinceEpoch ~/
+                          1000,
+                    },
+                ],
+              },
+            },
+          ),
+        );
+        final table = tester.widget<CompactAccountsTable>(
+          find.byType(CompactAccountsTable),
+        );
+        final row = table.entries.single;
+        expect(row.nextExpiry, hasGift ? newExpiry : null);
+        expect(row.upcomingExpiryAmount, hasGift ? '13.25 tokens' : '—');
+        expect(find.textContaining('81.75'), findsNothing);
+        if (hasGift) expect(find.text('13.25 tokens'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('account-zcode#one')));
+        await tester.pumpAndSettle();
+        final sheet = find.byKey(const Key('account-detail-sheet'));
+        Finder detail(Finder text) =>
+            find.descendant(of: sheet, matching: text);
+        for (final tab in ['账号信息', '额度到期']) {
+          if (tab == '额度到期') {
+            await tester.tap(find.text(tab));
+            await tester.pumpAndSettle();
+          } else {
+            expect(
+              detail(find.textContaining('GLM Coding Lite')),
+              findsOneWidget,
+            );
+            expect(
+              detail(find.textContaining('套餐与额度观测于 ${creditTime(usageAt)}')),
+              findsOneWidget,
+            );
+            expect(
+              detail(find.textContaining('活动额度观测于 ${creditTime(checkedAt)}')),
+              findsOneWidget,
+            );
+          }
+          expect(
+            detail(find.textContaining('81.75 tokens')),
+            !activityNewer && tab == '账号信息' ? findsOneWidget : findsNothing,
+            reason: tab,
+          );
+          expect(
+            detail(find.textContaining(creditTime(oldExpiry))),
+            findsNothing,
+            reason: tab,
+          );
+          final expiryObservation = activityNewer
+              ? '活动余额 · ${creditTime(checkedAt)}'
+              : '套餐与额度 · ${creditTime(usageAt)}';
+          expect(
+            detail(find.text('到期数据来源：$expiryObservation')),
+            findsOneWidget,
+          );
+          expect(detail(find.textContaining('分别列示')), findsNothing);
+          if (hasGift) {
+            expect(detail(find.textContaining('13.25 tokens')), findsWidgets);
+            expect(
+              detail(find.textContaining(creditTime(newExpiry))),
+              findsWidgets,
+            );
+          } else {
+            expect(detail(find.text('平台未提供可核实的到期明细。')), findsOneWidget);
+          }
+        }
+      },
+    );
+  }
 
   testDesktopWidgets(
     'fresh Start Plan quantities are independent of failed native usage',

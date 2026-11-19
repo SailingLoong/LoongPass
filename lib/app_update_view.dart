@@ -127,6 +127,20 @@ class _TransferProgress extends StatelessWidget {
   }
 }
 
+String _channelDescription(AppUpdates updates) {
+  if (updates.version == null || updates.canChangeChannel) {
+    return '提前体验新功能，可能存在不稳定情况。关闭后接收正式版。';
+  }
+  return switch ((updates.canInstall, updates.canSkip)) {
+    (true, true) => '安装或放弃本次更新后可切换渠道。',
+    (true, false) => '安装本次更新后可切换渠道。',
+    (false, true) => '放弃本次更新后可切换渠道。',
+    (false, false) when updates.phase == UpdatePhase.downloading =>
+      '正在下载更新，暂时无法切换渠道。',
+    _ => '暂时无法切换更新渠道。',
+  };
+}
+
 class AppUpdateCard extends StatelessWidget {
   const AppUpdateCard({super.key, required this.updates});
   final AppUpdates updates;
@@ -275,11 +289,7 @@ class AppUpdateCard extends StatelessWidget {
             FSwitch(
               value: updates.receiveBetaUpdates,
               label: const Text('接收 Beta 版更新'),
-              description: Text(
-                updates.available && !updates.canChangeChannel
-                    ? '更新进行中或已下载，安装或放弃后可切换渠道。'
-                    : '提前体验新功能，可能存在不稳定情况。关闭后接收正式版。',
-              ),
+              description: Text(_channelDescription(updates)),
               leadingLabel: true,
               enabled: updates.available && updates.canChangeChannel,
               onChange: updates.setReceiveBetaUpdates,

@@ -1,5 +1,6 @@
 // Run through the shared Flutter gate. Set LOONGPASS_PREVIEW_DIR to save PNGs
 // and logical widget bounds. All account and updater inputs are synthetic.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -13,6 +14,9 @@ import 'package:material_ui/material_ui.dart';
 import '../lib/app_update_view.dart';
 import '../lib/main.dart';
 import '../lib/managed_app.dart';
+import '../lib/model_connection.dart';
+import '../lib/plugin_application.dart';
+import '../lib/plugin_rewards.dart';
 import '../lib/ui_preferences.dart';
 import '../lib/update_contract.dart';
 import '../lib/workspace_page.dart';
@@ -20,6 +24,43 @@ import '../lib/workspace_toolbar.dart';
 import '../test/desktop_test_app.dart';
 import '../test/desktop_design_scenarios.dart';
 import '../test/model_workspace_fixture.dart';
+
+class _ObservedRewards extends PluginRewards {
+  _ObservedRewards(super.accounts) : super(timers: false);
+  final reads = <String>[];
+  final claims = <String>[];
+  final response = Completer<void>();
+
+  @override
+  Future<void> refresh(String key) {
+    reads.add(key);
+    return response.future;
+  }
+
+  @override
+  Future<void> claim(String key) async => claims.add(key);
+}
+
+class _DesignApplication implements PluginApplication {
+  @override
+  final WorkspaceFixtureAccounts accounts = WorkspaceFixtureAccounts();
+  @override
+  late final WorkspaceFixtureModels models = WorkspaceFixtureModels(accounts);
+  @override
+  late final _ObservedRewards rewards = _ObservedRewards(accounts);
+  @override
+  late final connection = ModelConnection(models, '/synthetic/bridge');
+
+  Future<void> dispose() async {
+    await rewards.close();
+    connection.dispose();
+    models.dispose();
+    accounts.dispose();
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,9 +88,12 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      final app = ModelWorkspaceFixture();
+      final app = _DesignApplication();
       app.accounts.accounts.removeRange(6, 13);
-      app.accounts.providers['qoder-cn'] = {'checkin': true};
+      app.accounts.providers['qoder-cn'] = {
+        'checkin': true,
+        'checkinStatus': true,
+      };
       final first = app.accounts.accounts.first;
       final today = DateTime.now();
       first.usage!['windows'][0]['runsOutAt'] = DateTime(
@@ -68,7 +112,18 @@ void main() {
       app.accounts.accounts[1].facts['reward'] = {
         'status': 'authorization_required',
       };
-      app.accounts.accounts[2].facts['reward'] = {'status': 'unknown'};
+      final pendingAccount = app.accounts.accounts[2];
+      pendingAccount.facts['reward'] = {
+        'status': 'pending',
+        'attemptId': 'synthetic-attempt',
+        'submittedAt': today.millisecondsSinceEpoch,
+      };
+      final observedAccount = app.accounts.accounts[4];
+      observedAccount.facts['reward'] = {
+        'status': 'unavailable',
+        'outcome': 'unknown',
+        'observedAt': today.millisecondsSinceEpoch,
+      };
       app.accounts.accounts[3].facts['reward'] = {
         'status': 'claimed',
         'credit': 12.5,
@@ -175,6 +230,10 @@ void main() {
         expect(tester.takeException(), isNull);
         if (output == null) return;
         final metrics = <String, Object?>{};
+        if (scene.startsWith('pending')) {
+          metrics['refreshCalls'] = [...app.rewards.reads];
+          metrics['claimCalls'] = [...app.rewards.claims];
+        }
         void record(String name, Finder finder) {
           if (finder.evaluate().isEmpty) return;
           final r = tester.getRect(finder.first);
@@ -188,6 +247,9 @@ void main() {
         record('toolbar', find.byType(WorkspaceToolbar));
         record('detail', key('account-detail-sheet'));
         record('nav', key('nav-$scene'));
+        if (scene.startsWith('pending')) {
+          record('verifyButton', find.widgetWithText(FButton, '核验结果'));
+        }
         record(
           'search',
           key(scene == 'accounts' ? 'account-search' : 'model-search'),
@@ -265,6 +327,37 @@ void main() {
           await tester.tap(receipts.hitTestable().last);
           await frame();
           await capture('receipts');
+          final pendingTab = find.text('待处理');
+          await tester.ensureVisible(pendingTab);
+          await tester.tap(pendingTab.hitTestable());
+          await frame();
+          expect(find.text(observedAccount.label), findsOneWidget);
+          expect(find.text(pendingAccount.label), findsOneWidget);
+          final verify = find.text('核验结果');
+          expect(verify, findsOneWidget);
+          if (verify.hitTestable().evaluate().isEmpty) {
+            await tester.ensureVisible(verify);
+            await frame();
+          }
+          await capture('pending');
+          expect(app.rewards.reads, isEmpty);
+          expect(app.rewards.claims, isEmpty);
+          await tester.tap(verify.hitTestable());
+          await frame();
+          expect(app.rewards.reads, [pendingAccount.key]);
+          expect(app.rewards.claims, isEmpty);
+          expect(verify, findsNothing);
+          await capture('pending-checking');
+          app.rewards.response.complete();
+          await frame();
+          expect(verify, findsOneWidget);
+          expect(app.rewards.reads, [pendingAccount.key]);
+          expect(app.rewards.claims, isEmpty);
+          if (mode == 'narrow') {
+            await tester.ensureVisible(find.textContaining('领取状态待核实').last);
+            await frame();
+          }
+          await capture('pending-verified');
         }
         if (section == 'overview' && progress != null) {
           expect(find.text('272.0 KiB/s'), findsOneWidget);
