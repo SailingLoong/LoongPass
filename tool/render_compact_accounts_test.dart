@@ -85,7 +85,7 @@ void main() {
                     ),
                   ],
                 ),
-                status: n == 2 ? '领取结果待核对' : '辅助领取已开启',
+                status: n == 2 ? '领取回执未确认' : '已保存',
                 attention: n == 2
                     ? AccountAttention.awaitingVerification
                     : AccountAttention.none,

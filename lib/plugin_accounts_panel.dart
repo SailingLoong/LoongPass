@@ -771,10 +771,9 @@ String _status(PluginAccount a) {
     'notSubmitted' => '本次领取请求未发送，可以重新核对活动。',
     'rejected' => '官方未接受本次领取。',
     'throttled' => '官方请求受限，请稍后再试。',
-    'unavailable' => '当前活动查询未完成。',
+    'unavailable' || 'unknown' => '暂未取得官方活动状态。',
     'authorization_required' => '授权需要更新，请重新授权。',
     'discoveryIncomplete' => '活动信息暂不完整。',
-    'unknown' => '领取状态暂未核实。',
     _ =>
       failure.isNotEmpty
           ? ''
@@ -812,10 +811,9 @@ String _statusLabel(PluginAccount a) {
     'notSubmitted' => '领取请求未发送',
     'rejected' => '官方拒绝领取',
     'throttled' => '官方请求受限',
-    'unavailable' => '活动查询未完成',
+    'unavailable' || 'unknown' => '活动查询未完成',
     'noOffer' || 'inactive' => '暂无可领取活动',
     'discoveryIncomplete' => '活动信息暂不完整',
-    'unknown' => '领取状态待核实',
     _ =>
       _usageFailure(a) != null
           ? '额度查询未完成'

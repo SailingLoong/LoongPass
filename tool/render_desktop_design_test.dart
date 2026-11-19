@@ -358,7 +358,7 @@ void main() {
           expect(app.rewards.reads, [pendingAccount.key]);
           expect(app.rewards.claims, isEmpty);
           if (mode == 'narrow') {
-            await tester.ensureVisible(find.textContaining('领取状态待核实').last);
+            await tester.ensureVisible(find.textContaining('活动查询未完成').last);
             await frame();
           }
           await capture('pending-verified');

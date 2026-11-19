@@ -303,6 +303,8 @@ void main() {
       await tester.pumpAndSettle();
       AccountTableEntry entry(String label) =>
           registry.entries.singleWhere((entry) => entry.label == label);
+      expect(entry('observation').statusLabel, '活动查询未完成');
+      expect(entry('submitted').statusLabel, '领取回执未确认');
       for (final label in ['submitted', 'observation', 'discovery']) {
         expect(
           entry(label).attention,
