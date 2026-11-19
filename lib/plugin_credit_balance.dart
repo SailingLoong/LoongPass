@@ -48,9 +48,17 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
     return PluginCreditBalance(balance, usage['unit']);
 
   if (provider == 'loomy') {
-    // Pinned plugins/loomy/index.mjs exposes two disjoint wallets. Missing one
-    // is unknown, not zero. Do not infer this additive contract for other apps.
     final windows = (usage['windows'] as List? ?? const []).whereType<Map>();
+    final totals = windows.where(
+      (w) =>
+          w['aside'] != true &&
+          w['unit'] == 'credits' &&
+          {'积分合计', '可用积分'}.contains(w['name']),
+    );
+    if (totals.isNotEmpty) {
+      return totals.length == 1 ? pluginWindowBalance(totals.single) : null;
+    }
+    // Earlier snapshots may only contain the two disjoint wallets.
     final wallets = <PluginCreditBalance>[];
     for (final name in ['每日赠送积分', '永久积分']) {
       final matches = windows.where((w) => w['name'] == name).toList();

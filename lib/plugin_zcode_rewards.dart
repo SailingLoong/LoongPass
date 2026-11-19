@@ -78,9 +78,6 @@ class PluginZcodeRewards {
       final session = _RewardSession(this, account);
       await session.open();
       if (bindingOnly) {
-        if (session.claims.any((e) => _unknown(e.value))) {
-          session.reward['status'] = 'pending';
-        }
         await session.save();
       } else {
         await _run(session, submit: submit, verify: verify);
@@ -98,59 +95,44 @@ class PluginZcodeRewards {
     try {
       var recovered = false;
       for (final entry in s.claims) {
-        if (!_unknown(entry.value)) continue;
-        s.recordRejection(entry.value);
-        recovered |= !_unknown(entry.value);
+        final claim = entry.value, state = claim['state'];
+        if (state == 'throttled' || state == 'notSubmitted') continue;
+        s.recordRejection(claim);
+        recovered |= state != claim['state'];
       }
-      if (recovered) {
-        s.reward['status'] = s.claims.any((e) => _unknown(e.value))
-            ? 'pending'
-            : 'unavailable';
-        await s.save();
+      if (s.held) {
+        if (s.reward['planId'] == null && s.reward['status'] != 'throttled') {
+          s.setStatus('throttled');
+          recovered = true;
+        }
+        if (recovered) await s.save();
+        return;
       }
-      if (s.held) return;
       var balance = await s.balance();
       s.reconcile(balance);
       final offers = _marketingOffers(await s.request(ZcodeApi.marketingPath))
         ..sort((a, b) => b.priority.compareTo(a.priority));
       ZcodeOffer? selected;
-      String? pause;
-      var held = false;
+      ({String state, String planId})? blocked;
       for (final offer in offers) {
-        final history = s.claims
-            .where((e) => e.key == offer.id)
-            .map((e) => e.value);
-        if (history.any(_unknown)) continue;
-        if (balance.active(offer.id) != null ||
-            history.any(
-              (c) =>
-                  c['state'] == 'observedClaimed' ||
-                  c['state'] == 'claimed' &&
-                      (c['endsAt'] is! int || c['endsAt'] > balance.serverTime),
-            )) {
-          held = true;
-          continue;
+        final state = s.offerState(
+          offer.id,
+          balance,
+          canVerify: submit && verify != null,
+        );
+        if (state == 'claimable') {
+          selected = offer;
+          break;
         }
-        final current = s.reward['claims'][offer.id] as Map?;
-        if ({
-          'verificationRequired',
-          'activationRequired',
-        }.contains(current?['state'])) {
-          pause ??= current!['state'];
-          if (!submit || verify == null) continue;
-        }
-        selected = offer;
-        break;
+        blocked ??= (state: state, planId: offer.id);
       }
       if (selected == null) {
-        s.reward['status'] = s.claims.any((e) => _unknown(e.value))
-            ? 'pending'
-            : pause ?? (held ? 'observedClaimed' : 'noOffer');
+        s.setStatus(blocked?.state ?? 'noOffer', blocked?.planId);
         s.reward.remove('rateLimit');
         await s.save();
         return;
       }
-      s.reward['status'] = 'claimable';
+      s.setStatus('claimable', selected.id);
       if (!submit) {
         await s.save();
         return;
@@ -166,7 +148,7 @@ class PluginZcodeRewards {
               'previous': _instances(balance),
             });
           }
-          s.reward['status'] = 'verificationRequired';
+          s.setStatus('verificationRequired', selected.id);
           await s.save();
           if (verify == null) return;
           final proof = await verify(config);
@@ -174,10 +156,10 @@ class PluginZcodeRewards {
           if (proof == null) return;
           verification = ZcodeVerification(proof, config.values['region']!);
           balance = await s.balance();
-          final observed = balance.active(selected.id);
-          if (observed != null) {
-            _confirmed(s.reward['claims'][selected.id], observed);
-            s.reward['status'] = 'observedClaimed';
+          if (balance.active(selected.id) != null) {
+            s.reward['claims'][selected.id]['state'] = 'observedClaimed';
+            s.reconcile(balance);
+            s.setStatus('observedClaimed', selected.id);
             await s.save();
             return;
           }
@@ -187,54 +169,56 @@ class PluginZcodeRewards {
           'previous': _instances(balance),
           'submittedAt': now(),
         });
-        s.reward['status'] = 'pending';
+        s.setStatus('pending', selected.id);
         await s.save(); // Durable intent always precedes the possible POST.
-        var authorizationRejected = false;
+        var submitted = false;
         try {
-          final reply = await s.request(
+          final request = ZcodeRequest(
             ZcodeApi.claimPath,
-            body: {'plan_id': selected.id},
-            verification: verification,
+            await s.boundToken(),
+            s.context,
+            {'plan_id': selected.id},
+            verification,
           );
-          claim['httpStatus'] = 200;
-          claim['serviceCode'] = zcodeCode(reply);
+          submitted = true;
+          final reply = await api.send(
+            request,
+            isCurrent: () => _current(s.account),
+          );
+          s.recordReply(selected.id, claim, reply);
         } on ZcodeFailure catch (e) {
+          if (!submitted || e.beforeDispatch) {
+            await s.recordNotSubmitted(selected.id, e);
+            if (_cancelled(e)) rethrow;
+            return;
+          }
           if (_cancelled(e)) rethrow;
           claim['errorCode'] = e.code;
           claim['httpStatus'] = e.httpStatus;
           claim['serviceCode'] = e.serviceCode;
           if (e.retryAfterMs != null) claim['retryAfterMs'] = e.retryAfterMs;
-          if (e.code == 'authorization_required') {
-            claim['state'] = 'ineligible';
-            authorizationRejected = true;
-          }
+          if (e.httpStatus != null) claim['answeredAt'] = now();
+          s.recordRejection(claim);
         }
-        if (claim['httpStatus'] != null) claim['answeredAt'] = now();
-        s.recordRejection(claim);
-        s.reward['status'] = authorizationRejected
-            ? 'authorization_required'
-            : claim['state'] == 'throttled'
-            ? 'unavailable'
-            : claim['state'];
-        await s.save(); // Keep definite rejections even if the following read fails.
-        if (claim['state'] == 'throttled' || authorizationRejected) return;
+        s.setStatus(claim['state'], selected.id);
+        await s.save(); // The POST receipt survives a failed balance read.
+        if ({
+          'rejected',
+          'ineligible',
+          'throttled',
+          'authorization_required',
+        }.contains(claim['state']))
+          return;
         try {
           balance = await s.balance();
-          final receipt = balance.receipt(selected.id, claim['previous']);
-          if (receipt != null) {
-            _confirmed(claim, receipt);
-          } else if (claim['state'] == 'observedClaimed' &&
-              balance.active(selected.id) != null) {
-            _confirmed(claim, balance.active(selected.id)!);
-          }
+          s.reconcile(balance);
         } on ZcodeFailure catch (e) {
           if (_cancelled(e)) rethrow;
           if (e.httpStatus == 429 || e.serviceCode == 3002) {
             s.rateLimit(e.retryAfterMs);
           }
-          // No receipt means the durable POST remains unknown.
         }
-        s.reward['status'] = claim['state'];
+        s.setStatus(claim['state'], selected.id);
         if (!s.held) s.reward.remove('rateLimit');
         await s.save();
         if (claim['state'] != 'verificationRequired' ||
@@ -248,13 +232,11 @@ class PluginZcodeRewards {
       if (_cancelled(e) || e.code == 'storage_unavailable') rethrow;
       if (e.httpStatus == 429 || e.serviceCode == 3002)
         s.rateLimit(e.retryAfterMs);
-      s.reward['status'] = s.claims.any((e) => _unknown(e.value))
-          ? 'pending'
-          : e.code == 'authorization_required'
-          ? 'authorization_required'
-          : e.code == 'invalid_response'
-          ? 'discoveryIncomplete'
-          : 'unavailable';
+      s.setStatus(switch (e.code) {
+        'authorization_required' => 'authorization_required',
+        'invalid_response' => 'discoveryIncomplete',
+        _ => s.held ? 'throttled' : 'unavailable',
+      });
       await s.save();
       rethrow;
     }
@@ -275,7 +257,13 @@ class _RewardSession {
 
   Future<Map<String, dynamic>> credential() async {
     check();
-    final auth = await owner.accounts.currentCredential(account.key);
+    final Map<String, dynamic> auth;
+    try {
+      auth = await owner.accounts.currentCredential(account.key);
+    } catch (_) {
+      check();
+      throw const ZcodeFailure('credential_unavailable');
+    }
     check();
     try {
       final state = jsonDecode(auth['refresh'] as String);
@@ -378,24 +366,20 @@ class _RewardSession {
             e.value['retryAt'] > owner.now(),
       );
 
-  Future<Map<String, dynamic>> request(
-    String path, {
-    Map<String, dynamic>? body,
-    ZcodeVerification? verification,
-  }) async {
+  Future<String> boundToken() async {
     final state = await credential();
     if (zcodeDeviceId(state['device']) != context['deviceMid']) {
       throw const ZcodeFailure('cancelled');
     }
-    return owner.api.request(
-      path,
-      state['jwt'],
-      context,
-      body: body,
-      verification: verification,
-      isCurrent: () => owner._current(account),
-    );
+    return state['jwt'];
   }
+
+  Future<Map<String, dynamic>> request(String path) async => owner.api.request(
+    path,
+    await boundToken(),
+    context,
+    isCurrent: () => owner._current(account),
+  );
 
   Future<ZcodeBalance> balance() async {
     final b = ZcodeBalance.parse(
@@ -411,11 +395,54 @@ class _RewardSession {
   void reconcile(ZcodeBalance balance) {
     for (final entry in claims) {
       final c = entry.value;
-      if (!_unknown(c)) continue;
-      final receipt = balance.receipt(entry.key, c['previous']);
-      if (receipt != null) {
-        _confirmed(c, receipt);
+      final existing = c['state'] == 'observedClaimed';
+      final confirmed = existing || c['state'] == 'claimed';
+      if (!_unknown(c) && !confirmed) continue;
+      if (confirmed && c['endsAt'] != null && c['instance'] != null) continue;
+      final receipt = balance.receipt(
+        entry.key,
+        existing ? const [] : c['previous'],
+        instance: c['instance'],
+        heldOnly: existing && c['instance'] == null,
+      );
+      if (receipt != null)
+        _confirmed(c, receipt, state: existing ? 'observedClaimed' : 'claimed');
+    }
+  }
+
+  String offerState(
+    String id,
+    ZcodeBalance balance, {
+    required bool canVerify,
+  }) {
+    final history = claims.where((e) => e.key == id).map((e) => e.value);
+    if (balance.active(id) != null ||
+        history.any(
+          (c) =>
+              {'claimed', 'observedClaimed'}.contains(c['state']) &&
+              (c['endsAt'] is! int || c['endsAt'] > balance.serverTime),
+        )) {
+      return 'observedClaimed';
+    }
+    if (history.any(_unknown)) return 'pending';
+    if (!canVerify) {
+      final current = reward['claims'][id];
+      final attempts = current is Map<String, dynamic> ? [current] : history;
+      for (final claim in attempts) {
+        final state = claim['state'];
+        if (state == 'verificationRequired' || state == 'activationRequired')
+          return state;
       }
+    }
+    return 'claimable';
+  }
+
+  void setStatus(String state, [String? planId]) {
+    reward['status'] = state;
+    if (planId == null) {
+      reward.remove('planId');
+    } else {
+      reward['planId'] = planId;
     }
   }
 
@@ -434,6 +461,40 @@ class _RewardSession {
     return next;
   }
 
+  void recordReply(String id, Map<String, dynamic> claim, ZcodeReply reply) {
+    final code = zcodeCode(reply.body), data = reply.body['data'];
+    // Only data.message is user-facing in ZCode, never the diagnostic msg.
+    final message = data is Map ? data['message'] : null;
+    final reason = message is String && message.trim().isNotEmpty
+        ? String.fromCharCodes(message.trim().runes.take(2048))
+        : null;
+    claim.addAll({
+      'httpStatus': reply.status,
+      'serviceCode': code,
+      'answeredAt': owner.now(),
+      if (reply.retryAfterMs != null) 'retryAfterMs': reply.retryAfterMs,
+    });
+    recordRejection(claim);
+    if (_unknown(claim) && reply.status >= 200 && reply.status < 300) {
+      final plan = data is Map ? data['plan'] : null;
+      final planId = plan is Map ? plan['plan_id'] : null;
+      if (code == 0 &&
+          plan is Map &&
+          (planId == null ||
+              planId is String && {'', id}.contains(planId.trim()))) {
+        _confirmed(claim, plan);
+      } else if (code == 0 && plan == null && reason != null) {
+        claim['state'] = 'rejected';
+      } else {
+        // A gateway body, incomplete envelope or mismatched plan is no receipt.
+        claim['errorCode'] = 'invalid_response';
+      }
+    }
+    if (!_unknown(claim) && claim['state'] != 'claimed' && reason != null) {
+      claim['message'] = reason;
+    }
+  }
+
   void recordRejection(Map<String, dynamic> c) {
     final http = c['httpStatus'], code = c['serviceCode'];
     if (http == 429 || code == 3002) {
@@ -443,11 +504,20 @@ class _RewardSession {
         observedAt: c['answeredAt'] as int? ?? c['submittedAt'] as int?,
       );
       c['retryAt'] = reward['rateLimit']['retryAt'];
-    } else if ({200, 400}.contains(http)) {
-      if (code == 3007) c['state'] = 'verificationRequired';
-      if (code == 1003) c['state'] = 'observedClaimed';
-      if ({1001, 1002, 1004, 1005, 3001}.contains(code))
-        c['state'] = 'ineligible';
+    } else if ({401, 403}.contains(http) ||
+        {401, 403}.contains(code) ||
+        c['errorCode'] == 'authorization_required') {
+      c['state'] = 'authorization_required';
+    } else if (http is int &&
+        (http >= 200 && http < 300 || http >= 400 && http < 500) &&
+        code is int &&
+        code != 0) {
+      c['state'] = switch (code) {
+        3007 => 'verificationRequired',
+        1003 => 'observedClaimed',
+        1001 || 1002 || 1004 || 1005 || 3001 => 'ineligible',
+        _ => 'rejected',
+      };
     }
   }
 
@@ -465,6 +535,32 @@ class _RewardSession {
       'waitMs': wait,
       'retryAt': (observedAt ?? owner.now()) + wait,
     };
+  }
+
+  Future<void> recordNotSubmitted(String id, ZcodeFailure failure) async {
+    // A device or registration may have changed. Close only the exact intent
+    // that this session durably wrote for the original official identity.
+    final identity = zcodeRewardIdentity(account.realm, account.uid);
+    try {
+      await owner.accounts.edit((data) {
+        final journal = data['zcode']?['rewards']?[identity];
+        if (journal is! Map ||
+            jsonEncode(journal) != _persisted ||
+            journal['planId'] != id ||
+            journal['claims']?[id]?['state'] != 'pending') {
+          throw const ZcodeFailure('cancelled');
+        }
+        journal['claims'][id]['state'] = 'notSubmitted';
+        journal['claims'][id]['errorCode'] = failure.code;
+        journal['status'] = failure.code == 'authorization_required'
+            ? failure.code
+            : 'notSubmitted';
+      });
+    } on ZcodeFailure {
+      rethrow;
+    } catch (_) {
+      throw const ZcodeFailure('storage_unavailable');
+    }
   }
 
   Future<void> save() async {
@@ -525,6 +621,7 @@ const _rewardFields = {
   'buckets',
   'context',
   'status',
+  'planId',
   'checkedAt',
   'plans',
   'rateLimit',
@@ -616,11 +713,17 @@ List<String> _instances(ZcodeBalance balance) => [
   for (final p in balance.plans)
     if (zcodeText(p['user_plan_id'])) p['user_plan_id'] as String,
 ];
-void _confirmed(Map<String, dynamic> claim, Map<String, dynamic> plan) {
-  if (!zcodeText(plan['user_plan_id'])) return;
-  claim['state'] = 'claimed';
-  claim['instance'] = plan['user_plan_id'];
-  claim['endsAt'] = plan['ends_at'];
+void _confirmed(
+  Map<String, dynamic> claim,
+  Map plan, {
+  String state = 'claimed',
+}) {
+  claim['state'] = state;
+  final instance = plan['user_plan_id'];
+  if (instance is String && zcodeText(instance.trim()))
+    claim['instance'] = instance.trim();
+  final expiry = zcodePlanExpiry(plan);
+  if (expiry != null) claim['endsAt'] = expiry;
 }
 
 ZcodeCaptchaConfig? _verificationConfig(Map<String, dynamic> reply) {

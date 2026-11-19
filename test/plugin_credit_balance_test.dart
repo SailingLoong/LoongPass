@@ -310,6 +310,16 @@ void main() {
     };
     expect(
       pluginCreditBalance('loomy', {
+        'windows': [
+          daily,
+          permanent,
+          {'name': '积分合计', 'balance': 47.65625, 'unit': 'credits'},
+        ],
+      })!.amount,
+      47.65625,
+    );
+    expect(
+      pluginCreditBalance('loomy', {
         'windows': [daily, permanent],
       })!.amount,
       10000,

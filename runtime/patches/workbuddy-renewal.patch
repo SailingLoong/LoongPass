@@ -1,0 +1,106 @@
+# WorkBuddy CN browser OAuth uses the native host renewal lock and scheduling.
+# Protocol reference: iJetLi/dsh-providers-hub @ 77a0e87a368124c4b926c74d9060459efa7804d5
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -2990,6 +2990,7 @@
+ //     for good, and the account is marked.
+ //   auth.refreshLead: how long (ms) before expires a token is renewed,
+ //     5 minutes when not said.
++//   auth.refreshAt(auth): optional earlier renewal time in epoch milliseconds.
+ //   auth.keepAlive: false leaves an account nothing uses to lapse; any
+ //     other value has the magpie serving the gateway renew it in the
+ //     background as it comes due too (keepSignedIn, #5080).
+@@ -3036,7 +3037,10 @@
+ function renewAt(a, stored) {
+   if (typeof a?.refresh !== "function" || stored?.type !== "oauth") return 0
+   const exp = Number(stored.expires)
+-  return Number.isFinite(exp) && exp > 0 ? Math.max(1, exp - leadOf(a)) : 0
++  const deadline = Number.isFinite(exp) && exp > 0 ? Math.max(1, exp - leadOf(a)) : 0
++  const earlier = typeof a.refreshAt === "function" ? a.refreshAt(structuredClone(stored)) : 0
++  if (!Number.isSafeInteger(earlier) || earlier <= 0) return deadline
++  return deadline ? Math.min(deadline, earlier) : earlier
+ }
+ 
+ // renewal is the renewal of the sign-in at key under way, started now if
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -271,9 +271,10 @@
+ 
+ // merge takes a token WorkBuddy gave (sign-in or refresh) into the
+ // stored sign-in, times given as at-ms or in-seconds.
+-function merge(a, got) {
++function merge(site, a, got) {
+   const now = Date.now()
+   const out = { ...a, access: got.accessToken }
++  if (site.id === "workbuddy" && a.source !== "desktop") out.tokenObtainedAt = now
+   if (got.refreshToken) out.refresh = got.refreshToken
+   if (got.domain) out.domain = got.domain
+   if (got.tokenType) out.tokenType = got.tokenType
+@@ -297,6 +298,24 @@
+ 
+ function refreshable(a) {
+   return !!a.refresh && !(a.refreshExpiresAt && Date.now() >= a.refreshExpiresAt)
++}
++
++// The China service may revoke an idle refresh grant before the access token
++// expires. A legacy access token's iat is read only to schedule its renewal.
++function browserRefreshAt(a) {
++  if (a.source === "desktop" || typeof a.access !== "string" || !a.access || !refreshable(a)) return 0
++  let issued = a.tokenObtainedAt
++  if (issued === undefined) {
++    const parts = a.access.split(".")
++    if (parts.length !== 3 || !parts.every(part => /^[A-Za-z0-9_-]+$/.test(part))) return 0
++    try {
++      const { iat, exp } = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"))
++      if (!Number.isSafeInteger(iat) || (exp != null && (!Number.isFinite(exp) || exp <= iat))) return 0
++      issued = iat * 1000
++    } catch { return 0 }
++  }
++  if (!Number.isSafeInteger(issued) || issued <= 0 || issued > Date.now() || (a.expires > 0 && issued >= a.expires)) return 0
++  return issued + 7 * 24 * 60 * 60 * 1000
+ }
+ 
+ // renew spends a's refresh token, once: those who come while it runs, or
+@@ -315,7 +334,7 @@
+         ...enterpriseHeaders(a),
+       }, {})
+       if (!got?.accessToken) throw Object.assign(new Error("WorkBuddy gave no refreshed token"), { bare: true })
+-      const next = merge(a, got)
++      const next = merge(site, a, got)
+       renewed.set(key, { next, at: Date.now() })
+       await save?.(next)
+       return next
+@@ -331,7 +350,7 @@
+   for (const k of TOKEN_FIELDS) if (k in next) out[k] = next[k]
+   return out
+ }
+-const TOKEN_FIELDS = ["access", "refresh", "expires", "refreshExpiresAt", "domain", "tokenType"]
++const TOKEN_FIELDS = ["access", "refresh", "expires", "refreshExpiresAt", "tokenObtainedAt", "domain", "tokenType"]
+ 
+ // fresh is the sign-in with an access token that isn't about to end:
+ // refreshed (and saved) when it is. A refresh that fails, or a refresh
+@@ -2150,7 +2169,7 @@
+         const q = encodeURIComponent(state.state)
+         const token = await poll(site, `/v2/plugin/auth/token?state=${q}`, {}, [11217], deadline)
+         if (!token.accessToken) return { type: "failed", error: `${site.name} sent back no token` }
+-        let a = merge({}, token)
++        let a = merge(site, {}, token)
+         const who = await poll(site, `/v2/plugin/login/account?state=${q}`, {
+           Authorization: "Bearer " + a.access,
+           "X-Domain": domainOf(site, a),
+@@ -2179,6 +2198,7 @@
+     domain: a.domain ?? "",
+     ...(a.enterpriseId ? { enterpriseId: a.enterpriseId } : {}),
+     ...(a.refreshExpiresAt ? { refreshExpiresAt: a.refreshExpiresAt } : {}),
++    ...(a.tokenObtainedAt ? { tokenObtainedAt: a.tokenObtainedAt } : {}),
+     ...(a.tokenType ? { tokenType: a.tokenType } : {}),
+   }
+ }
+@@ -4518,6 +4538,7 @@
+       // which doesn't call this. Desktop's sign-in has no expiry stored
+       // and is renewed as before.
+       refreshLead: LEAD_MS,
++      ...(site.id === "workbuddy" ? { refreshAt: browserRefreshAt } : {}),
+       rotating: true,
+       refresh: (auth) => refreshed(site, auth),
+       // the account's daily check-in: magpie can run it once a day per

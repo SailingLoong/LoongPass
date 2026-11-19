@@ -8,7 +8,7 @@ import LoongPassPlugin, { LoongPassPlugin as namedPlugin } from '../runtime/brid
 const endpoint = 'http://127.0.0.1:3426'
 const grant = (key = 'synthetic-grant-a', extra = {}) => ({ type: 'api', key, metadata: { endpoint, email: 'opaque/account-a', ...extra } })
 const anthropic = {
-  id: 'claude-native', name: 'Native Claude', apiId: 'claude-api', npm: '@ai-sdk/anthropic', url: 'https://native.invalid/anthropic',
+  also: [], id: 'claude-native', name: 'Native Claude', apiId: 'claude-api', npm: '@ai-sdk/anthropic', url: 'https://native.invalid/anthropic',
   context: 200000, input: 180000, output: 8192, reasoning: true, image: true, imageSaid: true,
   inputs: ['text', 'image', 'pdf'], inputsSaid: true, outputs: ['text'], outputsSaid: true,
   cost: { input: 3, output: 15, cache: { read: 0.3, write: 3.75 } }, variants: ['low', 'high'],
@@ -16,7 +16,7 @@ const anthropic = {
   fast: true, serviceTiers: ['priority', 'ultrafast'], decides: false, searches: true,
 }
 const chat = {
-  id: 'chat/native', name: 'Native Chat', apiId: 'chat-api', npm: '@ai-sdk/openai-compatible', url: 'https://native.invalid/v1',
+  also: [], id: 'chat/native', name: 'Native Chat', apiId: 'chat-api', npm: '@ai-sdk/openai-compatible', url: 'https://native.invalid/v1',
   context: 65536, input: 60000, output: 4096, reasoning: false, image: false, imageSaid: false,
   inputs: ['text'], inputsSaid: false, outputs: ['text'], outputsSaid: true,
   cost: { input: 0, output: 0, cache: { read: 0, write: 0 } }, variants: [], free: true, rate: 1, rateWas: 0,

@@ -1,8 +1,8 @@
 # Account admission before native catalog/renewal hooks.
-# Source: https://github.com/yetone/magpie @ 873b4987e97328071d4aeabd21996a3a8fcfab24
+# Source: https://github.com/yetone/magpie @ f534245f1c0893c5eaaa5b2a1c918ff27085a9c3
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2565,19 +2565,23 @@
+@@ -2569,19 +2569,23 @@
  // that gave up (signal) has every hook it would still have asked told, so
  // a timed-out listing stops its vendor reads instead of multiplying them
  // (#4678).
@@ -29,7 +29,7 @@
        const p = await info(id, undefined, false, listWait, true)
        return rowOf(id, a, keys, stored, p, [])
      }
-@@ -2586,7 +2590,7 @@
+@@ -2590,7 +2594,7 @@
      // listWaits back to back took one provider past refreshDeadline twice
      // over (#4065)
      const [p, own] = await Promise.all([

@@ -2,7 +2,7 @@
 # Optional public host capabilities; default upstream sign-in behavior is unchanged.
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -1193,8 +1193,9 @@
+@@ -1195,8 +1195,9 @@
    return run
  }
  
@@ -13,7 +13,7 @@
      all[key] = info
    })
    forgetAccount(key)
-@@ -2622,6 +2623,8 @@
+@@ -2632,6 +2633,8 @@
      usage: typeof a.auth.usage === "function",
      checkin: typeof a.auth.checkin === "function",
      calls: typeof a.auth.calls === "function",
@@ -22,7 +22,7 @@
      checkinStatus: typeof a.auth.checkinStatus === "function",
      // its sign-ins are renewed in the background as they come due, so
      // long before expires (keepSignedIn)
-@@ -2741,17 +2744,18 @@
+@@ -2755,17 +2758,18 @@
  // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
  // a sign-in the plugin says is another provider's, a new account of
  // that one). It gives the provider and where the account is kept.
@@ -46,7 +46,7 @@
  }
  
  // plainAnswers are the answers to an "api" method's questions that the
-@@ -2790,17 +2794,24 @@
+@@ -2804,17 +2808,24 @@
  // callback(code, { signal }), authorize(inputs, { signal }); OpenCode
  // passes none), and whatever the plugin answers after it is dropped,
  // nothing saved.
@@ -76,7 +76,7 @@
    if (signal?.aborted) throw abortedSignIn()
    // a plugin that can't start the sign-in may say why as an api method's
    // authorize does ({ type: "failed", error }) rather than throw; with no
-@@ -2810,7 +2821,7 @@
+@@ -2824,7 +2835,7 @@
    if (a?.type === "failed") return failed(a)
    if (typeof a?.callback !== "function") return { ok: false, error: `${provider}'s sign-in gave nothing to finish it with` }
    const session = String(nextSession++)
@@ -85,7 +85,7 @@
    // opened (not OpenCode's) is a page the plugin's own CLI opened already:
    // Grok Build's `grok login` opens it on macOS and Windows, and magpie's
    // opening it too showed it twice (andyfmyth on X)
-@@ -2844,7 +2855,7 @@
+@@ -2858,7 +2869,7 @@
    if (!r || r.type !== "success") return failed(r)
    const kept = keptAs(r)
    if (!kept) return { ok: false, error: `${s.provider}'s sign-in gave nothing to keep` }
@@ -94,8 +94,8 @@
  }
  
  // keptAs is an OAuth callback's success r as save keeps it. save keeps an
-@@ -3594,6 +3605,13 @@
-   apiKey,
+@@ -3724,6 +3735,13 @@
+   installCli,
    load,
    usage,
 +  async rewardContext({ provider, account }, signal) {
@@ -110,7 +110,7 @@
    checkinStatus,
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -1439,14 +1439,29 @@
+@@ -1496,14 +1496,29 @@
    return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
  }
  const accountIdOf = (site, uid) => `${site}:${uid}`
@@ -142,7 +142,7 @@
    let flow
    try {
      flow = await call("POST", ZCODE + "/api/v1/oauth/cli/init", { auth: poll, body: { provider: site }, device })
-@@ -1485,6 +1500,7 @@
+@@ -1542,6 +1557,7 @@
          if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
          const uid = uidOf(got.user)
          if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
@@ -150,7 +150,7 @@
          let s
          try {
            s = await signedIn(site, token, first(got.token), device, onTeam)
-@@ -2996,6 +3012,16 @@
+@@ -3135,6 +3151,16 @@
      },
      auth: {
        provider: PROVIDER,

@@ -7,11 +7,13 @@ import 'dart:io';
 class ZcodeFailure implements Exception {
   final String code;
   final int? httpStatus, serviceCode, retryAfterMs;
+  final bool beforeDispatch;
   const ZcodeFailure(
     this.code, {
     this.httpStatus,
     this.serviceCode,
     this.retryAfterMs,
+    this.beforeDispatch = false,
   });
   @override
   String toString() => 'ZcodeFailure($code)';
@@ -86,43 +88,45 @@ abstract interface class ZcodeTransport {
 class ZcodeHttp implements ZcodeTransport {
   @override
   Future<ZcodeReply> send(ZcodeRequest r, {bool Function()? isCurrent}) async {
-    final allowed = {
-      ZcodeApi.initPath,
-      ZcodeApi.balancePath,
-      ZcodeApi.previewPath,
-      ZcodeApi.marketingPath,
-      ZcodeApi.claimPath,
-      ZcodeApi.configPath,
-    };
-    if (!allowed.contains(r.path) &&
-        !(r.path.startsWith(ZcodeApi.pollPrefix) &&
-            RegExp(r'^[a-zA-Z0-9_-]{1,256}$')
-                .hasMatch(r.path.substring(ZcodeApi.pollPrefix.length)))) {
-      throw const ZcodeFailure('invalid_request');
-    }
-    if (!zcodeText(r.token, 16384))
-      throw const ZcodeFailure('authorization_required');
-    final context = zcodeContext(r.context);
-    if (r.verification != null && r.path != ZcodeApi.claimPath)
-      throw const ZcodeFailure('invalid_request');
-    final query = <String, String>{
-      if (r.path == ZcodeApi.balancePath ||
-          r.path == ZcodeApi.previewPath ||
-          r.path == ZcodeApi.configPath)
-        'app_version': context['version']!,
-      if (r.path == ZcodeApi.previewPath || r.path == ZcodeApi.configPath)
-        'platform': context['platform']!,
-      if (r.path == ZcodeApi.marketingPath) 'seq': '0',
-    };
-    final post = r.path == ZcodeApi.initPath || r.path == ZcodeApi.claimPath;
-    if (post != (r.body != null)) throw const ZcodeFailure('invalid_request');
+    var writeStarted = false, finished = false;
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
-    void check() {
-      if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
-    }
-
     try {
+      final allowed = {
+        ZcodeApi.initPath,
+        ZcodeApi.balancePath,
+        ZcodeApi.previewPath,
+        ZcodeApi.marketingPath,
+        ZcodeApi.claimPath,
+        ZcodeApi.configPath,
+      };
+      if (!allowed.contains(r.path) &&
+          !(r.path.startsWith(ZcodeApi.pollPrefix) &&
+              RegExp(r'^[a-zA-Z0-9_-]{1,256}$')
+                  .hasMatch(r.path.substring(ZcodeApi.pollPrefix.length)))) {
+        throw const ZcodeFailure('invalid_request');
+      }
+      if (!zcodeText(r.token, 16384))
+        throw const ZcodeFailure('authorization_required');
+      final context = zcodeContext(r.context);
+      if (r.verification != null && r.path != ZcodeApi.claimPath)
+        throw const ZcodeFailure('invalid_request');
+      final query = <String, String>{
+        if (r.path == ZcodeApi.balancePath ||
+            r.path == ZcodeApi.previewPath ||
+            r.path == ZcodeApi.configPath)
+          'app_version': context['version']!,
+        if (r.path == ZcodeApi.previewPath || r.path == ZcodeApi.configPath)
+          'platform': context['platform']!,
+        if (r.path == ZcodeApi.marketingPath) 'seq': '0',
+      };
+      final post = r.path == ZcodeApi.initPath || r.path == ZcodeApi.claimPath;
+      if (post != (r.body != null)) throw const ZcodeFailure('invalid_request');
+      void check() {
+        if (finished || isCurrent?.call() == false)
+          throw const ZcodeFailure('cancelled');
+      }
+
       return await (() async {
         check();
         final req = await client.openUrl(
@@ -147,8 +151,12 @@ class ZcodeHttp implements ZcodeTransport {
           if (r.verification != null) ...r.verification!.headers,
         };
         headers.forEach(req.headers.set);
+        final body = r.body == null ? null : jsonEncode(r.body);
         check();
-        if (r.body != null) req.write(jsonEncode(r.body));
+        // Writing or closing may put the request on the wire. A failed
+        // connection or a timed-out openUrl cannot submit it later.
+        writeStarted = true;
+        if (body != null) req.write(body);
         final response = await req.close();
         final retryAfterMs = zcodeRetryAfterMs(
           response.headers.value('retry-after'),
@@ -183,11 +191,13 @@ class ZcodeHttp implements ZcodeTransport {
           retryAfterMs: retryAfterMs,
         );
       })().timeout(const Duration(seconds: 25));
-    } on ZcodeFailure {
+    } on ZcodeFailure catch (e) {
+      if (!writeStarted) throw ZcodeFailure(e.code, beforeDispatch: true);
       rethrow;
     } catch (_) {
-      throw const ZcodeFailure('network_unavailable');
+      throw ZcodeFailure('network_unavailable', beforeDispatch: !writeStarted);
     } finally {
+      finished = true;
       client.close(force: true);
     }
   }
@@ -203,6 +213,18 @@ class ZcodeApi {
   static const configPath = '/api/v1/client/configs';
   final ZcodeTransport transport;
   ZcodeApi(this.transport);
+  Future<ZcodeReply> send(
+    ZcodeRequest request, {
+    bool Function()? isCurrent,
+  }) async {
+    if (isCurrent?.call() == false) {
+      throw const ZcodeFailure('cancelled', beforeDispatch: true);
+    }
+    final result = await transport.send(request, isCurrent: isCurrent);
+    if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
+    return result;
+  }
+
   Future<Map<String, dynamic>> request(
     String path,
     String token,
@@ -211,12 +233,10 @@ class ZcodeApi {
     ZcodeVerification? verification,
     bool Function()? isCurrent,
   }) async {
-    if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
-    final result = await transport.send(
+    final result = await send(
       ZcodeRequest(path, token, context, body, verification),
       isCurrent: isCurrent,
     );
-    if (isCurrent?.call() == false) throw const ZcodeFailure('cancelled');
     if (result.status == 401 ||
         result.status == 403 ||
         {401, 403}.contains(zcodeCode(result.body))) {
@@ -288,6 +308,9 @@ class ZcodeVerification {
 
 int? zcodeCode(Map<String, dynamic> body) {
   final value = body['code'];
+  if (value is double && value.isFinite && value == value.truncateToDouble()) {
+    return value.toInt();
+  }
   return value is int
       ? value
       : value is String && RegExp(r'^\d+$').hasMatch(value)

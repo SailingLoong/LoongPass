@@ -166,8 +166,17 @@ async function desktop(steps) {
         results.push(result);
         if (result.type === 'success') auth = { ...result, type: 'oauth' };
       } else {
-        const result = await hooks.auth.loader(async () => auth, { id: 'zcode' });
-        results.push({ apiKey: result.apiKey, baseURL: result.baseURL });
+        if (step.legacyPaid) {
+          const saved = JSON.parse(auth.refresh);
+          delete saved.desktopUid;
+          auth = { ...auth, refresh: JSON.stringify(saved) };
+        }
+        try {
+          const result = await hooks.auth.loader(async () => auth, { id: 'zcode' });
+          results.push({ apiKey: result.apiKey, baseURL: result.baseURL });
+        } catch (error) {
+          results.push({ error: error.message });
+        }
       }
     }
     process.stdout.write(JSON.stringify(results));
@@ -188,7 +197,7 @@ function desktopState(site, { uid = 'shared-uid', email = 'same@example.invalid'
     credentials: {
       zcodejwttoken: jwt,
       [`oauth:${site}:user_info`]: JSON.stringify({ [field]: uid, email }),
-      ...(key ? { [`account-provider:coding-plan:account:${site}-individual-coding-plan:account:synthetic:api-key`]: key } : {}),
+      ...(key ? { [`account-provider:coding-plan:account:${site}-individual-coding-plan:account:${uid}:api-key`]: key } : {}),
     },
   };
 }
@@ -200,6 +209,38 @@ test('ZCode desktop takes the official profile belonging to the selected paid ke
   expect(result).toMatchObject({ type: 'success', uid: 'shared-uid', accountId: 'bigmodel:shared-uid', name: 'same@example.invalid' });
 });
 
+test('ZCode 3.18 binds the active China profile and rejects a conflicting region', async () => {
+  const state = desktopState('bigmodel');
+  state.credentials['oauth:active_provider'] = 'zai_cn';
+  state.credentials['oauth:zai_cn:user_info'] = JSON.stringify({user_id: 'active-cn'});
+  const [active] = await desktop([state]);
+  expect(active).toMatchObject({type: 'success', uid: 'active-cn'});
+  expect(JSON.parse(active.refresh).key).toBe('');
+  // Another paid slot remains on disk; only the selected official UID can pay.
+  state.credentials['account-provider:coding-plan:account:bigmodel-individual-coding-plan:account:active-cn:api-key'] = 'own.paid';
+  const [bound] = await desktop([state]);
+  expect(JSON.parse(bound.refresh).key).toBe('own.paid');
+  state.credentials['oauth:active_provider'] = 'zai';
+  const [conflict] = await desktop([state]);
+  expect(conflict.type).toBe('failed');
+});
+
+for (const selected of [
+  {providerFamilyConnectionSelections: {bigmodel: {kind: 'team-coding-plan'}}},
+  {modelProviderFamilySelectedKeys: {bigmodel: 'team-plan:builtin:bigmodel-coding-plan:legacy'}},
+]) {
+  test(`ZCode desktop keeps a selected team away from individual billing (${Object.keys(selected)[0]})`, async () => {
+    const current = desktopState('bigmodel');
+    current.settings = {...current.settings, ...selected};
+    const [imported] = await desktop([current]);
+    expect(imported.type).toBe('failed');
+    expect(imported.error).toContain('team');
+    const [, loaded] = await desktop([desktopState('bigmodel'), current]);
+    expect(loaded.error).toContain('team');
+    expect(loaded.apiKey).toBeUndefined();
+  });
+}
+
 test('ZCode desktop JWT-only sign-in retains the selected region', async () => {
   const [result] = await desktop([desktopState('bigmodel', { key: '' })]);
   expect(result).toMatchObject({ type: 'success', uid: 'shared-uid', accountId: 'bigmodel:shared-uid' });
@@ -210,8 +251,8 @@ test('ZCode system-encrypted desktop credentials explain browser authorization w
   const state = { ...desktopState('bigmodel'), v2: true };
   const [result] = await desktop([state]);
   expect(result.type).toBe('failed');
-  expect(result.error).toContain('system-encrypted');
-  expect(result.error).toContain('browser');
+  expect(result.error).toContain("can't read");
+  expect(result.error).toContain('Z.ai or BigModel sign-in');
   expect(await desktop([desktopState('bigmodel'), state])).toMatchObject([
     {type:'success'}, {apiKey:'initial.secret',baseURL:'https://open.bigmodel.cn/api/anthropic/v1'},
   ]);
@@ -227,6 +268,14 @@ test('ZCode desktop JWT-only sign-in rejects an unspecified region', async () =>
   const state = desktopState('bigmodel', { key: '' });
   state.settings = {};
   expect((await desktop([state]))[0].type).toBe('failed');
+});
+
+test('an older saved desktop grant cannot pay while another UID is active', async () => {
+  const previous = desktopState('bigmodel', {uid: 'first', key: 'first.paid'});
+  const current = desktopState('bigmodel', {uid: 'second', key: 'second.paid'});
+  const [, result] = await desktop([previous, {...current, legacyPaid: true}]);
+  expect(result.error).toContain('browser sign-in');
+  expect(result.apiKey).toBeUndefined();
 });
 
 test('ZCode desktop follows same-account renewed credentials after a label change and never the other region', async () => {

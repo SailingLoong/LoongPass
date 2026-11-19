@@ -1,8 +1,8 @@
 # Model-applicable remaining quota expiry, preserving upstream ownership.
-# Source: https://github.com/magpie-community/plugins @ bb3f68a47a06174aecc5b8179bf2edef06e8415f
+# Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -670,7 +670,13 @@
+@@ -677,7 +677,13 @@
        w.display = `${compact(used)} / ${compact(total)}`
      }
      if (w._spent) w.used = Math.max(100, w.used)
@@ -19,7 +19,16 @@
        if (!same(x, p)) continue
 --- a/runtime/vendor/plugins/loomy/index.mjs
 +++ b/runtime/vendor/plugins/loomy/index.mjs
-@@ -524,10 +524,21 @@
+@@ -113,7 +113,7 @@
+     // no span either: magpie reads a window with a span and no reset as
+     // renewing a span from now, which would rank it again
+     if (dailyLeft > 0 || left === 0) {
+-      w.resetsAt = beijingMidnight()
++      w.resetsAt = dailyWallet.runsOutAt ?? beijingMidnight()
+       if (dailyWallet.span) w.span = dailyWallet.span
+     }
+     if (dailyLeft > 0) Object.assign(w, { runsOutAt: w.resetsAt, runsOut: dailyLeft })
+@@ -696,6 +696,13 @@
                : daily != null
                  ? { name: "每日赠送积分", balance: daily, unit: "credits", display: `${daily} credits`, aside: true }
                  : null
@@ -30,14 +39,20 @@
 +            // the account while its permanent credits remain.
 +            dailyWallet.aside = true
 +          }
-           const windows = [
-             ...(dailyWallet ? [dailyWallet] : []),
-             ...(permanent != null ? [{ name: "永久积分", balance: permanent, unit: "credits", display: `${permanent} credits`, aside: true }] : []),
-           ]
-+          if (dailyWallet?.balance != null && permanent != null) {
-+            windows.push({ name: "可用积分", balance: dailyWallet.balance + permanent, unit: "credits",
-+              runsOutAt: dailyWallet.runsOutAt, runsOut: dailyWallet.balance })
-+          }
+           // the permanent wallet comes back as a balance alone, with no
+           // total and nothing spent, so on its own there is no share or
+           // spent amount a cap could read
+@@ -708,11 +715,8 @@
+           // left routing nothing to read. So routing reads one window, the two
+           // added up (totalOf), and the two wallets are shown beside it, set
+           // aside, as WorkBuddy's plan and extra credits are.
+-          const total = totalOf(dailyWallet, dailyLimit != null && dailyRemaining != null ? dailyRemaining : daily, permanent)
+-          if (total) {
+-            for (const w of windows) w.aside = true
+-            windows.unshift(total)
+-          }
++          const total = totalOf(dailyWallet, dailyWallet?.balance, permanent)
++          if (total) windows.unshift(total)
            // no `signIn` on a clean read: that absence is how magpie takes an
            // expired mark back off the account (Loomy has no renewal, so a
            // "kept" here would leave a transient 401's lapse on forever)

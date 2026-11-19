@@ -243,7 +243,7 @@ void main() {
             label: '待确认账号',
             identity: '',
             balance: '—',
-            status: '领取结果待核验',
+            status: '领取回执未确认',
             attention: AccountAttention.awaitingVerification,
             resolution: available ? (label: '核验结果', run: () => checks++) : null,
             details: const Text('只读详情'),

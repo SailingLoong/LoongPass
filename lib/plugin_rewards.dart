@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'account_registration.dart';
 import 'plugin_accounts.dart';
 import 'plugin_zcode_rewards.dart';
+import 'zcode_api.dart';
 
 const _definitive = {'claimed', 'done', 'ineligible', 'inactive', 'captcha'};
 
@@ -249,18 +250,20 @@ class PluginRewards {
     return finished;
   }
 
-  Future<void> claim(String key) async =>
-      _claim(_account(key), refreshUsage: true);
+  Future<void> claim(
+    String key, {
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) async => _claim(_account(key), refreshUsage: true, verify: verify);
 
-  Future<void> _claim(PluginAccount account, {required bool refreshUsage}) {
+  Future<void> _claim(
+    PluginAccount account, {
+    required bool refreshUsage,
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) {
     final key = account.key;
     return _exclusive(account, () async {
       if (account.provider == 'zcode') {
-        if (account.facts['reward']?['status'] == 'pending') {
-          await zcode.refresh(key);
-        } else {
-          await zcode.claim(key);
-        }
+        await zcode.claim(key, verify: verify);
         _check(account);
         return;
       }
@@ -379,6 +382,8 @@ class PluginRewards {
         return;
       }
       final history = [...reward['history'] as List];
+      final prior = _priorCampaignResult(reward, status, account);
+      if (identical(prior, reward)) return;
       if (reward['attemptId'] != null ||
           reward['source'] == 'legacy' ||
           _definitive.contains(reward['status'])) {
@@ -386,6 +391,11 @@ class PluginRewards {
           for (final e in reward.entries)
             if (e.key != 'history') e.key: e.value,
         });
+      }
+      if (prior != null) {
+        history.remove(prior);
+        _saveJournal(data, account, {...prior, 'history': history});
+        return;
       }
       final identity = {
         'registrationId': account.registrationId,
@@ -601,6 +611,30 @@ DateTime? _time(Object? value) =>
 String? _scope(Object? value) =>
     value is String && value.trim().isNotEmpty ? value : null;
 
+// A listing can retain an issued receipt or reoffer the same settled campaign.
+// A preflight that stopped before dispatch leaves the original offer eligible.
+Map? _priorCampaignResult(Map reward, Map status, PluginAccount account) {
+  final scope = _scope(status['scope']);
+  final offered = status['outcome'] == 'claimable';
+  if (scope == null || !offered && status['outcome'] != 'done') return null;
+  Map? held, refused;
+  for (final entry in [reward, ...(reward['history'] as List).reversed].whereType<Map>()) {
+    if (entry['scope'] != scope ||
+        entry['uid'] != account.uid ||
+        entry['realm'] != account.realm) continue;
+    switch (entry['status']) {
+      case 'claimed':
+        return entry;
+      case 'done':
+        held ??= entry;
+      case 'inactive' || 'ineligible'
+          when entry['attemptId'] is String && entry['dispatched'] != false:
+        refused ??= entry;
+    }
+  }
+  return offered ? held ?? refused : null;
+}
+
 Map<String, dynamic> _nativeStatus(Object? value) {
   if (value is! Map ||
       !{'claimable', 'unknown', ..._definitive}.contains(value['outcome']) ||
@@ -646,8 +680,16 @@ Map<String, dynamic> _nativeResult(Object? value, DateTime observed) {
     'status': known ? value['outcome'] : 'pending',
     'outcome': value['outcome'],
     if (known && _scope(value['scope']) != null) 'scope': value['scope'],
+    if (value['outcome'] == 'inactive' &&
+        value['dispatched'] == false &&
+        _scope(value['scope']) != null)
+      'dispatched': false,
     if (value['credit'] is num) 'credit': value['credit'],
     if (value['credit'] is num) 'unit': 'credits',
+    if (value['outcome'] == 'claimed' &&
+        (value['credit'] as num? ?? 0) > 0 &&
+        _time(value['creditExpiresAt']) != null)
+      'creditExpiresAt': value['creditExpiresAt'],
     if (value['streak'] is num) 'streak': value['streak'],
     'message': text.length > 2048 ? text.substring(0, 2048) : text,
     if (known || until != null)

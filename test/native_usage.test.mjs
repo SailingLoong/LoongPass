@@ -131,22 +131,27 @@ async function loomyUsage(data) {
 
 test('Loomy reports spent credits, percentage, and remaining balance in their own fields', async () => {
   const usage = await loomyUsage({ dailyLimitPoints: '50.125', dailyRemainingPoints: '37.59375', balance: '10.0625' });
+  const byName = Object.fromEntries(usage.windows.map(w => [w.name, w]));
   // 50.125 - 37.59375 = 12.53125 credits; 12.53125/50.125 = 25%.
-  expect(usage.windows[0]).toMatchObject({ amount: 12.53125, limit: 50.125, used: 25, balance: 37.59375, unit: 'credits' });
-  expect(usage.windows[1]).toMatchObject({ balance: 10.0625, unit: 'credits', display: '10.0625 credits' });
-  expect(usage.windows[1].used).toBeUndefined();
-  expect(usage.windows[1].limit).toBeUndefined();
-  expect(usage.windows[0].runsOut).toBe(37.59375);
-  expect(usage.windows[0].runsOutAt).toBe(usage.windows[0].resetsAt);
-  expect(usage.windows[0].aside).toBe(true);
-  expect(usage.windows[2]).toMatchObject({ balance: 47.65625, unit: 'credits' });
+  expect(byName['每日赠送积分']).toMatchObject({ amount: 12.53125, limit: 50.125, used: 25, balance: 37.59375, unit: 'credits' });
+  expect(byName['永久积分']).toMatchObject({ balance: 10.0625, unit: 'credits', display: '10.0625 credits' });
+  expect(byName['永久积分'].used).toBeUndefined();
+  expect(byName['永久积分'].limit).toBeUndefined();
+  expect(byName['每日赠送积分'].runsOut).toBe(37.59375);
+  expect(byName['每日赠送积分'].runsOutAt).toBe(byName['每日赠送积分'].resetsAt);
+  expect(byName['每日赠送积分'].aside).toBe(true);
+  expect(usage.windows).toHaveLength(3);
+  expect(byName['积分合计'].aside).not.toBe(true);
+  expect(byName['积分合计'].runsOut).toBe(37.59375);
+  expect(byName['积分合计']).toMatchObject({ balance: 47.65625, unit: 'credits' });
 });
 
 test('Loomy balance-only wallets keep unknown totals and usage unknown', async () => {
   const usage = await loomyUsage({ dailyBalance: '123.0625', balance: 0 });
+  const byName = Object.fromEntries(usage.windows.map(w => [w.name, w]));
   expect(usage.windows).toHaveLength(3);
-  expect(usage.windows[0]).toMatchObject({ balance: 123.0625, unit: 'credits', display: '123.0625 credits' });
-  expect(usage.windows[1].balance).toBe(0);
+  expect(byName['每日赠送积分']).toMatchObject({ balance: 123.0625, unit: 'credits', display: '123.0625 credits' });
+  expect(byName['永久积分'].balance).toBe(0);
   for (const window of usage.windows) {
     expect(window.used).toBeUndefined();
     expect(window.amount).toBeUndefined();
@@ -257,8 +262,10 @@ test('native host roundtrip preserves Loomy precise balance and percentage', asy
     expect(initialized.plugins[0].error).toBeUndefined();
     await rpc('import', { provider: 'loomy', key: 'loomy#synthetic', auth });
     const usage = await rpc('usage', { provider: 'loomy', account: 'loomy#synthetic' });
-    expect(usage.windows[0]).toMatchObject({ amount: 12.53125, limit: 50.125, used: 25, balance: 37.59375, unit: 'credits' });
-    expect(usage.windows[1]).toMatchObject({ balance: 10.0625, unit: 'credits', used: null });
+    const byName = Object.fromEntries(usage.windows.map(w => [w.name, w]));
+    expect(byName['积分合计'].balance).toBe(47.65625);
+    expect(byName['每日赠送积分']).toMatchObject({ amount: 12.53125, limit: 50.125, used: 25, balance: 37.59375, unit: 'credits' });
+    expect(byName['永久积分']).toMatchObject({ balance: 10.0625, unit: 'credits', used: null });
   } finally {
     child.stdin.end();
     const kill = setTimeout(() => child.kill(), 1500);

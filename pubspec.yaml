@@ -1,6 +1,6 @@
 name: loongpass
 description: A desktop tool for AI accounts, reward collection and credit expiry.
-version: 1.0.3-beta.54+54
+version: 1.0.3-beta.55+55
 publish_to: none
 environment:
   sdk: '>=3.14.0 <4.0.0'
@@ -9,7 +9,7 @@ dependencies:
   crypto: ^3.0.8
   flutter:
     sdk: flutter
-  forui: ^0.27.7
+  forui: ^0.28.0
   material_ui: ^1.0.0
   path: ^1.9.1
   shared_preferences: ^2.5.6
