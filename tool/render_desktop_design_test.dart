@@ -21,6 +21,7 @@ import '../lib/ui_preferences.dart';
 import '../lib/update_contract.dart';
 import '../lib/workspace_page.dart';
 import '../lib/workspace_toolbar.dart';
+import '../lib/zcode_api.dart';
 import '../test/desktop_test_app.dart';
 import '../test/desktop_design_scenarios.dart';
 import '../test/model_workspace_fixture.dart';
@@ -38,7 +39,10 @@ class _ObservedRewards extends PluginRewards {
   }
 
   @override
-  Future<void> claim(String key) async => claims.add(key);
+  Future<void> claim(
+    String key, {
+    Future<String?> Function(ZcodeCaptchaConfig)? verify,
+  }) async => claims.add(key);
 }
 
 class _DesignApplication implements PluginApplication {

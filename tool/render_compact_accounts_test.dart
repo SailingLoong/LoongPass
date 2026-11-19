@@ -99,7 +99,7 @@ void main() {
                   children: [
                     Text('身份：demo$n@example.test'),
                     const SizedBox(height: 8),
-                    Text(n == 2 ? '领取结果待核验，仅查询官方状态，不会重复发送。' : '已保存的官方账号'),
+                    Text(n == 2 ? '领取回执未确认。同一活动不会重复提交。' : '已保存的官方账号'),
                     const SizedBox(height: 16),
                     FButton(
                       size: FButtonSizeVariant.sm,
@@ -243,28 +243,18 @@ void main() {
           await capture('empty-search');
           await tester.tap(find.text('清除搜索和筛选'));
           await tester.pumpAndSettle();
-          await tester.tap(find.byKey(const Key('nav-accounts')));
+          workspace.currentState!.selectSection(WorkspaceSection.accounts);
           await tester.pumpAndSettle();
           await capture('account-summary');
-          await tester.tap(find.byKey(const Key('toggle-account-apps')));
-          await tester.pumpAndSettle();
-          await capture('apps-hidden');
-          await tester.tap(find.byKey(const Key('toggle-account-apps')));
-          await tester.pumpAndSettle();
-          for (final section in ['overview', 'activity', 'settings']) {
-            await tester.scrollUntilVisible(
-              find.byKey(ValueKey('nav-$section')),
-              section == 'overview' ? -200 : 200,
-              scrollable: find.descendant(
-                of: find.byKey(const Key('app-sidebar')),
-                matching: find.byType(Scrollable),
-              ),
-            );
-            await tester.pumpAndSettle();
-            await tester.tap(find.byKey(ValueKey('nav-$section')));
+          for (final section in [
+            WorkspaceSection.overview,
+            WorkspaceSection.activity,
+            WorkspaceSection.settings,
+          ]) {
+            workspace.currentState!.selectSection(section);
             await tester.pumpAndSettle();
             expect(tester.takeException(), isNull);
-            await capture(section);
+            await capture(section.name);
           }
         },
         variant: TargetPlatformVariant({TargetPlatform.macOS}),
