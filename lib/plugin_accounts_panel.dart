@@ -478,7 +478,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     if (a.provider != 'zcode') return null;
     final activity = a.usesZcodeRewardExpiry;
     if (!activity && a.usage == null) return null;
-    final time = activity ? _millis(_reward(a)['checkedAt']) : a.queriedAt;
+    final time = a.creditExpiryObservedAt;
     final source = activity ? '活动余额' : '套餐与额度';
     return Text(
       '到期数据来源：$source · ${time == null ? '观测时间未知' : creditTime(time)}',
