@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.3-beta.52</title><sparkle:version>52</sparkle:version><sparkle:shortVersionString>1.0.3-beta.52</sparkle:shortVersionString><description>LoongPass 1.0.3-beta.52
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.3-beta.53</title><sparkle:version>53</sparkle:version><sparkle:shortVersionString>1.0.3-beta.53</sparkle:shortVersionString><description>LoongPass 1.0.3-beta.53
 
-- 模型连接和 Magpie 统一使用模型厂商官网的 API ID。DeepSeek Flash 的各渠道别名合并为 `deepseek-flash`，请求仍使用所选账号在对应 App 中的原始模型 ID。
-- Magpie 默认显示 Auto，可在模型连接中开启具体模型的单独显示，并按需搜索模型、调整 Auto 的候选顺序。修复窄窗口使用大字号时筛选按钮的溢出。
-- Codex 在 macOS 和 Windows 支持原生账号切换。确认并等待官方客户端退出后，再切换账号和启动客户端。
-- 修复升级后的 WorkBuddy 原生模型路由恢复和 Windows 本地桥接路径兼容问题。
+- 「总览」和「辅助签到」页新增「辅助签到（N）」入口。点击一次后逐个核对已授权且支持辅助签到的账号，并协助领取当前开放的奖励。
+- 启动、定时检查和账号变更时只读取奖励状态。手动领取继续使用官方回执核对结果，并防止重复领取。
+- 延续 Beta 52 的模型命名修复。LoongPass 与 Magpie 使用厂商官网 API ID，实际请求使用对应账号的 App 原始模型 ID。
 
 安装与升级
 
 macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZIP。已安装用户可在设置中开启「接收 Beta 版更新」，然后选择「检查更新」。
 
-macOS 使用本地签名，Windows 安装包使用 Ed25519 更新签名。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.3-beta.52/LoongPass-Windows-x64-Setup.exe" length="29109606" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="fYrgUd5njPXBMTts/pzwXzGAe3XViKYzdjhYnnNbq0911M+sVv5raw+alQSpxZOJPwa3Co2Kup+22F8PI/VdCA==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: jL48sG0jFevSzKs7jVT2B9s1x1+USo4OJrPVzlY4NbASxvhgfVDUVm7eY+mJwj8iLF34Oaqvt7bySMQd4totBQ==
-length: 2098
+macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
+</description><enclosure url="https://loongpass.com/api/download/v1.0.3-beta.53/LoongPass-Windows-x64-Setup.exe" length="29110526" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="ysF/YHmi841Wxym6gCDNL9Yl/Tix5la4sk0Sd+DZRRDHeUiDDZcUCZmff5f/dHpMixbh8lw3lFqjNMI1OzyLCQ==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: Iz6HWFBzCooqg4+OqMzGV9jjZ5IoG8uhDHhKAsJ9kssBfrZS0ZQO+DMWSEAI9yAVwIVFaUAQeCd7qO/xC1r3DQ==
+length: 1945
 -->
