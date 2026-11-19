@@ -3,6 +3,10 @@ import 'package:flutter/widgets.dart';
 import 'credit_summary.dart';
 import 'claim_receipt.dart';
 
+enum AccountAttention { none, actionRequired, awaitingVerification }
+
+typedef AccountExpiryBatch = ({DateTime at, String? amount});
+
 /// Immutable presentation snapshot. The owning platform supplies all facts and
 /// explicit actions; searching, paging and opening details never perform I/O.
 class AccountTableEntry {
@@ -20,7 +24,13 @@ class AccountTableEntry {
     this.observedAt,
     this.preferenceId,
     this.sourceLabel,
-    this.needsAttention = false,
+    this.detailPlatform,
+    this.officialId,
+    this.authorizationLabel,
+    this.attention = AccountAttention.none,
+    this.resolution,
+    List<AccountExpiryBatch>? expiryBatches,
+    this.appId,
     this.onActivate,
     this.onOpenDetails,
     this.notice,
@@ -29,28 +39,47 @@ class AccountTableEntry {
     this.hasRewards = true,
     this.accountSummary,
     this.expiryDetails,
+    this.actions,
     this.statusLabel,
-  });
+  }) : _expiryBatches = expiryBatches;
   final String id, label, identity, balance, status;
   final Widget details;
   final CreditSummary? credits;
   final String? expiringAmount;
   final DateTime? expiryAt;
-  final bool needsAttention, activationEnabled;
+  final AccountAttention attention;
+  final ({String label, VoidCallback run})? resolution;
+  final String? appId;
+  final List<AccountExpiryBatch>? _expiryBatches;
+  List<AccountExpiryBatch> get expiryBatches {
+    if (_expiryBatches case final batches?) return batches;
+    if (expiryAt case final at?) return [(at: at, amount: expiringAmount)];
+    return [
+      for (final batch in upcomingCreditBatches(credits))
+        (at: batch.expiresAt, amount: '${accountPoints(batch.remaining)} 积分'),
+    ];
+  }
+
+  bool get needsAttention => attention != AccountAttention.none;
+  final bool activationEnabled;
   final bool hasCredits, hasRewards;
   final String? accountSummary, statusLabel;
-  final Widget? expiryDetails;
+  final Widget? expiryDetails, actions;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
   final ClaimReceipt? receipt;
   String get latestClaim => receipt?.display ?? '暂无已确认记录';
   final DateTime? observedAt;
   final String? preferenceId, sourceLabel;
+  final String? detailPlatform, officialId, authorizationLabel;
   DateTime? get queriedAt => observedAt ?? credits?.observedAt;
   AccountTableEntry inApp(String appId, String appLabel) => AccountTableEntry(
     id: '$appId/$id',
     preferenceId: '$appId/$id',
     sourceLabel: appLabel,
+    detailPlatform: detailPlatform,
+    officialId: officialId,
+    authorizationLabel: authorizationLabel,
     label: label,
     identity: identity,
     balance: balance,
@@ -61,7 +90,10 @@ class AccountTableEntry {
     expiryAt: expiryAt,
     receipt: receipt,
     observedAt: observedAt,
-    needsAttention: needsAttention,
+    attention: attention,
+    resolution: resolution,
+    expiryBatches: _expiryBatches,
+    appId: appId,
     onActivate: onActivate,
     onOpenDetails: onOpenDetails,
     notice: notice,
@@ -70,15 +102,25 @@ class AccountTableEntry {
     hasRewards: hasRewards,
     accountSummary: accountSummary,
     expiryDetails: expiryDetails,
+    actions: actions,
     statusLabel: statusLabel,
   );
   DateTime? get nextExpiry =>
-      expiryAt ?? upcomingCreditBatches(credits).firstOrNull?.expiresAt;
+      expiryAt ??
+      _expiryBatches?.firstOrNull?.at ??
+      upcomingCreditBatches(credits).firstOrNull?.expiresAt;
   String get upcomingExpiryText => nextExpiry == null
       ? '到期信息未知'
       : '${upcomingExpiryAmount == '—' ? '额度未知' : upcomingExpiryAmount} · ${accountDate(nextExpiry!)} 到期';
   String get upcomingExpiryAmount {
     if (expiringAmount != null) return expiringAmount!;
+    if (_expiryBatches case final batches?) {
+      final first = batches.firstOrNull;
+      if (first == null ||
+          batches.skip(1).any((b) => b.at.isAtSameMomentAs(first.at)))
+        return '—';
+      return first.amount ?? '—';
+    }
     final batches = upcomingCreditBatches(credits);
     if (batches.isEmpty) return '—';
     final firstExpiry = batches.first.expiresAt;

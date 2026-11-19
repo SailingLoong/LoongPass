@@ -37,15 +37,18 @@ class AccountsNavigation extends StatelessWidget {
       label: '账号与积分',
       icon: const Icon(FLucideIcons.wallet, size: 18),
       compact: compact,
-      selected: active && selectedApp == null,
+      selected: active,
       onPressed: onOpen,
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(expanded: preferences.appsExpanded, child: navigation),
-        if (preferences.appsExpanded)
+        Semantics(
+          expanded: active && preferences.appsExpanded,
+          child: navigation,
+        ),
+        if (active && preferences.appsExpanded)
           Flexible(
             child: Container(
               margin: EdgeInsets.only(

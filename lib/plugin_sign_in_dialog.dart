@@ -337,14 +337,21 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
       animation: widget.animation,
       constraints: const BoxConstraints(minWidth: 280, maxWidth: 520),
       builder: (context, style) => Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              '账号授权',
+              style: context.theme.typography.body.xs.copyWith(
+                color: context.theme.colors.mutedForeground,
+              ),
+            ),
+            const SizedBox(height: 12),
             DefaultTextStyle(
               style: style.titleTextStyle,
-              child: Text(widget.title),
+              child: Text(_step == _Step.waiting ? '等待官方返回' : widget.title),
             ),
             const SizedBox(height: 12),
             Flexible(

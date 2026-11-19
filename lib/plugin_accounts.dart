@@ -46,11 +46,18 @@ class PluginAccount {
   String get registrationId => facts['registrationId'];
   PluginCreditBalance? get creditBalance =>
       pluginCreditBalance(provider, usage);
-  PluginCreditExpiry? get creditExpiry => pluginCreditExpiry(
+  Map get _reward => facts['reward'] is Map ? facts['reward'] : const {};
+  bool get usesZcodeRewardExpiry =>
+      pluginUsesZcodeRewardExpiry(provider, usage, _reward, queriedAt);
+  List<PluginCreditExpiry> get creditExpiryBatches => pluginCreditExpiryBatches(
     usage,
-    facts['reward'] is Map ? facts['reward'] : const {},
+    _reward,
     DateTime.now(),
+    provider: provider,
+    queriedAt: queriedAt,
   );
+  PluginCreditExpiry? get creditExpiry =>
+      nextPluginCreditExpiry(creditExpiryBatches);
 }
 
 /// Data-layer owner of account projections and maintenance. The native host

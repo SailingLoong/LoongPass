@@ -1,14 +1,25 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
-import 'package:material_ui/material_ui.dart' show ThemeMode;
 
-import 'ui_preferences.dart';
 import 'app_updates.dart';
-import 'managed_app.dart';
-import 'app_order_item.dart';
+import 'desktop_theme.dart';
 import 'invitation_settings.dart';
-import 'invitation_settings_panel.dart';
-import 'select_field_semantics.dart';
+import 'managed_app.dart';
+import 'settings_preferences.dart';
+import 'ui_preferences.dart';
+import 'workspace_page.dart';
+
+export 'workspace_page.dart';
+
+enum SettingsSection {
+  appearance('外观与列表'),
+  platforms('平台与邀请'),
+  updates('应用更新'),
+  data('运行与数据');
+
+  const SettingsSection(this.label);
+  final String label;
+}
 
 class WorkspaceSettingsPage extends StatefulWidget {
   const WorkspaceSettingsPage({
@@ -16,248 +27,181 @@ class WorkspaceSettingsPage extends StatefulWidget {
     required this.preferences,
     this.updates,
     this.invitations = const {},
+    this.section,
+    this.onOpenAccounts,
+    this.onOpenRewards,
   });
   final UiPreferences preferences;
   final AppUpdates? updates;
   final Map<ManagedApp, InvitationSettings> invitations;
+  final ValueNotifier<SettingsSection>? section;
+  final VoidCallback? onOpenAccounts, onOpenRewards;
   @override
   State<WorkspaceSettingsPage> createState() => _WorkspaceSettingsPageState();
 }
 
 class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
-  final _expanded = <int>{};
-  UiPreferences get preferences => widget.preferences;
-  AppUpdates? get updates => widget.updates;
-  Map<ManagedApp, InvitationSettings> get invitations => widget.invitations;
+  final _localSection = ValueNotifier(SettingsSection.appearance);
+  final _drafts = <ManagedApp, TextEditingController>{};
+  ValueNotifier<SettingsSection> get section => widget.section ?? _localSection;
+
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: preferences,
-    builder: (context, _) => WorkspacePage(
-      title: '设置',
+  void dispose() {
+    _localSection.dispose();
+    for (final draft in _drafts.values) {
+      draft.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget _content(SettingsSection topic) => switch (topic) {
+    SettingsSection.appearance => SettingsAppearance(
+      preferences: widget.preferences,
+    ),
+    SettingsSection.platforms => SettingsPlatforms(
+      preferences: widget.preferences,
+      invitations: widget.invitations,
+      draftFor: (settings) => _drafts.putIfAbsent(
+        settings.app,
+        () => TextEditingController(text: settings.overrideCode),
+      ),
+    ),
+    SettingsSection.updates =>
+      widget.updates == null
+          ? const Text('当前平台不支持应用内更新。')
+          : AppUpdateCard(updates: widget.updates!),
+    SettingsSection.data => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (preferences.error != null)
-          WorkspaceCard(
+        Text(
+          '本机数据',
+          style: context.theme.typography.display.lg.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: context.desktopPalette.sidebar,
+            borderRadius: context.theme.style.borderRadius.md,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(preferences.error!),
-                FButton(
-                  variant: FButtonVariant.outline,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: preferences.retrySave,
-                  child: const Text('重新保存界面偏好'),
+                Text(
+                  '授权资料保存在本机',
+                  style: TextStyle(fontWeight: FontWeight.w600),
                 ),
+                SizedBox(height: 6),
+                Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
               ],
             ),
           ),
-        WorkspaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '外观与列表',
-                style: context.theme.typography.body.sm.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 16,
-                runSpacing: 12,
-                children: [
-                  SizedBox(
-                    width:
-                        180 * MediaQuery.textScalerOf(context).scale(14) / 14,
-                    child: FSelect<ThemeMode>(
-                      builder: selectFieldSemantics,
-                      key: const Key('appearance-theme'),
-                      label: const Text('主题'),
-                      size: FTextFieldSizeVariant.sm,
-                      items: const {
-                        '跟随系统': ThemeMode.system,
-                        '浅色': ThemeMode.light,
-                        '深色': ThemeMode.dark,
-                      },
-                      control: FSelectControl.lifted(
-                        value: preferences.themeMode,
-                        onChange: (value) {
-                          if (value != null) preferences.setTheme(value);
-                        },
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width:
-                        180 * MediaQuery.textScalerOf(context).scale(14) / 14,
-                    child: FSelect<bool>(
-                      builder: selectFieldSemantics,
-                      key: const Key('account-row-density'),
-                      label: const Text('账号行距'),
-                      size: FTextFieldSizeVariant.sm,
-                      items: const {'紧凑': false, '舒适': true},
-                      control: FSelectControl.lifted(
-                        value: preferences.comfortable,
-                        onChange: (value) {
-                          if (value != null) preferences.setComfortable(value);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
         ),
-        WorkspaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '平台偏好',
-                style: context.theme.typography.body.sm.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              FAccordion(
-                control: FAccordionControl.lifted(
-                  expanded: _expanded.contains,
-                  onChange: (index, value) => setState(() {
-                    value ? _expanded.add(index) : _expanded.remove(index);
-                  }),
-                ),
-                children: [
-                  FAccordionItem(
-                    key: const Key('platform-order-settings'),
-                    title: const Text('平台顺序'),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('拖动调整账号页的平台选择顺序，也可聚焦后用 Option + ↑ / ↓ 调整。'),
-                        const SizedBox(height: 8),
-                        ReorderableList(
-                          key: const Key('app-order'),
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: preferences.appOrder.length,
-                          onReorderItem: preferences.reorder,
-                          proxyDecorator: (child, index, animation) =>
-                              MouseRegion(
-                                cursor: SystemMouseCursors.grabbing,
-                                child: ColoredBox(
-                                  color: context.theme.colors.muted,
-                                  child: child,
-                                ),
-                              ),
-                          itemBuilder: (context, index) {
-                            final app = preferences.appOrder[index];
-                            return AppOrderItem(
-                              key: ValueKey('ordered-${app.name}'),
-                              app: app,
-                              index: index,
-                              onMove: (delta) =>
-                                  preferences.reorder(index, index + delta),
-                            );
-                          },
-                        ),
-                        FButton(
-                          variant: FButtonVariant.ghost,
-                          size: FButtonSizeVariant.sm,
-                          mainAxisSize: MainAxisSize.min,
-                          onPress: preferences.resetOrder,
-                          child: const Text('恢复默认应用顺序'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  for (final entry in invitations.entries)
-                    FAccordionItem(
-                      key: ValueKey('invitation-${entry.key.name}'),
-                      title: Text('${entry.key.label} 邀请设置'),
-                      child: InvitationSettingsPanel(
-                        key: ValueKey(entry.key),
-                        settings: entry.value,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
+        SettingsOption(
+          title: '辅助签到',
+          description: '由你点击发起；进入页面不会触发领取。',
+          control: _link('查看签到账号', widget.onOpenRewards),
         ),
-        if (updates != null)
-          WorkspaceCard(child: AppUpdateCard(updates: updates!)),
-        const WorkspaceCard(
-          child: FAccordion(
-            children: [
-              FAccordionItem(
-                title: Text('运行与数据'),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('辅助签到与活动领取仅在 LoongPass 运行期间执行。可在各账号详情管理开关并查看最近结果。'),
-                    SizedBox(height: 8),
-                    Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        SettingsOption(
+          title: '账号服务',
+          description: '账号与额度由各平台提供。',
+          control: _link('查看账号', widget.onOpenAccounts),
         ),
       ],
     ),
-  );
-}
+  };
 
-class WorkspacePage extends StatelessWidget {
-  const WorkspacePage({
-    super.key,
-    required this.title,
-    this.subtitle,
-    required this.children,
-  });
-  final String title;
-  final String? subtitle;
-  final List<Widget> children;
+  Widget _link(String label, VoidCallback? callback) => callback == null
+      ? const SizedBox.shrink()
+      : FButton(
+          size: FButtonSizeVariant.sm,
+          variant: FButtonVariant.outline,
+          mainAxisSize: MainAxisSize.min,
+          onPress: callback,
+          child: Text(label),
+        );
+
   @override
-  Widget build(BuildContext context) => DefaultTextStyle(
-    style: context.theme.typography.body.sm,
-    child: ListView(
-      padding: const EdgeInsets.all(20),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([widget.preferences, section]),
+    builder: (context, _) => WorkspacePage(
+      title: '设置',
+      subtitle: '管理外观、平台偏好和本机应用。',
       children: [
-        Text(
-          title,
-          style: context.theme.typography.display.xl.copyWith(
-            fontWeight: FontWeight.w600,
-            height: 1.4,
-          ),
-        ),
-        if (subtitle != null && subtitle!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Text(
-            subtitle!,
-            style: context.theme.typography.body.xs.copyWith(
-              color: context.theme.colors.mutedForeground,
-            ),
+        if (widget.preferences.error case final error?) ...[
+          Text(error),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _link('重新保存界面偏好', widget.preferences.retrySave),
           ),
         ],
-        const SizedBox(height: 16),
-        ...children,
+        LayoutBuilder(
+          builder: (context, box) {
+            final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            if (box.maxWidth < 350 * scale) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final topic in SettingsSection.values)
+                        Semantics(
+                          selected: topic == section.value,
+                          inMutuallyExclusiveGroup: true,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              border: Border(
+                                bottom: BorderSide(
+                                  width: 2,
+                                  color: topic == section.value
+                                      ? context.desktopPalette.brand
+                                      : const Color(0x00000000),
+                                ),
+                              ),
+                            ),
+                            child: FButton(
+                              variant: FButtonVariant.ghost,
+                              size: FButtonSizeVariant.sm,
+                              mainAxisSize: MainAxisSize.min,
+                              onPress: () => section.value = topic,
+                              child: Text(topic.label, key: ValueKey(topic)),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _content(section.value),
+                ],
+              );
+            }
+            return FTabs(
+              scrollable: true,
+              style: context.desktopTabStyle,
+              control: FTabControl.lifted(
+                index: section.value.index,
+                onChange: (index) =>
+                    section.value = SettingsSection.values[index],
+              ),
+              children: [
+                for (final topic in SettingsSection.values)
+                  FTabEntry(
+                    label: Text(topic.label, key: ValueKey(topic)),
+                    child: DefaultTextStyle(
+                      style: context.theme.typography.body.sm,
+                      child: _content(topic),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ],
-    ),
-  );
-}
-
-class WorkspaceCard extends StatelessWidget {
-  const WorkspaceCard({super.key, required this.child});
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: FCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: child,
-      ),
     ),
   );
 }

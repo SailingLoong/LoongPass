@@ -78,7 +78,42 @@ PluginCreditBalance? pluginCreditBalance(String provider, Map? usage) {
   return windows.length == 1 ? pluginWindowBalance(windows.single) : null;
 }
 
-PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
+/// Only giftOf sets runsOutAt in ZCode. dualUsage can still return Coding
+/// Plan windows when giftOf fails, so queriedAt alone cannot clear gifts.
+bool pluginUsesZcodeRewardExpiry(
+  String? provider,
+  Map? usage,
+  Map reward,
+  DateTime? queriedAt,
+) {
+  final buckets = reward['buckets'];
+  if (provider != 'zcode' || buckets is! List) return false;
+  final checkedAt = reward['checkedAt'];
+  if (checkedAt is! int || checkedAt <= 0) {
+    // An initialized empty journal is unobserved. Populated legacy journals
+    // have exact units but no clock against which to order a native read.
+    return buckets.any((b) => b is Map);
+  }
+  if (queriedAt == null || queriedAt.millisecondsSinceEpoch <= checkedAt) {
+    return true;
+  }
+  final windows = usage?['windows'];
+  return windows is! List ||
+      !windows.whereType<Map>().any((w) => _windowExpiryTime(w) != null);
+}
+
+DateTime? _windowExpiryTime(Map window) {
+  final at = window['runsOutAt'];
+  return at is String ? DateTime.tryParse(at) : null;
+}
+
+List<PluginCreditExpiry> pluginCreditExpiryBatches(
+  Map? usage,
+  Map reward,
+  DateTime now, {
+  String? provider,
+  DateTime? queriedAt,
+}) {
   PluginCreditExpiry? expiry(DateTime? at, Object? amount, Object? unit) {
     final value = _number(amount);
     if (at == null || !at.isAfter(now) || (value != null && value <= 0))
@@ -91,12 +126,22 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
     );
   }
 
+  final buckets = reward['buckets'];
+  // Neither normalized ZCode source retains entitlement IDs for a row join.
+  final useReward = pluginUsesZcodeRewardExpiry(
+    provider,
+    usage,
+    reward,
+    queriedAt,
+  );
+  final rawWindows = useReward
+      ? const []
+      : usage?['windows'] as List? ?? const [];
   final windows = <({PluginCreditExpiry expiry, bool aside, Object? unit})>[];
-  for (final window in usage?['windows'] as List? ?? const []) {
+  for (final window in rawWindows) {
     if (window is! Map) continue;
-    final at = window['runsOutAt'];
     final value = expiry(
-      at is String ? DateTime.tryParse(at) : null,
+      _windowExpiryTime(window),
       window['runsOut'],
       window['unit'],
     );
@@ -112,7 +157,9 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
   // those must survive, including packages denominated in tokens.
   final candidates = <PluginCreditExpiry>[
     for (final window in windows)
-      if (!window.aside ||
+      // ZCode's aside can be an independent gift serving the same model.
+      if (provider == 'zcode' ||
+          !window.aside ||
           !windows.any(
             (other) =>
                 !other.aside &&
@@ -122,7 +169,8 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
           ))
         window.expiry,
   ];
-  for (final bucket in reward['buckets'] as List? ?? const []) {
+  final includeBuckets = provider != 'zcode' || useReward;
+  for (final bucket in includeBuckets && buckets is List ? buckets : const []) {
     if (bucket is! Map) continue;
     final seconds = _number(bucket['expiresAt']);
     final value = expiry(
@@ -138,6 +186,29 @@ PluginCreditExpiry? pluginCreditExpiry(Map? usage, Map reward, DateTime now) {
     if (value != null) candidates.add(value);
   }
   candidates.sort((a, b) => a.at.compareTo(b.at));
+  return candidates;
+}
+
+PluginCreditExpiry? pluginCreditExpiry(
+  Map? usage,
+  Map reward,
+  DateTime now, {
+  String? provider,
+  DateTime? queriedAt,
+}) => nextPluginCreditExpiry(
+  pluginCreditExpiryBatches(
+    usage,
+    reward,
+    now,
+    provider: provider,
+    queriedAt: queriedAt,
+  ),
+);
+
+/// The input is the chronological projection from pluginCreditExpiryBatches.
+PluginCreditExpiry? nextPluginCreditExpiry(
+  List<PluginCreditExpiry> candidates,
+) {
   if (candidates.isEmpty) return null;
   final first = candidates.first;
   // Multiple independent model entitlements have no comparable account total.

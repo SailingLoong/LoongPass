@@ -69,6 +69,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pumpWidget(page());
       expect(calls, 0);
+      expect(find.text('最近检查：尚未检查'), findsOneWidget);
+      expect(find.text('已保存的所选账号：未确认 / 1'), findsOneWidget);
       await tester.tap(find.text('检查连接'));
       await tester.pumpAndSettle();
       expect(find.textContaining('网关不可达'), findsOneWidget);

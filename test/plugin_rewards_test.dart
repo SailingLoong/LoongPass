@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -332,16 +333,30 @@ void main() {
       expect(harness.hooks, isEmpty);
       expect(find.text('辅助签到（2）'), findsOneWidget);
       await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('reward-batch-action')));
-        await harness.waitForHook();
-        for (
-          var attempt = 0;
-          attempt < 200 && harness.rewards.batch.value?.checked != 2;
-          attempt++
-        ) {
-          await Future<void>.delayed(const Duration(milliseconds: 5));
+        final completed = Completer<void>();
+        final batch = harness.rewards.batch;
+        void whenComplete() {
+          final current = batch.value;
+          if (current != null && current.checked == current.total) {
+            completed.complete();
+          }
+        }
+
+        batch.addListener(whenComplete);
+        try {
+          await tester.tap(find.byKey(const ValueKey('reward-batch-action')));
+          await completed.future.timeout(const Duration(seconds: 30));
+        } finally {
+          batch.removeListener(whenComplete);
         }
       });
+      expect(harness.rewards.batch.value!.failures, isEmpty);
+      for (final slot in [domestic, global]) {
+        final reward = harness.store.data['rewards'][harness.identity(slot)];
+        expect(reward['status'], 'claimed', reason: slot);
+        expect(reward['credit'], 12.5, reason: slot);
+      }
+      expect(harness.rewards.candidates, isEmpty);
       await tester.pumpAndSettle();
       expect(find.text('已检查 2 个账号'), findsOneWidget);
       expect(find.text('辅助签到（0）'), findsOneWidget);

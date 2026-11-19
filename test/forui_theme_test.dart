@@ -7,6 +7,7 @@ import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 import '../lib/main.dart';
 import '../lib/ui_preferences.dart';
+import '../lib/workspace_tools.dart';
 
 void main() {
   testDesktopWidgets(
@@ -23,19 +24,18 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-settings')));
       await tester.pumpAndSettle();
       expect(
-        find.byWidgetPredicate((widget) => widget is FSelect<ThemeMode>),
-        findsOneWidget,
+        find.descendant(
+          of: find.byKey(const Key('appearance-theme')),
+          matching: find.byType(FButton),
+        ),
+        findsNWidgets(3),
       );
       expect(find.text('精简导航'), findsNothing);
       expect(find.byType(FButton), findsWidgets);
-      await tester.tap(find.text('跟随系统'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('深色').last);
+      await tester.tap(find.text('深色'));
       await tester.pumpAndSettle();
       expect(preferences.themeMode, ThemeMode.dark);
-      await tester.tap(find.text('紧凑'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('舒适').last);
+      await tester.tap(find.text('舒适'));
       await tester.pumpAndSettle();
       expect(preferences.comfortable, isTrue);
       expect(tester.takeException(), isNull);
@@ -75,8 +75,10 @@ void main() {
       expect(context.theme.colors, FTheme.neutral.dark.desktop.colors);
       await tester.tap(find.byKey(const Key('nav-settings')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey(SettingsSection.platforms)));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.byKey(const Key('invitation-workbuddy')));
-      await tester.tap(find.text('WorkBuddy 邀请设置'));
+      await tester.tap(find.byKey(const Key('invitation-workbuddy')));
       await tester.pumpAndSettle();
       final invitation = tester.element(
         find.byKey(const Key('workbuddy-invitation-code')),

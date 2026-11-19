@@ -95,8 +95,17 @@ void main() {
         AccountToolApp(application: app, preferences: preferences),
       );
       await tester.pumpAndSettle();
+      Future<void> openNarrowNavigation() async {
+        if (width == 480) {
+          await tester.tap(find.byKey(const Key('toggle-sidebar')));
+          await tester.pumpAndSettle();
+        }
+      }
+
+      await openNarrowNavigation();
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
+      await openNarrowNavigation();
       await tester.enterText(find.byKey(const Key('model-nav-search')), '1017');
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('model-nav-deepseek-flash')), findsOneWidget);
@@ -137,6 +146,8 @@ void main() {
       await tester.pumpWidget(
         AccountToolApp(application: app, preferences: preferences),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('model-nav-auto')), findsOneWidget);
       await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
@@ -206,7 +217,7 @@ void main() {
         tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
         'auto',
       );
-      expect(find.textContaining('loongpass/auto').hitTestable(), findsWidgets);
+      expect(find.text('候选顺序').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

@@ -133,14 +133,14 @@ void main() {
       await details(tester, 'official-a');
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('workspace-a'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byType(FDialog),
+          of: find.byKey(const Key('account-detail-sheet')),
           matching: find.textContaining('plus'),
         ),
         findsOneWidget,

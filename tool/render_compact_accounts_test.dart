@@ -86,7 +86,9 @@ void main() {
                   ],
                 ),
                 status: n == 2 ? '领取结果待核对' : '辅助领取已开启',
-                needsAttention: n == 2,
+                attention: n == 2
+                    ? AccountAttention.awaitingVerification
+                    : AccountAttention.none,
                 receipt: ClaimReceipt(
                   amount: 100,
                   confirmedAt: DateTime(2026, 11, 14, 9, 30),

@@ -10,6 +10,62 @@ import '../lib/workspace_accounts.dart';
 import '../lib/claim_receipt.dart';
 
 void main() {
+  testDesktopWidgets(
+    'overview service recovery replaces the first-account prompt',
+    (tester) async {
+      final registry = AccountWorkspaceRegistry();
+      addTearDown(registry.dispose);
+      Widget overview({Widget? status}) => DesktopTestApp(
+        home: Scaffold(
+          body: WorkspaceOverviewPage(
+            registry: registry,
+            serviceStatus: status,
+            onOpenApp: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpWidget(overview(status: const Text('账号服务未能启动')));
+      expect(find.text('账号服务未能启动'), findsOneWidget);
+      expect(find.text('添加账号'), findsNothing);
+      expect(find.text('没有需要你操作的账号。'), findsNothing);
+      await tester.pumpWidget(overview());
+      expect(find.text('从第一个账号开始'), findsOneWidget);
+      expect(find.text('添加账号'), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('从第一个账号开始')).dx,
+        closeTo(tester.getCenter(find.byType(Scaffold)).dx, 1),
+      );
+    },
+  );
+  testDesktopWidgets(
+    'add account passes the selected regional platform to the host',
+    (tester) async {
+      final registry = AccountWorkspaceRegistry();
+      addTearDown(registry.dispose);
+      ManagedApp? selected;
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: WorkspaceAccountsPage(
+              registry: registry,
+              onOpenApp: (app) => selected = app,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('添加账号'));
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(selected, isNull);
+      await tester.tap(find.text('添加账号'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Qoder CN'));
+      await tester.pumpAndSettle();
+      expect(selected, ManagedApp.qoderCn);
+    },
+  );
   testDesktopWidgets('account deep link reveals the exact paginated account', (
     tester,
   ) async {
@@ -94,7 +150,8 @@ void main() {
           balance: '880 积分',
           status: '需要重新授权后核对官方额度',
           statusLabel: '需要重新授权',
-          needsAttention: true,
+          attention: AccountAttention.actionRequired,
+          resolution: (label: '重新授权', run: () => operations++),
           onActivate: () => operations++,
           details: Text('Details $index'),
         ),
@@ -106,6 +163,19 @@ void main() {
         ),
       ),
     );
+    expect(operations, 0);
+    final name = tester.getRect(find.text('Account 1'));
+    final platform = tester.getRect(find.text('ZCode').first);
+    final status = tester.getRect(find.text('需要重新授权').first);
+    expect(platform.top, greaterThan(name.top));
+    expect(status.left, greaterThan(name.right));
+    expect(
+      tester.getRect(find.text('重新授权').first).left,
+      greaterThan(status.right),
+    );
+    await tester.tap(find.text('重新授权').first);
+    await tester.pumpAndSettle();
+    expect(operations, 1);
     expect(find.text('Account 6'), findsNothing);
     final showAll = find.byKey(const Key('overview-all-attention'));
     await tester.ensureVisible(showAll);
@@ -116,7 +186,7 @@ void main() {
     await tester.tap(find.text('Account 6'));
     await tester.pumpAndSettle();
     expect(find.text('Details 6'), findsOneWidget);
-    expect(operations, 0);
+    expect(operations, 1);
     expect(tester.takeException(), isNull);
   });
 
@@ -132,7 +202,10 @@ void main() {
           identity: 'synthetic',
           balance: '未知',
           status: 'ready',
-          expiryAt: DateTime.now().add(const Duration(days: 1)),
+          expiryAt: DateTime.now()
+              .copyWith(hour: 12, minute: 0)
+              .add(const Duration(days: 1)),
+          expiryDetails: const Text('Owner expiry details'),
           details: const Text('Details'),
         ),
       ]);
@@ -144,7 +217,59 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('额度未知'), findsOneWidget);
+      expect(find.text('Known date'), findsNothing);
+      await tester.tap(find.byKey(const Key('expiry-day-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Known date'), findsOneWidget);
+      expect(find.text('额度未知'), findsOneWidget);
+      await tester.tap(find.text('Known date'));
+      await tester.pumpAndSettle();
+      expect(find.text('Owner expiry details'), findsOneWidget);
+    },
+  );
+  testDesktopWidgets(
+    'only the owner can supply a pending verification action',
+    (tester) async {
+      final registry = AccountWorkspaceRegistry();
+      addTearDown(registry.dispose);
+      final source = Object();
+      var checks = 0;
+      void publish({required bool available}) => registry.publish(
+        ManagedApp.qoderCn,
+        source,
+        [
+          AccountTableEntry(
+            id: 'pending',
+            label: '待确认账号',
+            identity: '',
+            balance: '—',
+            status: '领取回执未确认',
+            attention: AccountAttention.awaitingVerification,
+            resolution: available ? (label: '核验结果', run: () => checks++) : null,
+            details: const Text('只读详情'),
+          ),
+        ],
+      );
+      publish(available: false);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: WorkspaceOverviewPage(registry: registry, onOpenApp: (_) {}),
+          ),
+        ),
+      );
+      expect(find.text('核验结果'), findsNothing);
+      await tester.tap(find.text('待确认账号'));
+      await tester.pumpAndSettle();
+      expect(find.text('只读详情'), findsOneWidget);
+      await tester.tap(find.text('关闭'));
+      await tester.pumpAndSettle();
+      publish(available: true);
+      await tester.pumpAndSettle();
+      expect(checks, 0);
+      await tester.tap(find.text('核验结果'));
+      await tester.pumpAndSettle();
+      expect(checks, 1);
     },
   );
   testDesktopWidgets(
@@ -217,7 +342,7 @@ void main() {
           identity: 'synthetic',
           balance: '500000000 token',
           status: 'pending',
-          needsAttention: true,
+          attention: AccountAttention.awaitingVerification,
           details: Text('Pending details'),
         ),
         AccountTableEntry(
@@ -230,9 +355,12 @@ void main() {
           details: Text('Confirmed details'),
         ),
       ]);
+      final page = GlobalKey<WorkspaceActivityPageState>();
       await tester.pumpWidget(
         DesktopTestApp(
-          home: Scaffold(body: WorkspaceActivityPage(registry: registry)),
+          home: Scaffold(
+            body: WorkspaceActivityPage(key: page, registry: registry),
+          ),
         ),
       );
       expect(find.text('Pending'), findsOneWidget);
@@ -247,6 +375,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('Pending'), findsOneWidget);
       expect(find.textContaining('Confirmed'), findsNothing);
+      page.currentState!.showReceipts();
+      await tester.pumpAndSettle();
+      expect(find.text('每个账号最近一次成功回执'), findsOneWidget);
+      expect(find.text('Confirmed'), findsOneWidget);
     },
   );
 }

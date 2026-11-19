@@ -4,8 +4,13 @@ import 'package:forui/forui.dart';
 import 'invitation_settings.dart';
 
 class InvitationSettingsPanel extends StatefulWidget {
-  const InvitationSettingsPanel({super.key, required this.settings});
+  const InvitationSettingsPanel({
+    super.key,
+    required this.settings,
+    required this.controller,
+  });
   final InvitationSettings settings;
+  final TextEditingController controller;
 
   @override
   State<InvitationSettingsPanel> createState() =>
@@ -13,7 +18,7 @@ class InvitationSettingsPanel extends StatefulWidget {
 }
 
 class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
-  late final _input = TextEditingController(text: widget.settings.overrideCode);
+  TextEditingController get _input => widget.controller;
   bool _saving = false;
   String? _message, _error;
 
@@ -43,12 +48,6 @@ class _InvitationSettingsPanelState extends State<InvitationSettingsPanel> {
     if (mounted && widget.settings.ready) {
       _input.text = widget.settings.overrideCode;
     }
-  }
-
-  @override
-  void dispose() {
-    _input.dispose();
-    super.dispose();
   }
 
   @override
