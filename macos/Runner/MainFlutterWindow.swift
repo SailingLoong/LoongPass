@@ -72,6 +72,8 @@ class MainFlutterWindow: NSWindow {
           guard let args = call.arguments as? [String: Any] else { throw ZcodeCaptchaWindow.Failure.unavailable }
           try self.zcodeCaptcha.present(args, parent: self) { result($0) }
         } catch { result(FlutterError(code: "verification_unavailable", message: nil, details: nil)) }
+      case "zcodeClientVersion":
+        result(ZcodeRequestContext.installedVersion())
       case "zcodeRequestContext":
         do { result(try ZcodeRequestContext.observe()) }
         catch { result(FlutterError(code: "device_required", message: nil, details: nil)) }

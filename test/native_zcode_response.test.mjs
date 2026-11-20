@@ -52,6 +52,29 @@ beforeEach(() => {
 afterEach(() => {globalThis.fetch = realFetch;});
 afterAll(async () => {await rm(directory,{recursive:true,force:true});});
 
+test('an observed empty gift balance is a successful usage read, with no claim or inferred units', async () => {
+  const hooks = await plugin();
+  const getAuth = async () => ({
+    type: 'oauth', uid: 'gift-user', access: '', expires: 0,
+    refresh: JSON.stringify({ site: 'bigmodel', jwt, device: '22222222-2222-4333-8444-555555555555' }),
+  });
+  let response = { code: 0, data: { server_time: now, plans: [], balances: [] } };
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push([init.method, new URL(url).pathname]);
+    return Response.json(response);
+  };
+  const empty = await hooks.auth.usage(getAuth);
+  expect(empty.error).toBeUndefined();
+  expect(empty).toMatchObject({ signIn: 'kept', windows: [] });
+  expect(empty.balance).toBeUndefined();
+  expect(requests).toEqual([['GET', '/api/v1/zcode-plan/billing/balance']]);
+  response = { code: 0, data: {} };
+  expect((await hooks.auth.usage(getAuth)).error).toBeTruthy();
+  response = { code: 401 };
+  expect((await hooks.auth.usage(getAuth)).error).toBeTruthy();
+});
+
 test('gift quota exposes the remaining batch expiry for model routing', async () => {
   const gift = await native.giftOf(native.stateOf(auth));
   expect(gift.windows[0].runsOutAt).toBe(new Date((now + 3600) * 1000).toISOString());

@@ -49,7 +49,7 @@ class _Official implements ZcodeTransport {
   bool captcha = false, loseReply = false, grant = true;
   int claimHttp = 200, claimCode = 0;
   int? retryAfterMs;
-  Map<String, dynamic>? claimBody;
+  Map<String, dynamic>? claimBody, marketingBody;
   ZcodeTransport? claimTransport;
   Future<void> Function(ZcodeRequest)? beforeRequest;
   Future<void> Function()? afterClaim;
@@ -75,6 +75,7 @@ class _Official implements ZcodeTransport {
       );
     }
     if (r.path == ZcodeApi.marketingPath) {
+      if (marketingBody != null) return ZcodeReply(200, marketingBody!);
       return ZcodeReply(
         200,
         _envelope({
@@ -140,10 +141,12 @@ class _InterruptedHttp extends Fake implements HttpClient {
   _InterruptedHttp(this.failToConnect);
   final bool failToConnect;
   final request = _InterruptedRequest();
+  final urls = <Uri>[];
   @override
   Duration? connectionTimeout;
   @override
   Future<HttpClientRequest> openUrl(String method, Uri url) async {
+    urls.add(url);
     if (failToConnect) throw const SocketException('synthetic connect failure');
     return request;
   }
@@ -186,21 +189,26 @@ void main() {
         {},
   );
 
-  Future<void> profile(String key, {String realm = 'bigmodel'}) async {
+  Future<void> profile(
+    String key, {
+    String realm = 'bigmodel',
+    String uid = 'official-a',
+    String device = _device,
+  }) async {
     await runtime.call('import', {
       'provider': 'zcode',
       'key': key,
       'auth': {
         'type': 'oauth',
-        'uid': 'official-a',
-        'accountId': '$realm:official-a ($key)',
+        'uid': uid,
+        'accountId': '$realm:$uid ($key)',
         'access': 'synthetic-paid-api-key',
         'expires': 0,
         'refresh': jsonEncode({
           'site': realm,
           'jwt': 'synthetic-jwt',
           'key': 'synthetic-paid-api-key',
-          'device': _device,
+          'device': device,
         }),
       },
     });
@@ -210,7 +218,7 @@ void main() {
         'claims': <String, dynamic>{},
         'bindingHistory': <dynamic>[],
         'buckets': <dynamic>[],
-        'context': _context,
+        'context': {..._context, 'deviceMid': device},
       };
     });
   }
@@ -587,6 +595,152 @@ void main() {
     expect(old['endsAt'], 1793903600);
   });
 
+  test('an incomplete delivery list cannot establish an empty offer', () async {
+    official.marketingBody = _envelope({});
+    await expectLater(rewards.claim(_key), throwsA(isA<ZcodeFailure>()));
+    expect(reward()['status'], 'discoveryIncomplete');
+    expect(official.posts, 0);
+    official.marketingBody = _envelope({'deliveries': []});
+    await rewards.refresh(_key);
+    expect(reward()['status'], 'noOffer');
+  });
+
+  test(
+    'a failed binding preflight replaces a previously empty feed status',
+    () async {
+      await legacy({'status': 'noOffer'});
+      final unavailable = PluginZcodeRewards(
+        accounts,
+        api: ZcodeApi(official),
+        contextFor: (_, _) async => throw const ZcodeFailure('device_required'),
+      );
+      addTearDown(unavailable.close);
+      await expectLater(
+        unavailable.refresh(_key),
+        throwsA(isA<ZcodeFailure>()),
+      );
+      expect(reward()['status'], 'device_required');
+      expect(official.requests, isEmpty);
+    },
+  );
+
+  test(
+    'a success dialog action is not an invitation to submit another claim',
+    () async {
+      official.marketingBody = _envelope({
+        'deliveries': [
+          {
+            'resource_position': 'banner',
+            'banner': {
+              'buttons': [
+                {
+                  'action': {'type': 'close'},
+                },
+              ],
+              'success_popup': {
+                'buttons': [
+                  {
+                    'action': {
+                      'type': 'claim_zcode_plan',
+                      'args': {'plan_id': 'afterwards'},
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+      await rewards.claim(_key);
+      expect(official.posts, 0);
+      expect(reward()['status'], 'noOffer');
+    },
+  );
+
+  test('two accounts sharing a device cannot submit the same offer concurrently or after a receipt', () async {
+    const other = 'zcode#other';
+    await profile(other, uid: 'official-b');
+    Map otherReward() =>
+        store.data['zcode']['rewards'][jsonEncode(['bigmodel', 'official-b'])];
+    official.grant = false; // Only the submitting account receives a receipt.
+    final dispatch = Completer<void>(), resume = Completer<void>();
+    official.beforeRequest = (r) async {
+      if (r.path == ZcodeApi.claimPath && !dispatch.isCompleted) {
+        dispatch.complete();
+        await resume.future;
+      }
+    };
+    final first = rewards.claim(_key);
+    await dispatch.future;
+    try {
+      await rewards.claim(other);
+      expect(otherReward()['status'], 'devicePending');
+    } finally {
+      resume.complete();
+      await first;
+    }
+    await rewards.close();
+    rewards = PluginZcodeRewards(
+      accounts,
+      api: ZcodeApi(official),
+      now: () => _time,
+    );
+    await rewards.claim(other);
+    expect(otherReward()['status'], 'deviceClaimed');
+    expect(official.posts, 1);
+  });
+
+  test(
+    'device reservation is atomic when both accounts already passed discovery',
+    () async {
+      const other = 'zcode#other';
+      await profile(other, uid: 'official-b');
+      official.grant = false;
+      final bothReady = Completer<void>();
+      var checks = 0;
+      official.beforeRequest = (r) async {
+        if (r.path == ZcodeApi.configPath) {
+          if (++checks == 2) bothReady.complete();
+          await bothReady.future;
+        }
+      };
+      await Future.wait([rewards.claim(_key), rewards.claim(other)]);
+      final statuses = (store.data['zcode']['rewards'] as Map).values.map(
+        (r) => r['status'],
+      );
+      expect(statuses, contains('claimed'));
+      expect(statuses, anyElement(isIn(['devicePending', 'deviceClaimed'])));
+      expect(official.posts, 1);
+    },
+  );
+
+  test('device protection includes legacy receipts and expires with the issued entitlement', () async {
+    const other = 'zcode#other';
+    await profile(other, uid: 'official-b');
+    Map otherReward() =>
+        store.data['zcode']['rewards'][jsonEncode(['bigmodel', 'official-b'])];
+    Future<void> receipt(String device, int endsAt) => legacy({
+      'bindingHistory': [
+        {
+          'context': {..._context, 'deviceMid': device},
+          'claims': {
+            'night': {'state': 'claimed', 'endsAt': endsAt, 'previous': []},
+          },
+        },
+      ],
+    });
+    await receipt(_device, _time ~/ 1000 + 1);
+    await rewards.claim(other);
+    expect(otherReward()['status'], 'deviceClaimed');
+    expect(official.posts, 0);
+    await receipt(_oldDevice, _time ~/ 1000 + 1);
+    await rewards.refresh(other);
+    expect(otherReward()['status'], 'claimable');
+    await receipt(_device, _time ~/ 1000);
+    await rewards.claim(other);
+    expect(official.posts, 1);
+  });
+
   test('marketing discovery survives deprecated preview and commits intent before POST', () async {
     official.beforeRequest = (r) async {
       if (r.path == ZcodeApi.claimPath) {
@@ -754,6 +908,27 @@ void main() {
       reward()['bindingHistory'][0]['claims']['night']['state'],
       'notSubmitted',
     );
+  });
+
+  test('marketing requests count once per query across accounts and client instances', () async {
+    final http = _InterruptedHttp(true);
+    await HttpOverrides.runZoned(() async {
+      for (final device in [_device, _oldDevice]) {
+        await expectLater(
+          ZcodeHttp().send(
+            ZcodeRequest(ZcodeApi.marketingPath, 'synthetic-jwt', {
+              ..._context,
+              'deviceMid': device,
+            }),
+          ),
+          throwsA(isA<ZcodeFailure>()),
+        );
+      }
+    }, createHttpClient: (_) => http);
+    final sequence = http.urls
+        .map((url) => int.parse(url.queryParameters['seq']!))
+        .toList();
+    expect(sequence.last, sequence.first + 1);
   });
 
   for (final beforeWrite in [true, false]) {

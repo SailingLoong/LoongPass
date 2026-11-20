@@ -1,0 +1,49 @@
+# Keep verified empty Start Plan observations separate from quota read failures.
+# Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -647,7 +647,12 @@
+     if (active && !(end > 0 && (!startNum(active.end) || end < startNum(active.end)))) continue
+     active = { name: first(str(p.name), "Start Plan"), end, until: end > 0 ? new Date(Math.trunc(end) * 1000).toISOString() : "" }
+   }
+-  if (!active && !pending.length) return null
++  if (!active && !pending.length) {
++    // Only a readable balance can establish that there is no gift to show.
++    if (!Array.isArray(b.plans) || !Array.isArray(b.balances) || !(startNum(b.server_time) > 0) ||
++        plans.some(p => !p.plan_id || !p.status)) throw new Error("Invalid ZCode activity balance")
++    return null
++  }
+   // with no live plan, the one starting soonest names the card
+   const out = { plan: active?.name ?? pending[0].name, windows: [], live: !!active, pending }
+   if (active?.until) Object.assign(out, { until: active.until, renew: "off" })
+@@ -1115,14 +1120,13 @@
+   return null
+ }
+ 
+-// startUsage is a gift-only account's card: its buckets, or the words
+-// for having none to show. The card's header already names the plan, so
++// A gift-only account can have a successful read with no active plan.
++// When there is a card, its header already names the plan, so
+ // the windows of one plan keep their own names; with several plans each
+ // bucket is named after its plan (see byPlan).
+-const NO_START = "this account has no GLM Coding Plan, and ZCode's Start Plan has ended or was never started"
+ async function startUsage(s) {
+   const g = await giftOf(s)
+-  if (!g) return { error: NO_START }
++  if (!g) return null
+   const best = bestBuckets(g.windows)
+   const label = byPlan(g.windows)
+   g.windows = countedFirst(g.windows.map(({ _plan, _spent, ...w }, i) => {
+@@ -3481,7 +3485,11 @@
+             }
+             const team = await teamUsage(s, key)
+             card = saved(gift || giftReadable(s) ? await dualUsage(s, team) : team)
+-          } else card = saved(start ? await startUsage(s) : gift || giftReadable(s) ? await dualUsage(s) : await codingUsage(s))
++          } else if (start) {
++            const activity = await startUsage(s)
++            if (!activity) return { signIn: "kept", windows: [] }
++            card = saved(activity)
++          } else card = saved(gift || giftReadable(s) ? await dualUsage(s) : await codingUsage(s))
+           // a gift plan ZCode holds for the account but has not put on it:
+           // named on the card, claimed in the ZCode app (its claim needs
+           // the app's captcha attestation, see claimHint). A card that is

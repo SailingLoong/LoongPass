@@ -965,6 +965,11 @@ bool NativeAuthorization::Handle(const Call& call,
     } catch (...) { result->Error("trae_device_unavailable"); }
     return true;
   }
+  if (method == "zcodeClientVersion") {
+    try { result->Success(Encode(FindClient(L"ZCode").version)); }
+    catch (const std::exception&) { result->Success(); }
+    return true;
+  }
   if (method == "zcodeRequestContext") {
     try { result->Success(Encode(RequestContext())); }
     catch (...) { result->Error("device_required"); }

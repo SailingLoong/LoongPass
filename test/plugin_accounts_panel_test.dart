@@ -151,7 +151,7 @@ class _Rewards implements PluginRewards {
   @override
   final PluginZcodeRewards zcode;
   int claims = 0, refreshes = 0;
-  bool failRefresh = false;
+  bool failRefresh = false, refreshedUsage = false;
   Completer<void>? refreshGate;
   String? refreshedKey;
   @override
@@ -168,9 +168,10 @@ class _Rewards implements PluginRewards {
       accounts.providers[account.provider]?['checkin'] == true;
 
   @override
-  Future<void> refresh(String key) async {
+  Future<void> refresh(String key, {bool includeUsage = false}) async {
     refreshes++;
     refreshedKey = key;
+    refreshedUsage = includeUsage;
     await refreshGate?.future;
     if (failRefresh) throw StateError('Synthetic refresh failure');
   }
@@ -240,6 +241,8 @@ void main() {
             'status': 'discoveryIncomplete',
             'claims': {},
           }),
+          snapshot('shared-device', 'zcode', {'status': 'devicePending'}),
+          snapshot('missing-device', 'zcode', {'status': 'device_required'}),
           snapshot('ineligible', 'qoder-cn', {
             'status': 'unavailable',
             'outcome': 'ineligible',
@@ -305,7 +308,13 @@ void main() {
           registry.entries.singleWhere((entry) => entry.label == label);
       expect(entry('observation').statusLabel, '活动查询未完成');
       expect(entry('submitted').statusLabel, '领取回执未确认');
-      for (final label in ['submitted', 'observation', 'discovery']) {
+      expect(entry('missing-device').attention, AccountAttention.actionRequired);
+      for (final label in [
+        'submitted',
+        'observation',
+        'discovery',
+        'shared-device',
+      ]) {
         expect(
           entry(label).attention,
           AccountAttention.awaitingVerification,
@@ -339,6 +348,7 @@ void main() {
       for (final label in ['loomy-pending', 'expired', 'missing-uid']) {
         final item = find.text(label);
         await tester.ensureVisible(item);
+        await tester.pumpAndSettle();
         await tester.tap(item);
         await tester.pumpAndSettle();
         expect(find.textContaining('同一活动不会重复提交'), findsOneWidget);
@@ -360,6 +370,7 @@ void main() {
       expect(rewards.refreshes, 0);
       expect(rewards.claims, 0);
       await tester.ensureVisible(find.text('核验结果'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('核验结果'));
       await tester.pump();
       await tester.pump();
@@ -876,12 +887,15 @@ void main() {
           },
         ),
       );
+      expect(find.text('本账号与设备未收到活动'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
       expect(
         find.textContaining('Gift tokens：剩余 12345678 tokens'),
         findsOneWidget,
       );
+      expect(find.text('官方本次未向这个账号与绑定设备返回可领取活动。'), findsOneWidget);
+      expect(find.text('套餐额度查询未完成。'), findsOneWidget);
       expect(find.textContaining('上次：Start Plan'), findsNothing);
     },
   );
@@ -926,6 +940,7 @@ void main() {
           key: 'zcode#one',
           active: true,
           models: const [],
+          error: 'usage_unavailable',
           facts: {
             ...observed().facts,
             'provider': 'zcode',
@@ -939,7 +954,7 @@ void main() {
           },
         ),
       );
-      expect(find.text('有可领取活动'), findsOneWidget);
+      expect(find.text('已收到活动'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('核对并领取活动'));
@@ -1319,10 +1334,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(rewards.refreshes, 1);
       expect(rewards.claims, 0);
+      expect(rewards.refreshedUsage, isFalse);
       rewards.failRefresh = true;
       await tester.ensureVisible(find.text('刷新额度'));
       await tester.tap(find.text('刷新额度'));
       await tester.pumpAndSettle();
+      expect(rewards.refreshedUsage, isTrue);
       expect(
         find.descendant(
           of: find.byKey(const Key('account-detail-sheet')),

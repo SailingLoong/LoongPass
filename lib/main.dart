@@ -21,6 +21,8 @@ import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
 import 'invitation_settings.dart';
 
+const _appLocale = Locale('zh', 'CN');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = UiPreferences.persistent();
@@ -82,7 +84,7 @@ class _AccountToolAppState extends State<AccountToolApp> {
       theme: loongPassTheme(Brightness.light),
       darkTheme: loongPassTheme(Brightness.dark),
       themeMode: _preferences.themeMode,
-      locale: const Locale('zh', 'CN'),
+      locale: _appLocale,
       localizationsDelegates: FLocalizations.localizationsDelegates,
       supportedLocales: FLocalizations.supportedLocales,
       builder: loongPassThemeBuilder,
@@ -140,7 +142,9 @@ class _AccountPageState extends State<_AccountPage> {
       _startError = null;
     });
     try {
-      final application = await PluginApplication.start();
+      final application = await PluginApplication.start(
+        language: _appLocale.toLanguageTag(),
+      );
       if (!mounted) {
         await application.close();
         return;

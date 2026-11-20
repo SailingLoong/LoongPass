@@ -6,6 +6,7 @@ import 'managed_app.dart';
 import 'model_connection.dart';
 import 'native_account_document_store.dart';
 import 'native_legacy_sources.dart';
+import 'native_zcode_activity.dart';
 import 'pinned_bun.dart';
 import 'plugin_accounts.dart';
 import 'plugin_credential_preparation.dart';
@@ -40,7 +41,7 @@ class PluginApplication {
   final ModelConnection connection;
   String get bridgePath => installation.bridgePath;
 
-  static Future<PluginApplication> start() async {
+  static Future<PluginApplication> start({required String language}) async {
     final root = await NativeAccountDocumentStore('PluginRuntime')
         .privateDirectory();
     final installation = await PluginInstallation.prepare(root, (name) async {
@@ -103,7 +104,10 @@ class PluginApplication {
               'account': account.key,
             });
             if (context is! Map) throw const ZcodeFailure('device_required');
-            return zcodeContext(Map<String, dynamic>.from(context));
+            return nativeZcodeActivityContext(
+              Map<String, dynamic>.from(context),
+              language,
+            );
           },
         ),
       );

@@ -22,11 +22,13 @@ enum ZcodeRequestContext {
         }
         return mid.lowercased()
     }
+    static func installedVersion() -> String? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.zcode.app"),
+              let bundle = Bundle(url: url), bundle.bundleIdentifier == "dev.zcode.app" else { return nil }
+        return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
     static func observe() throws -> [String: String] {
-        guard let home = getpwuid(getuid())?.pointee.pw_dir,
-              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "dev.zcode.app"),
-              let bundle = Bundle(url: appURL), bundle.bundleIdentifier == "dev.zcode.app",
-              let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+        guard let home = getpwuid(getuid())?.pointee.pw_dir, let version = installedVersion() else {
             throw Failure.unavailable
         }
         let root = URL(fileURLWithPath: String(cString: home)).appendingPathComponent(".zcode/v2", isDirectory: true)

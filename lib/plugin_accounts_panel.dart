@@ -336,6 +336,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
           'captcha',
           'verificationRequired',
           'activationRequired',
+          'device_required',
         }.contains(state)) {
       return AccountAttention.actionRequired;
     }
@@ -343,7 +344,12 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     // even though no observation was attempted.
     final incompleteObservation =
         _canClaim(a) &&
-        (a.provider == 'zcode' && state == 'discoveryIncomplete' ||
+        (a.provider == 'zcode' &&
+                {
+                  'discoveryIncomplete',
+                  'devicePending',
+                  'unavailable',
+                }.contains(state) ||
             state == 'unknown' &&
                 widget.accounts.providers[a.provider]?['checkinStatus'] ==
                     true);
@@ -358,13 +364,15 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
   Widget _actions(PluginAccount a) {
     final pending = _pending(a);
     final verify = pending && _canVerifyResult(a);
+    final state = _rewardState(a);
     final primary = _needsAuthorization(a)
         ? 'authorize'
         : verify
         ? 'verify'
-        : pending
+        : pending || state == 'devicePending'
         ? 'refresh'
-        : _usageFailure(a) != null
+        : _usageFailure(a) != null &&
+              !(a.provider == 'zcode' && state == 'claimable')
         ? 'refresh'
         : _canActivate(a)
         ? 'activate'
@@ -379,7 +387,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             enabled: !_busy && a.active,
             run: () => _run(
               () => _canClaim(a)
-                  ? widget.rewards.refresh(a.key)
+                  ? widget.rewards.refresh(a.key, includeUsage: true)
                   : widget.accounts.refresh(),
               accountKey: a.key,
             ),
@@ -557,12 +565,12 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               ),
             ),
         ],
-        if (a.provider == 'zcode' && _usageFailure(a) != null)
-          const Text('若已开通 Coding Plan，请重新授权后核对套餐权益。'),
+        if (a.provider == 'zcode')
+          if (_usageFailure(a) case final failure?) Text(failure),
 
         if (a.provider == 'zcode') ...[
           const FDivider(),
-          Text('Start Plan 活动额度观测', style: heading),
+          Text('已获活动额度（Start Plan）', style: heading),
           Text(
             rewardTime == null
                 ? '活动额度观测时间未知'
@@ -574,7 +582,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             Text(
               rewardTime == null
                   ? '尚无已核实的活动额度明细。'
-                  : '该次观测未返回有效的 Start Plan 活动额度。',
+                  : '本次余额查询未返回已生效的活动额度明细。',
             ),
           for (final bucket in buckets)
             Padding(
@@ -708,7 +716,9 @@ String? _usageFailure(PluginAccount a) {
   if (a.error == 'authorization_required' || a.usage?['signIn'] == 'expired')
     return '额度授权已失效，请重新授权后刷新。';
   if (a.error == 'usage_unavailable' || _text(a.usage?['error']) != null)
-    return '最近一次额度查询未完成，请核对授权、权益或网络。';
+    return a.provider == 'zcode'
+        ? '套餐额度查询未完成。'
+        : '最近一次额度查询未完成，请核对授权、权益或网络。';
   return null;
 }
 
@@ -755,7 +765,7 @@ String _balance(PluginAccount a) {
 }
 
 String _status(PluginAccount a) {
-  final failure = _usageFailure(a) ?? '';
+  final failure = a.provider == 'zcode' ? '' : _usageFailure(a) ?? '';
   if (_pending(a))
     return '未能确认本次领取的官方回执。同一活动不会重复提交。$failure';
   if (!a.active) return '需要重新授权。';
@@ -763,7 +773,12 @@ String _status(PluginAccount a) {
   final reward = switch (state) {
     'claimed' => '已确认领取。',
     'done' || 'observedClaimed' => '官方确认已有权益。',
+    'claimable' when a.provider == 'zcode' => '官方已向这个账号与绑定设备投放活动，领取资格由官方核验。',
     'claimable' => '当前有可领取活动。',
+    'noOffer' when a.provider == 'zcode' => '官方本次未向这个账号与绑定设备返回可领取活动。',
+    'device_required' => '无法核对这个账号的绑定设备，活动资格待核对。',
+    'devicePending' => '这台设备已有另一个账号提交了本次活动，正在等待官方回执。',
+    'deviceClaimed' => '这台设备已通过另一个账号领取过本次活动。',
     'noOffer' || 'inactive' => '当前没有可领取活动。',
     'captcha' || 'verificationRequired' => '需要完成官方验证。',
     'activationRequired' => '请先使用官方客户端完成活动要求。',
@@ -787,8 +802,7 @@ String _status(PluginAccount a) {
     final reason = claim is Map && claim['state'] == state
         ? _text(claim['message'])
         : null;
-    if (reason != null)
-      return [reward, reason, if (failure.isNotEmpty) failure].join('\n');
+    if (reason != null) return [reward, reason].join('\n');
   }
   return '$reward$failure';
 }
@@ -803,7 +817,12 @@ String _statusLabel(PluginAccount a) {
   return switch (_rewardState(a)) {
     'claimed' => '已确认领取',
     'done' || 'observedClaimed' => '官方已确认权益',
+    'claimable' when a.provider == 'zcode' => '已收到活动',
     'claimable' => '有可领取活动',
+    'noOffer' when a.provider == 'zcode' => '本账号与设备未收到活动',
+    'device_required' => '绑定设备待核对',
+    'devicePending' => '同设备领取待确认',
+    'deviceClaimed' => '本设备已领取',
     'captcha' || 'verificationRequired' => '需要官方验证',
     'activationRequired' => '需要完成官方活动要求',
     'authorization_required' => '需要重新授权',

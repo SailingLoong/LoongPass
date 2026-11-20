@@ -76,12 +76,13 @@ class PluginZcodeRewards {
     if (!_writers.add(lock)) throw const ZcodeFailure('busy');
     try {
       final session = _RewardSession(this, account);
-      await session.open();
-      if (bindingOnly) {
-        await session.save();
-      } else {
-        await _run(session, submit: submit, verify: verify);
-      }
+      await session.load();
+      await _run(
+        session,
+        submit: submit,
+        bindingOnly: bindingOnly,
+        verify: verify,
+      );
     } finally {
       _writers.remove(lock);
     }
@@ -90,9 +91,15 @@ class PluginZcodeRewards {
   Future<void> _run(
     _RewardSession s, {
     required bool submit,
+    required bool bindingOnly,
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
   }) async {
     try {
+      await s.bind();
+      if (bindingOnly) {
+        await s.save();
+        return;
+      }
       var recovered = false;
       for (final entry in s.claims) {
         final claim = entry.value, state = claim['state'];
@@ -110,8 +117,9 @@ class PluginZcodeRewards {
       }
       var balance = await s.balance();
       s.reconcile(balance);
-      final offers = _marketingOffers(await s.request(ZcodeApi.marketingPath))
-        ..sort((a, b) => b.priority.compareTo(a.priority));
+      final offers = zcodeMarketingOffers(
+        await s.request(ZcodeApi.marketingPath),
+      )..sort((a, b) => b.priority.compareTo(a.priority));
       ZcodeOffer? selected;
       ({String state, String planId})? blocked;
       for (final offer in offers) {
@@ -164,13 +172,8 @@ class PluginZcodeRewards {
             return;
           }
         }
-        final claim = s.replaceClaim(selected.id, {
-          'state': 'pending',
-          'previous': _instances(balance),
-          'submittedAt': now(),
-        });
-        s.setStatus('pending', selected.id);
-        await s.save(); // Durable intent always precedes the possible POST.
+        final claim = await s.beginClaim(selected.id, balance);
+        if (claim == null) return;
         var submitted = false;
         try {
           final request = ZcodeRequest(
@@ -235,6 +238,7 @@ class PluginZcodeRewards {
       s.setStatus(switch (e.code) {
         'authorization_required' => 'authorization_required',
         'invalid_response' => 'discoveryIncomplete',
+        'device_required' => 'device_required',
         _ => s.held ? 'throttled' : 'unavailable',
       });
       await s.save();
@@ -250,6 +254,7 @@ class _RewardSession {
   late Map<String, dynamic> reward;
   late Map<String, String> context;
   late String _persisted;
+  late Map<String, dynamic> _snapshot;
 
   void check() {
     if (!owner._current(account)) throw const ZcodeFailure('cancelled');
@@ -282,11 +287,11 @@ class _RewardSession {
     }
   }
 
-  Future<void> open() async {
-    final state = await credential();
+  Future<void> load() async {
     try {
       final data = (await owner.accounts.store.read()).data;
       _checkStored(data);
+      _snapshot = data;
       // A write can commit and lose its acknowledgement. The cached account
       // snapshot is not authoritative for a second attempt, even in one process.
       reward = _journal(data, account);
@@ -296,16 +301,27 @@ class _RewardSession {
     } catch (_) {
       throw const ZcodeFailure('storage_unavailable');
     }
+  }
+
+  Future<void> bind() async {
+    final state = await credential();
     final saved = reward['context'];
     final previous = saved is Map
         ? zcodeContext(Map<String, dynamic>.from(saved))
         : null;
     Map<String, String> supplied;
     if (owner.contextFor != null) {
-      supplied = await owner.contextFor!(
-        account,
-        await owner.accounts.currentCredential(account.key),
-      );
+      try {
+        supplied = await owner.contextFor!(
+          account,
+          await owner.accounts.currentCredential(account.key),
+        );
+      } on ZcodeFailure {
+        rethrow;
+      } catch (_) {
+        check();
+        throw const ZcodeFailure('client_context_unavailable');
+      }
       check();
     } else if (previous != null) {
       supplied = previous;
@@ -336,7 +352,7 @@ class _RewardSession {
   }
 
   Iterable<MapEntry<String, Map<String, dynamic>>> get claims sync* {
-    Iterable<MapEntry<String, Map<String, dynamic>>> visit(Map binding) sync* {
+    for (final binding in _bindings(reward)) {
       final source = binding['claims'];
       if (source is! Map) throw const ZcodeFailure('storage_unavailable');
       for (final e in source.entries) {
@@ -345,15 +361,7 @@ class _RewardSession {
         }
         yield MapEntry(e.key, e.value);
       }
-      final history = binding['bindingHistory'] ?? const [];
-      if (history is! List) throw const ZcodeFailure('storage_unavailable');
-      for (final old in history) {
-        if (old is! Map) throw const ZcodeFailure('storage_unavailable');
-        yield* visit(old);
-      }
     }
-
-    yield* visit(reward);
   }
 
   bool get held =>
@@ -425,6 +433,8 @@ class _RewardSession {
       return 'observedClaimed';
     }
     if (history.any(_unknown)) return 'pending';
+    final deviceState = _deviceClaimStatus(_snapshot, id, balance.serverTime);
+    if (deviceState != null) return deviceState;
     if (!canVerify) {
       final current = reward['claims'][id];
       final attempts = current is Map<String, dynamic> ? [current] : history;
@@ -435,6 +445,54 @@ class _RewardSession {
       }
     }
     return 'claimable';
+  }
+
+  String? _deviceClaimStatus(
+    Map<String, dynamic> data,
+    String planId,
+    int serverTime,
+  ) {
+    var pending = false;
+    for (final journal in _otherRewardSources(data, account)) {
+      for (final binding in _bindings(journal)) {
+        final device = binding['context']?['deviceMid'];
+        if (device is! String || device.toLowerCase() != context['deviceMid'])
+          continue;
+        final claim = binding['claims']?[planId];
+        if (claim is! Map) continue;
+        if (claim['state'] == 'claimed' &&
+            (claim['endsAt'] is! int || claim['endsAt'] > serverTime)) {
+          return 'deviceClaimed';
+        }
+        pending |= _unknown(claim);
+      }
+    }
+    return pending ? 'devicePending' : null;
+  }
+
+  Future<Map<String, dynamic>?> beginClaim(
+    String id,
+    ZcodeBalance balance,
+  ) async {
+    Map<String, dynamic>? intent;
+    // All accounts share one durable facts store. Check the device and write
+    // the intent in the same commit, including after a captcha or restart.
+    await save(
+      prepare: (data) {
+        final blocked = _deviceClaimStatus(data, id, balance.serverTime);
+        if (blocked != null) {
+          setStatus(blocked, id);
+          return;
+        }
+        intent = replaceClaim(id, {
+          'state': 'pending',
+          'previous': _instances(balance),
+          'submittedAt': owner.now(),
+        });
+        setStatus('pending', id);
+      },
+    );
+    return intent;
   }
 
   void setStatus(String state, [String? planId]) {
@@ -563,7 +621,7 @@ class _RewardSession {
     }
   }
 
-  Future<void> save() async {
+  Future<void> save({void Function(Map<String, dynamic>)? prepare}) async {
     check();
     try {
       await owner.accounts.edit((data) {
@@ -573,6 +631,7 @@ class _RewardSession {
         if (jsonEncode(_journal(data, account)) != _persisted) {
           throw const ZcodeFailure('cancelled');
         }
+        prepare?.call(data);
         final zcode =
             data.putIfAbsent('zcode', () => <String, dynamic>{}) as Map;
         final journals =
@@ -611,6 +670,44 @@ class _RewardSession {
         row['uid'] != account.uid ||
         row['realm'] != account.realm) {
       throw const ZcodeFailure('cancelled');
+    }
+  }
+}
+
+Iterable<Map> _bindings(Map journal) sync* {
+  yield journal;
+  final history = journal['bindingHistory'] ?? const [];
+  if (history is! List) throw const ZcodeFailure('storage_unavailable');
+  for (final old in history) {
+    if (old is! Map) throw const ZcodeFailure('storage_unavailable');
+    yield* _bindings(old);
+  }
+}
+
+Iterable<Map> _otherRewardSources(
+  Map<String, dynamic> data,
+  PluginAccount account,
+) sync* {
+  final journals = data['zcode']?['rewards'] as Map? ?? const {};
+  for (final entry in journals.entries) {
+    final identity = jsonDecode(entry.key);
+    if (identity is List &&
+        identity.length == 2 &&
+        identity.first == account.realm &&
+        identity.last != account.uid) {
+      yield entry.value as Map;
+    }
+  }
+  // Migration is lazy. An older profile (including a removed profile) can
+  // still own the only receipt for this device.
+  for (final row in (data['accounts'] as Map? ?? const {}).values) {
+    if (row is! Map ||
+        row['provider'] != 'zcode' ||
+        row['realm'] != account.realm ||
+        row['uid'] == account.uid)
+      continue;
+    for (final source in [row['reward'], row['legacy']]) {
+      if (source is Map) yield source;
     }
   }
 }
@@ -736,45 +833,4 @@ ZcodeCaptchaConfig? _verificationConfig(Map<String, dynamic> reply) {
     throw const ZcodeFailure('verification_unavailable');
   }
   return captcha['enabled'] == false ? null : ZcodeCaptchaConfig.parse(reply);
-}
-
-// Matches the pinned native plugin's marketing-only discovery, including
-// actions nested inside banners. The deprecated preview is never requested.
-List<ZcodeOffer> _marketingOffers(Map<String, dynamic> reply) {
-  final deliveries = zcodeData(reply)['deliveries'];
-  if (deliveries == null) return [];
-  if (deliveries is! List || deliveries.length > 32) {
-    throw const ZcodeFailure('invalid_response');
-  }
-  final found = <String, ZcodeOffer>{};
-  for (final delivery in deliveries) {
-    if (delivery is! Map) throw const ZcodeFailure('invalid_response');
-    void visit(Object? node, int depth) {
-      if (depth > 12) return;
-      if (node is List) {
-        for (final child in node) {
-          visit(child, depth + 1);
-        }
-      }
-      if (node is! Map) return;
-      if (node['type'] == 'claim_zcode_plan') {
-        final id = node['args'] is Map ? node['args']['plan_id'] : null;
-        if (!zcodeText(id)) throw const ZcodeFailure('invalid_response');
-        found.putIfAbsent(
-          id,
-          () => ZcodeOffer(
-            id,
-            null,
-            delivery['priority'] is int ? delivery['priority'] : 0,
-          ),
-        );
-      }
-      for (final child in node.values) {
-        visit(child, depth + 1);
-      }
-    }
-
-    visit(delivery, 0);
-  }
-  return found.values.toList();
 }

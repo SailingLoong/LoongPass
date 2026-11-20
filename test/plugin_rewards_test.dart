@@ -1271,10 +1271,15 @@ void main() {
     final zcode = _Zcode(h.accounts);
     await h.rewards.close();
     h.rewards = PluginRewards(h.accounts, zcode: zcode, timers: false);
+    final priorUsage = h.accounts.accounts.single.queriedAt!;
     await h.rewards.claimAll();
     await h.rewards.refresh(h.key);
     expect(zcode.claims, 1);
     expect(zcode.refreshes, 1);
+    expect(h.accounts.accounts.single.queriedAt, priorUsage);
+    await h.rewards.refresh(h.key, includeUsage: true);
+    expect(h.accounts.accounts.single.queriedAt!.isAfter(priorUsage), isTrue);
+    expect(zcode.refreshes, 2);
     expect(h.hooks, isEmpty);
   });
 }

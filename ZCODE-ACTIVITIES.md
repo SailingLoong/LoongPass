@@ -1,6 +1,14 @@
 # ZCode 活动接入
 
-## 本次范围
+## 当前活动核对（2026-11-20）
+
+ZCode 3.18.2 的活动卡片来自官方按账号和绑定设备返回的营销投放。LoongPass 只接受本次横幅或弹窗上明确的领取按钮。完整空列表表示本账号与设备本次未收到活动，响应不完整时显示待核对。领取资格与到账以官方回执和权益实例为准。营销查询使用已安装的客户端版本和 LoongPass 界面语言，独立使用插件时沿用固定插件的客户端版本。设备取自该账号已验证的授权绑定。[官方客户端协议](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/docs/marketing-touch-client.md) · [官方营销服务](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/marketing-touch/marketingTouchService.ts)
+
+同一地区的账号共用设备时，辅助领取在保存待确认记录的同一事务中检查该设备的同一活动。另一账号已有待确认请求或仍有效的发放回执时会显示对应状态。检查覆盖旧资料和历史设备绑定。活动余额查询成功且没有有效或待生效权益时，额度查询时间仍然有效，金额和单位只取自官方明细。
+
+已用 Magpie 的 Weekend Build 历史样本回放活动识别，并以独立账号和共享设备的模拟请求验证并发去重。样本属于 10 月 30 日的投放。[上游样本](https://github.com/magpie-community/plugins/blob/063ec11f1f93e9b25dc88bd70abec8a1ce986a67/packages/zcode/testdata/touch-1030-wk.json)
+
+## 早期版本接入范围
 
 优先接入智谱 BigModel 的官方登录、多账号保存、活动检查/领取和额度到期信息。Z.AI 尚未核实有值得维护的奖励，暂不开放授权入口。身份以 provider + 官方 user_id 隔离，不按界面语言猜地区。
 
