@@ -24,7 +24,8 @@
     "patches/zcode-account-limit.patch",
     "patches/trae-enterprise-billing.patch",
     "patches/workbuddy-renewal.patch",
-    "patches/zcode-desktop-owner.patch"
+    "patches/zcode-desktop-owner.patch",
+    "patches/zcode-empty-activity-balance.patch"
   ],
   "sources": {
     "magpie": {
@@ -316,7 +317,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "2fc6047d5be1e5b45c0682883287bf9c8f2c798cbf586bdab0d172c1792ade45",
+      "sha256": "1d42046b3fc1f4fd66db65099e27c42be684fa735b18bc042365efef5bc54f55",
       "upstreamSha256": "804410b252752a21f2b43074b90bb2443a76094b2e77faebf50c0310d9337ca3"
     },
     {
@@ -376,6 +377,7 @@
     "patches/zcode-account-limit.patch",
     "patches/trae-enterprise-billing.patch",
     "patches/workbuddy-renewal.patch",
-    "patches/zcode-desktop-owner.patch"
+    "patches/zcode-desktop-owner.patch",
+    "patches/zcode-empty-activity-balance.patch"
   ]
 }

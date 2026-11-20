@@ -86,6 +86,8 @@ abstract interface class ZcodeTransport {
 }
 
 class ZcodeHttp implements ZcodeTransport {
+  static int _marketingSequence = 0;
+
   @override
   Future<ZcodeReply> send(ZcodeRequest r, {bool Function()? isCurrent}) async {
     var writeStarted = false, finished = false;
@@ -118,7 +120,8 @@ class ZcodeHttp implements ZcodeTransport {
           'app_version': context['version']!,
         if (r.path == ZcodeApi.previewPath || r.path == ZcodeApi.configPath)
           'platform': context['platform']!,
-        if (r.path == ZcodeApi.marketingPath) 'seq': '0',
+        if (r.path == ZcodeApi.marketingPath)
+          'seq': (_marketingSequence++).toString(),
       };
       final post = r.path == ZcodeApi.initPath || r.path == ZcodeApi.claimPath;
       if (post != (r.body != null)) throw const ZcodeFailure('invalid_request');

@@ -32,25 +32,45 @@ List<ZcodeOffer> zcodeMarketingOffers(Map<String, dynamic> body) {
   if (deliveries is! List || deliveries.length > 32)
     throw const ZcodeFailure('invalid_response');
   final offers = <String, ZcodeOffer>{};
+  var incomplete = false;
   for (final delivery in deliveries) {
-    if (delivery is! Map) throw const ZcodeFailure('invalid_response');
-    final position = delivery['resource_position'];
-    if (!{'banner', 'popup'}.contains(position)) continue;
-    final container = delivery[position];
-    if (container is! Map || container['buttons'] is! List) continue;
-    for (final button in (container['buttons'] as List).take(4)) {
+    final position = delivery is Map ? delivery['resource_position'] : null;
+    final surface = position == 'banner' || position == 'popup'
+        ? delivery[position]
+        : null;
+    final content = surface is Map ? surface['content'] : null;
+    final buttons = surface is Map
+        ? surface['buttons'] ?? (content is Map ? content['buttons'] : null)
+        : null;
+    if (buttons is! List) {
+      incomplete = true;
+      continue;
+    }
+    // Only a button on the offered surface can initiate a claim. Media
+    // metadata and the dialog displayed after success are presentation data.
+    for (final button in buttons) {
       final action = button is Map ? button['action'] : null;
-      if (action is! Map || action['type'] != 'claim_zcode_plan') continue;
+      if (action is! Map || !zcodeText(action['type'])) {
+        incomplete = true;
+        continue;
+      }
+      if (action['type'] != 'claim_zcode_plan') continue;
       final args = action['args'];
-      if (args is! Map || !zcodeText(args['plan_id']))
-        throw const ZcodeFailure('invalid_response');
-      offers[args['plan_id']] = ZcodeOffer(
-        args['plan_id'],
-        null,
-        delivery['priority'] is int ? delivery['priority'] : 0,
-      );
+      if (args is! Map || !zcodeText(args['plan_id'])) {
+        incomplete = true;
+        continue;
+      }
+      final id = args['plan_id'] as String;
+      final priority = delivery['priority'] is int
+          ? delivery['priority'] as int
+          : 0;
+      if (!offers.containsKey(id) || offers[id]!.priority < priority) {
+        offers[id] = ZcodeOffer(id, null, priority);
+      }
     }
   }
+  if (offers.isEmpty && incomplete)
+    throw const ZcodeFailure('invalid_response');
   return offers.values.toList();
 }
 

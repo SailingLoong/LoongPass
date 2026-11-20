@@ -33,7 +33,7 @@ class _ObservedRewards extends PluginRewards {
   final response = Completer<void>();
 
   @override
-  Future<void> refresh(String key) {
+  Future<void> refresh(String key, {bool includeUsage = false}) {
     reads.add(key);
     return response.future;
   }

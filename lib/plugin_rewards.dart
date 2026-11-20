@@ -445,11 +445,14 @@ class PluginRewards {
     return attempt;
   }
 
-  Future<void> refresh(String key) async {
+  Future<void> refresh(String key, {bool includeUsage = false}) async {
     final account = _account(key);
     return _exclusive(account, () async {
       if (account.provider == 'zcode') {
-        await zcode.refresh(key);
+        await Future.wait([
+          zcode.refresh(key),
+          if (includeUsage) accounts.refresh(),
+        ]);
       } else {
         await _prepare(account, submit: false);
         _check(account);
