@@ -45,26 +45,32 @@ class PluginModelList extends StatelessWidget {
           final muted = context.theme.typography.body.xs.copyWith(
             color: context.theme.colors.mutedForeground,
           );
-          final name = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (!model.official)
-                Text(model.name, style: context.theme.typography.body.md)
-              else
-                FButton(
-                  variant: FButtonVariant.ghost,
-                  size: FButtonSizeVariant.sm,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: () => onSelect(model.id),
-                  child: Flexible(child: Text(model.name, softWrap: true)),
-                ),
-              Text(
-                order == null
-                    ? '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}'
-                    : '${model.official ? '' : '渠道名称 · '}${model.availableAccounts} 个可用账号',
-                style: muted,
+          final name = FButton(
+            key: ValueKey('open-model-${model.id}'),
+            variant: FButtonVariant.ghost,
+            size: FButtonSizeVariant.sm,
+            mainAxisAlignment: MainAxisAlignment.start,
+            onPress: () => onSelect(model.id),
+            child: Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    model.name,
+                    softWrap: true,
+                    style: context.theme.typography.body.md.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    order == null
+                        ? '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}'
+                        : '${model.official ? '' : '渠道名称 · '}${model.availableAccounts} 个可用账号',
+                    style: muted,
+                  ),
+                ],
               ),
-            ],
+            ),
           );
           final move = Row(
             mainAxisSize: MainAxisSize.min,

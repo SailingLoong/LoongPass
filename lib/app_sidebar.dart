@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'package:material_ui/material_ui.dart'
-    show Drawer, Scaffold, ScaffoldState;
+    show Drawer, MaterialPage, Scaffold, ScaffoldState;
 
 import 'desktop_theme.dart';
 import 'workspace_toolbar.dart';
@@ -38,7 +38,6 @@ class AppWorkspace extends StatefulWidget {
     this.sections = const {},
     this.footerBuilder,
     this.modelIds = const [],
-    this.modelSearchTerms = const {},
     this.selectedModelId,
     this.onSelectModel,
   });
@@ -49,7 +48,6 @@ class AppWorkspace extends StatefulWidget {
   final Map<WorkspaceSection, Widget> sections;
   final Widget Function(BuildContext, bool compact)? footerBuilder;
   final List<String> modelIds;
-  final Map<String, String> modelSearchTerms;
   final String? selectedModelId;
   final ValueChanged<String?>? onSelectModel;
   @override
@@ -66,11 +64,15 @@ class AppWorkspaceState extends State<AppWorkspace> {
   late final UiPreferences _preferences = widget.preferences ?? UiPreferences();
 
   final _shell = GlobalKey<ScaffoldState>();
+  final _contentNavigator = GlobalKey<NavigatorState>();
   bool? _compactOverride;
+  void _returnToSection() =>
+      _contentNavigator.currentState?.popUntil((route) => route.isFirst);
 
   void selectApp(ManagedApp app) {
     if (widget.enabledApps != null && !widget.enabledApps!.contains(app))
       return;
+    _returnToSection();
     _shell.currentState?.closeDrawer();
     _preferences.setAppVisible(app, true);
     _preferences.setAppsExpanded(true);
@@ -86,6 +88,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
       _preferences.setAppsExpanded(true);
     if (section == WorkspaceSection.models)
       _preferences.setModelsExpanded(true);
+    _returnToSection();
     _shell.currentState?.closeDrawer();
     setState(() {
       if (section == WorkspaceSection.accounts) _all = true;
@@ -103,7 +106,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
     compact: compact,
     active: _section == WorkspaceSection.models,
     modelIds: widget.modelIds,
-    searchTerms: widget.modelSearchTerms,
     selectedModelId: widget.selectedModelId,
     onOpen: () => selectModel(null),
     onSelectModel: selectModel,
@@ -165,10 +167,10 @@ class AppWorkspaceState extends State<AppWorkspace> {
         builder: (context, constraints) {
           final textScale = (MediaQuery.textScalerOf(context).scale(14) / 14)
               .clamp(1.0, double.infinity);
-          final narrow = constraints.maxWidth < 756;
+          final narrow = constraints.maxWidth < 620;
           final compact =
               !narrow &&
-              (_compactOverride ?? (constraints.maxWidth < 900 * textScale));
+              (_compactOverride ?? (constraints.maxWidth < 620 * textScale));
           final colors = context.theme.colors;
           final sections = {
             WorkspaceSection.accounts: const Center(child: Text('选择平台以管理账号。')),
@@ -240,19 +242,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
                       ],
                     ),
                   ),
-                  if (!compact && constraints.maxHeight >= 500)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 12, 10),
-                        child: Text(
-                          '工作区',
-                          style: context.theme.typography.body.xs.copyWith(
-                            color: colors.mutedForeground,
-                          ),
-                        ),
-                      ),
-                    ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -315,14 +304,6 @@ class AppWorkspaceState extends State<AppWorkspace> {
                   child: Column(
                     children: [
                       WorkspaceToolbar(
-                        section: _section.label,
-                        leaf: platformPage
-                            ? _selected.label
-                            : _section == WorkspaceSection.models
-                            ? (widget.selectedModelId == 'auto'
-                                  ? 'LoongPass Auto'
-                                  : widget.selectedModelId)
-                            : null,
                         narrow: narrow,
                         action: narrow
                             ? widget.footerBuilder?.call(context, true)
@@ -335,7 +316,26 @@ class AppWorkspaceState extends State<AppWorkspace> {
                           }
                         },
                       ),
-                      Expanded(child: pages),
+                      Expanded(
+                        child: NavigatorPopHandler<void>(
+                          onPopWithResult: (_) =>
+                              _contentNavigator.currentState?.maybePop(),
+                          child: Semantics(
+                            container: true,
+                            explicitChildNodes: true,
+                            child: Navigator(
+                              key: _contentNavigator,
+                              pages: [
+                                MaterialPage<void>(
+                                  key: const ValueKey('workspace-root'),
+                                  child: pages,
+                                ),
+                              ],
+                              onDidRemovePage: (_) {},
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),

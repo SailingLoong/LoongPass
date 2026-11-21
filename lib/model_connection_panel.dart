@@ -30,7 +30,6 @@ Future<void> showModelConnectionSheet(
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            Text('模型连接', style: context.theme.typography.body.xs),
             Row(
               children: [
                 Expanded(
@@ -58,26 +57,39 @@ Future<void> showModelConnectionSheet(
             ),
             if (vm.service.error != null) const Text('服务启动未完成，请检查本机端口。'),
             const SizedBox(height: 24),
-            Text('开放给 Magpie 的账号', style: context.theme.typography.body.lg),
-            if (vm.service.grants.isEmpty) const Text('暂无可开放的账号。'),
-            for (final grant in vm.service.grants)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: FSwitch(
-                  key: ValueKey(grant.account.key),
-                  value: grant.enabled,
-                  enabled: !vm.busy && !grant.authorizationRequired,
-                  leadingLabel: true,
-                  label: Text(grant.account.label),
-                  description: Text(
-                    '${modelSourceName(grant.account.provider)}${grant.authorizationRequired ? ' · 需要授权' : ''}',
-                  ),
-                  onChange: (value) => vm.authorize(grant.account.key, value),
-                ),
-              ),
-            if (vm.error != null) Text(vm.error!),
-            const SizedBox(height: 16),
             ModelConnectionPanel(connection: connection, enabled: !vm.busy),
+            const SizedBox(height: 16),
+            FAccordion(
+              children: [
+                FAccordionItem(
+                  title: Text(
+                    '开放账号（${vm.service.grants.where((g) => g.enabled).length} / ${vm.service.grants.length}）',
+                  ),
+                  child: Column(
+                    children: [
+                      if (vm.service.grants.isEmpty) const Text('暂无可开放的账号。'),
+                      for (final grant in vm.service.grants)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: FSwitch(
+                            key: ValueKey(grant.account.key),
+                            value: grant.enabled,
+                            enabled: !vm.busy && !grant.authorizationRequired,
+                            leadingLabel: true,
+                            label: Text(grant.account.label),
+                            description: Text(
+                              '${modelSourceName(grant.account.provider)}${grant.authorizationRequired ? ' · 需要授权' : ''}',
+                            ),
+                            onChange: (value) =>
+                                vm.authorize(grant.account.key, value),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (vm.error != null) Text(vm.error!),
           ],
         ),
       ),

@@ -124,11 +124,11 @@ void main() {
         ),
       );
       final cnAccount = find.ancestor(
-        of: find.text('Qoder CN · 待核验'),
+        of: find.text('Qoder CN'),
         matching: find.byType(FItem),
       );
       final globalAccount = find.ancestor(
-        of: find.text('Qoder · 待核验'),
+        of: find.text('Qoder'),
         matching: find.byType(FItem),
       );
       expect(cnAccount, findsOneWidget);
@@ -136,6 +136,8 @@ void main() {
       await tester.tap(
         find.descendant(of: cnAccount, matching: find.text('same')),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('detail-quota')));
       await tester.pumpAndSettle();
       expect(find.text('CN detail'), findsOneWidget);
       expect(find.text('Global detail'), findsNothing);
@@ -148,17 +150,19 @@ void main() {
       registry.remove(ManagedApp.qoderCn, source);
       await tester.pumpAndSettle();
       expect(find.text('账号已移除'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byKey(const Key('account-back')));
       await tester.pumpAndSettle();
       expect(find.text('总览'), findsOneWidget);
       await tester.tap(
         find.descendant(of: globalAccount, matching: find.text('same')),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('detail-quota')));
+      await tester.pumpAndSettle();
       expect(find.text('Global detail'), findsOneWidget);
       expect(find.text('Updated CN detail'), findsNothing);
       expect(navigations, 0);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byKey(const Key('account-back')));
       await tester.pumpAndSettle();
     },
   );

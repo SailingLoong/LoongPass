@@ -244,8 +244,26 @@ void main() {
       final row = find.byKey(ValueKey('model-${candidate.id}'));
       expect(row, findsOneWidget);
       await tester.ensureVisible(find.text('渠道图像模型'));
+      final beforeBrowsing = Map.of(app.models.routingSettings);
       await tester.tap(find.text('渠道图像模型'));
-      expect(selected, isEmpty);
+      await tester.pumpAndSettle();
+      expect(selected, [candidate.id]);
+      expect(find.text('账号来源'), findsOneWidget);
+      expect(find.text(account.label), findsOneWidget);
+      expect(
+        find.byKey(ValueKey('model-enabled-${candidate.id}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey('model-published-${candidate.id}')),
+        findsNothing,
+      );
+      expect(app.models.routingSettings, beforeBrowsing);
+      expect(app.accounts.refreshes, 0);
+      await tester.tap(find.text('返回'));
+      await tester.pumpAndSettle();
+      expect(selected, [candidate.id, 'auto']);
+      expect(row, findsOneWidget);
       final up = find.bySemanticsLabel('上移 渠道图像模型');
       await tester.ensureVisible(up);
       await tester.tap(up);
@@ -670,7 +688,8 @@ void main() {
         home: Scaffold(body: PluginModelServicesPage(application: app)),
       ),
     );
-    expect(find.text('模型目录'), findsOneWidget);
+    expect(find.text('模型连接'), findsOneWidget);
+    expect(find.text('模型名称'), findsOneWidget);
     expect(
       tester.getSize(find.text('显示全部模型')).height,
       lessThanOrEqualTo(
@@ -712,17 +731,24 @@ void main() {
         home: Scaffold(body: PluginModelServicesPage(application: app)),
       ),
     );
-    expect(find.text('开放给 Magpie 的账号'), findsNothing);
+    final grants = find.text('开放账号（1 / 1）');
+    expect(grants, findsNothing);
     await tester.tap(find.text('连接设置'));
     await tester.pumpAndSettle();
-    expect(find.text('开放给 Magpie 的账号'), findsOneWidget);
-    expect(find.text('Demo account'), findsOneWidget);
+    expect(grants, findsOneWidget);
+    expect(find.text('Demo account').hitTestable(), findsNothing);
+    await tester.ensureVisible(grants);
+    await tester.tap(grants);
+    await tester.pumpAndSettle();
+    final account = find.text('Demo account');
+    await tester.ensureVisible(account);
+    expect(account.hitTestable(), findsOneWidget);
     expect(service.changes, 0);
-    await tester.tap(find.text('Demo account'));
+    await tester.tap(account);
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('关闭连接设置'));
     await tester.pumpAndSettle();
-    expect(find.text('开放给 Magpie 的账号'), findsNothing);
+    expect(grants, findsNothing);
     expect(service.changes, 1);
   });
 }

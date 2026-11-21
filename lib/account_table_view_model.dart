@@ -6,7 +6,6 @@ enum AccountSort { name, expiry, claim }
 
 enum AccountFilter {
   all('全部'),
-  favorites('收藏'),
   expiring('7 天内到期'),
   actionRequired('需操作');
 
@@ -20,21 +19,17 @@ class AccountTableViewModel {
   String search = '';
   String? platform;
   AccountSort? sort;
-  bool descending = false;
+  bool descending = false, favoritesOnly = false;
 
   void clear() {
     page = 0;
     search = '';
     platform = null;
     filter = AccountFilter.all;
+    favoritesOnly = false;
   }
 
-  bool _matches(
-    AccountTableEntry e,
-    bool Function(AccountTableEntry) favorite,
-    DateTime now,
-  ) => switch (filter) {
-    AccountFilter.favorites => favorite(e),
+  bool _matches(AccountTableEntry e, DateTime now) => switch (filter) {
     AccountFilter.expiring =>
       e.nextExpiry != null &&
           e.nextExpiry!.isAfter(now) &&
@@ -43,19 +38,6 @@ class AccountTableViewModel {
       e.attention == AccountAttention.actionRequired,
     AccountFilter.all => true,
   };
-
-  void sortBy(AccountSort column) {
-    if (sort != column) {
-      sort = column;
-      descending = false;
-    } else if (!descending) {
-      descending = true;
-    } else {
-      sort = null;
-      descending = false;
-    }
-    page = 0;
-  }
 
   int _compareDates(DateTime? a, DateTime? b) {
     if (a == null) return b == null ? 0 : 1;
@@ -76,7 +58,8 @@ class AccountTableViewModel {
                   .toLowerCase()
                   .contains(query) &&
               (platform == null || platform == e.appId) &&
-              _matches(e, favorite, now),
+              (!favoritesOnly || favorite(e)) &&
+              _matches(e, now),
         )
         .toList();
     final positions = {

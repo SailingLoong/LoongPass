@@ -10,6 +10,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../lib/main.dart';
 import '../lib/ui_preferences.dart';
+import '../test/desktop_design_scenarios.dart';
 import '../test/desktop_test_app.dart';
 import '../test/model_workspace_fixture.dart';
 
@@ -30,6 +31,7 @@ void main() {
     (const Size(1024, 480), 1.0),
     (const Size(800, 628), 1.0),
     (const Size(480, 800), 2.0),
+    (const Size(430, 750), 2.0),
   ]) {
     for (final brightness in Brightness.values) {
       testDesktopWidgets(
@@ -84,45 +86,15 @@ void main() {
             ).writeAsBytes(bytes.buffer.asUint8List());
             image.dispose();
           });
-          await tester.tap(find.byKey(const Key('nav-accounts')));
-          await tester.pumpAndSettle();
+          Future<void> frame() async {
+            await tester.pumpAndSettle();
+          }
+
+          await tapWorkspaceDestination(tester, 'accounts', frame);
           await capture('account-navigation');
-          await tester.tap(find.byKey(const Key('nav-models')));
-          await tester.pumpAndSettle();
+          await tapWorkspaceDestination(tester, 'models', frame);
           await capture('model-navigation');
-          await tester.enterText(
-            find.byKey(const Key('model-nav-search')),
-            '1017',
-          );
-          await tester.pumpAndSettle();
-          await capture('sidebar-filter');
-          await tester.enterText(find.byKey(const Key('model-nav-search')), '');
-          await tester.pumpAndSettle();
-          await tester.tap(find.byKey(const Key('model-nav-auto')));
-          await tester.pumpAndSettle();
-          await capture('auto');
-          await tester.enterText(
-            find.byKey(const Key('model-search')),
-            'minimax',
-          );
-          await tester.pumpAndSettle();
-          await capture('filtered-models');
-          await tester.enterText(find.byKey(const Key('model-search')), '');
-          await tester.pumpAndSettle();
-          await tester.tap(find.byKey(const Key('nav-models')));
-          await tester.pumpAndSettle();
-          await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
-          await tester.pumpAndSettle();
-          await capture('accounts');
-          expect(tester.takeException(), isNull);
-          await tester.ensureVisible(find.text('日常账号 14').hitTestable());
-          await tester.tap(find.text('日常账号 14').hitTestable());
-          await tester.pumpAndSettle();
-          await capture('account-link');
-          expect(
-            find.byKey(const Key('account-qoderCn/saved-13')).hitTestable(),
-            findsOneWidget,
-          );
+          await inspectModelReturn(tester, frame, capture);
           expect(app.accounts.refreshes, 0);
           expect(tester.takeException(), isNull);
         },

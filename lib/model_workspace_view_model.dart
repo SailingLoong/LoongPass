@@ -29,7 +29,8 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
     List<PluginModel> visible,
     bool noSources,
   })
-  snapshot(String? selectedId) {
+  snapshot(String? selectedId, {String? queryOverride}) {
+    final query = queryOverride ?? this.query;
     final catalog = service.catalog;
     final official = catalog.where((model) => model.official);
     final candidates = catalog.where((model) => model.enabled).toList();
@@ -40,7 +41,7 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
             (model) => showAll || model.published || query.isNotEmpty,
           );
     return (
-      selected: official.where((model) => model.id == selectedId).firstOrNull,
+      selected: catalog.where((model) => model.id == selectedId).firstOrNull,
       candidates: candidates,
       excluded: selectedId == 'auto'
           ? catalog.where((model) => !model.enabled && matches(model)).toList()

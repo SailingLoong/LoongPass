@@ -14,7 +14,7 @@ import '../lib/ui_preferences.dart';
 
 void main() {
   testDesktopWidgets(
-    'attention deep link clears previous filters and opens the right-side detail sheet',
+    'attention deep link clears previous filters and opens a full page at the chosen expiry batch',
     (tester) async {
       final key = GlobalKey<CompactAccountsTableState>();
       final expiry = DateTime.now().add(const Duration(days: 2));
@@ -53,25 +53,25 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('expiry-qoder/actionRequired')));
       await tester.pumpAndSettle();
-      final sheet = find.byKey(const Key('account-detail-sheet'));
+      final detail = find.byKey(const Key('account-detail-page'));
       expect(
-        tester.getRect(sheet).right,
-        tester.getSize(find.byType(Scaffold).first).width,
+        tester.getSize(detail).width,
+        tester.view.physicalSize.width / tester.view.devicePixelRatio,
       );
-      expect(tester.getSize(sheet).width, 462);
-      final decoration =
-          tester.widget<Container>(sheet).decoration! as BoxDecoration;
-      expect(decoration.color!.a, 1);
-      expect(tester.getRect(sheet).left, greaterThan(0));
       expect(
-        find.descendant(of: sheet, matching: find.text('1.25 tokens')),
+        find.descendant(of: detail, matching: find.text('1.25 tokens')),
         findsOneWidget,
       );
+      await tester.tap(find.byKey(const Key('account-back')));
+      await tester.pumpAndSettle();
       expect(
-        find.descendant(of: sheet, matching: find.text('0 credits')),
-        findsOneWidget,
+        find.byKey(const Key('account-qoder/awaitingVerification')),
+        findsNothing,
       );
-      await tester.tap(find.text('账号信息'));
+      await tester.tap(find.byKey(const Key('account-qoder/actionRequired')));
+      await tester.pumpAndSettle();
+      expect(find.text('0 credits'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('detail-quota')));
       await tester.pumpAndSettle();
       expect(find.text('官方身份明细'), findsOneWidget);
     },
@@ -122,15 +122,14 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (final label in ['即将到期额度', '到期时间', '最近领取时间', '余额']) {
-        expect(find.text(label).first.hitTestable(), findsOneWidget);
-      }
+      expect(find.text('可用余额').hitTestable(), findsOneWidget);
+      expect(find.text('3,899.96 credits').hitTestable(), findsOneWidget);
       expect(find.byKey(const Key('account-table-scroll')), findsNothing);
+      await tester.tap(find.byKey(const Key('account-one')));
       await tester.pumpAndSettle();
-      expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
-      expect(find.text('18:45').hitTestable(), findsOneWidget);
-      expect(find.text('09:30').hitTestable(), findsOneWidget);
-      expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
+      expect(find.textContaining('18:45'), findsOneWidget);
+      expect(find.textContaining('09:30'), findsOneWidget);
+      expect(find.text('99.96 积分'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -172,32 +171,38 @@ void main() {
         ),
       );
       List<String> order() => tester
-          .widget<Table>(find.byType(Table))
-          .children
-          .skip(1)
-          .map((row) => (row.key! as ValueKey<String>).value)
+          .widgetList<Container>(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is Container &&
+                  w.key is ValueKey<String> &&
+                  (w.key as ValueKey<String>).value.startsWith('row-'),
+            ),
+          )
+          .map((w) => (w.key! as ValueKey<String>).value)
           .toList();
-      Future<void> sort(String name) async {
-        await tester.tap(find.byKey(ValueKey('account-sort-$name')));
+      Future<void> sort(String label) async {
+        await tester.tap(find.byKey(const Key('account-sort')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label));
         await tester.pumpAndSettle();
       }
 
-      expect(find.byKey(const Key('account-sort')), findsNothing);
-      await sort('name');
+      await sort('名称升序');
       expect(order(), ['row-Alpha', 'row-Beta', 'row-Gamma']);
-      await sort('name');
+      await sort('名称降序');
       expect(order(), ['row-Gamma', 'row-Beta', 'row-Alpha']);
-      await sort('name');
+      await sort('默认排序');
       expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
-      await sort('expiry');
+      await sort('最近到期优先');
       expect(order(), ['row-Alpha', 'row-Gamma', 'row-Beta']);
-      await sort('expiry');
+      await sort('最晚到期优先');
       expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
-      await sort('claim');
+      await sort('最早领取优先');
       expect(order(), ['row-Gamma', 'row-Alpha', 'row-Beta']);
-      await sort('claim');
+      await sort('最近领取优先');
       expect(order(), ['row-Alpha', 'row-Gamma', 'row-Beta']);
-      expect(find.text('3899.96 credits'), findsNWidgets(3));
+      expect(find.text('3,899.96 credits'), findsNWidgets(3));
       expect(find.text('99.96 credits'), findsNWidgets(2));
       expect(operations, 0);
       expect(tester.takeException(), isNull);
@@ -244,10 +249,8 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
-          final heading = tester.widget<Text>(find.text('即将到期额度'));
-          expect(heading.maxLines, 1);
-          expect(heading.softWrap, isFalse);
-          expect(find.text('3899.96 credits'), findsOneWidget);
+          expect(find.text('3,899.96 credits').hitTestable(), findsOneWidget);
+          expect(find.text('额度查询未完成').hitTestable(), findsOneWidget);
           expect(
             tester.takeException(),
             isNull,
@@ -287,10 +290,10 @@ void main() {
   }
 
   testDesktopWidgets(
-    'balance and expiry cells retain visible hover and keyboard focus',
+    'account and expiry buttons retain visible hover and keyboard focus',
     (tester) async {
       await expiryRows(tester, Brightness.light);
-      final balance = find.byKey(const Key('balance-near'));
+      final balance = find.byKey(const Key('account-near'));
       expect(balance, findsOneWidget);
       expect(
         tester.widget(find.byKey(const Key('expiry-near'))),
@@ -333,21 +336,21 @@ void main() {
     (tester) async {
       for (final brightness in Brightness.values) {
         await expiryRows(tester, brightness);
-        Color? color(String id) => tester
-            .widget<Text>(
-              find
-                  .descendant(
-                    of: find.byKey(ValueKey('expiry-$id')),
-                    matching: find.byType(Text),
-                  )
-                  .first,
-            )
-            .style
-            ?.color;
-        final colors = loongPassDesignTheme(brightness).colors;
-        expect(color('near'), colors.foreground);
-        expect(find.text('7 天内到期'), findsNWidgets(2));
-        expect(color('later'), colors.foreground);
+        for (final id in ['near', 'later']) {
+          final expiry = find.byKey(ValueKey('expiry-$id'));
+          expect(expiry.hitTestable(), findsOneWidget);
+          expect(
+            find.descendant(of: expiry, matching: find.text('1,000 积分')),
+            findsOneWidget,
+          );
+        }
+        await tester.tap(find.byKey(const Key('account-filter')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('7 天内到期'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('expiry-near')), findsOneWidget);
+        expect(find.byKey(const Key('expiry-later')), findsNothing);
+        await tester.pumpWidget(const SizedBox());
         expect(tester.takeException(), isNull);
       }
     },
@@ -378,22 +381,12 @@ void main() {
         ),
       );
       await tester.pumpWidget(page());
-      await tester.tap(findTooltip('设为常用'));
+      await tester.tap(find.bySemanticsLabel('收藏账号'));
       await tester.pumpAndSettle();
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(page());
-      expect(
-        tester
-            .widget<FButton>(
-              find.descendant(
-                of: findTooltip('取消常用'),
-                matching: find.byType(FButton),
-              ),
-            )
-            .selected,
-        isTrue,
-      );
-      await tester.tap(find.text('收藏'));
+      expect(find.bySemanticsLabel('取消收藏'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('account-favorites')));
       await tester.pumpAndSettle();
       expect(find.text('Saved account'), findsOneWidget);
       await tester.enterText(
@@ -437,7 +430,9 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('7 天内到期').first);
+      await tester.tap(find.byKey(const Key('account-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('7 天内到期'));
       await tester.pumpAndSettle();
       expect(find.text('Mixed batches'), findsOneWidget);
       expect(find.textContaining('200 积分'), findsOneWidget);
@@ -476,13 +471,17 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('account-one')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('detail-quota')));
+      await tester.pumpAndSettle();
       rows.value = [row('查询失败，请重试')];
       await tester.pumpAndSettle();
       expect(find.text('查询失败，请重试'), findsOneWidget);
       expect(find.text('更新后的明细'), findsOneWidget);
       expect(find.text('原明细'), findsNothing);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byKey(const Key('account-back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('account-back')));
       await tester.pumpAndSettle();
     },
   );
@@ -532,6 +531,33 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testDesktopWidgets('Escape restores focus to the filtered source account', (
+    tester,
+  ) async {
+    await mount(tester);
+    const entry = Key('account-2');
+    await tester.enterText(find.byKey(const Key('account-search')), 'user2@');
+    await tester.pumpAndSettle();
+    bool atEntry() =>
+        FocusManager.instance.primaryFocus?.context
+            ?.findAncestorWidgetOfExactType<FButton>()
+            ?.key ==
+        entry;
+    for (var i = 0; i < 20 && !atEntry(); i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+    }
+    expect(atEntry(), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.byKey(entry).hitTestable(), findsOneWidget);
+    expect(find.text('user2@'), findsOneWidget);
+    expect(atEntry(), isTrue);
+  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+
   testDesktopWidgets(
     'keyboard users can reveal and activate the switch without a mouse',
     (tester) async {
@@ -575,8 +601,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('account-table-scroll')), findsNothing);
-      expect(find.text('余额'), findsNWidgets(5));
-      expect(find.text('最近领取时间'), findsWidgets);
+      expect(find.text('可用余额'), findsOneWidget);
+      expect(find.text('5 积分'), findsOneWidget);
+      expect(find.text('最近领取时间'), findsNothing);
     },
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );

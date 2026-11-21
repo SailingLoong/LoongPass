@@ -15,12 +15,12 @@ class WorkspaceActivityPage extends StatefulWidget {
 }
 
 enum _RewardView {
-  accounts('签到账号', '支持辅助签到的账号', '暂无支持辅助签到的已保存账号。'),
-  receipts('最近成功领取', '每个账号最近一次成功回执', '暂无已确认的领取记录。'),
-  attention('待处理', '需要留意的账号', '暂无待处理的领取记录。');
+  accounts('签到账号', '暂无支持辅助签到的已保存账号。'),
+  receipts('最近领取', '暂无已确认的领取记录。'),
+  attention('待处理', '暂无待处理的领取记录。');
 
-  const _RewardView(this.label, this.title, this.empty);
-  final String label, title, empty;
+  const _RewardView(this.label, this.empty);
+  final String label, empty;
 }
 
 class WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
@@ -31,9 +31,21 @@ class WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
     listenable: widget.registry,
     builder: (context, _) {
       final accounts = widget.registry.accounts;
+      final records = {
+        for (final view in _RewardView.values)
+          view: [
+            for (final account in accounts)
+              if (account.entry.hasRewards &&
+                  switch (view) {
+                    _RewardView.accounts => true,
+                    _RewardView.receipts => account.entry.receipt != null,
+                    _RewardView.attention => account.entry.needsAttention,
+                  })
+                account,
+          ],
+      };
       return WorkspacePage(
         title: '辅助签到',
-        subtitle: '只在你点击后逐个核对账号。未确认的领取不会重复提交。',
         action: widget.rewards == null
             ? null
             : RewardBatchAction(rewards: widget.rewards!),
@@ -53,9 +65,9 @@ class WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
               children: [
                 for (final view in _RewardView.values)
                   FTabEntry(
-                    label: Text(view.label),
+                    label: Text('${view.label} ${records[view]!.length}'),
                     child: _RewardRecords(
-                      accounts: accounts,
+                      records: records[view]!,
                       registry: widget.registry,
                       view: view,
                     ),
@@ -70,24 +82,15 @@ class WorkspaceActivityPageState extends State<WorkspaceActivityPage> {
 
 class _RewardRecords extends StatelessWidget {
   const _RewardRecords({
-    required this.accounts,
+    required this.records,
     required this.registry,
     required this.view,
   });
-  final List<WorkspaceAccount> accounts;
+  final List<WorkspaceAccount> records;
   final AccountWorkspaceRegistry registry;
   final _RewardView view;
   @override
   Widget build(BuildContext context) {
-    final records = accounts.where((account) {
-      final entry = account.entry;
-      return entry.hasRewards &&
-          switch (view) {
-            _RewardView.accounts => true,
-            _RewardView.receipts => entry.receipt != null,
-            _RewardView.attention => entry.attention != AccountAttention.none,
-          };
-    }).toList();
     if (view == _RewardView.receipts) {
       records.sort((a, b) {
         final x = a.entry.receipt!.confirmedAt,
@@ -100,7 +103,6 @@ class _RewardRecords extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _SectionTitle(view.title, records.length),
         if (records.isEmpty)
           _AccountEmpty(
             title: view.empty,
@@ -118,6 +120,7 @@ class _RewardRecords extends StatelessWidget {
                 ? account.entry.receipt!.display
                 : null,
             showResolution: view != _RewardView.receipts,
+            receipt: view == _RewardView.receipts,
           ),
       ],
     );

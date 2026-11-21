@@ -325,7 +325,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-activity')));
       await tester.pumpAndSettle();
-      expect(find.text('签到账号'), findsOneWidget);
+      expect(find.text('签到账号 2'), findsOneWidget);
       expect(find.text('Demo Qoder CN'), findsOneWidget);
       expect(find.text('Demo Qoder'), findsOneWidget);
       await tester.tap(find.byKey(const Key('nav-overview')));

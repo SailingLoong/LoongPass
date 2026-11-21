@@ -312,3 +312,40 @@ class SidebarNavigationButton extends StatelessWidget {
     );
   }
 }
+
+/// The label navigates to the section; only the disclosure toggles its children.
+class SidebarDisclosure extends StatelessWidget {
+  const SidebarDisclosure({
+    super.key,
+    required this.navigation,
+    required this.expanded,
+    required this.label,
+    required this.onToggle,
+    required this.showToggle,
+  });
+  final Widget navigation;
+  final String label;
+  final bool expanded, showToggle;
+  final VoidCallback onToggle;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(child: navigation),
+      if (showToggle)
+        Semantics(
+          expanded: expanded,
+          child: FButton.icon(
+            key: ValueKey('disclose-$label'),
+            size: FButtonSizeVariant.sm,
+            variant: FButtonVariant.ghost,
+            semanticsLabel: '${expanded ? '收起' : '展开'}$label',
+            onPress: onToggle,
+            child: Icon(
+              expanded ? FLucideIcons.chevronDown : FLucideIcons.chevronRight,
+              size: 14,
+            ),
+          ),
+        ),
+    ],
+  );
+}

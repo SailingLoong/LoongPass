@@ -181,6 +181,18 @@ class _Rewards implements PluginRewards {
 }
 
 void main() {
+  Future<void> openDetailSection(WidgetTester tester, String section) async {
+    final link = find.byKey(ValueKey('detail-$section'));
+    await tester.ensureVisible(link);
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> detailBack(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('account-back')));
+    await tester.pumpAndSettle();
+  }
+
   const channel = MethodChannel('com.sailingloong.loongpass/files');
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -308,7 +320,10 @@ void main() {
           registry.entries.singleWhere((entry) => entry.label == label);
       expect(entry('observation').statusLabel, '活动查询未完成');
       expect(entry('submitted').statusLabel, '领取回执未确认');
-      expect(entry('missing-device').attention, AccountAttention.actionRequired);
+      expect(
+        entry('missing-device').attention,
+        AccountAttention.actionRequired,
+      );
       for (final label in [
         'submitted',
         'observation',
@@ -339,7 +354,7 @@ void main() {
       );
       expect(entry('loomy-pending').resolution, isNull);
       expect(rewards.refreshes, 0);
-      await tester.tap(find.text('待处理'));
+      await tester.tap(find.textContaining(RegExp(r'^待处理 [1-9]\d*$')));
       await tester.pumpAndSettle();
       expect(find.text('observation'), findsOneWidget);
       expect(find.text('discovery'), findsOneWidget);
@@ -365,7 +380,10 @@ void main() {
         }
         await tester.sendKeyEvent(LogicalKeyboardKey.escape);
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('account-detail-sheet')), findsNothing);
+        if (find.byKey(const Key('account-back')).evaluate().isNotEmpty) {
+          await detailBack(tester);
+        }
+        expect(find.byKey(const Key('account-detail-page')), findsNothing);
       }
       expect(rewards.refreshes, 0);
       expect(rewards.claims, 0);
@@ -388,9 +406,14 @@ void main() {
 
   Future<_Rewards> mountAccount(
     WidgetTester tester,
-    PluginAccount account,
-  ) async {
-    final accounts = _Accounts(_Runtime(), rows: [account]);
+    PluginAccount account, {
+    Map<String, Map<String, dynamic>>? providers,
+  }) async {
+    final accounts = _Accounts(
+      _Runtime(),
+      rows: [account],
+      providers: providers,
+    );
     final rewards = _Rewards(accounts);
     addTearDown(accounts.dispose);
     await tester.pumpWidget(
@@ -451,35 +474,79 @@ void main() {
       await tester.ensureVisible(open);
       await tester.tap(open);
       await tester.pumpAndSettle();
-      final sheet = find.byKey(const Key('account-detail-sheet'));
-      expect(MediaQuery.textScalerOf(tester.element(sheet)).scale(14), 28);
-      double previous = 0;
+      final page = find.byKey(const Key('account-detail-page'));
+      expect(MediaQuery.textScalerOf(tester.element(page)).scale(14), 28);
+      expect(find.text('860.25 credits', findRichText: true), findsOneWidget);
+      expect(find.text('账号 ID'), findsNothing);
+      expect(find.byKey(const Key('detail-quota')), findsOneWidget);
+      await openDetailSection(tester, 'profile');
       for (final (label, value) in [
         ('平台', 'Synthetic · cn'),
         ('账号 ID', 'synthetic'),
         ('授权状态', '已保存授权'),
-        ('可用余额', '860.25 credits'),
         ('额度查询时间', creditTime(at)),
       ]) {
-        final name = find.descendant(of: sheet, matching: find.text(label));
-        final data = find.descendant(of: sheet, matching: find.text(value));
+        final name = find.text(label);
+        final data = find.descendant(
+          of: find.ancestor(of: name, matching: find.byType(Wrap)).first,
+          matching: find.text(value),
+        );
         expect(name, findsOneWidget);
         expect(data, findsOneWidget);
-        final rect = tester.getRect(name);
-        expect(rect.top, greaterThan(previous));
-        expect(tester.getRect(data).left, greaterThanOrEqualTo(rect.right));
         await tester.ensureVisible(data);
         await tester.pumpAndSettle();
+        expect(tester.getRect(name).overlaps(tester.getRect(data)), isFalse);
         expect(data.hitTestable(), findsOneWidget);
-        previous = tester.getRect(name).top;
       }
-      for (final label in ['官方套餐与额度', '更多操作']) {
-        final item = find.descendant(of: sheet, matching: find.text(label));
-        await tester.ensureVisible(item);
-        await tester.pumpAndSettle();
-        expect(item.hitTestable(), findsOneWidget);
-      }
+      await detailBack(tester);
+      await openDetailSection(tester, 'quota');
+      expect(find.text('更多操作').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testDesktopWidgets(
+    'independent windows retain their exact units and denominators',
+    (tester) async {
+      final rewards = await mountAccount(
+        tester,
+        observed(
+          usage: {
+            'balance': 393.36,
+            'unit': 'credits',
+            'windows': [
+              {
+                'name': 'Credits',
+                'amount': 6.64,
+                'limit': 400,
+                'used': 1.66,
+                'unit': 'credits',
+              },
+              {
+                'name': 'Requests',
+                'amount': 2,
+                'limit': 25,
+                'used': 8,
+                'unit': 'requests',
+              },
+            ],
+          },
+        ),
+      );
+      await tester.tap(find.byKey(const Key('account-fixture#one')));
+      await tester.pumpAndSettle();
+      expect(find.text('393.36 credits'), findsOneWidget);
+      expect(find.textContaining('Requests'), findsNothing);
+      await openDetailSection(tester, 'quota');
+      expect(
+        find.text('Credits：已用 6.64 credits · 上限 400 credits · 使用率 1.66%'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Requests：已用 2 requests · 上限 25 requests · 使用率 8%'),
+        findsOneWidget,
+      );
+      expect(rewards.refreshes, 0);
     },
   );
 
@@ -515,10 +582,11 @@ void main() {
           },
         ),
       );
-      expect(find.text('3899.96 credits'), findsOneWidget);
+      expect(find.text('3,899.96 credits', findRichText: true), findsOneWidget);
       expect(find.textContaining('已用'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      await openDetailSection(tester, 'quota');
       expect(
         find.textContaining('Extra credits：已用 0.04 credits'),
         findsOneWidget,
@@ -538,6 +606,7 @@ void main() {
     expect(find.text('12,224 credits'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
     await tester.pumpAndSettle();
+    await openDetailSection(tester, 'quota');
     expect(find.text('官方额度摘要：12,224 credits'), findsOneWidget);
     expect(find.textContaining('尚无已核实余额'), findsNothing);
   });
@@ -568,6 +637,7 @@ void main() {
       expect(find.text('Requests：42 / 100 requests'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      await openDetailSection(tester, 'quota');
       expect(find.text('Requests：42 / 100 requests'), findsOneWidget);
       expect(find.textContaining('数值未知'), findsNothing);
     },
@@ -599,11 +669,95 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      await openDetailSection(tester, 'quota');
       expect(
         find.text('Start Plan：Complete official verification'),
         findsOneWidget,
       );
       expect(find.textContaining('使用率 0%'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets(
+    'confirmed MiniMax receipts, expiring batch and wallet are independent',
+    (tester) async {
+      final queried = DateTime.utc(2026, 11, 21, 8, 48);
+      final confirmed = DateTime.utc(2026, 11, 21, 3, 26);
+      final expires = DateTime.now().add(const Duration(days: 2));
+      final rewards = await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'minimax#primary',
+          active: true,
+          models: const [],
+          queriedAt: queried,
+          usage: {
+            'plan': 'Free',
+            'balance': 13224,
+            'unit': 'credits',
+            'windows': [
+              {
+                'name': 'Credits',
+                'unit': 'credits',
+                'runsOut': 1424,
+                'runsOutAt': expires.toIso8601String(),
+              },
+            ],
+          },
+          facts: {
+            'provider': 'minimax',
+            'uid': 'synthetic-user',
+            'registrationId': 'primary',
+            'label': 'Synthetic wallet',
+            'reward': {
+              'status': 'claimed',
+              'credit': 400,
+              'unit': 'credits',
+              'confirmedAt': confirmed.millisecondsSinceEpoch,
+              'history': [
+                {
+                  'status': 'claimed',
+                  'credit': 8.75,
+                  'unit': 'credits',
+                  'confirmedAt': confirmed
+                      .subtract(const Duration(days: 1))
+                      .millisecondsSinceEpoch,
+                },
+                {'status': 'pending', 'credit': 999, 'unit': 'credits'},
+              ],
+            },
+          },
+        ),
+        providers: {
+          'minimax': {'checkin': true, 'checkinStatus': true},
+        },
+      );
+      await tester.tap(find.byKey(const Key('account-minimax#primary')));
+      await tester.pumpAndSettle();
+      expect(find.text('13,224 credits', findRichText: true), findsOneWidget);
+      expect(find.text('1,424 credits'), findsOneWidget);
+      expect(find.text('+400 credits'), findsOneWidget);
+      expect(find.textContaining('8.75'), findsNothing);
+      expect(find.text('核对并领取'), findsNothing);
+      final refresh = tester.widget<FButton>(
+        find.ancestor(of: find.text('刷新额度'), matching: find.byType(FButton)),
+      );
+      expect(refresh.variant, FButtonVariant.primary);
+      await openDetailSection(tester, 'receipt');
+      expect(find.textContaining('+400 credits'), findsOneWidget);
+      expect(find.textContaining('+8.75 credits'), findsOneWidget);
+      expect(find.textContaining('999'), findsNothing);
+      await detailBack(tester);
+      await openDetailSection(tester, 'profile');
+      expect(find.text(creditTime(queried)), findsOneWidget);
+      await detailBack(tester);
+      expect(find.text('13,224 credits', findRichText: true), findsOneWidget);
+      expect(rewards.claims, 0);
+      expect(rewards.refreshes, 0);
+      await tester.tap(find.text('更多操作'));
+      await tester.pumpAndSettle();
+      expect(find.text('核对并领取'), findsOneWidget);
+      expect(rewards.claims, 0);
     },
   );
 
@@ -630,7 +784,6 @@ void main() {
           },
         ),
       );
-      expect(findTooltip('已确认领取，具体时间未知'), findsOneWidget);
       final row = tester
           .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
           .entries
@@ -647,30 +800,31 @@ void main() {
         6,
         30,
       ).toLocal().toString().substring(0, 16);
-      expect(find.textContaining('本次到账有效至 $localExpiry'), findsOneWidget);
+      expect(row.receipt!.confirmedAt, isNull);
+      final verificationTime = DateTime.utc(
+        2026,
+        11,
+        13,
+        1,
+        20,
+      ).toLocal().toString().substring(0, 16);
+      expect(find.textContaining('核验于 '), findsOneWidget);
+      expect(
+        find.textContaining(verificationTime.substring(11)),
+        findsOneWidget,
+      );
       expect(find.textContaining('已确认领取。'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
-          matching: find.textContaining('核验于'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
-          matching: find.textContaining('时间未知'),
-        ),
-        findsNothing,
-      );
       expect(find.textContaining('请核对授权、权益或网络'), findsOneWidget);
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('detail-fact-额度查询时间')),
-          matching: find.text('未知'),
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('查询时间未知'), findsOneWidget);
+      expect(find.text('+100 credits'), findsOneWidget);
+      await openDetailSection(tester, 'receipt');
+      expect(find.textContaining('本次到账有效至 $localExpiry'), findsOneWidget);
+      expect(find.textContaining('核验于 $verificationTime'), findsOneWidget);
+      expect(find.textContaining('时间未知'), findsNothing);
+      await detailBack(tester);
+      await openDetailSection(tester, 'profile');
+      expect(find.text('额度查询时间'), findsOneWidget);
+      expect(find.text('未知'), findsOneWidget);
     },
   );
 
@@ -690,14 +844,14 @@ void main() {
           queriedAt: DateTime.utc(2026, 11, 12, 1, 20),
         ),
       );
-      expect(find.text('12224 credits'), findsOneWidget);
+      expect(find.text('12,224 credits', findRichText: true), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
       await tester.pumpAndSettle();
+      expect(find.text('12,224 credits', findRichText: true), findsOneWidget);
+      await openDetailSection(tester, 'profile');
+      expect(find.text('额度查询时间'), findsOneWidget);
       expect(
-        find.descendant(
-          of: find.byKey(const Key('detail-fact-额度查询时间')),
-          matching: find.text(creditTime(DateTime.utc(2026, 11, 12, 1, 20))),
-        ),
+        find.text(creditTime(DateTime.utc(2026, 11, 12, 1, 20))),
         findsOneWidget,
       );
     },
@@ -722,12 +876,12 @@ void main() {
           reward: {'status': 'pending'},
         ),
       );
-      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
-      await tester.pumpAndSettle();
       final row = tester
           .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
           .entries
           .single;
+      await tester.tap(find.byKey(const ValueKey('account-fixture#one')));
+      await tester.pumpAndSettle();
       expect(row.attention, AccountAttention.actionRequired);
       expect(row.resolution!.label, '重新授权');
       expect(find.textContaining('未能确认本次领取的官方回执。'), findsOneWidget);
@@ -805,54 +959,44 @@ void main() {
         if (hasGift) expect(find.text('13.25 tokens'), findsOneWidget);
         await tester.tap(find.byKey(const Key('account-zcode#one')));
         await tester.pumpAndSettle();
-        final sheet = find.byKey(const Key('account-detail-sheet'));
+        final sheet = find.byKey(const Key('account-detail-page'));
         Finder detail(Finder text) =>
             find.descendant(of: sheet, matching: text);
-        for (final tab in ['账号信息', '额度到期']) {
-          if (tab == '额度到期') {
-            await tester.tap(find.text(tab));
-            await tester.pumpAndSettle();
-          } else {
-            expect(
-              detail(find.textContaining('GLM Coding Lite')),
-              findsOneWidget,
-            );
-            expect(
-              detail(find.textContaining('套餐与额度观测于 ${creditTime(usageAt)}')),
-              findsOneWidget,
-            );
-            expect(
-              detail(find.textContaining('活动额度观测于 ${creditTime(checkedAt)}')),
-              findsOneWidget,
-            );
-          }
-          expect(
-            detail(find.textContaining('81.75 tokens')),
-            !activityNewer && tab == '账号信息' ? findsOneWidget : findsNothing,
-            reason: tab,
-          );
-          expect(
-            detail(find.textContaining(creditTime(oldExpiry))),
-            findsNothing,
-            reason: tab,
-          );
-          final expiryObservation = activityNewer
-              ? '活动余额 · ${creditTime(checkedAt)}'
-              : '套餐与额度 · ${creditTime(usageAt)}';
-          expect(
-            detail(find.text('到期数据来源：$expiryObservation')),
-            findsOneWidget,
-          );
-          expect(detail(find.textContaining('分别列示')), findsNothing);
-          if (hasGift) {
-            expect(detail(find.textContaining('13.25 tokens')), findsWidgets);
-            expect(
-              detail(find.textContaining(creditTime(newExpiry))),
-              findsWidgets,
-            );
-          } else {
-            expect(detail(find.text('平台未提供可核实的到期明细。')), findsOneWidget);
-          }
+        await openDetailSection(tester, 'quota');
+        expect(detail(find.textContaining('GLM Coding Lite')), findsOneWidget);
+        expect(
+          detail(find.textContaining('套餐与额度观测于 ${creditTime(usageAt)}')),
+          findsOneWidget,
+        );
+        expect(
+          detail(find.textContaining('活动额度观测于 ${creditTime(checkedAt)}')),
+          findsOneWidget,
+        );
+        expect(
+          detail(find.textContaining('81.75 tokens')),
+          activityNewer ? findsNothing : findsOneWidget,
+        );
+        expect(
+          detail(find.textContaining(creditTime(oldExpiry))),
+          findsNothing,
+        );
+        await detailBack(tester);
+        await openDetailSection(tester, 'expiry');
+        final expiryObservation = activityNewer
+            ? '活动余额 · ${creditTime(checkedAt)}'
+            : '套餐与额度 · ${creditTime(usageAt)}';
+        expect(detail(find.text('到期数据来源：$expiryObservation')), findsOneWidget);
+        expect(detail(find.textContaining('81.75 tokens')), findsNothing);
+        expect(
+          detail(find.textContaining(creditTime(oldExpiry))),
+          findsNothing,
+        );
+        expect(detail(find.textContaining('分别列示')), findsNothing);
+        if (hasGift) {
+          expect(detail(find.text('13.25 tokens')), findsOneWidget);
+          expect(detail(find.text(creditTime(newExpiry))), findsOneWidget);
+        } else {
+          expect(detail(find.text('平台未提供可核实的到期明细。')), findsOneWidget);
         }
       },
     );
@@ -890,11 +1034,14 @@ void main() {
       expect(find.text('本账号与设备未收到活动'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
+      await openDetailSection(tester, 'profile');
+      expect(find.text('官方本次未向这个账号与绑定设备返回可领取活动。'), findsOneWidget);
+      await detailBack(tester);
+      await openDetailSection(tester, 'quota');
       expect(
         find.textContaining('Gift tokens：剩余 12345678 tokens'),
         findsOneWidget,
       );
-      expect(find.text('官方本次未向这个账号与绑定设备返回可领取活动。'), findsOneWidget);
       expect(find.text('套餐额度查询未完成。'), findsOneWidget);
       expect(find.textContaining('上次：Start Plan'), findsNothing);
     },
@@ -926,6 +1073,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
+      await openDetailSection(tester, 'profile');
       expect(find.textContaining('本次活动未开放。'), findsOneWidget);
       expect(find.textContaining('历史活动原因。'), findsNothing);
     },
@@ -1309,15 +1457,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('12345678 tokens / 0.875 credits'), findsNothing);
       expect(find.text('领取回执未确认'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('expiry-time-zcode#one')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const ValueKey('expiry-zcode#one')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('account-zcode#one')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('verified-user'), findsWidgets);
       expect(find.textContaining('未能确认本次领取的官方回执。同一活动不会重复提交。'), findsOneWidget);
+      await openDetailSection(tester, 'profile');
+      expect(find.text('verified-user'), findsOneWidget);
       expect(find.textContaining('bigmodel'), findsWidgets);
+      await detailBack(tester);
+      await openDetailSection(tester, 'quota');
       expect(find.textContaining('99999.125'), findsWidgets);
       expect(find.textContaining('100000'), findsWidgets);
       expect(find.textContaining('0.875'), findsWidgets);
@@ -1342,7 +1490,7 @@ void main() {
       expect(rewards.refreshedUsage, isTrue);
       expect(
         find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
+          of: find.byKey(const Key('account-detail-page')),
           matching: find.textContaining('操作未完成'),
         ),
         findsOneWidget,
@@ -1676,13 +1824,12 @@ void main() {
         ),
       ];
       accounts.notifyListeners();
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
+      await detailBack(tester);
       await tester.tap(find.byKey(const ValueKey('account-workbuddy#two')));
       await tester.pumpAndSettle();
       expect(
         find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
+          of: find.byKey(const Key('account-detail-page')),
           matching: find.textContaining('请打开 WorkBuddy 核对当前身份'),
         ),
         findsNothing,

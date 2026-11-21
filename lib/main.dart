@@ -12,6 +12,7 @@ import 'codex_accounts.dart';
 import 'codex_accounts_panel.dart';
 import 'ui_preferences.dart';
 import 'account_workspace_registry.dart';
+import 'account_details.dart';
 import 'workspace_accounts.dart';
 import 'workspace_tools.dart';
 import 'app_updates.dart';
@@ -113,7 +114,6 @@ class _AccountPageState extends State<_AccountPage> {
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
   final _accountsPage = GlobalKey<WorkspaceAccountsPageState>();
-  final _activityPage = GlobalKey<WorkspaceActivityPageState>();
   final _settingsTopic = ValueNotifier(SettingsSection.appearance);
   final _codexPanel = GlobalKey<CodexAccountsPanelState>();
   final _pluginPanels = {
@@ -254,11 +254,6 @@ class _AccountPageState extends State<_AccountPage> {
       _workspace.currentState?.selectSection(WorkspaceSection.accounts);
   void _openActivity() =>
       _workspace.currentState?.selectSection(WorkspaceSection.activity);
-  void _openReceipts() {
-    _openActivity();
-    _activityPage.currentState?.showReceipts();
-  }
-
   void _openUpdates() {
     _settingsTopic.value = SettingsSection.updates;
     _workspace.currentState?.selectSection(WorkspaceSection.settings);
@@ -283,11 +278,15 @@ class _AccountPageState extends State<_AccountPage> {
         .where((app) => app.nativeProviders.contains(account.provider))
         .firstOrNull;
     if (app == null) return;
-    _workspace.currentState?.selectSection(WorkspaceSection.accounts);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted)
-        _accountsPage.currentState?.revealAccount('${app.name}/${account.key}');
-    });
+    final origin = _accountsPage.currentContext;
+    if (origin == null) return;
+    final id = '${app.name}/${account.key}';
+    showAccountDetails(
+      origin,
+      listenable: _registry,
+      read: () => _registry.entries.where((e) => e.id == id).firstOrNull,
+      app: app,
+    );
   }
 
   @override
@@ -315,10 +314,6 @@ class _AccountPageState extends State<_AccountPage> {
               .where((model) => model.published)
               .map((model) => model.id),
         ],
-        modelSearchTerms: {
-          for (final model in _application?.models.catalog ?? [])
-            model.id: model.searchText,
-        },
         selectedModelId: _selectedModelId,
         onSelectModel: _selectModel,
         initialApp: ManagedApp.workbuddy,
@@ -350,8 +345,6 @@ class _AccountPageState extends State<_AccountPage> {
             onOpenApp: _addAccount,
             rewards: _application?.rewards,
             onOpenRewards: _openActivity,
-            onOpenAccounts: _openAccounts,
-            onOpenReceipts: _openReceipts,
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.accounts: WorkspaceAccountsPage(
@@ -361,7 +354,6 @@ class _AccountPageState extends State<_AccountPage> {
             serviceStatus: _application == null ? _status : null,
           ),
           WorkspaceSection.activity: WorkspaceActivityPage(
-            key: _activityPage,
             registry: _registry,
             rewards: _application?.rewards,
             serviceStatus: _application == null ? _status : null,

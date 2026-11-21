@@ -45,14 +45,17 @@ class WorkspaceAccountsPageState extends State<WorkspaceAccountsPage> {
       final entries = widget.registry.entries;
       return WorkspacePage(
         title: '账号与积分',
-        subtitle: '按账号查看余额、到期批次和最近领取。',
         action: widget.onOpenApp == null
             ? null
             : _AddAccount(onSelected: widget.onOpenApp!),
         children: [
           if (widget.serviceStatus != null) widget.serviceStatus!,
           if (entries.isNotEmpty)
-            CompactAccountsTable(key: _table, entries: entries)
+            CompactAccountsTable(
+              key: _table,
+              entries: entries,
+              registry: widget.registry,
+            )
           else if (widget.serviceStatus == null)
             const _AccountEmpty(
               title: '暂无已保存账号',
@@ -174,13 +177,15 @@ class _AccountLine extends StatelessWidget {
     this.registry, {
     this.status,
     this.amount,
-    this.expiry = false,
+    this.batchAt,
+    this.receipt = false,
     this.showResolution = false,
   });
   final WorkspaceAccount account;
   final AccountWorkspaceRegistry registry;
   final String? status, amount;
-  final bool expiry, showResolution;
+  final DateTime? batchAt;
+  final bool receipt, showResolution;
 
   @override
   Widget build(BuildContext context) {
@@ -259,8 +264,17 @@ class _AccountLine extends StatelessWidget {
                     child: facts,
                   )
                 : null,
-            onPress: () =>
-                _openAccount(context, registry, entry.id, expiry: expiry),
+            onPress: () => showAccountDetails(
+              context,
+              listenable: registry,
+              app: account.app,
+              read: () =>
+                  registry.entries.where((e) => e.id == entry.id).firstOrNull,
+              batch: batchAt == null ? null : (at: batchAt!, amount: amount),
+              section: receipt
+                  ? AccountDetailSection.receipt
+                  : AccountDetailSection.summary,
+            ),
             suffix: action == null
                 ? const Icon(FLucideIcons.chevronRight, size: 15)
                 : null,
@@ -285,15 +299,3 @@ class _AccountLine extends StatelessWidget {
     );
   }
 }
-
-void _openAccount(
-  BuildContext context,
-  AccountWorkspaceRegistry registry,
-  String id, {
-  bool expiry = false,
-}) => showAccountDetails(
-  context,
-  listenable: registry,
-  read: () => registry.entries.where((e) => e.id == id).firstOrNull,
-  expiry: expiry,
-);

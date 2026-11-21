@@ -9,7 +9,7 @@ import 'model_workspace_fixture.dart';
 
 void main() {
   testDesktopWidgets(
-    'host quick links browse without authorization; the selected add-account target starts once',
+    'workspace destinations browse without authorization; the selected add-account target starts once',
     (tester) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1080, 748);
@@ -40,10 +40,10 @@ void main() {
 
       final overview = find.byKey(const Key('nav-overview'));
       await click(overview);
-      await click(find.text('最近成功领取'));
-      expect(find.text('每个账号最近一次成功回执'), findsOneWidget);
-      await click(overview);
-      await click(find.text('查看全部账号'));
+      await click(find.byKey(const Key('nav-activity')));
+      await click(find.text('最近领取 0'));
+      expect(find.text('暂无已确认的领取记录。'), findsOneWidget);
+      await click(find.byKey(const Key('nav-accounts')));
       expect(find.byKey(const Key('section-accounts')), findsOneWidget);
       await click(find.text('添加账号'));
       expect(calls.where((c) => c != 'codexAccountsStatus'), isEmpty);

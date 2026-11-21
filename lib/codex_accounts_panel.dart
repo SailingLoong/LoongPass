@@ -19,6 +19,7 @@ class CodexAccountsPanelState extends State<CodexAccountsPanel> {
   }
 
   bool _confirming = false;
+  String? _actionAccount;
 
   Future<void> _confirm(String id, {bool remove = false}) async {
     final owner = widget.owner;
@@ -107,6 +108,7 @@ class CodexAccountsPanelState extends State<CodexAccountsPanel> {
       );
       if (!mounted || !identical(owner, widget.owner) || allowed != true)
         return;
+      _actionAccount = id;
       if (remove) {
         await owner.remove(id);
       } else {
@@ -225,16 +227,24 @@ class CodexAccountsPanelState extends State<CodexAccountsPanel> {
                   balance: '未提供',
                   detailPlatform: 'Codex · 官方账号',
                   authorizationLabel: '已保存的官方登录',
+                  notice: _actionAccount == account.id
+                      ? owner.error ?? state.message ?? notice
+                      : state.currentId == account.id
+                      ? notice
+                      : null,
                   hasCredits: false,
                   hasRewards: false,
+                  plan: account.plan,
                   accountSummary:
                       '${account.plan ?? '套餐未知'} · ${account.workspaceId ?? '工作区未知'}',
                   expiringAmount: '—',
+                  highlightStatus: state.currentId == account.id,
                   status: state.currentId == account.id ? '本机登录记录' : '已保存',
                   observedAt: state.observedAt,
                   onActivate: () => _confirm(account.id),
                   activationEnabled: owner.canMutate,
-                  details: _CodexAccountDetails(
+                  details: _CodexAccountDetails(owner: owner, id: account.id),
+                  actions: _CodexActions(
                     owner: owner,
                     id: account.id,
                     onSwitch: () => _confirm(account.id),
@@ -277,15 +287,9 @@ String? _activationNotice(CodexAccounts owner) => owner.error != null
       };
 
 class _CodexAccountDetails extends StatelessWidget {
-  const _CodexAccountDetails({
-    required this.owner,
-    required this.id,
-    required this.onSwitch,
-    required this.onRemove,
-  });
+  const _CodexAccountDetails({required this.owner, required this.id});
   final CodexAccounts owner;
   final String id;
-  final VoidCallback onSwitch, onRemove;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -297,7 +301,6 @@ class _CodexAccountDetails extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('邮箱：${account.email ?? '未知'}'),
           Text('工作区：${account.workspaceId ?? '未知'}'),
           Text('套餐：${account.plan ?? '未知'}'),
           const SizedBox(height: 8),
@@ -307,31 +310,43 @@ class _CodexAccountDetails extends StatelessWidget {
               color: context.theme.colors.mutedForeground,
             ),
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FButton(
-                variant: FButtonVariant.primary,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                key: Key('codex-switch-$id'),
-                child: const Text('切换到此账号'),
-                onPress: owner.canMutate ? onSwitch : null,
-              ),
-              FButton(
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                key: Key('codex-remove-$id'),
-                child: const Text('移除保存副本'),
-                onPress: owner.canMutate ? onRemove : null,
-              ),
-            ],
-          ),
         ],
       );
     },
+  );
+}
+
+class _CodexActions extends StatelessWidget {
+  const _CodexActions({
+    required this.owner,
+    required this.id,
+    required this.onSwitch,
+    required this.onRemove,
+  });
+  final CodexAccounts owner;
+  final String id;
+  final VoidCallback onSwitch, onRemove;
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      FButton(
+        variant: FButtonVariant.primary,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.min,
+        key: Key('codex-switch-$id'),
+        child: const Text('切换到此账号'),
+        onPress: owner.canMutate ? onSwitch : null,
+      ),
+      FButton(
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.min,
+        key: Key('codex-remove-$id'),
+        child: const Text('移除保存副本'),
+        onPress: owner.canMutate ? onRemove : null,
+      ),
+    ],
   );
 }

@@ -47,6 +47,7 @@ void main() {
     (const Size(800, 632), 1.0),
     (const Size(480, 800), 1.0),
     (const Size(480, 800), 2.0),
+    (const Size(430, 750), 2.0),
   ]) {
     for (final brightness in Brightness.values) {
       testDesktopWidgets(
@@ -68,6 +69,9 @@ void main() {
                     ? 'demo@example.test'
                     : '备用账号 ${n.toString().padLeft(2, '0')}',
                 identity: 'demo$n@example.test',
+                officialId: 'synthetic-$n',
+                detailPlatform: 'WorkBuddy · 国内版',
+                observedAt: DateTime(2026, 11, 14, 10, 20),
                 balance: '${880 + n * 60} 积分',
                 credits: CreditSummary(
                   880.0 + n * 60,
@@ -94,20 +98,12 @@ void main() {
                   confirmedAt: DateTime(2026, 11, 14, 9, 30),
                 ),
                 onActivate: () {},
-                details: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('身份：demo$n@example.test'),
-                    const SizedBox(height: 8),
-                    Text(n == 2 ? '领取回执未确认。同一活动不会重复提交。' : '已保存的官方账号'),
-                    const SizedBox(height: 16),
-                    FButton(
-                      size: FButtonSizeVariant.sm,
-                      mainAxisSize: MainAxisSize.min,
-                      onPress: () {},
-                      child: Text(n == 2 ? '核验领取结果' : '刷新额度'),
-                    ),
-                  ],
+                details: const Text('平台未提供额度窗口明细。'),
+                actions: FButton(
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () {},
+                  child: Text(n == 2 ? '核验领取结果' : '刷新额度'),
                 ),
               ),
           ];
@@ -224,16 +220,31 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const Key('account-1')));
           await tester.pumpAndSettle();
+          final detail = find.byKey(const Key('account-detail-page'));
+          final workArea = tester.getRect(
+            find.byKey(const ValueKey('workspace-body')),
+          );
+          expect(tester.getRect(detail).width, closeTo(workArea.width, 1));
+          expect(
+            find.descendant(of: detail, matching: find.text('940 积分')),
+            findsOneWidget,
+          );
           await capture('details');
-          await tester.tap(find.text('关闭'));
+          final expiry = find.byKey(const Key('detail-expiry'));
+          await tester.ensureVisible(expiry);
           await tester.pumpAndSettle();
-          await tester.ensureVisible(find.byKey(const Key('expiry-1')));
-          await tester.pumpAndSettle();
-          await tester.tap(find.byKey(const Key('expiry-1')));
+          await tester.tap(expiry);
           await tester.pumpAndSettle();
           await capture('expiry');
-          await tester.tap(find.text('关闭'));
+          await tester.tap(find.byKey(const Key('account-back')));
           await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('account-back')));
+          await tester.pumpAndSettle();
+          expect(detail, findsNothing);
+          expect(
+            find.byKey(const Key('account-1')).hitTestable(),
+            findsOneWidget,
+          );
           await tester.ensureVisible(find.byKey(const Key('account-search')));
           await tester.enterText(
             find.byKey(const Key('account-search')),

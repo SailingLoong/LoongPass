@@ -333,7 +333,7 @@ void main() {
         'long-account',
       );
       await tester.pumpAndSettle();
-      final amount = find.text('3899.96 credits');
+      final amount = find.text('3,899.96 credits');
       await tester.ensureVisible(amount);
       await tester.pumpAndSettle();
       final paragraph = tester.renderObject<RenderParagraph>(amount);
@@ -349,14 +349,17 @@ void main() {
       await tester.ensureVisible(account);
       await tester.tap(account);
       await tester.pumpAndSettle();
-      final sheet = find.byKey(const Key('account-detail-sheet'));
+      final sheet = find.byKey(const Key('account-detail-page'));
       final summaryAmount = find.descendant(
         of: sheet,
-        matching: find.text('3899.96 credits'),
+        matching: find.text('3,899.96 credits'),
       );
       await tester.ensureVisible(summaryAmount);
       await tester.pumpAndSettle();
       expect(summaryAmount.hitTestable(), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('detail-quota')));
+      await tester.tap(find.byKey(const Key('detail-quota')));
+      await tester.pumpAndSettle();
       final platformDetail = find.descendant(
         of: sheet,
         matching: find.text('精确余额：3899.96 credits'),
@@ -364,7 +367,7 @@ void main() {
       await tester.ensureVisible(platformDetail);
       await tester.pumpAndSettle();
       expect(platformDetail.hitTestable(), findsOneWidget);
-      await tester.tap(find.text('关闭'));
+      await tester.tap(find.byKey(const Key('account-back')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },

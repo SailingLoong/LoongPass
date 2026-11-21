@@ -44,9 +44,13 @@ class AccountsNavigation extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          expanded: active && preferences.appsExpanded,
-          child: navigation,
+        SidebarDisclosure(
+          navigation: navigation,
+          label: '平台',
+          expanded: preferences.appsExpanded,
+          showToggle: active && !compact,
+          onToggle: () =>
+              preferences.setAppsExpanded(!preferences.appsExpanded),
         ),
         if (active && preferences.appsExpanded)
           Flexible(
