@@ -5,14 +5,14 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.3</title>
-            <pubDate>Sat, 21 Nov 2026 14:16:34 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.57</link>
-            <sparkle:version>57</sparkle:version>
-            <sparkle:shortVersionString>1.0.3-beta.57</sparkle:shortVersionString>
+            <pubDate>Sat, 21 Nov 2026 16:01:40 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.58</link>
+            <sparkle:version>58</sparkle:version>
+            <sparkle:shortVersionString>1.0.3-beta.58</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.3-beta.57
+            <description sparkle:format="markdown">LoongPass 1.0.3-beta.58
 
-- 修复 macOS 从「账号与积分」切换到「模型连接」时可能发生的闪退。切页时余额提示和菜单会随原页面一起隐藏，筛选和排序按钮各自关联正确的菜单。
+- 模型详情现在可以直接「开放账号」。开放后，行尾开关只控制该账号是否参与当前模型。平台账号需要重新授权时，可从同一位置进入账号详情。
 
 安装与升级
 
@@ -20,10 +20,10 @@ macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZI
 
 macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.57/LoongPass-macOS-universal.zip" length="49043288" type="application/octet-stream" sparkle:edSignature="DEg7di/ehPCuLGQ+FJ83T4WJ6DBIlEhRDyCCHxcNuFR144rLPs3Ey5Z+hubmKvLGPUmS0kKFuZffKvunB+1EAQ=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.58/LoongPass-macOS-universal.zip" length="49043344" type="application/octet-stream" sparkle:edSignature="vWSwgk/yrvAGtqJMw0kAiE4d/pgBAh74z/V0FR3OnVAp+kueGvYC3qwX2v/azjNr00SLeUsBh8ONCenC7aVTAg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: o2hBdDQAK/YRj2ztEXdY6Wm7lJwui1RR9INKzwmgcCMxZoDrZlwLcGjHR30OmfaESvnecDJTVnB4i51O7XfBDA==
-length: 1832
+edSignature: dI9cWzQ+jn8mFGkD0SrhnBEZNCJYyVBHOwIBO4ajCcjlfavwuY5dv27+0hy8uzfjhwghvvvPzG+smnBNyS4FBg==
+length: 1825
 -->
