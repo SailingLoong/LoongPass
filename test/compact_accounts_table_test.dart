@@ -92,7 +92,8 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final expiry = DateTime.now().add(const Duration(days: 2));
+      final today = DateTime.now();
+      final expiry = DateTime(today.year, today.month, today.day + 2, 18, 45);
       await tester.pumpWidget(
         DesktopTestApp(
           home: Scaffold(
@@ -127,6 +128,7 @@ void main() {
       expect(find.byKey(const Key('account-table-scroll')), findsNothing);
       await tester.pumpAndSettle();
       expect(find.text('3899.96 credits').hitTestable(), findsOneWidget);
+      expect(find.text('18:45').hitTestable(), findsOneWidget);
       expect(find.text('09:30').hitTestable(), findsOneWidget);
       expect(find.text('最近领取时间').first.hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
