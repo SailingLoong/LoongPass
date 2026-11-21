@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'managed_app.dart';
+import 'model_workspace_view_model.dart';
 import 'plugin_accounts.dart';
 import 'plugin_credit_balance.dart';
 import 'plugin_model_catalog.dart';
@@ -43,15 +44,11 @@ class PluginModelAccounts extends StatefulWidget {
   const PluginModelAccounts({
     super.key,
     required this.model,
-    required this.busy,
-    required this.onEnable,
-    required this.onAuthorize,
+    required this.vm,
     this.onOpenAccount,
   });
   final PluginModel model;
-  final bool busy;
-  final void Function(String, bool) onEnable;
-  final void Function(String, bool) onAuthorize;
+  final ModelWorkspaceViewModel vm;
   final ValueChanged<PluginAccount>? onOpenAccount;
   @override
   State<PluginModelAccounts> createState() => _PluginModelAccountsState();
@@ -59,6 +56,22 @@ class PluginModelAccounts extends StatefulWidget {
 
 class _PluginModelAccountsState extends State<PluginModelAccounts> {
   final _expanded = <String>{};
+  // Keep the row under the pointer when an edit changes routing priority.
+  late final _accountOrder = _sourceKeys;
+  Set<String> get _sourceKeys => {
+    for (final binding in widget.model.bindings) binding.account.key,
+  };
+
+  @override
+  void didUpdateWidget(PluginModelAccounts oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final keys = _sourceKeys;
+    _accountOrder
+      ..retainAll(keys)
+      ..addAll(keys);
+    _expanded.retainAll(keys);
+  }
+
   @override
   Widget build(BuildContext context) => WorkspaceCard(
     child: LayoutBuilder(
@@ -66,7 +79,6 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
         final wide =
             box.maxWidth >=
             660 * MediaQuery.textScalerOf(context).scale(14) / 14;
-        final keys = widget.model.bindings.map((b) => b.account.key).toSet();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -79,11 +91,14 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
                     Expanded(flex: 2, child: Text('适用剩余额度')),
                     Expanded(flex: 3, child: Text('最近到期批次')),
                     Expanded(flex: 2, child: Text('路由状态')),
-                    SizedBox(width: 52, child: Text('参与')),
+                    Expanded(
+                      flex: 2,
+                      child: Text('参与此模型', textAlign: TextAlign.end),
+                    ),
                   ],
                 ),
               ),
-            for (final key in keys)
+            for (final key in _accountOrder)
               _account(
                 context,
                 widget.model.bindings
@@ -106,22 +121,56 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
     final muted = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
     );
-    final status = !widget.model.enabled
-        ? '模型停用'
-        : binding.grant.authorizationRequired
-        ? '需要授权'
-        : !binding.grant.enabled
-        ? '尚未授权'
-        : !binding.enabled
-        ? '已停用'
-        : switch (binding.status) {
-            ModelQuotaStatus.exhausted => '额度耗尽',
-            ModelQuotaStatus.expired => '额度已过期',
-            _ =>
-              widget.model.preferred?.account.key == account.key
-                  ? '新会话首选'
-                  : '候选可用',
-          };
+    final vm = widget.vm;
+    final openAccount = widget.onOpenAccount == null
+        ? null
+        : () => widget.onOpenAccount!(account);
+    final String status;
+    final Widget action;
+    if (binding.grant.authorizationRequired) {
+      status = '平台账号需重新授权';
+      action = openAccount == null
+          ? const SizedBox.shrink()
+          : FButton(
+              variant: FButtonVariant.outline,
+              size: FButtonSizeVariant.sm,
+              mainAxisSize: MainAxisSize.min,
+              semanticsLabel: '查看账号 ${account.label}',
+              onPress: openAccount,
+              child: const Text('查看账号'),
+            );
+    } else if (!binding.grant.enabled) {
+      status = '开放后，本机已启用的模型可用此账号';
+      action = FButton(
+        variant: FButtonVariant.outline,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.min,
+        semanticsLabel: '向本机模型服务开放 ${account.label}',
+        onPress: vm.busy ? null : () => vm.authorize(account.key, true),
+        child: const Text('开放账号'),
+      );
+    } else {
+      status = !widget.model.routed
+          ? '模型停用'
+          : !binding.enabled
+          ? '未参与此模型'
+          : switch (binding.status) {
+              ModelQuotaStatus.exhausted => '额度耗尽',
+              ModelQuotaStatus.expired => '额度已过期',
+              _ =>
+                widget.model.preferred?.account.key == account.key
+                    ? '新会话首选'
+                    : '候选可用',
+            };
+      action = FSwitch(
+        key: ValueKey('model-account-${account.key}'),
+        semanticsLabel: '参与此模型路由 ${account.label}',
+        value: binding.enabled,
+        enabled: !vm.busy,
+        onChange: (value) =>
+            vm.enableSource(widget.model.id, account.key, value),
+      );
+    }
     final name = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -129,23 +178,11 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
           variant: FButtonVariant.ghost,
           size: FButtonSizeVariant.sm,
           mainAxisSize: MainAxisSize.min,
-          onPress: widget.onOpenAccount == null
-              ? null
-              : () => widget.onOpenAccount!(account),
+          onPress: openAccount,
           child: Flexible(child: Text(account.label, softWrap: true)),
         ),
         Text(modelSourceName(account.provider), style: muted),
       ],
-    );
-    final toggle = FSwitch(
-      key: ValueKey('model-account-${account.key}'),
-      semanticsLabel: '参与此模型路由 ${account.label}',
-      value: binding.grant.enabled && binding.enabled,
-      enabled:
-          !widget.busy &&
-          !binding.grant.authorizationRequired &&
-          binding.grant.enabled,
-      onChange: (value) => widget.onEnable(account.key, value),
     );
     final expiry = binding.expiry;
     final expiringAmount = expiry?.amount;
@@ -161,6 +198,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
       ],
     );
     return Container(
+      key: ValueKey(account.key),
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: context.theme.colors.border)),
@@ -176,7 +214,10 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
                 Expanded(flex: 2, child: Text(_remaining(binding))),
                 Expanded(flex: 3, child: expiryCell),
                 Expanded(flex: 2, child: Text(status, style: muted)),
-                SizedBox(width: 52, child: toggle),
+                Expanded(
+                  flex: 2,
+                  child: Align(alignment: Alignment.centerRight, child: action),
+                ),
               ],
             )
           else ...[
@@ -184,7 +225,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
               children: [
                 Expanded(child: name),
                 const SizedBox(width: 8),
-                toggle,
+                action,
               ],
             ),
             const SizedBox(height: 6),
@@ -192,6 +233,14 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
             Text(modelExpiryText(binding), style: muted),
             Text(status, style: muted),
           ],
+          if (vm.error case final error? when error.accountKey == account.key)
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                error.message,
+                style: muted.copyWith(color: context.theme.colors.destructive),
+              ),
+            ),
           Align(
             alignment: Alignment.centerLeft,
             child: FButton(
@@ -217,15 +266,6 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
               style: muted,
             ),
           ],
-          if (!binding.grant.enabled && !binding.grant.authorizationRequired)
-            FSwitch(
-              value: false,
-              enabled: !widget.busy,
-              leadingLabel: true,
-              label: const Text('授权此账号用于模型服务'),
-              description: const Text('开启后，此账号的已启用模型可参与路由'),
-              onChange: (value) => widget.onAuthorize(account.key, value),
-            ),
         ],
       ),
     );

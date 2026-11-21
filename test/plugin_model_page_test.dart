@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/model_connection.dart';
 import '../lib/plugin_application.dart';
+import '../lib/plugin_model_accounts.dart';
 import '../lib/plugin_model_service.dart';
 import '../lib/plugin_model_catalog.dart';
 import '../lib/plugin_model_page.dart';
@@ -108,6 +109,154 @@ class _Application implements PluginApplication {
 }
 
 void main() {
+  for (final width in [480.0, 1080.0]) {
+    testDesktopWidgets(
+      'open a Loomy model source from its row at width $width',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(width, 850);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        addTearDown(tester.view.resetPhysicalSize);
+        final loomy = PluginAccount(
+          key: 'loomy#demo',
+          facts: {
+            'provider': 'loomy',
+            'label': 'Loomy 测试账号',
+            'registrationId': 'loomy-registration',
+          },
+          active: true,
+          models: [
+            {'id': 'deepseek-flash'},
+            {'id': 'glm-5.3-flash'},
+          ],
+        );
+        final accounts = WorkspaceFixtureAccounts()
+          ..accounts.removeWhere((a) => a.provider != 'qoder')
+          ..accounts.add(loomy);
+        final store = MemoryAccountStore('model-access');
+        var service = PluginModelService(accounts: accounts, store: store);
+        await service.start();
+        final app = _Application(service);
+        try {
+          await tester.pumpWidget(
+            DesktopTestApp(
+              home: Scaffold(
+                body: PluginModelServicesPage(
+                  application: app,
+                  selectedModelId: 'deepseek-flash',
+                ),
+              ),
+            ),
+          );
+          final open = find.bySemanticsLabel('向本机模型服务开放 ${loomy.label}');
+          final participate = find.byKey(
+            ValueKey('model-account-${loomy.key}'),
+          );
+          final rowError = find.descendant(
+            of: find.byType(PluginModelAccounts),
+            matching: find.text('设置保存失败，请重试。'),
+          );
+          double rowOffset() =>
+              tester.getTopLeft(find.text(loomy.label)).dy -
+              tester.getTopLeft(find.text('海外账号')).dy;
+          expect(participate, findsNothing);
+          await tester.ensureVisible(open);
+          expect(open.hitTestable(), findsOneWidget);
+          final initialOrder = rowOffset().sign;
+          store.beforeWrite = () async => throw StateError('write rejected');
+          await tester.tap(open);
+          await tester.pumpAndSettle();
+          expect(rowError, findsOneWidget);
+          expect(service.grants.any((g) => g.enabled), isFalse);
+          expect(participate, findsNothing);
+          store.beforeWrite = null;
+          await tester.tap(open);
+          await tester.pumpAndSettle();
+          expect(open, findsNothing);
+          expect(rowError, findsNothing);
+          expect(rowOffset().sign, initialOrder);
+          expect(
+            service.grants.singleWhere((g) => g.enabled).account.key,
+            loomy.key,
+          );
+          expect(
+            service.catalog.every((m) => m.preferred?.account.key == loomy.key),
+            isTrue,
+          );
+          await tester.ensureVisible(participate);
+          await tester.tap(participate);
+          await tester.pumpAndSettle();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await service.close();
+          service = PluginModelService(accounts: accounts, store: store);
+          await service.start();
+          expect(
+            service.grants.singleWhere((g) => g.enabled).account.key,
+            loomy.key,
+          );
+          expect(
+            service.catalog
+                .singleWhere((m) => m.id == 'deepseek-flash')
+                .preferred,
+            isNull,
+          );
+          expect(
+            service.catalog
+                .singleWhere((m) => m.id == 'glm-5.3-flash')
+                .preferred
+                ?.account
+                .key,
+            loomy.key,
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
+          app.connection.dispose();
+          await service.close();
+          accounts.dispose();
+        }
+      },
+    );
+  }
+
+  testDesktopWidgets('expired platform access leads to the affected account', (
+    tester,
+  ) async {
+    final service = _Service();
+    final saved = service.grants.single.account;
+    final expired = PluginAccount(
+      key: saved.key,
+      facts: saved.facts,
+      active: true,
+      models: saved.models,
+      error: 'authorization_required',
+    );
+    service.grants[0] = PluginModelGrant(expired, 'synthetic', true);
+    final app = _Application(service);
+    PluginAccount? opened;
+    addTearDown(service.dispose);
+    addTearDown(app.connection.dispose);
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: PluginModelServicesPage(
+            application: app,
+            selectedModelId: 'deepseek-flash',
+            onOpenAccount: (a) => opened = a,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('平台账号需重新授权'), findsOneWidget);
+    expect(find.text('开放账号'), findsNothing);
+    expect(find.byKey(ValueKey('model-account-${saved.key}')), findsNothing);
+    final account = find.text('查看账号');
+    await tester.ensureVisible(account);
+    await tester.tap(account);
+    expect(opened, same(expired));
+    expect(service.changes, 0);
+  });
+
   test(
     'a saved Auto priority survives a restart and a rejected update',
     () async {
