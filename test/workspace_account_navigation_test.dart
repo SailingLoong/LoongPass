@@ -1,3 +1,5 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +10,59 @@ import 'desktop_test_app.dart';
 import 'model_workspace_fixture.dart';
 
 void main() {
+  Future<void> openAccounts(WidgetTester tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1080, 748);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final app = ModelWorkspaceFixture();
+    addTearDown(app.dispose);
+    await tester.pumpWidget(AccountToolApp(application: app));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nav-accounts')));
+    await tester.pumpAndSettle();
+  }
+
+  testDesktopWidgets(
+    'balance tooltip leaves the accessibility tree with the account list',
+    (tester) async {
+      await openAccounts(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer();
+      addTearDown(mouse.removePointer);
+      final balance = find.byKey(const Key('balance-qoderCn/saved-0'));
+      await mouse.moveTo(tester.getCenter(balance));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('查看账号详情'), findsOneWidget);
+      _expectAttachedOverlayAnchors(tester);
+
+      final target = tester.getCenter(find.byKey(const Key('nav-models')));
+      await mouse.moveTo(target);
+      await mouse.down(target);
+      await mouse.up();
+      await tester.pump();
+      expect(
+        find.byKey(const Key('model-search')).hitTestable(),
+        findsOneWidget,
+      );
+      _expectAttachedOverlayAnchors(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
+  testDesktopWidgets(
+    'the sort menu has its own accessibility anchor next to the filter menu',
+    (tester) async {
+      await openAccounts(tester);
+      await tester.tap(find.byKey(const Key('account-sort')));
+      await tester.pumpAndSettle();
+      expect(find.text('名称升序').hitTestable(), findsOneWidget);
+      _expectAttachedOverlayAnchors(tester);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+
   testDesktopWidgets(
     'workspace destinations browse without authorization; the selected add-account target starts once',
     (tester) async {
@@ -59,5 +114,28 @@ void main() {
       expect(app.accounts.refreshes, 0);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+  );
+}
+
+void _expectAttachedOverlayAnchors(WidgetTester tester) {
+  final anchors = <Object>{};
+  final overlays = <Object>{};
+  bool visit(SemanticsNode node) {
+    if (!node.isMergedIntoParent) {
+      final data = node.getSemanticsData();
+      if (data.traversalParentIdentifier case final id?) anchors.add(id);
+      if (data.traversalChildIdentifier case final id?) overlays.add(id);
+    }
+    node.visitChildren(visit);
+    return true;
+  }
+
+  visit(
+    tester.binding.renderViews.single.owner!.semanticsOwner!.rootSemanticsNode!,
+  );
+  expect(
+    overlays.difference(anchors),
+    isEmpty,
+    reason: 'Every exposed overlay needs an attached accessibility anchor.',
   );
 }
