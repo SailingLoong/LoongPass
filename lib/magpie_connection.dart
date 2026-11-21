@@ -302,7 +302,7 @@ class MagpieConnection {
   /// account-scoped members retain native protocol conversion and failover.
   Future<void> syncRouting(
     String bridgePath,
-    List<PluginModel> models, {
+    MagpieModelRouting routing, {
     Set<String> previousGroups = const {},
   }) async {
     bridgePath = path.normalize(path.absolute(bridgePath));
@@ -317,7 +317,6 @@ class MagpieConnection {
               .where((p) => p['id'] == 'loongpass')
               .firstOrNull
         : null;
-    final routing = MagpieModelRouting(models);
     if (routing.groups.isNotEmpty && provider?['accountId'] is! String) {
       throw StateError('Magpie primary account unavailable');
     }

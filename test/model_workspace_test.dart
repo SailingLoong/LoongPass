@@ -217,7 +217,7 @@ void main() {
         tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
         'auto',
       );
-      expect(find.text('候选顺序').hitTestable(), findsOneWidget);
+      expect(find.text('模型顺序').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

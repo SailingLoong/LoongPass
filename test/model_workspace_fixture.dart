@@ -132,6 +132,13 @@ class WorkspaceFixtureModels extends ChangeNotifier
       pluginModelCatalog(grants, routingSettings, DateTime.now());
 
   @override
+  Future<void> setAutoRoutingPriority(AutoRoutingPriority priority) async {
+    routingSettings = upgradeModelRouting(routingSettings);
+    priority.saveTo(routingSettings);
+    notifyListeners();
+  }
+
+  @override
   Future<void> reorderModels(List<String> order) async {
     routingSettings = {...routingSettings, 'order': order};
     notifyListeners();

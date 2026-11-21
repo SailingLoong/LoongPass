@@ -25,13 +25,15 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
   ({
     PluginModel? selected,
     List<PluginModel> candidates,
+    List<PluginModel> excluded,
     List<PluginModel> visible,
     bool noSources,
   })
   snapshot(String? selectedId) {
     final catalog = service.catalog;
     final official = catalog.where((model) => model.official);
-    final candidates = official.where((model) => model.enabled).toList();
+    final candidates = catalog.where((model) => model.enabled).toList();
+    bool matches(PluginModel model) => model.searchText.contains(query);
     final displayed = selectedId == 'auto'
         ? candidates
         : official.where(
@@ -40,9 +42,10 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
     return (
       selected: official.where((model) => model.id == selectedId).firstOrNull,
       candidates: candidates,
-      visible: displayed
-          .where((model) => model.searchText.contains(query))
-          .toList(),
+      excluded: selectedId == 'auto'
+          ? catalog.where((model) => !model.enabled && matches(model)).toList()
+          : const [],
+      visible: displayed.where(matches).toList(),
       noSources: catalog.isEmpty && service.grants.isEmpty,
     );
   }
@@ -66,6 +69,8 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
       _save(() => service.setModelPublished(id, value));
   Future<void> participate(String id, bool value) =>
       _save(() => service.setModelEnabled(id, value));
+  Future<void> selectPriority(AutoRoutingPriority priority) =>
+      _save(() => service.setAutoRoutingPriority(priority));
   Future<void> authorize(String key, bool value) =>
       _save(() => service.enable(key, value));
   Future<void> enableSource(String id, String key, bool value) =>

@@ -9,6 +9,18 @@ import 'plugin_model_quota.dart';
 
 export 'plugin_model_quota.dart' show ModelQuotaStatus;
 
+enum AutoRoutingPriority {
+  modelOrder,
+  creditExpiry;
+
+  static const _key = 'autoPriority';
+
+  static AutoRoutingPriority fromSettings(Map settings) =>
+      values.asNameMap()[settings[_key]] ?? modelOrder;
+
+  void saveTo(Map<String, dynamic> settings) => settings[_key] = name;
+}
+
 class PluginModelGrant {
   PluginModelGrant(this.account, this.token, this.enabled);
   final PluginAccount account;
@@ -30,6 +42,8 @@ class PluginModelBinding {
   bool get generatesImages =>
       native['outputs'] is List &&
       (native['outputs'] as List).contains('image');
+  bool get imageOnly =>
+      generatesImages && !(native['outputs'] as List).contains('text');
   String get exportedId =>
       'accounts/${Uri.encodeComponent(account.key)}/${account.provider}/$nativeId';
   bool get giftOnly =>
@@ -40,6 +54,13 @@ class PluginModelBinding {
       enabled &&
       grant.available &&
       !{ModelQuotaStatus.exhausted, ModelQuotaStatus.expired}.contains(status);
+
+  int compareQuota(PluginModelBinding other) {
+    if (available != other.available) return available ? -1 : 1;
+    final left = expiry?.at, right = other.expiry?.at;
+    if (left == null) return right == null ? 0 : 1;
+    return right == null ? -1 : left.compareTo(right);
+  }
 }
 
 class PluginModel {
@@ -186,14 +207,8 @@ List<PluginModel> pluginModelCatalog(
                 )),
         List.unmodifiable(
           byId[id]!..sort((a, b) {
-            if (a.available != b.available) return a.available ? -1 : 1;
-            final left = a.expiry?.at, right = b.expiry?.at;
-            if (left != null && right != null) {
-              final compared = left.compareTo(right);
-              if (compared != 0) return compared;
-            } else if (left != right) {
-              return left != null ? -1 : 1;
-            }
+            final quota = a.compareQuota(b);
+            if (quota != 0) return quota;
             // Stable tie order avoids moving sessions or new requests between
             // equally expiring account identities when an unrelated row changes.
             final account = a.account.key.compareTo(b.account.key);
