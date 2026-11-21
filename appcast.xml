@@ -5,18 +5,17 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.3</title>
-            <pubDate>Thu, 19 Nov 2026 19:01:58 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.55</link>
-            <sparkle:version>55</sparkle:version>
-            <sparkle:shortVersionString>1.0.3-beta.55</sparkle:shortVersionString>
+            <pubDate>Sat, 21 Nov 2026 13:02:32 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.56</link>
+            <sparkle:version>56</sparkle:version>
+            <sparkle:shortVersionString>1.0.3-beta.56</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.3-beta.55
+            <description sparkle:format="markdown">LoongPass 1.0.3-beta.56
 
-- ZCode 辅助领取现在直接显示官方回执。服务端已确认的领取在余额暂时无法刷新时也会显示成功。历史记录缺少回执时，仍可查看当前活动，已有请求继续受重复领取保护。旧桌面授权若无法核实付费权益归属，需要通过官方入口重新授权。
-- Qoder 辅助领取按实际回执记录本次到账。重复回执显示为已领取，有效期随实际发放记录保存。
-- Loomy 分别显示每日积分、永久积分和可核实的合计。TRAE 国内版的企业席位请求使用企业额度，席位拒绝时会显示服务端错误。
-- 更新 Magpie 原生宿主和六个已接入的渠道包。WorkBuddy 国内版的浏览器授权可在刷新凭据闲置前续期。
-- 包含 Beta 54 的桌面工作区更新。总览按处理状态整理账号，侧面详情可查看领取回执与到期积分。
+- 点击账号或模型进入独立详情页。账号首屏展示余额、最近到期和最近领取，套餐、额度和账号资料可按需展开。返回时保留之前的搜索结果或日历日期。
+- 侧栏默认展开当前页面的平台或模型列表，也可以手动收起。总览、账号、模型连接、辅助签到和设置页面精简了信息展示。
+- LoongPass Auto 支持按模型顺序或适用积分到期时间优先选择候选账号，显示已知到期额度。
+- ZCode 活动查询使用账号绑定的设备信息，并区分活动查询状态和领取回执。同设备重复领取的核对覆盖历史记录与并发操作。
 
 安装与升级
 
@@ -24,10 +23,10 @@ macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZI
 
 macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.55/LoongPass-macOS-universal.zip" length="48963447" type="application/octet-stream" sparkle:edSignature="puJIelfFXQcZO2ghV2glgVobmSWhn/btisKtqTP/fwtbs3b2mH91G//FzQT3QAsF0DgHjXXzTGPumEHQKRXuCQ=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.56/LoongPass-macOS-universal.zip" length="49037617" type="application/octet-stream" sparkle:edSignature="f0BMfzabdPFll4tMoxMUipQwb2Y36E9lnaAGg2aQZuxPzWRpLqoYfgivrWkXoF66SwTqZxZHnSuMR6BHLvbYDg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: icacOmLxFvS3U70K4/PETk/BvZZSWP9dqHd0v9axC6EXfVt/K3jqAAIJlcyJwjlMumABO8rYj6/UL0DCK9D/DA==
-length: 2514
+edSignature: eirm27r66KVoNAvobtMFbX6Qtb+h/GZJF/xZTdCRU2TDw4Xrm19YAMVgi6rA13jVMQLhvpfLYvB7WiorsHZ3DQ==
+length: 2290
 -->
