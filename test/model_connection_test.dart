@@ -26,7 +26,14 @@ class _Models extends ChangeNotifier implements PluginModelService {
   @override
   bool routingConnected = false;
   @override
-  Map<String, dynamic> routingSettings = {};
+  Map<String, dynamic> routingSettings = {
+    'version': 4,
+    'published': {'deepseek-flash': true, 'deepseek-v4-pro': true},
+  };
+  String nativeListing() =>
+      catalog.where((m) => m.published).map((m) => m.publicId).join('\n');
+  @override
+  Future<void> rememberPublishedOrder(List<String> ids) async {}
   @override
   List<PluginModel> get catalog =>
       pluginModelCatalog(grants, routingSettings, DateTime.now());
@@ -112,6 +119,7 @@ void main() {
         '/bridge',
         client: MagpieConnection(
           run: (args, {input}) async {
+            if (args.first == 'models') return models.nativeListing();
             if (args.join(' ') == 'plugin list --json')
               return _listing(['late', 'early', 'unknown']);
             if (args.take(3).join(' ') == 'group set loongpass-auto') {
@@ -131,16 +139,12 @@ void main() {
       addTearDown(models.dispose);
       connection.start();
       await Future<void>.delayed(const Duration(milliseconds: 300));
-      const byModel = [
-        'late/qoder/dfmodel',
-        'early/qoder/dfmodel',
-        'unknown/qoder/dfmodel',
-        'early/qoder/dmodel',
-        'late/qoder/dmodel',
-        'unknown/qoder/dmodel',
-      ];
+      final byModel = models.catalog.map((m) => m.publicId).toList();
       expect(order.single, byModel);
-      models.routingSettings = {'version': 3, 'autoPriority': 'creditExpiry'};
+      models.routingSettings = {
+        ...models.routingSettings,
+        'autoPriority': 'creditExpiry',
+      };
       models.changed();
       await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(order.last, [
@@ -151,10 +155,70 @@ void main() {
         'unknown/qoder/dfmodel',
         'unknown/qoder/dmodel',
       ]);
-      models.routingSettings = {'version': 3, 'autoPriority': 'modelOrder'};
+      models.routingSettings = {
+        ...models.routingSettings,
+        'autoPriority': 'modelOrder',
+      };
       models.changed();
       await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(order.last, byModel);
+    },
+  );
+
+  testWidgets(
+    'a Magpie-only reorder updates the running Auto group and preview without opening a page',
+    (tester) async {
+      final models = _Models()
+        ..routingConnected = true
+        ..grants = [
+          _grant(
+            'one',
+            models: [
+              {'id': 'dfmodel'},
+              {'id': 'dmodel'},
+            ],
+          ),
+        ];
+      final ids = models.catalog.map((m) => m.publicId).toList();
+      var listed = ids;
+      final autoWrites = <String>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            if (args.join(' ') == 'plugin list --json')
+              return _listing(['one']);
+            if (args.first == 'models') return listed.join('\n');
+            if (args.take(3).join(' ') == 'group set loongpass-auto') {
+              autoWrites.add(args.singleWhere((a) => a.startsWith('models=')));
+            }
+            return '';
+          },
+        ),
+      );
+      try {
+        connection.start();
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(autoWrites, ['models=${ids.join(',')}']);
+        listed = ids.reversed.toList();
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(autoWrites.last, 'models=${listed.join(',')}');
+        expect(connection.routing.preferred!.model.publicId, listed.first);
+        listed = [];
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(connection.routing.candidates, isEmpty);
+        expect(models.managedGroups.contains('loongpass-auto'), isFalse);
+        expect(connection.accountsWithoutModels, {'one'});
+        final count = autoWrites.length;
+        await tester.pump(const Duration(seconds: 1));
+        expect(autoWrites.length, count);
+      } finally {
+        connection.dispose();
+        models.dispose();
+      }
     },
   );
 
@@ -166,7 +230,7 @@ void main() {
       final now = DateTime.now();
       final models = _Models()
         ..routingConnected = true
-        ..routingSettings = {'version': 3, 'autoPriority': priority}
+        ..routingSettings['autoPriority'] = priority
         ..grants = [
           for (final (key, seconds) in [('one', 1), ('two', 30)])
             PluginModelGrant(
@@ -200,9 +264,13 @@ void main() {
         '/bridge',
         client: MagpieConnection(
           run: (args, {input}) async {
+            if (args.first == 'models') return models.nativeListing();
             if (args.join(' ') == 'plugin list --json')
               return _listing(['one', 'two']);
-            if (args.first == 'group' && args[1] == 'set') {
+            final target = priority == 'modelOrder'
+                ? PluginModel.groupIdFor('deepseek-flash')
+                : 'loongpass-auto';
+            if (args.take(3).join(' ') == 'group set $target') {
               order.add(args.singleWhere((arg) => arg.startsWith('models=')));
             }
             return '';
@@ -262,10 +330,12 @@ void main() {
           '/bridge',
           client: MagpieConnection(
             run: (args, {input}) async {
+              if (args.first == 'models') return models.nativeListing();
               if (args.join(' ') == 'plugin list --json') {
                 return connected ? _listing(['only']) : '{}';
               }
-              if (args.take(2).join(' ') == 'group set') groupWrites++;
+              if (args.take(3).join(' ') == 'group set loongpass-auto')
+                groupWrites++;
               return '';
             },
           ),
@@ -281,9 +351,11 @@ void main() {
           connection.routing.preferred?.binding.expiry?.amount?.amount,
           100,
         );
+        expect(connection.accountsWithoutModels, isEmpty);
         connection.start();
         await expired.future.timeout(const Duration(seconds: 3));
         expect(groupWrites, connected ? 1 : 0);
+        expect(connection.accountsWithoutModels, {'only'});
       },
     );
   }
@@ -295,7 +367,7 @@ void main() {
           'one',
           models: [
             {
-              'id': 'flash',
+              'id': 'dfmodel',
               'apiId': 'deepseek-v4.1-flash',
               'npm': '@ai-sdk/openai-compatible',
               'url': 'https://synthetic.invalid/v1',
@@ -312,6 +384,7 @@ void main() {
       '/bridge',
       client: MagpieConnection(
         run: (args, {input}) async {
+          if (args.first == 'models') return models.nativeListing();
           commands.add(args);
           if (args.join(' ') == 'plugin list --json')
             return _listing(listings++ == 0 ? ['one'] : ['one', 'new-account']);

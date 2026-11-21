@@ -73,7 +73,7 @@ class ModelAutoSettings extends StatelessWidget {
             ),
           ),
         if (routing.priority == AutoRoutingPriority.creditExpiry)
-          Text('能使用同一批到期积分的模型，按下方顺序选择。', style: muted),
+          Text('到期时间相同时，按 Magpie 顺序选择。', style: muted),
       ],
     );
     final route = routing.preferred;

@@ -20,12 +20,14 @@ class PluginAccountsPanel extends StatefulWidget {
     required this.rewards,
     required this.providerIds,
     required this.title,
+    this.accountsWithoutModels = const {},
     this.activate,
     this.registrationUrl,
   });
   final PluginAccounts accounts;
   final PluginRewards rewards;
   final Set<String> providerIds;
+  final Set<String> accountsWithoutModels;
   final String title;
   final Future<String> Function(String)? activate;
   final Uri? Function()? registrationUrl;
@@ -636,6 +638,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       id: a.key,
       label: a.label.isEmpty ? '身份未提供' : a.label,
       identity: _identity(a),
+      noAvailableModels: widget.accountsWithoutModels.contains(a.key),
       detailPlatform: [
         widget.title,
         if (a.realm.isNotEmpty) a.realm,

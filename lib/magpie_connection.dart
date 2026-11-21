@@ -298,9 +298,26 @@ class MagpieConnection {
     }
   }
 
+  /// "magpie models" prints the public model ID as the first column, in the
+  /// same group order as /v1/models. Scope the observation to our own groups.
+  Future<List<String>> publicOrder(Iterable<String> ids) async {
+    final own = ids.toSet();
+    if (own.isEmpty) return [];
+    final output =
+        await (_command ??
+            (List<String> args, {String? input}) async =>
+                _run(await _executable(), args))(['models']);
+    final order = <String>{};
+    for (final line in const LineSplitter().convert(output)) {
+      final id = line.trimLeft().split(RegExp(r'\s+')).first;
+      if (own.contains(id)) order.add(id);
+    }
+    return order.toList();
+  }
+
   /// Only Auto and explicit user choices become native public groups. Their
   /// account-scoped members retain native protocol conversion and failover.
-  Future<void> syncRouting(
+  Future<List<String>> syncRouting(
     String bridgePath,
     MagpieModelRouting routing, {
     Set<String> previousGroups = const {},
@@ -347,21 +364,33 @@ class MagpieConnection {
         ...routing.accountModels[key] ?? {'auto'},
       ]);
     }
-    for (final entry in routing.groups.entries) {
-      final name = entry.value.name;
+    Future<void> syncGroup(String id) async {
+      final group = routing.groups[id]!;
+      final name = group.name;
       final options = [
         'name=$name',
-        'models=${entry.value.members.join(',')}',
+        'models=${group.members.join(',')}',
         'routing=order',
         'stays=session',
-        'listed=no',
+        id == MagpieModelRouting.autoGroupId ? 'listed=yes' : 'listed=no',
       ];
       try {
-        await command(['group', 'set', entry.key, ...options]);
+        await command(['group', 'set', id, ...options]);
       } on MagpieCommandFailure catch (error) {
         if (!error.missingGroup) rethrow;
-        await command(['group', 'add', name, 'id=${entry.key}', ...options]);
+        await command(['group', 'add', name, 'id=$id', ...options]);
       }
+    }
+
+    for (final id in routing.groups.keys.where(
+      (id) => id != MagpieModelRouting.autoGroupId,
+    )) {
+      await syncGroup(id);
+    }
+    final order = await publicOrder(routing.publicIds);
+    routing.usePublicOrder(order);
+    if (routing.groups.containsKey(MagpieModelRouting.autoGroupId)) {
+      await syncGroup(MagpieModelRouting.autoGroupId);
     }
     // Expose aliases only after every target exists. A retry can complete a
     // partially written group without pointing new requests at a missing one.
@@ -385,6 +414,7 @@ class MagpieConnection {
         if (!error.missingGroup) rethrow;
       }
     }
+    return order;
   }
 
   Future<List<Map<String, dynamic>>> _installedProviders() async {

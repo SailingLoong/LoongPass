@@ -51,7 +51,7 @@ class _Service extends ChangeNotifier implements PluginModelService {
       true,
     ),
   ];
-  Map<String, dynamic> settings = {};
+  Map<String, dynamic> settings = {'version': 4};
   @override
   Map get routingSettings => settings;
   @override
@@ -67,20 +67,6 @@ class _Service extends ChangeNotifier implements PluginModelService {
     settings['accounts'] = {
       id: {account: value},
     };
-    publish();
-  }
-
-  @override
-  Future<void> setModelEnabled(String id, bool value) async {
-    changes++;
-    settings['models'] = {id: value};
-    publish();
-  }
-
-  @override
-  Future<void> reorderModels(List<String> order) async {
-    changes++;
-    settings['order'] = order;
     publish();
   }
 
@@ -136,6 +122,8 @@ void main() {
         final store = MemoryAccountStore('model-access');
         var service = PluginModelService(accounts: accounts, store: store);
         await service.start();
+        await service.setModelPublished('deepseek-flash', true);
+        await service.setModelPublished('glm-5.3-flash', true);
         final app = _Application(service);
         try {
           await tester.pumpWidget(
@@ -364,130 +352,48 @@ void main() {
     },
   );
 
-  testDesktopWidgets(
-    'Auto can rank a native-only media candidate without publishing it as an official model',
-    (tester) async {
-      final app = ModelWorkspaceFixture();
-      addTearDown(app.dispose);
-      final account = app.accounts.accounts.first;
-      account.models.add({
-        'id': 'native-image-slot',
-        'name': '渠道图像模型',
-        'outputs': ['image'],
-      });
-      final candidate = app.models.catalog.singleWhere(
-        (model) => !model.official,
-      );
-      final selected = <String?>[];
-      await tester.pumpWidget(
-        DesktopTestApp(
-          home: Scaffold(
-            body: PluginModelServicesPage(
-              application: app,
-              selectedModelId: 'auto',
-              onSelectModel: selected.add,
-            ),
+  testDesktopWidgets('Auto shows only published official models in order', (
+    tester,
+  ) async {
+    final app = ModelWorkspaceFixture();
+    addTearDown(app.dispose);
+    app.accounts.accounts.first.models.add({
+      'id': 'image-slot',
+      'name': '渠道图像模型',
+    });
+    app.models.routingSettings = {
+      'version': 3,
+      'order': ['image-slot', 'deepseek-flash', 'MiniMax-M3'],
+      'models': {
+        'image-slot': true,
+        'MiniMax-M3': true,
+        'deepseek-flash': false,
+      },
+      'published': {'deepseek-flash': true},
+    };
+    await tester.pumpWidget(
+      DesktopTestApp(
+        home: Scaffold(
+          body: PluginModelServicesPage(
+            application: app,
+            selectedModelId: 'auto',
           ),
         ),
-      );
-      final row = find.byKey(ValueKey('model-${candidate.id}'));
-      expect(row, findsOneWidget);
-      await tester.ensureVisible(find.text('渠道图像模型'));
-      final beforeBrowsing = Map.of(app.models.routingSettings);
-      await tester.tap(find.text('渠道图像模型'));
-      await tester.pumpAndSettle();
-      expect(selected, [candidate.id]);
-      expect(find.text('账号来源'), findsOneWidget);
-      expect(find.text(account.label), findsOneWidget);
-      expect(
-        find.byKey(ValueKey('model-enabled-${candidate.id}')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(ValueKey('model-published-${candidate.id}')),
-        findsNothing,
-      );
-      expect(app.models.routingSettings, beforeBrowsing);
-      expect(app.accounts.refreshes, 0);
-      await tester.tap(find.text('返回'));
-      await tester.pumpAndSettle();
-      expect(selected, [candidate.id, 'auto']);
-      expect(row, findsOneWidget);
-      final up = find.bySemanticsLabel('上移 渠道图像模型');
-      await tester.ensureVisible(up);
-      await tester.tap(up);
-      await tester.pumpAndSettle();
-      final preview = find.byKey(const Key('auto-route-preview'));
-      expect(
-        find.descendant(of: preview, matching: find.textContaining('渠道图像模型')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: preview, matching: find.textContaining('图像生成')),
-        findsOneWidget,
-      );
-      expect(
-        app.connection.routing.groups.containsKey(candidate.groupId),
-        isFalse,
-      );
-    },
-  );
-
-  testDesktopWidgets(
-    'a native-only candidate removed by a catalog filter can rejoin at its saved rank',
-    (tester) async {
-      final accounts = WorkspaceFixtureAccounts();
-      accounts.accounts.first.models.add({'id': 'native-slot', 'name': '渠道候选'});
-      final service = PluginModelService(
-        accounts: accounts,
-        store: MemoryAccountStore('restore-auto'),
-      );
-      await service.start();
-      final app = _Application(service);
-      try {
-        final catalog = service.catalog;
-        final native = catalog.singleWhere((model) => !model.official);
-        await service.reorderModels([
-          native.id,
-          ...catalog.where((m) => m.official).map((m) => m.id),
-        ]);
-        await tester.pumpWidget(
-          DesktopTestApp(
-            home: Scaffold(body: PluginModelServicesPage(application: app)),
-          ),
-        );
-        final search = find.byKey(const Key('model-search'));
-        await tester.enterText(search, 'MiniMax-M3');
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('retain-models')));
-        await tester.pumpAndSettle();
-        expect(service.catalog.where((m) => m.enabled).single.id, 'MiniMax-M3');
-        await tester.enterText(search, '');
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('open-auto-routing')));
-        await tester.pumpAndSettle();
-        final excluded = find.text('未参与（2）');
-        await tester.ensureVisible(excluded);
-        await tester.tap(excluded);
-        await tester.pumpAndSettle();
-        expect(find.text('渠道候选').hitTestable(), findsOneWidget);
-        await tester.enterText(search, '渠道候选');
-        await tester.pumpAndSettle();
-        final join = find.text('加入 Auto').hitTestable();
-        await tester.ensureVisible(join);
-        await tester.tap(join);
-        await tester.pumpAndSettle();
-        expect(service.catalog.first.id, native.id);
-        expect(service.catalog.first.enabled, isTrue);
-        expect(service.catalog.first.published, isFalse);
-      } finally {
-        await tester.pumpWidget(const SizedBox.shrink());
-        app.connection.dispose();
-        await service.close();
-        accounts.dispose();
-      }
-    },
-  );
+      ),
+    );
+    expect(find.byKey(const Key('model-deepseek-flash')), findsOneWidget);
+    expect(find.text('01'), findsOneWidget);
+    expect(find.text('渠道图像模型'), findsNothing);
+    expect(find.byKey(const Key('model-MiniMax-M3')), findsNothing);
+    expect(find.text('加入 Auto'), findsNothing);
+    await tester.tap(find.byKey(const Key('open-model-deepseek-flash')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('model-published-deepseek-flash')),
+      findsOneWidget,
+    );
+    expect(find.text('参与 Auto'), findsNothing);
+  });
 
   for (final brightness in Brightness.values) {
     testDesktopWidgets(
@@ -621,11 +527,14 @@ void main() {
         await tester.enterText(find.byKey(const Key('model-search')), '');
         await tester.pumpAndSettle();
         expect(find.text('MiniMax-M3'), findsOneWidget);
-        expect(service.catalog.every((model) => model.enabled), isTrue);
+        expect(
+          service.catalog.where((m) => m.published).single.id,
+          'MiniMax-M3',
+        );
         await tester.tap(find.byKey(const Key('model-published-MiniMax-M3')));
         await tester.pumpAndSettle();
         expect(find.text('MiniMax-M3'), findsNothing);
-        expect(service.catalog.every((model) => model.enabled), isTrue);
+        expect(service.catalog.any((model) => model.published), isFalse);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         app.connection.dispose();
@@ -635,51 +544,6 @@ void main() {
     },
   );
 
-  testDesktopWidgets(
-    'filtered selection is saved and hidden models can be restored',
-    (tester) async {
-      final accounts = WorkspaceFixtureAccounts();
-      final service = PluginModelService(
-        accounts: accounts,
-        store: MemoryAccountStore('ui-selection'),
-      );
-      await service.start();
-      final app = _Application(service);
-      try {
-        await tester.pumpWidget(
-          DesktopTestApp(
-            home: Scaffold(body: PluginModelServicesPage(application: app)),
-          ),
-        );
-        await tester.enterText(find.byKey(const Key('model-search')), '1017');
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('retain-models')));
-        await tester.pumpAndSettle();
-        expect(service.catalog.where((m) => m.enabled).map((m) => m.id), [
-          'deepseek-flash',
-        ]);
-        await tester.enterText(find.byKey(const Key('model-search')), '');
-        await tester.pumpAndSettle();
-        expect(find.text('MiniMax-M3'), findsNothing);
-        await tester.ensureVisible(find.byKey(const Key('show-all-models')));
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('show-all-models')));
-        await tester.pumpAndSettle();
-        expect(find.text('MiniMax-M3'), findsOneWidget);
-        await tester.tap(find.text('MiniMax-M3'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('参与 Auto'));
-        await tester.pumpAndSettle();
-        expect(service.catalog.every((m) => m.enabled), isTrue);
-        expect(tester.takeException(), isNull);
-      } finally {
-        await tester.pumpWidget(const SizedBox.shrink());
-        app.connection.dispose();
-        await service.close();
-        accounts.dispose();
-      }
-    },
-  );
   testDesktopWidgets(
     'long model and account names fit a narrow window at 200 percent text scale',
     (tester) async {
@@ -825,49 +689,6 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  testDesktopWidgets('model priority changes by keyboard-accessible action', (
-    tester,
-  ) async {
-    final service = _Service();
-    final app = _Application(service);
-    addTearDown(service.dispose);
-    addTearDown(app.connection.dispose);
-    await tester.pumpWidget(
-      DesktopTestApp(
-        home: Scaffold(body: PluginModelServicesPage(application: app)),
-      ),
-    );
-    expect(find.text('模型连接'), findsOneWidget);
-    expect(find.text('模型名称'), findsOneWidget);
-    expect(
-      tester.getSize(find.text('显示全部模型')).height,
-      lessThanOrEqualTo(
-        tester.getSize(find.byKey(const Key('model-search'))).height,
-      ),
-    );
-    await tester.tap(find.byKey(const Key('open-auto-routing')));
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('model-published-deepseek-flash')),
-      findsNothing,
-    );
-    await tester.enterText(find.byKey(const Key('model-search')), '1017');
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('model-glm-5.3-flash')), findsNothing);
-    expect(find.text('02'), findsOneWidget);
-    final arrow = find.descendant(
-      of: find.bySemanticsLabel('上移 deepseek-flash'),
-      matching: find.byType(Icon),
-    );
-    Focus.of(tester.element(arrow)).requestFocus();
-    await tester.pump();
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pumpAndSettle();
-    expect(service.catalog.first.id, 'deepseek-flash');
-    expect(service.changes, 1);
-    expect(tester.takeException(), isNull);
-  });
-
   testDesktopWidgets('connection sheet opens grants without writing settings', (
     tester,
   ) async {

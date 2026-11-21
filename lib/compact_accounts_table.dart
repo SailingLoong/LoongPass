@@ -516,6 +516,11 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (entry.noAvailableModels)
+                Text(
+                  '无可用模型',
+                  style: muted.copyWith(color: context.desktopPalette.warning),
+                ),
               if (platform != null)
                 Text(
                   platform,

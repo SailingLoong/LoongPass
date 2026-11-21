@@ -18,82 +18,90 @@ Future<void> showModelConnectionSheet(
   constraints: const BoxConstraints(maxWidth: 462),
   draggable: false,
   builder: (context) => ListenableBuilder(
-    listenable: Listenable.merge([vm, vm.service]),
-    builder: (context, _) => Container(
-      width: double.infinity,
-      height: double.infinity,
-      decoration: BoxDecoration(
-        color: context.theme.colors.background,
-        border: Border(left: BorderSide(color: context.theme.colors.border)),
-      ),
-      child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '连接设置',
-                    style: context.theme.typography.display.sm,
-                  ),
-                ),
-                FButton.icon(
-                  variant: FButtonVariant.ghost,
-                  semanticsLabel: '关闭连接设置',
-                  onPress: () => Navigator.pop(context),
-                  child: const Icon(FLucideIcons.x),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            FSwitch(
-              value: vm.service.enabled,
-              enabled: !vm.busy,
-              leadingLabel: true,
-              label: const Text('本机模型服务'),
-              description: Text(vm.service.running ? '本机服务运行中' : '本机服务已关闭'),
-              onChange: vm.enableService,
-            ),
-            if (vm.service.error != null) const Text('服务启动未完成，请检查本机端口。'),
-            const SizedBox(height: 24),
-            ModelConnectionPanel(connection: connection, enabled: !vm.busy),
-            const SizedBox(height: 16),
-            FAccordion(
-              children: [
-                FAccordionItem(
-                  title: Text(
-                    '开放账号（${vm.service.grants.where((g) => g.enabled).length} / ${vm.service.grants.length}）',
-                  ),
-                  child: Column(
-                    children: [
-                      if (vm.service.grants.isEmpty) const Text('暂无可开放的账号。'),
-                      for (final grant in vm.service.grants)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: FSwitch(
-                            key: ValueKey(grant.account.key),
-                            value: grant.enabled,
-                            enabled: !vm.busy && !grant.authorizationRequired,
-                            leadingLabel: true,
-                            label: Text(grant.account.label),
-                            description: Text(
-                              '${modelSourceName(grant.account.provider)}${grant.authorizationRequired ? ' · 平台账号需重新授权' : ''}',
-                            ),
-                            onChange: (value) =>
-                                vm.authorize(grant.account.key, value),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            if (vm.error case final error?) Text(error.message),
-          ],
+    listenable: Listenable.merge([vm, vm.service, connection]),
+    builder: (context, _) {
+      final missingModels = connection.accountsWithoutModels;
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          color: context.theme.colors.background,
+          border: Border(left: BorderSide(color: context.theme.colors.border)),
         ),
-      ),
-    ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '连接设置',
+                      style: context.theme.typography.display.sm,
+                    ),
+                  ),
+                  FButton.icon(
+                    variant: FButtonVariant.ghost,
+                    semanticsLabel: '关闭连接设置',
+                    onPress: () => Navigator.pop(context),
+                    child: const Icon(FLucideIcons.x),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              FSwitch(
+                value: vm.service.enabled,
+                enabled: !vm.busy,
+                leadingLabel: true,
+                label: const Text('本机模型服务'),
+                description: Text(vm.service.running ? '本机服务运行中' : '本机服务已关闭'),
+                onChange: vm.enableService,
+              ),
+              if (vm.service.error != null) const Text('服务启动未完成，请检查本机端口。'),
+              const SizedBox(height: 24),
+              ModelConnectionPanel(connection: connection, enabled: !vm.busy),
+              const SizedBox(height: 16),
+              FAccordion(
+                children: [
+                  FAccordionItem(
+                    title: Text(
+                      '开放账号（${vm.service.grants.where((g) => g.enabled).length} / ${vm.service.grants.length}）',
+                    ),
+                    child: Column(
+                      children: [
+                        if (vm.service.grants.isEmpty) const Text('暂无可开放的账号。'),
+                        for (final grant in vm.service.grants)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: FSwitch(
+                              key: ValueKey(grant.account.key),
+                              value: grant.enabled,
+                              enabled: !vm.busy && !grant.authorizationRequired,
+                              leadingLabel: true,
+                              label: Text(grant.account.label),
+                              description: Text(
+                                [
+                                  modelSourceName(grant.account.provider),
+                                  if (missingModels.contains(grant.account.key))
+                                    '无可用模型',
+                                  if (grant.authorizationRequired) '平台账号需重新授权',
+                                ].join(' · '),
+                              ),
+                              onChange: (value) =>
+                                  vm.authorize(grant.account.key, value),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (vm.error case final error?) Text(error.message),
+            ],
+          ),
+        ),
+      );
+    },
   ),
 );
 

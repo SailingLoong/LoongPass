@@ -35,36 +35,85 @@ void main() {
   });
 
   test(
-    'retained models survive restart and filter the native catalog',
+    'only published models pass native discovery, including after a restart',
     () async {
-      await service.retainModels({'deepseek-flash'});
+      await service.setModelPublished('deepseek-flash', true);
       accounts.accounts.first.models.add({'id': 'glm-5.3'});
-      expect(service.catalog.where((m) => m.enabled).map((m) => m.id), [
-        'deepseek-flash',
-      ]);
       await service.close();
       service = PluginModelService(accounts: accounts, store: store, port: 0);
       await service.start();
-      expect(service.catalog.where((m) => m.enabled).map((m) => m.id), [
+      expect(service.catalog.where((m) => m.published).map((m) => m.id), [
         'deepseek-flash',
       ]);
       await service.setEnabled(true);
       final client = HttpClient();
       try {
-        final request = await client.getUrl(
-          service.endpoint!.resolve('/plugin/catalog'),
-        );
-        request.headers.set('authorization', 'Bearer synthetic-saved-0');
-        final response = await request.close();
-        expect(response.statusCode, 200);
-        final data = jsonDecode(await utf8.decoder.bind(response).join());
-        expect(data['models'], isEmpty);
-        expect(data.containsKey('publicModels'), isFalse);
+        Future<List> nativeModels() async {
+          final request = await client.getUrl(
+            service.endpoint!.resolve('/plugin/catalog'),
+          );
+          request.headers.set('authorization', 'Bearer synthetic-saved-0');
+          final response = await request.close();
+          expect(response.statusCode, 200);
+          return jsonDecode(await utf8.decoder.bind(response).join())['models'];
+        }
+
+        expect(await nativeModels(), isEmpty);
+        await service.setModelPublished('MiniMax-M3', true);
+        expect((await nativeModels()).map((m) => m['id']), ['MiniMax-M3']);
+        await service.setModelPublished('MiniMax-M3', false);
+        expect(await nativeModels(), isEmpty);
       } finally {
         client.close(force: true);
       }
-      await service.setModelEnabled('MiniMax-M3', true);
-      expect(service.catalog.where((m) => m.enabled).map((m) => m.id), [
+    },
+  );
+
+  test('upgrade keeps Magpie choices, order and per-account controls over conflicting old Auto settings', () async {
+    await service.close();
+    store.data['routing'] = {
+      'version': 3,
+      'models': {'MiniMax-M3': true, 'deepseek-flash': false},
+      'published': {'deepseek-flash': true},
+      'order': ['deepseek-flash', 'MiniMax-M3'],
+      'autoPriority': 'creditExpiry',
+      'accounts': {
+        'deepseek-flash': {'saved-13': false},
+      },
+    };
+    service = PluginModelService(accounts: accounts, store: store, port: 0);
+    await service.start();
+    expect(service.catalog.map((m) => m.id), ['deepseek-flash', 'MiniMax-M3']);
+    expect(
+      service.catalog.where((m) => m.published).single.id,
+      'deepseek-flash',
+    );
+    expect(
+      service.catalog.first.bindings
+          .singleWhere((b) => b.account.key == 'saved-13')
+          .enabled,
+      isFalse,
+    );
+    expect(service.routingSettings['autoPriority'], 'creditExpiry');
+    expect(service.routingSettings.containsKey('models'), isFalse);
+  });
+
+  test(
+    'the last native order survives restarts and missing accounts',
+    () async {
+      for (final id in ['deepseek-flash', 'MiniMax-M3']) {
+        await service.setModelPublished(id, true);
+      }
+      await service.rememberPublishedOrder(['deepseek-flash', 'MiniMax-M3']);
+      final account = accounts.accounts.first;
+      account.models.add({'id': 'glm-5.3'});
+      await service.setModelPublished('glm-5.3', true);
+      await service.rememberPublishedOrder(['glm-5.3', 'MiniMax-M3']);
+      await service.close();
+      service = PluginModelService(accounts: accounts, store: store, port: 0);
+      await service.start();
+      expect(service.catalog.map((m) => m.id), [
+        'glm-5.3',
         'MiniMax-M3',
         'deepseek-flash',
       ]);
@@ -72,65 +121,21 @@ void main() {
   );
 
   test(
-    'publication defaults off and persists independently of Auto choices',
-    () async {
-      expect(service.catalog.every((m) => m.enabled && !m.published), isTrue);
-      await service.setModelPublished('deepseek-flash', true);
-      await service.setModelEnabled('deepseek-flash', false);
-      await service.close();
-      service = PluginModelService(accounts: accounts, store: store, port: 0);
-      await service.start();
-      final flash = service.catalog.singleWhere(
-        (m) => m.id == 'deepseek-flash',
-      );
-      expect(flash.published, isTrue);
-      expect(flash.enabled, isFalse);
-      expect(
-        service.catalog.singleWhere((m) => m.id == 'MiniMax-M3').enabled,
-        isTrue,
-      );
-      accounts.accounts.first.models.add({'id': 'newly-discovered'});
-      expect(
-        service.catalog
-            .singleWhere((m) => m.id == 'newly-discovered')
-            .published,
-        isFalse,
-      );
-      await service.setModelPublished('deepseek-flash', false);
-      expect(service.catalog.any((m) => m.published), isFalse);
-      expect(
-        service.catalog.singleWhere((m) => m.id == 'MiniMax-M3').enabled,
-        isTrue,
-      );
-    },
-  );
-
-  test('failed publication save leaves both preferences unchanged', () async {
-    store.beforeWrite = () async =>
-        throw const FileSystemException('synthetic');
-    await expectLater(
-      service.setModelPublished('MiniMax-M3', true),
-      throwsA(isA<FileSystemException>()),
-    );
-    expect(service.catalog.every((m) => m.enabled && !m.published), isTrue);
-  });
-
-  test(
-    'selection writes are atomic and serialize with individual changes',
+    'failed publication is atomic and subsequent settings changes serialize',
     () async {
       store.beforeWrite = () async =>
           throw const FileSystemException('synthetic');
       await expectLater(
-        service.retainModels({'deepseek-flash'}),
+        service.setModelPublished('MiniMax-M3', true),
         throwsA(isA<FileSystemException>()),
       );
-      expect(service.catalog.every((m) => m.enabled), isTrue);
+      expect(service.catalog.any((m) => m.published), isFalse);
       store.beforeWrite = null;
-      await Future.wait<void>([
-        service.retainModels({'deepseek-flash'}),
-        service.setModelEnabled('MiniMax-M3', true),
+      await Future.wait([
+        service.setModelPublished('deepseek-flash', true),
+        service.setModelPublished('MiniMax-M3', true),
       ]);
-      expect(service.catalog.every((m) => m.enabled), isTrue);
+      expect(service.catalog.every((m) => m.published), isTrue);
     },
   );
 
@@ -147,7 +152,7 @@ void main() {
     account.models.clear();
     service = PluginModelService(accounts: accounts, store: store, port: 0);
     await service.start();
-    await service.setModelEnabled('deepseek-flash', false);
+    await service.setModelPublished('deepseek-flash', true);
     await service.close();
     account.models.addAll(savedModels);
     account.facts['provider'] = 'trae-cn';
@@ -157,9 +162,9 @@ void main() {
     ]);
     service = PluginModelService(accounts: accounts, store: store, port: 0);
     await service.start();
-    await service.retainModels({'glm-5.3'});
+    await service.setModelPublished('glm-5.3', true);
     final grouped = service.catalog.singleWhere((m) => m.id == 'glm-5.3');
-    expect(grouped.enabled, isTrue);
+    expect(grouped.published, isTrue);
     expect(grouped.availableAccounts, 0);
     expect(
       store.data['routing']['legacy']['models']['trae-cn/glm-5.3-max'],

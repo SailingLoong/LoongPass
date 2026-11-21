@@ -72,7 +72,9 @@ class PluginModelService extends ChangeNotifier {
   Future<void> start() async {
     final saved = await store.read();
     _data = saved.data;
-    if (_data['version'] != 4) {
+    final upgradeService = _data['version'] != 4;
+    final routing = _data['routing'];
+    if (upgradeService) {
       if (_data.isNotEmpty && !{1, 2, 3}.contains(_data['version']))
         throw StateError('Unsupported model settings');
       final rows = <String, dynamic>{};
@@ -100,8 +102,13 @@ class PluginModelService extends ChangeNotifier {
             if (row['key'] is String) row['key'],
         ],
       };
-      await store.write(saved.revision, _data);
     }
+    final upgradeRouting = routing is Map && routing['version'] != 4;
+    if (routing is Map && (upgradeService || upgradeRouting)) {
+      _data['routing'] = upgradeModelRouting(routing);
+    }
+    if (upgradeService || upgradeRouting)
+      await store.write(saved.revision, _data);
     accounts.addListener(_changed);
     if (enabled) {
       try {
@@ -162,12 +169,6 @@ class PluginModelService extends ChangeNotifier {
     };
   });
 
-  Future<void> setModelEnabled(String id, bool value) => _edit((data) {
-    catalog.singleWhere((model) => model.id == id);
-    final routing = _routingForEdit(data);
-    (routing.putIfAbsent('models', () => {}) as Map)[id] = value;
-  });
-
   Future<void> setAutoRoutingPriority(AutoRoutingPriority priority) =>
       _edit((data) => priority.saveTo(_routingForEdit(data)));
 
@@ -183,18 +184,6 @@ class PluginModelService extends ChangeNotifier {
     return routing;
   }
 
-  Future<void> retainModels(Set<String> ids) {
-    final selection = Set<String>.of(ids);
-    return _edit((data) {
-      if (!catalog.map((model) => model.id).toSet().containsAll(selection)) {
-        throw StateError('Model catalog changed');
-      }
-      final routing = _routingForEdit(data);
-      routing['defaultModelEnabled'] = false;
-      routing['models'] = {for (final id in selection) id: true};
-    });
-  }
-
   Future<void> setModelAccountEnabled(String id, String account, bool value) =>
       _edit((data) {
         final model = catalog.singleWhere((model) => model.id == id);
@@ -206,16 +195,21 @@ class PluginModelService extends ChangeNotifier {
         (rows.putIfAbsent(id, () => {}) as Map)[account] = value;
       });
 
-  Future<void> reorderModels(List<String> order) => _edit((data) {
-    final current = catalog.map((model) => model.id).toSet();
-    if (order.length != current.length ||
-        order.toSet().length != order.length ||
-        !current.containsAll(order)) {
-      throw StateError('Model catalog changed');
-    }
-    final routing = _routingForEdit(data);
-    routing['order'] = List<String>.of(order);
-  });
+  // Magpie owns display order. Keep its last observed order for offline views
+  // and as the initial order when restoring groups on a new installation.
+  Future<void> rememberPublishedOrder(List<String> ids) async {
+    if (ids.isEmpty) return;
+    final cached = routingSettings['order'] as List? ?? const [];
+    if (listEquals(cached.take(ids.length).toList(), ids)) return;
+    await _edit((data) {
+      final routing = _routingForEdit(data);
+      routing['order'] = {
+        ...ids,
+        ...?(routing['order'] as List?)?.whereType<String>(),
+      }.toList();
+    });
+  }
+
   Future<void> setEnabled(bool value) async {
     await _edit((data) => data['enabled'] = value);
     if (value) {
@@ -353,29 +347,21 @@ class PluginModelService extends ChangeNotifier {
         bytes.addAll(chunk);
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map;
-      final model = catalog
-          .expand((m) => m.bindings)
-          .where((b) => b.account.key == account.key)
-          .where(
-            (b) =>
-                // Magpie's native Go boundary sends api.id to its host, while
-                // OpenCode can retain the catalog id. Both name this account's
-                // declared model; the SDK and URL disambiguate native aliases.
-                (b.native['apiId'] == body['model'] ||
-                    '${account.provider}/${b.nativeId}' == body['model'] ||
-                    b.exportedId == body['model']) &&
-                b.native['npm'] == body['npm'] &&
-                _allowedURL(b.native['url'], body['url']),
-          )
-          .map((b) => b.native)
-          .firstOrNull;
-      if (model == null ||
+      // Native Magpie sends api.id; other clients may retain the catalog ID.
+      // Several bindings can share a wire ID on the same account and SDK.
+      bool matches(PluginModelBinding binding) =>
+          binding.account.key == account.key &&
+          (binding.native['apiId'] == body['model'] ||
+              '${account.provider}/${binding.nativeId}' == body['model'] ||
+              binding.exportedId == body['model']) &&
+          binding.native['npm'] == body['npm'] &&
+          _allowedURL(binding.native['url'], body['url']);
+      if (!catalog.expand((m) => m.bindings).any(matches) ||
           body['method'] != 'POST' ||
           body['headers'] is! Map ||
           body['body'] is! String ||
           body['session'] is! String ||
-          (body['session'] as String).length > 1024 ||
-          !_allowedURL(model['url'], body['url'])) {
+          (body['session'] as String).length > 1024) {
         throw const FormatException('Invalid native request');
       }
       // Validate the opaque body, but leave its protocol and model untouched.
@@ -411,16 +397,12 @@ class PluginModelService extends ChangeNotifier {
         await _json(request.response, 401, {'error': 'grant_unavailable'});
         return;
       }
-      final currentModel = catalog
-          .expand((m) => m.routed ? m.bindings : <PluginModelBinding>[])
-          .where(
-            (b) =>
-                b.account.key == account.key &&
-                b.nativeId == model['id'] &&
-                b.enabled,
-          )
+      final binding = catalog
+          .where((m) => m.published)
+          .expand((m) => m.bindings)
+          .where((b) => b.available && matches(b))
           .firstOrNull;
-      if (currentModel == null || !currentModel.available) {
+      if (binding == null) {
         request.response.headers.set('retry-after', '30');
         await _json(request.response, 429, {
           'error': 'model_quota_unavailable',
@@ -445,6 +427,7 @@ class PluginModelService extends ChangeNotifier {
         await _json(request.response, 429, {'error': 'account_busy'});
         return;
       }
+      final model = binding.native;
       fetch = accounts.runtime.fetch({
         'provider': account.provider,
         'account': account.key,
@@ -494,7 +477,7 @@ class PluginModelService extends ChangeNotifier {
   }
 
   Iterable<Map<String, dynamic>> _supportedModels(PluginAccount account) sync* {
-    for (final model in catalog.where((m) => m.routed)) {
+    for (final model in catalog.where((m) => m.published)) {
       for (final binding in model.bindings) {
         if (binding.account.key == account.key && binding.enabled)
           yield {...binding.native, 'bridgeId': binding.exportedId};

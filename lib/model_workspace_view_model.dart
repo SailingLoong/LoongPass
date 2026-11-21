@@ -22,30 +22,22 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  ({
-    PluginModel? selected,
-    List<PluginModel> candidates,
-    List<PluginModel> excluded,
-    List<PluginModel> visible,
-    bool noSources,
-  })
-  snapshot(String? selectedId, {String? queryOverride}) {
+  ({PluginModel? selected, List<PluginModel> visible, bool noSources}) snapshot(
+    String? selectedId, {
+    List<PluginModel>? candidates,
+    String? queryOverride,
+  }) {
     final query = queryOverride ?? this.query;
-    final catalog = service.catalog;
+    final catalog = candidates ?? service.catalog;
     final official = catalog.where((model) => model.official);
-    final candidates = catalog.where((model) => model.enabled).toList();
     bool matches(PluginModel model) => model.searchText.contains(query);
-    final displayed = selectedId == 'auto'
-        ? candidates
-        : official.where(
-            (model) => showAll || model.published || query.isNotEmpty,
-          );
+    final displayed =
+        candidates ??
+        official.where(
+          (model) => showAll || model.published || query.isNotEmpty,
+        );
     return (
       selected: catalog.where((model) => model.id == selectedId).firstOrNull,
-      candidates: candidates,
-      excluded: selectedId == 'auto'
-          ? catalog.where((model) => !model.enabled && matches(model)).toList()
-          : const [],
       visible: displayed.where(matches).toList(),
       noSources: catalog.isEmpty && service.grants.isEmpty,
     );
@@ -71,8 +63,6 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
 
   Future<void> publish(String id, bool value) =>
       _save(() => service.setModelPublished(id, value));
-  Future<void> participate(String id, bool value) =>
-      _save(() => service.setModelEnabled(id, value));
   Future<void> selectPriority(AutoRoutingPriority priority) =>
       _save(() => service.setAutoRoutingPriority(priority));
   Future<void> authorize(String key, bool value) =>
@@ -83,18 +73,6 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
   );
   Future<void> enableService(bool value) =>
       _save(() => service.setEnabled(value));
-  Future<void> retain(List<PluginModel> visible) => _save(() async {
-    await service.retainModels(visible.map((m) => m.id).toSet());
-    showAll = false;
-  });
-  Future<void> move(String from, String to) => _save(() async {
-    final order = service.catalog.map((m) => m.id).toList();
-    final source = order.indexOf(from), target = order.indexOf(to);
-    if (source < 0 || target < 0 || source == target) return;
-    order.insert(target, order.removeAt(source));
-    await service.reorderModels(order);
-  });
-
   @override
   void dispose() {
     _disposed = true;

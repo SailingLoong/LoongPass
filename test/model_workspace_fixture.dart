@@ -139,7 +139,14 @@ class WorkspaceFixtureModels extends ChangeNotifier
   }
 
   @override
-  Future<void> reorderModels(List<String> order) async {
+  Future<void> setModelPublished(String id, bool value) async {
+    routingSettings = upgradeModelRouting(routingSettings);
+    (routingSettings.putIfAbsent('published', () => {}) as Map)[id] = value;
+    notifyListeners();
+  }
+
+  @override
+  Future<void> rememberPublishedOrder(List<String> order) async {
     routingSettings = {...routingSettings, 'order': order};
     notifyListeners();
   }
