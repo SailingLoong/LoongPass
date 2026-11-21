@@ -53,6 +53,13 @@ void main() {
       );
       await open(find.text('全部模型'), '模型连接');
       await open(find.byKey(const Key('model-nav-auto')), 'LoongPass Auto');
+      await open(
+        find.byKey(const Key('open-model-deepseek-flash')),
+        'deepseek-flash',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expectPage('LoongPass Auto');
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
       expectPage('模型连接');

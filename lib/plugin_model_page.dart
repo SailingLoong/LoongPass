@@ -80,18 +80,22 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => IndexedStack(
-    sizing: StackFit.expand,
-    index: _path.length,
-    children: [
-      _page(null),
-      for (final id in _path)
-        CallbackShortcuts(
-          key: ValueKey(id),
-          bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
-          child: Focus(autofocus: true, child: _page(id)),
-        ),
-    ],
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      if (_path.isNotEmpty)
+        const SingleActivator(LogicalKeyboardKey.escape): _back,
+    },
+    child: FocusScope(
+      child: IndexedStack(
+        sizing: StackFit.expand,
+        index: _path.length,
+        children: [
+          _page(null),
+          for (final id in _path)
+            Focus(key: ValueKey(id), autofocus: true, child: _page(id)),
+        ],
+      ),
+    ),
   );
 
   Widget _page(String? id) {
