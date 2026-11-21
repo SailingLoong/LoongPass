@@ -144,7 +144,12 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
             if (app.connection.busy) const Text('正在更新 Magpie 连接…'),
             if (app.connection.error != null)
               const Text('Magpie 连接配置尚未同步完成。已连接的配置会自动重试，也可在连接设置中重新连接。'),
-            if (vm.error != null) Text(vm.error!),
+            if (vm.error case final error?
+                when selected == null ||
+                    !selected.bindings.any(
+                      (b) => b.account.key == error.accountKey,
+                    ))
+              Text(error.message),
             if (selected != null) ...[
               WorkspaceCard(
                 child: Column(
@@ -175,11 +180,8 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
               PluginModelAccounts(
                 key: ValueKey(selected.id),
                 model: selected,
-                busy: vm.busy,
+                vm: vm,
                 onOpenAccount: widget.onOpenAccount,
-                onEnable: (key, value) =>
-                    vm.enableSource(selected.id, key, value),
-                onAuthorize: vm.authorize,
               ),
             ] else if (!auto && noSources) ...[
               Text('暂无账号来源', style: context.theme.typography.body.lg),

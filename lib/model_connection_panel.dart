@@ -78,7 +78,7 @@ Future<void> showModelConnectionSheet(
                             leadingLabel: true,
                             label: Text(grant.account.label),
                             description: Text(
-                              '${modelSourceName(grant.account.provider)}${grant.authorizationRequired ? ' · 需要授权' : ''}',
+                              '${modelSourceName(grant.account.provider)}${grant.authorizationRequired ? ' · 平台账号需重新授权' : ''}',
                             ),
                             onChange: (value) =>
                                 vm.authorize(grant.account.key, value),
@@ -89,7 +89,7 @@ Future<void> showModelConnectionSheet(
                 ),
               ],
             ),
-            if (vm.error != null) Text(vm.error!),
+            if (vm.error case final error?) Text(error.message),
           ],
         ),
       ),
