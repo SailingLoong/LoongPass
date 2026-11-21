@@ -271,6 +271,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
               ),
             ),
           );
+          // Hide a page's tooltips and menus in the same frame as their anchors.
           final pages = IndexedStack(
             index: platformPage
                 ? _selected.index
@@ -278,14 +279,14 @@ class AppWorkspaceState extends State<AppWorkspace> {
             sizing: StackFit.expand,
             children: [
               for (final app in ManagedApp.values)
-                KeyedSubtree(
+                Overlay.wrap(
                   key: ValueKey('page-${app.name}'),
                   child:
                       widget.pages[app] ??
                       Center(child: Text('${app.label} 尚未接入')),
                 ),
               for (final section in order)
-                KeyedSubtree(
+                Overlay.wrap(
                   key: ValueKey('section-${section.name}'),
                   child: sections[section]!,
                 ),

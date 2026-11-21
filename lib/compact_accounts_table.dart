@@ -451,10 +451,15 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
     );
     return LayoutBuilder(
       builder: (context, box) {
-        final controls = Wrap(
-          spacing: 4,
-          runSpacing: 2,
-          children: [filter, favorite, sort],
+        // Each popover needs its own traversal anchor in the accessibility tree.
+        final controls = Semantics(
+          container: true,
+          explicitChildNodes: true,
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 2,
+            children: [filter, favorite, sort],
+          ),
         );
         if (box.maxWidth < 385 * _textScale)
           return Column(
