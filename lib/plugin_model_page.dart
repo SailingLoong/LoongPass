@@ -72,15 +72,16 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
             ? _localSelection
             : widget.selectedModelId;
         final auto = id == 'auto';
-        final (:selected, :candidates, :visible, :noSources) = vm.snapshot(id);
+        final (:selected, :candidates, :excluded, :visible, :noSources) = vm
+            .snapshot(id);
         return WorkspacePage(
           title: selected?.name ?? (auto ? 'LoongPass Auto' : '模型连接'),
           subtitle: selected != null
               ? '模型名称使用厂商 API 标准 ID。'
               : auto
-              ? '按候选顺序选择模型，同会话、同模型优先复用账号。'
+              ? null
               : '管理 Magpie 能使用的模型与账号。',
-          action: selected == null
+          action: selected == null && !auto
               ? FButton(
                   variant: FButtonVariant.outline,
                   size: FButtonSizeVariant.sm,
@@ -145,14 +146,21 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
               const SizedBox(height: 8),
               const Text('在「账号与积分」中添加支持模型服务的账号。'),
             ] else ...[
-              ModelAutoSummary(
-                count: candidates.length,
-                running: app.models.running,
-                onOpen: auto ? null : () => _select('auto'),
-              ),
+              if (auto)
+                ModelAutoSettings(
+                  routing: app.connection.routing,
+                  running: app.models.running,
+                  busy: vm.busy,
+                  onChange: vm.selectPriority,
+                )
+              else
+                ModelAutoSummary(
+                  priority: app.connection.autoPriority,
+                  onOpen: () => _select('auto'),
+                ),
               const SizedBox(height: 20),
               Text(
-                auto ? '候选顺序' : '模型目录',
+                auto ? '模型顺序' : '模型目录',
                 style: context.theme.typography.body.lg.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -203,29 +211,30 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              Container(
-                color: context.desktopPalette.sidebar,
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    const Expanded(child: Text('模型名称')),
-                    Flexible(
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(auto ? '调整顺序' : '在 Magpie 中显示'),
+              if (!auto)
+                Container(
+                  color: context.desktopPalette.sidebar,
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('模型名称')),
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: const Text('在 Magpie 中显示'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (visible.isEmpty)
+              if (visible.isEmpty && (vm.query.isEmpty || excluded.isEmpty))
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Text(
                     vm.query.isNotEmpty
                         ? '没有匹配的模型。可搜索模型、别名或账号。'
                         : auto
-                        ? '暂无参与 Auto 的模型。可在模型详情中开启。'
+                        ? '暂无参与 Auto 的模型。'
                         : '暂无单独显示的模型。打开“显示全部模型”后，开启需要的模型。',
                   ),
                 ),
@@ -238,15 +247,12 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                 onMove: vm.move,
                 filtered: vm.query.isNotEmpty,
               ),
-              if (auto)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FButton(
-                    variant: FButtonVariant.ghost,
-                    mainAxisSize: MainAxisSize.min,
-                    onPress: () => _select(null),
-                    child: const Text('全部模型'),
-                  ),
+              if (excluded.isNotEmpty)
+                ExcludedAutoModels(
+                  models: excluded,
+                  searching: vm.query.isNotEmpty,
+                  busy: vm.busy,
+                  onJoin: (id) => vm.participate(id, true),
                 ),
             ],
           ],

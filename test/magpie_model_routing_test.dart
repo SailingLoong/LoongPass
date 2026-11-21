@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/magpie_connection.dart';
+import '../lib/magpie_model_routing.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_model_catalog.dart';
 
@@ -78,7 +79,7 @@ void main() {
   );
 
   test('default publication creates only Auto in model then exact account expiry order', () async {
-    await client.syncRouting('/bridge', catalog());
+    await client.syncRouting('/bridge', MagpieModelRouting(catalog()));
     final groups = calls.where((c) => c.first == 'group').toList();
     expect(groups, hasLength(1));
     expect(
@@ -121,7 +122,10 @@ void main() {
         'published': {'deepseek-flash': true, 'image': true},
       });
       final flash = models.singleWhere((m) => m.id == 'deepseek-flash');
-      await client.syncRouting('/bridge', models);
+      await client.syncRouting(
+        '/bridge',
+        MagpieModelRouting(models, priority: AutoRoutingPriority.creditExpiry),
+      );
       final groups = calls.where((c) => c.first == 'group').toList();
       expect(groups.map((c) => c[2]), [flash.groupId, 'loongpass-auto']);
       expect(
@@ -147,7 +151,7 @@ void main() {
       final models = catalog();
       await client.syncRouting(
         '/bridge',
-        models,
+        MagpieModelRouting(models),
         previousGroups: {'loongpass-auto', ...models.map((m) => m.groupId)},
       );
       final removed = calls
@@ -167,7 +171,9 @@ void main() {
     () async {
       await client.syncRouting(
         '/bridge',
-        catalog({'version': 2, 'defaultModelEnabled': false}),
+        MagpieModelRouting(
+          catalog({'version': 2, 'defaultModelEnabled': false}),
+        ),
         previousGroups: {'loongpass-model', 'loongpass-auto'},
       );
       expect(
@@ -187,7 +193,10 @@ void main() {
   test('routing options target the registered clean bridge path', () async {
     final bridge =
         '${Directory.systemTemp.path}${Platform.pathSeparator}bridge';
-    await client.syncRouting('$bridge${Platform.pathSeparator}.', []);
+    await client.syncRouting(
+      '$bridge${Platform.pathSeparator}.',
+      MagpieModelRouting([]),
+    );
     expect(calls.singleWhere((c) => c[1] == 'options')[2], bridge);
   });
 
@@ -213,16 +222,16 @@ void main() {
       },
     );
     await expectLater(
-      client.syncRouting('/bridge', catalog()),
+      client.syncRouting('/bridge', MagpieModelRouting(catalog())),
       throwsA(isA<MagpieCommandFailure>()),
     );
     expect(calls.where((c) => c[1] == 'options'), isEmpty);
     fail = false;
     calls.clear();
-    await client.syncRouting('/bridge', catalog());
+    await client.syncRouting('/bridge', MagpieModelRouting(catalog()));
     expect(calls.where((c) => c[1] == 'add'), hasLength(1));
     expect(calls.last[1], 'options');
     // Also exercise normal updates after native creation.
-    await run.syncRouting('/bridge', catalog());
+    await run.syncRouting('/bridge', MagpieModelRouting(catalog()));
   });
 }

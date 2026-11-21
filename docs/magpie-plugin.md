@@ -18,9 +18,13 @@ and [earlier compatibility record](verification/2026-11-16-stable-1.0.1.md) for 
   them. Scheduling runs while LoongPass is running; uncertain claims are retained
   for verification rather than blindly repeated.
 - Balances, reward history and remaining-credit expiry from official interfaces.
-  Unknown expiry stays unknown. For an eligible model, available accounts with
-  credits expiring sooner are preferred; unknown expiry follows known expiry.
-  Conversation affinity and recovery are handled by Magpie's native routing.
+  In **LoongPass Auto**, **模型优先** follows the saved model order, then prefers
+  accounts with sooner-expiring credit for that model. **积分到期优先** starts
+  with the soonest-expiring credit a candidate can spend. The saved model order
+  breaks ties and applies when all eligible candidates have unknown expiry.
+  The preview shows the first available candidate for a new session. Magpie handles
+  request capabilities, session affinity and recovery. Expand **未参与** on the
+  Auto page to return an excluded model to its saved position.
 - Account switching in supported official desktop applications, with credential
   application and verification of the running client's identity reported separately.
 - A model service for Magpie, with Auto by default and individual native model

@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'plugin_model_catalog.dart';
-import 'plugin_model_accounts.dart';
 
 class PluginModelList extends StatelessWidget {
   const PluginModelList({
@@ -40,7 +39,7 @@ class PluginModelList extends StatelessWidget {
         proxyDecorator: (child, index, animation) =>
             ColoredBox(color: context.theme.colors.muted, child: child),
         itemBuilder: (context, index) {
-          final model = models[index], preferred = models[index].preferred;
+          final model = models[index];
           final order = candidates;
           final rank = order?.indexWhere((m) => m.id == model.id) ?? -1;
           final muted = context.theme.typography.body.xs.copyWith(
@@ -49,30 +48,22 @@ class PluginModelList extends StatelessWidget {
           final name = Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              FButton(
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                onPress: () => onSelect(model.id),
-                child: Flexible(child: Text(model.name, softWrap: true)),
-              ),
+              if (!model.official)
+                Text(model.name, style: context.theme.typography.body.md)
+              else
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => onSelect(model.id),
+                  child: Flexible(child: Text(model.name, softWrap: true)),
+                ),
               Text(
-                '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}',
+                order == null
+                    ? '${model.availableAccounts} 个可用账号 · ${model.enabled ? '参与 Auto' : '不参与 Auto'}'
+                    : '${model.official ? '' : '渠道名称 · '}${model.availableAccounts} 个可用账号',
                 style: muted,
               ),
-            ],
-          );
-          final recommendation = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                preferred == null
-                    ? '暂无可用账号'
-                    : '新会话首选 ${preferred.account.label}',
-                style: muted,
-              ),
-              if (preferred != null)
-                Text(modelExpiryText(preferred), style: muted),
             ],
           );
           final move = Row(
@@ -134,20 +125,13 @@ class PluginModelList extends StatelessWidget {
                 if (order == null)
                   Expanded(child: name)
                 else if (wide) ...[
-                  Expanded(flex: 3, child: name),
-                  const SizedBox(width: 8),
-                  Expanded(flex: 4, child: recommendation),
+                  Expanded(child: name),
                   move,
                 ] else
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        name,
-                        const SizedBox(height: 6),
-                        recommendation,
-                        move,
-                      ],
+                      children: [name, const SizedBox(height: 6), move],
                     ),
                   ),
                 const SizedBox(width: 8),
@@ -166,4 +150,40 @@ class PluginModelList extends StatelessWidget {
       );
     },
   );
+}
+
+class ExcludedAutoModels extends StatelessWidget {
+  const ExcludedAutoModels({
+    super.key,
+    required this.models,
+    required this.searching,
+    required this.busy,
+    required this.onJoin,
+  });
+  final List<PluginModel> models;
+  final bool searching;
+  final bool busy;
+  final ValueChanged<String> onJoin;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = Column(
+      children: [
+        for (final model in models)
+          FItem(
+            title: Text(model.name),
+            suffix: const Text('加入 Auto'),
+            semanticsLabel: '将 ${model.name} 加入 Auto',
+            enabled: !busy,
+            onPress: () => onJoin(model.id),
+          ),
+      ],
+    );
+    if (searching) return items;
+    return FAccordion(
+      children: [
+        FAccordionItem(title: Text('未参与（${models.length}）'), child: items),
+      ],
+    );
+  }
 }

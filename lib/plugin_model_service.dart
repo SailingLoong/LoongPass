@@ -168,6 +168,9 @@ class PluginModelService extends ChangeNotifier {
     (routing.putIfAbsent('models', () => {}) as Map)[id] = value;
   });
 
+  Future<void> setAutoRoutingPriority(AutoRoutingPriority priority) =>
+      _edit((data) => priority.saveTo(_routingForEdit(data)));
+
   Future<void> setModelPublished(String id, bool value) => _edit((data) {
     catalog.singleWhere((model) => model.id == id && model.official);
     final routing = _routingForEdit(data);

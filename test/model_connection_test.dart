@@ -26,7 +26,7 @@ class _Models extends ChangeNotifier implements PluginModelService {
   @override
   bool routingConnected = false;
   @override
-  Map get routingSettings => {};
+  Map<String, dynamic> routingSettings = {};
   @override
   List<PluginModel> get catalog =>
       pluginModelCatalog(grants, routingSettings, DateTime.now());
@@ -71,11 +71,102 @@ String _listing(List<String> ids) {
 
 void main() {
   test(
-    'connected ordering advances at a partial expiry without new snapshots',
+    'Auto changes priority using only credit spendable by each model',
     () async {
       final now = DateTime.now();
       final models = _Models()
         ..routingConnected = true
+        ..grants = [
+          for (final key in ['late', 'early', 'unknown'])
+            PluginModelGrant(
+              PluginAccount(
+                key: key,
+                active: true,
+                facts: {'provider': 'qoder', 'registrationId': key},
+                models: [
+                  {'id': 'dfmodel'},
+                  {'id': 'dmodel'},
+                ],
+                usage: {
+                  'windows': [
+                    if (key != 'unknown')
+                      {
+                        if (key == 'early') 'models': ['dmodel'],
+                        'balance': 100,
+                        'runsOut': 100,
+                        'unit': 'credits',
+                        'runsOutAt': now
+                            .add(Duration(days: key == 'early' ? 1 : 7))
+                            .toIso8601String(),
+                      },
+                  ],
+                },
+              ),
+              'fixture',
+              true,
+            ),
+        ];
+      final order = <List<String>>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            if (args.join(' ') == 'plugin list --json')
+              return _listing(['late', 'early', 'unknown']);
+            if (args.take(3).join(' ') == 'group set loongpass-auto') {
+              final members = args
+                  .singleWhere((arg) => arg.startsWith('models='))
+                  .substring(7);
+              order.add([
+                for (final id in members.split(','))
+                  id.replaceFirst('loongpass/accounts/', ''),
+              ]);
+            }
+            return '';
+          },
+        ),
+      );
+      addTearDown(connection.dispose);
+      addTearDown(models.dispose);
+      connection.start();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      const byModel = [
+        'late/qoder/dfmodel',
+        'early/qoder/dfmodel',
+        'unknown/qoder/dfmodel',
+        'early/qoder/dmodel',
+        'late/qoder/dmodel',
+        'unknown/qoder/dmodel',
+      ];
+      expect(order.single, byModel);
+      models.routingSettings = {'version': 3, 'autoPriority': 'creditExpiry'};
+      models.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(order.last, [
+        'early/qoder/dmodel',
+        'late/qoder/dfmodel',
+        'late/qoder/dmodel',
+        'early/qoder/dfmodel',
+        'unknown/qoder/dfmodel',
+        'unknown/qoder/dmodel',
+      ]);
+      models.routingSettings = {'version': 3, 'autoPriority': 'modelOrder'};
+      models.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(order.last, byModel);
+    },
+  );
+
+  for (final (priority, secondModel) in [
+    ('modelOrder', 'dfmodel'),
+    ('creditExpiry', 'dmodel'),
+  ])
+    test('$priority advances at a partial expiry without new snapshots', () async {
+      final now = DateTime.now();
+      final models = _Models()
+        ..routingConnected = true
+        ..routingSettings = {'version': 3, 'autoPriority': priority}
         ..grants = [
           for (final (key, seconds) in [('one', 1), ('two', 30)])
             PluginModelGrant(
@@ -84,7 +175,7 @@ void main() {
                 active: true,
                 facts: {'provider': 'qoder', 'registrationId': key},
                 models: [
-                  {'id': 'dfmodel'},
+                  {'id': key == 'one' ? 'dfmodel' : secondModel},
                 ],
                 usage: {
                   'windows': [
@@ -124,16 +215,78 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 350));
       expect(
         order.single,
-        'models=loongpass/accounts/one/qoder/dfmodel,loongpass/accounts/two/qoder/dfmodel',
+        'models=loongpass/accounts/one/qoder/dfmodel,loongpass/accounts/two/qoder/$secondModel',
       );
       // No account notification and no read-triggered work across the boundary.
       await Future<void>.delayed(const Duration(milliseconds: 950));
       expect(
         order.last,
-        'models=loongpass/accounts/two/qoder/dfmodel,loongpass/accounts/one/qoder/dfmodel',
+        'models=loongpass/accounts/two/qoder/$secondModel,loongpass/accounts/one/qoder/dfmodel',
       );
-    },
-  );
+    });
+
+  for (final connected in [true, false]) {
+    test(
+      'a single expiring candidate notifies an open preview (connected=$connected)',
+      () async {
+        final expires = DateTime.now().add(const Duration(seconds: 1));
+        final models = _Models()
+          ..routingConnected = connected
+          ..grants = [
+            PluginModelGrant(
+              PluginAccount(
+                key: 'only',
+                active: true,
+                facts: {'provider': 'qoder', 'registrationId': 'only'},
+                models: [
+                  {'id': 'dfmodel'},
+                ],
+                usage: {
+                  'windows': [
+                    {
+                      'balance': 100,
+                      'runsOut': 100,
+                      'unit': 'credits',
+                      'runsOutAt': expires.toIso8601String(),
+                    },
+                  ],
+                },
+              ),
+              'fixture',
+              true,
+            ),
+          ];
+        var groupWrites = 0;
+        final connection = ModelConnection(
+          models,
+          '/bridge',
+          client: MagpieConnection(
+            run: (args, {input}) async {
+              if (args.join(' ') == 'plugin list --json') {
+                return connected ? _listing(['only']) : '{}';
+              }
+              if (args.take(2).join(' ') == 'group set') groupWrites++;
+              return '';
+            },
+          ),
+        );
+        addTearDown(connection.dispose);
+        addTearDown(models.dispose);
+        final expired = Completer<void>();
+        connection.addListener(() {
+          if (!expired.isCompleted && connection.routing.preferred == null)
+            expired.complete();
+        });
+        expect(
+          connection.routing.preferred?.binding.expiry?.amount?.amount,
+          100,
+        );
+        connection.start();
+        await expired.future.timeout(const Duration(seconds: 3));
+        expect(groupWrites, connected ? 1 : 0);
+      },
+    );
+  }
 
   test('startup restores routing for a saved pre-routing connection', () async {
     final models = _Models()
