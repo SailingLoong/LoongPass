@@ -132,6 +132,7 @@ class _AccountPageState extends State<_AccountPage> {
     unawaited(_codex.start());
     _application = widget.application;
     _application?.models.addListener(_modelsChanged);
+    _application?.connection.addListener(_modelsChanged);
     if (_application == null && nativeAccountsSupported) unawaited(_start());
   }
 
@@ -150,6 +151,7 @@ class _AccountPageState extends State<_AccountPage> {
         return;
       }
       application.models.addListener(_modelsChanged);
+      application.connection.addListener(_modelsChanged);
       setState(() => _application = application);
     } catch (_) {
       if (mounted)
@@ -201,7 +203,7 @@ class _AccountPageState extends State<_AccountPage> {
       ),
     ),
   );
-  Map<ManagedApp, Widget> get _pages => {
+  Map<ManagedApp, Widget> _pages(Set<String> accountsWithoutModels) => {
     for (final app in ManagedApp.values)
       app: AccountPresentationScope(
         app: app,
@@ -218,6 +220,7 @@ class _AccountPageState extends State<_AccountPage> {
                   : PluginAccountsPanel(
                       key: _pluginPanels[app],
                       accounts: _application!.accounts,
+                      accountsWithoutModels: accountsWithoutModels,
                       rewards: _application!.rewards,
                       providerIds: providersForApp(app),
                       title: app.label,
@@ -294,6 +297,7 @@ class _AccountPageState extends State<_AccountPage> {
     _updates.dispose();
     _codex.dispose();
     _application?.models.removeListener(_modelsChanged);
+    _application?.connection.removeListener(_modelsChanged);
     if (_application != null && widget.application == null)
       unawaited(_application!.close());
     _registry.dispose();
@@ -322,7 +326,9 @@ class _AccountPageState extends State<_AccountPage> {
           compact: compact,
           onOpen: _openUpdates,
         ),
-        pages: _pages,
+        pages: _pages(
+          _application?.connection.accountsWithoutModels ?? const {},
+        ),
         sections: {
           WorkspaceSection.models: _application == null
               ? WorkspacePage(title: '模型连接', children: [_status])

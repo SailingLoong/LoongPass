@@ -44,16 +44,10 @@ void main() {
           addTearDown(tester.view.resetDevicePixelRatio);
           addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
           final app = ModelWorkspaceFixture();
-          for (final account in [
-            app.accounts.accounts.first,
-            app.accounts.accounts.last,
-          ]) {
-            account.models.add({
-              'id': 'MiniMax-Image',
-              'name': 'MiniMax Image',
-              'outputs': ['image'],
-            });
-          }
+          // This account only offers an unpublished model.
+          app.accounts.accounts.first.models
+            ..clear()
+            ..add({'id': 'glm-5.3'});
           final preferences = UiPreferences()
             ..setTheme(
               brightness == Brightness.dark ? ThemeMode.dark : ThemeMode.light,

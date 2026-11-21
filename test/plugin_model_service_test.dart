@@ -27,9 +27,19 @@ class _Accounts extends PluginAccounts {
         facts: account.facts,
         active: account.active,
         models: [
+          // An unpublished alias shares the wire ID of the published chat model.
+          for (final model in account.models.where(
+            (m) => m['id'] == 'fixture-model',
+          ))
+            {...model, 'id': 'hidden-alias', 'name': 'Hidden Alias'},
           for (final model in account.models)
             if (model['id'] == 'fixture-model')
               {...model, 'name': 'DeepSeek-V4-Flash'}
+            else if (model['id'] == 'image')
+              {
+                ...model,
+                'name': 'glm-5.3',
+              } // Synthetic mapped model with image output.
             else
               model,
         ],
@@ -88,6 +98,8 @@ void main() {
       }
       await accounts.start();
       await service.start();
+      await service.setModelPublished('deepseek-flash', true);
+      await service.setModelPublished('glm-5.3', true);
       await service.enable('fixture#a', true);
       await service.enable('fixture#b', true);
       await service.setEnabled(true);
@@ -316,28 +328,17 @@ void main() {
         200,
       );
       accounts.usageOverride = null;
-      await service.reorderModels(['image', 'deepseek-flash']);
-      expect(service.catalog.first.id, 'image');
-      expect(modelStore.data['routing']['order'], ['image', 'deepseek-flash']);
-      await service.setModelEnabled('deepseek-flash', false);
+      await service.setModelPublished('deepseek-flash', false);
       expect(
         (jsonDecode((await request('/plugin/catalog')).$3)['models'] as List)
             .map((m) => m['id']),
         ['image'],
       );
-      await service.setModelPublished('deepseek-flash', true);
-      expect(
-        (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
-        200,
-        reason:
-            'A separately published model can be used without joining Auto.',
-      );
-      await service.setModelPublished('deepseek-flash', false);
       expect(
         (await request('/plugin/fetch', body: envelope('chat/completions'))).$1,
         429,
       );
-      await service.setModelEnabled('deepseek-flash', true);
+      await service.setModelPublished('deepseek-flash', true);
       final refused = await request('/plugin/fetch', body: envelope('refused'));
       expect(refused.$1, 429);
       expect(refused.$2['retry-after'], '7');

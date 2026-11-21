@@ -150,7 +150,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
         child: const Text('开放账号'),
       );
     } else {
-      status = !widget.model.routed
+      status = !widget.model.published
           ? '模型停用'
           : !binding.enabled
           ? '未参与此模型'

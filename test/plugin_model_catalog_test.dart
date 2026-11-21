@@ -45,10 +45,10 @@ void main() {
       ]),
     ];
     final restored = pluginModelCatalog(grants, saved, now).single;
-    expect(restored.enabled, isTrue);
+    expect(restored.published, isFalse);
     expect(restored.availableAccounts, 0);
     expect(saved['legacy'], legacy);
-    saved['models'] = {'glm-5.3': true};
+    saved['published'] = {'glm-5.3': true};
     final enabled = pluginModelCatalog(grants, saved, now).single;
     expect(enabled.availableAccounts, 0);
     saved['accounts'] = {
@@ -62,8 +62,8 @@ void main() {
       ).single.bindings.every((b) => b.enabled),
       isTrue,
     );
-    saved['models'] = {'glm-5.3': false};
-    expect(pluginModelCatalog(grants, saved, now).single.enabled, isFalse);
+    saved['published'] = {'glm-5.3': false};
+    expect(pluginModelCatalog(grants, saved, now).single.published, isFalse);
   });
 
   test(
@@ -83,13 +83,13 @@ void main() {
           'models': {disabled: false, enabled: true},
         };
         final model = pluginModelCatalog(grants, settings, now).single;
-        expect(model.enabled, isTrue);
+        expect(model.published, isFalse);
         expect(model.availableAccounts, 1);
         expect(model.bindings.where((b) => b.enabled).map((b) => b.nativeId), [
           disabled == 'glm-5.3' ? 'glm-5.3-max' : 'glm-5.3',
         ]);
         final retained = upgradeModelRouting(settings)
-          ..['models'] = {'glm-5.3': true};
+          ..['published'] = {'glm-5.3': true};
         expect(
           pluginModelCatalog(
             grants,
@@ -103,10 +103,10 @@ void main() {
         'models': {'glm-5.3': false, 'trae-cn/glm-5.3-max': false},
       });
       expect(
-        pluginModelCatalog(grants, allDisabled, now).single.enabled,
+        pluginModelCatalog(grants, allDisabled, now).single.published,
         isFalse,
       );
-      allDisabled['models'] = {'glm-5.3': true};
+      allDisabled['published'] = {'glm-5.3': true};
       expect(
         pluginModelCatalog(grants, allDisabled, now).single.availableAccounts,
         0,
@@ -165,7 +165,6 @@ void main() {
     final flash = catalog.first;
     expect(flash.name, 'deepseek-flash');
     expect(flash.published, isTrue);
-    expect(flash.enabled, isTrue);
     expect(flash.bindings.map((b) => b.nativeId), [
       'DeepSeek-V4-Flash-Official-max',
       'dfmodel',
@@ -265,14 +264,14 @@ void main() {
     ];
     final settings = upgradeModelRouting({
       'models': {'trae-cn/glm-5.3-max': false},
-    })..['models'] = {'glm-5.3': true};
+    })..['published'] = {'glm-5.3': true};
     expect(
       pluginModelCatalog(grants, settings, now).single.availableAccounts,
       1,
     );
     grants.first.account.models.clear();
     final remaining = pluginModelCatalog(grants, settings, now).single;
-    expect(remaining.enabled, isTrue);
+    expect(remaining.published, isTrue);
     expect(remaining.availableAccounts, 0);
   });
 
@@ -323,8 +322,8 @@ void main() {
     expect(model.official, isFalse);
     expect(model.availableAccounts, 2);
     expect(model.bindings.map((b) => b.account.key), ['cn', 'global']);
-    expect(model.preferred!.expiry!.amount!.amount, 278.68);
-    expect(model.preferred!.expiry!.amount!.unit, 'credits');
+    expect(model.bindings.first.expiry!.amount!.amount, 278.68);
+    expect(model.bindings.first.expiry!.amount!.unit, 'credits');
     expect(model.bindings.last.expiry!.amount!.amount, 393.36);
     expect(model.bindings.map((b) => b.exportedId), [
       'accounts/cn/minimax-code/MiniMax-Image',
@@ -338,8 +337,9 @@ void main() {
       ],
       'models': {'minimax-code/MiniMax-Image': false},
     }, now).single;
-    expect(migrated.enabled, isTrue);
-    expect(migrated.preferred!.account.key, 'global');
+    expect(migrated.published, isFalse);
+    expect(migrated.preferred, isNull);
+    expect(migrated.bindings.first.account.key, 'global');
     expect(
       migrated.bindings.singleWhere((b) => b.account.key == 'cn').enabled,
       isFalse,
@@ -531,7 +531,10 @@ void main() {
           ],
         ),
       ],
-      {},
+      {
+        'version': 4,
+        'published': {'deepseek-flash': true},
+      },
       now,
     );
     expect(catalog.single.preferred!.account.key, 'cached');
@@ -753,7 +756,10 @@ void main() {
           ],
         ),
       ],
-      const {},
+      const {
+        'version': 4,
+        'published': {'deepseek-flash': true},
+      },
       now,
     );
     expect(models.single.availableAccounts, 1);
@@ -775,6 +781,8 @@ void main() {
         ]),
       ],
       {
+        'version': 4,
+        'published': {'deepseek-v4-pro': true},
         'order': ['deepseek-v4-pro', 'deepseek-flash'],
         'accounts': {
           'deepseek-flash': {'same': false},

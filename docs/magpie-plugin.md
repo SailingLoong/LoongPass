@@ -18,18 +18,18 @@ and [earlier compatibility record](verification/2026-11-16-stable-1.0.1.md) for 
   them. Scheduling runs while LoongPass is running; uncertain claims are retained
   for verification rather than blindly repeated.
 - Balances, reward history and remaining-credit expiry from official interfaces.
-  In **LoongPass Auto**, **模型优先** follows the saved model order, then prefers
+  In **LoongPass Auto**, **模型优先** follows the Magpie display order, then prefers
   accounts with sooner-expiring credit for that model. **积分到期优先** starts
-  with the soonest-expiring credit a candidate can spend. The saved model order
+  with the soonest-expiring credit a candidate can spend. The Magpie order
   breaks ties and applies when all eligible candidates have unknown expiry.
   The preview shows the first available candidate for a new session. Magpie handles
-  request capabilities, session affinity and recovery. Expand **未参与** on the
-  Auto page to return an excluded model to its saved position.
+  request capabilities, session affinity and recovery. Arrange groups on Magpie’s
+  Routing page. A connected LoongPass checks for changes every minute.
 - Account switching in supported official desktop applications, with credential
   application and verification of the running client's identity reported separately.
-- A model service for Magpie, with Auto by default and individual native model
-  groups only when explicitly enabled in LoongPass. Publication is independent
-  of which models participate in Auto.
+- A model service for Magpie, with one publication switch per official model.
+  Auto uses the published groups with eligible accounts. Clearing the last
+  publication removes Auto from Magpie.
 
 Account switching, authorization, check-in and model support vary by platform and
 OS. The application's [README](../README.md) and
@@ -64,9 +64,9 @@ plugin alone does not install the application or enable every listed feature.
    register per-account local grants and synchronize model groups. The current
    connection implementation selects and verifies the bundled bridge before
    retiring recognized npm/GitHub copies and checking the saved grants again.
-4. Select **loongpass/auto** (`group/loongpass-auto`) in Magpie and keep
-   LoongPass running. To offer a particular model separately, search or show all
-   models in LoongPass and enable **在 Magpie 中显示**. The gateway also accepts the
+4. Search or show all models in LoongPass and enable the models you want to
+   publish. Select **loongpass/auto** (`group/loongpass-auto`) in Magpie and keep
+   LoongPass running. The gateway also accepts the
    legacy `loongpass/auto` request alias. Confirm authorization and model availability
    in LoongPass.
 

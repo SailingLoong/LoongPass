@@ -14,7 +14,7 @@ Agent Teams 是 DSH 的共享任务板与子 agent 协作能力。`dsh-superagen
 
 ## 连接 Agent Teams
 
-1. 在 LoongPass 保存账号，在「模型连接」启用相应账号并打开本机服务，点击「连接 Magpie」。连接后查看诊断结果；也可单独点击「检查连接」。
+1. 在 LoongPass 保存账号，在「模型连接」勾选要在 Magpie 中显示的模型，开放相应账号并打开本机服务，点击「连接 Magpie」。连接后查看诊断结果；也可单独点击「检查连接」。
 2. 在 Magpie 的 DeepSeek Harness 入口选择 LoongPass 模型或已有原生分组。保持 LoongPass 和 Magpie 网关运行。先在 DSH 新会话确认普通文本及终端工具调用成功。
 3. 在 DSH 根会话的模型 / 推理菜单开启 **Use Agent Teams**，然后要求父 agent 拆分任务、启动子 agent 并使用任务板跟踪完成状态。
 4. 若为子 agent 指定不同模型，在 DSH 的子 agent 模型设置中启用选择并配置允许的模型。模型 ID、协议、上下文与推理档位以 Magpie 生成的目录为准，不将显示名称当成模型 ID。

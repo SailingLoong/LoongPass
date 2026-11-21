@@ -199,6 +199,7 @@ Future<void> inspectModelReturn(
       );
     }
     await tester.ensureVisible(control);
+    await frame();
     await tester.tap(control.hitTestable());
     await frame();
   }

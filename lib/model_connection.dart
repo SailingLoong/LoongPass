@@ -36,6 +36,9 @@ class ModelConnection extends ChangeNotifier {
   String? _appliedRouting;
   Timer? _scheduled;
   Timer? _quotaBoundary;
+  Timer? _orderTimer;
+  bool _checkingOrder = false;
+  List<String>? _publicOrder;
 
   List<PluginModelGrant> get _selected =>
       models.grants.where((g) => g.available).toList();
@@ -56,7 +59,22 @@ class ModelConnection extends ChangeNotifier {
   ]);
   AutoRoutingPriority get autoPriority =>
       AutoRoutingPriority.fromSettings(models.routingSettings);
-  MagpieModelRouting get routing => _routingFor(models.catalog);
+  MagpieModelRouting get routing {
+    final result = _routingFor(models.catalog);
+    final order = _publicOrder;
+    if (models.running && order != null) {
+      result.usePublicOrder(order);
+    }
+    return result;
+  }
+
+  Set<String> get accountsWithoutModels {
+    final available = routing.availableAccounts;
+    return {
+      for (final grant in models.grants)
+        if (!available.contains(grant.account.key)) grant.account.key,
+    };
+  }
 
   MagpieModelRouting _routingFor(List<PluginModel> catalog) =>
       MagpieModelRouting(catalog, priority: autoPriority);
@@ -73,13 +91,46 @@ class ModelConnection extends ChangeNotifier {
   void start() {
     if (_closed || _started) return;
     _started = true;
+    _orderTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(_checkOrder()),
+    );
     _schedule();
+  }
+
+  Future<void> _checkOrder() async {
+    final previous = _publicOrder;
+    if (_closed ||
+        busy ||
+        _checkingOrder ||
+        previous == null ||
+        !models.running ||
+        !models.routingConnected)
+      return;
+    final ids = _routingFor(models.catalog).publicIds;
+    if (ids.isEmpty) return;
+    _checkingOrder = true;
+    try {
+      final order = await _client.publicOrder(ids);
+      if (_closed ||
+          busy ||
+          !identical(previous, _publicOrder) ||
+          listEquals(previous, order))
+        return;
+      _appliedRouting = null;
+      _schedule();
+    } catch (_) {
+      // A transient failure keeps the last confirmed catalog until the next check.
+    } finally {
+      _checkingOrder = false;
+    }
   }
 
   void _changed() {
     if (_closed) return;
     final source = _sourceState;
     if (source != _source) {
+      _publicOrder = null;
       _source = source;
       _revision++;
       inspection = null;
@@ -134,7 +185,7 @@ class ModelConnection extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _started = true;
+    start();
     _registeredSource = null;
     await _run(save: true, inspect: true);
   }
@@ -154,7 +205,7 @@ class ModelConnection extends ChangeNotifier {
     }
     if (_closed) return;
     if (!models.routingConnected) await models.markRoutingConnected();
-    final snapshot = routing;
+    final snapshot = _routingFor(models.catalog);
     final state = _routingState(snapshot);
     final groups = snapshot.groups.keys.toSet();
     // Journal before native writes so a partially created group is reclaimed
@@ -162,9 +213,18 @@ class ModelConnection extends ChangeNotifier {
     final previous = models.managedGroups;
     await models.saveManagedGroups({...previous, ...groups});
     if (_closed) return;
-    await _client.syncRouting(bridgePath, snapshot, previousGroups: previous);
+    final order = await _client.syncRouting(
+      bridgePath,
+      snapshot,
+      previousGroups: previous,
+    );
+    if (_closed || source != _source) return;
+    _publicOrder = order;
+    await models.rememberPublishedOrder([
+      for (final model in snapshot.candidates) model.id,
+    ]);
     if (_closed) return;
-    await models.saveManagedGroups(groups);
+    await models.saveManagedGroups(snapshot.groups.keys.toSet());
     _appliedRouting = state;
   }
 
@@ -224,6 +284,7 @@ class ModelConnection extends ChangeNotifier {
   void dispose() {
     _closed = true;
     _scheduled?.cancel();
+    _orderTimer?.cancel();
     _quotaBoundary?.cancel();
     models.removeListener(_changed);
     super.dispose();

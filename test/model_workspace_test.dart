@@ -70,6 +70,60 @@ void main() {
     }),
   );
 
+  testDesktopWidgets(
+    'an account loses its warning as soon as one of its models joins Auto',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final app = ModelWorkspaceFixture();
+      addTearDown(app.dispose);
+      app.accounts.accounts.retainWhere(
+        (a) => {'saved-0', 'saved-13'}.contains(a.key),
+      );
+      await app.models.setModelPublished('MiniMax-M3', false);
+      await tester.pumpWidget(AccountToolApp(application: app));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      Finder warning(String key) => find.descendant(
+        of: find.byKey(ValueKey('row-qoderCn/$key')),
+        matching: find.text('无可用模型'),
+      );
+      expect(warning('saved-0'), findsOneWidget);
+      expect(warning('saved-13'), findsNothing);
+      await app.models.setModelPublished('MiniMax-M3', true);
+      await tester.pumpAndSettle();
+      expect(warning('saved-0'), findsNothing);
+      await app.models.setModelPublished('deepseek-flash', false);
+      await tester.pumpAndSettle();
+      expect(warning('saved-13'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-models')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('连接设置'));
+      await tester.pumpAndSettle();
+      final grants = find.text('开放账号（2 / 2）');
+      await tester.ensureVisible(grants);
+      await tester.tap(grants);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('saved-13')),
+          matching: find.textContaining('无可用模型'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('saved-0')),
+          matching: find.textContaining('无可用模型'),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
   testDesktopWidgets('default sidebar contains Auto without concrete models', (
     tester,
   ) async {
@@ -203,7 +257,10 @@ void main() {
           'version': 2,
           'published': {'MiniMax-M3': true},
         };
-        await app.models.reorderModels(['MiniMax-M3', 'deepseek-flash']);
+        await app.models.rememberPublishedOrder([
+          'MiniMax-M3',
+          'deepseek-flash',
+        ]);
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
         expect(
@@ -283,7 +340,7 @@ void main() {
         expect(app.accounts.refreshes, 0);
       }
 
-      await app.models.reorderModels(['deepseek-flash', 'MiniMax-M3']);
+      await app.models.rememberPublishedOrder(['deepseek-flash', 'MiniMax-M3']);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('nav-models')));
       await tester.pumpAndSettle();
@@ -299,7 +356,7 @@ void main() {
         tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
         'auto',
       );
-      expect(find.text('模型顺序').hitTestable(), findsOneWidget);
+      expect(find.text('模型顺序 · 在 Magpie「路由」中调整').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
