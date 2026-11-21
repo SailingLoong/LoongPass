@@ -10,6 +10,18 @@ import '../lib/workspace_accounts.dart';
 import '../lib/claim_receipt.dart';
 
 void main() {
+  Future<void> openQuota(WidgetTester tester) async {
+    final link = find.byKey(const Key('detail-quota'));
+    await tester.ensureVisible(link);
+    await tester.tap(link);
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> back(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('account-back')));
+    await tester.pumpAndSettle();
+  }
+
   testDesktopWidgets(
     'overview service recovery replaces the first-account prompt',
     (tester) async {
@@ -121,10 +133,12 @@ void main() {
     expect(operations, 0);
     await tester.tap(find.byKey(const Key('account-qoderCn/14')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+    await openQuota(tester);
     expect(find.text('Details 14'), findsOneWidget);
     expect(find.text('Global details'), findsNothing);
-    await tester.tap(find.text('关闭'));
-    await tester.pumpAndSettle();
+    await back(tester);
+    await back(tester);
     expect(page.currentState!.revealAccount('qoderCn/0'), isTrue);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('account-qoderCn/0')), findsOneWidget);
@@ -185,6 +199,8 @@ void main() {
     await tester.ensureVisible(find.text('Account 6'));
     await tester.tap(find.text('Account 6'));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+    await openQuota(tester);
     expect(find.text('Details 6'), findsOneWidget);
     expect(operations, 1);
     expect(tester.takeException(), isNull);
@@ -261,9 +277,11 @@ void main() {
       expect(find.text('核验结果'), findsNothing);
       await tester.tap(find.text('待确认账号'));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+      await openQuota(tester);
       expect(find.text('只读详情'), findsOneWidget);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
+      await back(tester);
+      await back(tester);
       publish(available: true);
       await tester.pumpAndSettle();
       expect(checks, 0);
@@ -324,10 +342,12 @@ void main() {
       expect(operations, 0);
       await tester.tap(find.byKey(const Key('account-qoderCn/same-id')));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+      await openQuota(tester);
       expect(find.text('Details'), findsOneWidget);
       expect(operations, 0);
-      await tester.tap(find.text('关闭'));
-      await tester.pumpAndSettle();
+      await back(tester);
+      await back(tester);
     },
   );
   testDesktopWidgets(
@@ -365,19 +385,28 @@ void main() {
       );
       expect(find.text('Pending'), findsOneWidget);
       expect(find.text('Confirmed'), findsOneWidget);
-      await tester.tap(find.text('最近成功领取'));
+      expect(find.text('签到账号 2'), findsOneWidget);
+      await tester.tap(find.text('最近领取 1'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Confirmed'), findsOneWidget);
       expect(find.textContaining('金额未知'), findsOneWidget);
       expect(find.textContaining('500000000'), findsNothing);
       expect(find.textContaining('Pending'), findsNothing);
-      await tester.tap(find.text('待处理'));
+      await tester.tap(find.text('Confirmed'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-detail-page')), findsOneWidget);
+      expect(find.text('领取记录'), findsOneWidget);
+      expect(find.textContaining('金额未知'), findsOneWidget);
+      expect(find.textContaining('500000000'), findsNothing);
+      await back(tester);
+      expect(find.text('Confirmed'), findsOneWidget);
+      await tester.tap(find.text('待处理 1'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Pending'), findsOneWidget);
       expect(find.textContaining('Confirmed'), findsNothing);
       page.currentState!.showReceipts();
       await tester.pumpAndSettle();
-      expect(find.text('每个账号最近一次成功回执'), findsOneWidget);
+      expect(find.text('Pending'), findsNothing);
       expect(find.text('Confirmed'), findsOneWidget);
     },
   );

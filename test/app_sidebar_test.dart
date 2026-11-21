@@ -71,7 +71,7 @@ void main() {
       await mount(tester, enterAccounts: false);
       expect(find.byKey(const Key('account-apps')), findsNothing);
       expect(find.byKey(const PageStorageKey('model-list')), findsNothing);
-      expect(find.text('本机工作区'), findsOneWidget);
+      expect(find.text('本机工作区'), findsNothing);
       final now = DateTime.now();
       expect(
         find.textContaining('${now.month} 月 ${now.day} 日'),
@@ -195,13 +195,20 @@ void main() {
           tester.getTopLeft(models).dy - tester.getBottomLeft(accounts).dy,
           lessThanOrEqualTo(8),
         );
-        expect(find.byKey(const Key('toggle-account-apps')), findsNothing);
-        expect(find.byKey(const Key('toggle-models')), findsNothing);
+        expect(find.byKey(const Key('disclose-平台')), findsNothing);
+        expect(find.byKey(const Key('disclose-模型')), findsNothing);
 
         await tester.tap(accounts);
         await tester.pumpAndSettle();
         expect(find.text('All accounts'), findsOneWidget);
         expect(find.byKey(const Key('account-apps')), findsOneWidget);
+        final disclosure = find.byKey(const Key('disclose-平台'));
+        await tester.tap(disclosure);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-apps')), findsNothing);
+        expect(find.text('All accounts'), findsOneWidget);
+        await tester.tap(disclosure);
+        await tester.pumpAndSettle();
         expect(preferences.appsExpanded, isTrue);
         expect(preferences.modelsExpanded, isFalse);
 
@@ -332,7 +339,13 @@ void main() {
     await mount(tester);
     await tester.tap(find.byKey(const Key('nav-models')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('toggle-models')), findsNothing);
+    final toggle = find.byKey(const Key('disclose-模型'));
+    expect(toggle.hitTestable(), findsOneWidget);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(find.text('暂无模型'), findsNothing);
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
     expect(find.text('暂无模型'), findsOneWidget);
     expect(find.text('Magpie models'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -539,7 +552,10 @@ void main() {
 
         tester.view.physicalSize = Size(narrow, 900);
         await tester.pumpAndSettle();
-        expect(tester.getSize(find.byKey(const Key('app-sidebar'))).width, 56);
+        expect(
+          tester.getSize(find.byKey(const Key('app-sidebar'))).width,
+          textScale == 1 ? 196 : 56,
+        );
         expect(writes, isEmpty);
         expect(find.text('keep on resize'), findsOneWidget);
 
@@ -861,7 +877,7 @@ void main() {
         expect(find.text('All accounts'), findsOneWidget);
         if (width < 756) await openDrawer(tester);
         expect(find.byKey(const Key('account-apps')), findsOneWidget);
-        expect(find.byKey(const Key('toggle-account-apps')), findsNothing);
+        expect(find.byKey(const Key('disclose-平台')), findsOneWidget);
         expect(
           tester.getTopLeft(find.byKey(const Key('nav-models'))).dy -
               tester.getBottomLeft(find.byKey(const Key('app-qoder'))).dy,

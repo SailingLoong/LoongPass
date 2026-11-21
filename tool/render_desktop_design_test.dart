@@ -15,6 +15,7 @@ import '../lib/app_update_view.dart';
 import '../lib/main.dart';
 import '../lib/managed_app.dart';
 import '../lib/model_connection.dart';
+import '../lib/plugin_accounts.dart';
 import '../lib/plugin_application.dart';
 import '../lib/plugin_rewards.dart';
 import '../lib/ui_preferences.dart';
@@ -45,9 +46,17 @@ class _ObservedRewards extends PluginRewards {
   }) async => claims.add(key);
 }
 
+class _DesignAccounts extends WorkspaceFixtureAccounts {
+  @override
+  Set<String> get enabledProviders => {
+    ...super.enabledProviders,
+    'minimax-code',
+  };
+}
+
 class _DesignApplication implements PluginApplication {
   @override
-  final WorkspaceFixtureAccounts accounts = WorkspaceFixtureAccounts();
+  final WorkspaceFixtureAccounts accounts = _DesignAccounts();
   @override
   late final WorkspaceFixtureModels models = WorkspaceFixtureModels(accounts);
   @override
@@ -83,7 +92,7 @@ void main() {
   for (final (mode, size, scale, phase, progress) in [
     ('light', const Size(1080, 748), 1.0, 'downloading', 0.25),
     ('dark', const Size(1080, 748), 1.0, 'ready', null),
-    ('narrow', const Size(480, 800), 2.0, 'downloading', null),
+    ('narrow', const Size(430, 750), 2.0, 'downloading', null),
   ]) {
     testDesktopWidgets('desktop design $mode', (tester) async {
       tester.view.devicePixelRatio = 1;
@@ -100,6 +109,10 @@ void main() {
       };
       final first = app.accounts.accounts.first;
       final today = DateTime.now();
+      final observedAt = DateTime(today.year, today.month, today.day, 11, 26);
+      final queriedAt = DateTime(today.year, today.month, today.day, 16, 48);
+      final nextExpiry = DateTime(today.year, today.month, today.day + 2);
+      final otherExpiry = DateTime(today.year, today.month, today.day + 4, 18);
       first.usage!['windows'][0]['runsOutAt'] = DateTime(
         today.year,
         today.month,
@@ -110,6 +123,13 @@ void main() {
         999,
       ).toIso8601String();
       first.facts['label'] = '跨地区研发验证账号-长名称与拉丁字符-Synthetic-Workspace-01';
+      first.usage!['windows'].add({
+        'name': '独立批次',
+        'unit': 'credits',
+        'aside': true,
+        'runsOutAt': otherExpiry.toIso8601String(),
+        'runsOut': 100,
+      });
       const longModel = 'kimi-k2.7-code-highspeed';
       first.models.add({'id': longModel});
       app.models.routingSettings['published'][longModel] = true;
@@ -134,6 +154,43 @@ void main() {
         'unit': 'credits',
         'confirmedAt': DateTime.now().millisecondsSinceEpoch,
       };
+      app.accounts.providers['minimax-code'] = {'checkin': true};
+      final miniMax = PluginAccount(
+        key: 'studio',
+        active: true,
+        facts: {
+          'provider': 'minimax-code',
+          'realm': 'cn',
+          'uid': 'synthetic-studio',
+          'label': '云帆工作室',
+          'registrationId': 'synthetic-studio-registration',
+          'reward': {
+            'status': 'claimed',
+            'credit': 400,
+            'unit': 'credits',
+            'observedAt': observedAt.millisecondsSinceEpoch,
+          },
+        },
+        models: [
+          {'id': 'MiniMax-M3'},
+        ],
+        usage: {
+          'plan': 'Free',
+          'windows': [
+            {
+              'name': 'Credits',
+              'unit': 'credits',
+              'limit': 13224,
+              'amount': 0,
+              'used': 0,
+              'runsOut': 1424,
+              'runsOutAt': nextExpiry.toIso8601String(),
+            },
+          ],
+        },
+        queriedAt: queriedAt,
+      );
+      app.accounts.accounts.insert(0, miniMax);
       final prefs = UiPreferences()
         ..setTheme(mode == 'light' ? ThemeMode.light : ThemeMode.dark);
       addTearDown(app.dispose);
@@ -197,7 +254,7 @@ void main() {
       // Bounded frames also support indeterminate progress animations.
       Future<void> frame() async {
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump(const Duration(milliseconds: 800));
         await tester.pump();
       }
 
@@ -249,7 +306,12 @@ void main() {
         record('settings', key('nav-settings'));
         record('update', find.byType(AppUpdateBadge));
         record('toolbar', find.byType(WorkspaceToolbar));
-        record('detail', key('account-detail-sheet'));
+        record('workspace', key('workspace-body'));
+        record('detail', key('account-detail-page'));
+        record('balance', find.text('13,224 credits'));
+        record('expiry', key('detail-expiry'));
+        record('receipt', key('detail-receipt'));
+        record('back', key('account-back'));
         record('nav', key('nav-$scene'));
         if (scene.startsWith('pending')) {
           record('verifyButton', find.widgetWithText(FButton, '核验结果'));
@@ -275,9 +337,8 @@ void main() {
           '辅助签到',
           '添加账号',
           '重启并更新',
-          '关闭',
-          '账号信息',
-          '额度到期',
+          '最近到期',
+          '套餐与额度',
           '版本与更新',
         ]) {
           record(label, find.text(label).hitTestable());
@@ -313,25 +374,19 @@ void main() {
         'activity',
         'settings',
       ]) {
-        final nav = key('nav-$section');
-        if (size.width == 480) {
-          await tester.tap(key('toggle-sidebar'));
-          await frame();
-        }
-        await tester.tap(nav.hitTestable());
-        await frame();
+        await tapWorkspaceDestination(tester, section, frame);
         expect(key('section-$section'), findsOneWidget);
         await capture(section);
         if (section == 'settings' && mode != 'light') {
           await inspectSettings(tester, frame, capture);
         }
         if (section == 'activity') {
-          final receipts = find.text('最近成功领取');
+          final receipts = find.textContaining(RegExp(r'^最近(领取|回执) \d+$'));
           await tester.ensureVisible(receipts.last);
           await tester.tap(receipts.hitTestable().last);
           await frame();
           await capture('receipts');
-          final pendingTab = find.text('待处理');
+          final pendingTab = find.textContaining(RegExp(r'^待处理 \d+$'));
           await tester.ensureVisible(pendingTab);
           await tester.tap(pendingTab.hitTestable());
           await frame();
@@ -363,11 +418,26 @@ void main() {
           }
           await capture('pending-verified');
         }
-        if (section == 'overview' && progress != null) {
-          expect(find.text('272.0 KiB/s'), findsOneWidget);
+        if (section == 'overview') {
+          if (progress != null)
+            expect(find.text('272.0 KiB/s'), findsOneWidget);
+          await inspectCalendarReturn(
+            tester,
+            first.label,
+            otherExpiry,
+            frame,
+            capture,
+          );
         }
         if (section == 'models') {
-          for (final label in ['显示全部模型', '候选顺序']) {
+          await inspectModelReturn(
+            tester,
+            frame,
+            (name) => capture('model-$name'),
+          );
+          await tester.enterText(key('model-search'), '');
+          await frame();
+          for (final label in ['显示全部模型', '连接设置']) {
             final text = find.text(label);
             final bounds = tester.getSize(text.last);
             if (bounds.width < bounds.height) crowdedControls.add(label);
@@ -412,24 +482,14 @@ void main() {
           expect(find.text('选择平台'), findsWidgets);
           await tester.tap(find.text('取消').hitTestable());
           await frame();
-          final entry = key('account-qoderCn/saved-0');
-          await tester.ensureVisible(entry);
-          await tester.tap(entry);
-          await frame();
-          expect(key('account-detail-sheet'), findsOneWidget);
-          await capture('detail');
-          await tester.tap(find.text('额度到期').hitTestable().last);
-          await frame();
-          await capture('expiry');
-          final sheet = key('account-detail-sheet');
-          for (final value in ['60 credits', '32.5 credits']) {
-            expect(
-              find.descendant(of: sheet, matching: find.text(value)),
-              findsWidgets,
-            );
-          }
-          await tester.tap(find.text('关闭').hitTestable().last);
-          await frame();
+          await inspectAccountReturn(
+            tester,
+            miniMax.label,
+            nextExpiry,
+            observedAt,
+            frame,
+            capture,
+          );
         }
       }
       expect(app.accounts.refreshes, 0);

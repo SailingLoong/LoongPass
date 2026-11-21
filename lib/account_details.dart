@@ -1,279 +1,339 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart' show SelectableText;
 
+import 'account_amount.dart';
 import 'account_table_entry.dart';
 import 'credit_summary_view.dart';
 import 'desktop_theme.dart';
+import 'managed_app.dart';
 import 'ui_preferences.dart';
 
-/// All entry points observe the same live presentation; opening never refreshes.
+part 'account_detail_sections.dart';
+
+enum AccountDetailSection { summary, expiry, receipt, quota, profile }
+
+/// Pushes an opaque page into the workspace navigator. Opening it consumes the
+/// owner's latest snapshot; reads never initiate a query or a reward action.
 Future<void> showAccountDetails(
   BuildContext context, {
   required Listenable listenable,
   required AccountTableEntry? Function() read,
-  bool expiry = false,
-  String? platform,
+  AccountExpiryBatch? batch,
+  AccountDetailSection section = AccountDetailSection.summary,
+  ManagedApp? app,
   String? preferenceId,
 }) async {
-  read()?.onOpenDetails?.call();
+  final row = read();
   final preferences = UiPreferencesScope.maybeOf(context);
-  await showFSheet<void>(
-    context: context,
-    side: FLayout.rtl,
-    draggable: false,
-    mainAxisMaxRatio: 1,
-    constraints: const BoxConstraints(maxWidth: 462),
-    builder: (context) => ListenableBuilder(
-      listenable: Listenable.merge([listenable, preferences]),
-      builder: (context, _) {
-        final row = read();
-        final source = row?.sourceLabel ?? platform;
-        final favoriteId = row?.preferenceId ?? preferenceId;
-        return Container(
-          key: const Key('account-detail-sheet'),
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            color: context.theme.colors.background,
-            border: Border(
-              left: BorderSide(color: context.theme.colors.border),
-            ),
-          ),
-
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(23, 20, 23, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '账号详情',
-                        style: context.theme.typography.body.sm.copyWith(
-                          color: context.theme.colors.mutedForeground,
-                        ),
-                      ),
-                    ),
-                    FButton(
-                      variant: FButtonVariant.ghost,
-                      size: FButtonSizeVariant.sm,
-                      prefix: const Icon(FLucideIcons.x, size: 16),
-                      onPress: () => Navigator.pop(context),
-                      child: const Text('关闭'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          row?.label ?? '账号已移除',
-                          style: context.theme.typography.display.xl2.copyWith(
-                            height: 1.4,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (source != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(source),
-                          ),
-                        if (row == null)
-                          const Text('该账号已不在当前列表中。')
-                        else ...[
-                          if (row.notice != null) Text(row.notice!),
-                          const SizedBox(height: 16),
-                          if (row.hasCredits)
-                            FTabs(
-                              style: context.desktopTabStyle,
-                              control: FTabControl.managed(
-                                initial: expiry ? 1 : 0,
-                              ),
-                              scrollable: true,
-                              children: [
-                                FTabEntry(
-                                  label: const Text('账号信息'),
-                                  child: _AccountInfo(
-                                    row: row,
-                                    platform: source,
-                                  ),
-                                ),
-                                FTabEntry(
-                                  label: const Text('额度到期'),
-                                  child: _ExpiryDetails(row: row),
-                                ),
-                              ],
-                            )
-                          else
-                            _AccountInfo(row: row, platform: source),
-                          if (row.actions != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 18),
-                              child: row.actions,
-                            ),
-                          if (preferences != null && favoriteId != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 16),
-                              child: Align(
-                                alignment: Alignment.centerRight,
-                                child: FButton(
-                                  variant: FButtonVariant.outline,
-                                  size: FButtonSizeVariant.sm,
-                                  mainAxisSize: MainAxisSize.min,
-                                  prefix: const Icon(
-                                    FLucideIcons.star,
-                                    size: 15,
-                                  ),
-                                  onPress: () =>
-                                      preferences.toggleFavorite(favoriteId),
-                                  child: Text(
-                                    preferences.isFavorite(favoriteId)
-                                        ? '已收藏'
-                                        : '收藏账号',
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    ),
-  );
-}
-
-class _AccountInfo extends StatelessWidget {
-  const _AccountInfo({required this.row, this.platform});
-  final String? platform;
-  final AccountTableEntry row;
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _AccountFact('平台', row.detailPlatform ?? platform ?? '未知'),
-      _AccountFact(
-        '账号 ID',
-        row.officialId ?? '未提供',
-        selectable: row.officialId != null,
+  row?.onOpenDetails?.call();
+  await Navigator.of(context).push<void>(
+    PageRouteBuilder<void>(
+      transitionDuration: Duration.zero,
+      reverseTransitionDuration: Duration.zero,
+      settings: RouteSettings(name: '/accounts/${row?.id}'),
+      pageBuilder: (_, animation, secondaryAnimation) => _AccountDetailPage(
+        listenable: listenable,
+        read: read,
+        app: app,
+        preferences: preferences,
+        preferenceId: preferenceId,
+        initial: batch != null ? AccountDetailSection.expiry : section,
+        batch: batch,
       ),
-      _AccountFact('授权状态', row.authorizationLabel ?? '未知'),
-      if (row.hasCredits) _BalanceFacts(row),
-      const SizedBox(height: 16),
-      row.details,
-      if (row.hasRewards) ...[
-        const FDivider(),
-        Text(
-          '最近一次成功领取',
-          style: context.theme.typography.body.sm.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(row.latestClaim),
-      ],
-    ],
-  );
-}
-
-class _AccountFact extends StatelessWidget {
-  const _AccountFact(this.name, this.value, {this.selectable = false});
-  final String name, value;
-  final bool selectable;
-  @override
-  Widget build(BuildContext context) => Container(
-    key: ValueKey("detail-fact-$name"),
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    decoration: BoxDecoration(
-      border: Border(bottom: BorderSide(color: context.theme.colors.border)),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Text(
-            name,
-            style: context.theme.typography.body.sm.copyWith(
-              color: context.theme.colors.mutedForeground,
-            ),
-          ),
-        ),
-        Expanded(
-          flex: 2,
-          child: selectable
-              ? SelectableText(value, textAlign: TextAlign.right)
-              : Text(value, textAlign: TextAlign.right),
-        ),
-      ],
     ),
   );
 }
 
-class _BalanceFacts extends StatelessWidget {
-  const _BalanceFacts(this.row);
-  final AccountTableEntry row;
+class _AccountDetailPage extends StatefulWidget {
+  const _AccountDetailPage({
+    required this.listenable,
+    required this.read,
+    required this.initial,
+    this.preferences,
+    this.preferenceId,
+    this.app,
+    this.batch,
+  });
+  final Listenable listenable;
+  final AccountTableEntry? Function() read;
+  final AccountDetailSection initial;
+  final UiPreferences? preferences;
+  final String? preferenceId;
+  final ManagedApp? app;
+  final AccountExpiryBatch? batch;
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      _AccountFact('可用余额', row.balance == '—' ? '未知' : row.balance),
-      _AccountFact(
-        '额度查询时间',
-        row.queriedAt == null ? '未知' : creditTime(row.queriedAt!),
+  State<_AccountDetailPage> createState() => _AccountDetailPageState();
+}
+
+class _AccountDetailPageState extends State<_AccountDetailPage> {
+  late var section = widget.initial;
+  late final _changes = Listenable.merge([
+    widget.listenable,
+    widget.preferences,
+  ]);
+  final _scroll = ScrollController();
+  double _summaryOffset = 0;
+  void _show(AccountDetailSection next) {
+    if (_scroll.hasClients) {
+      if (section == AccountDetailSection.summary)
+        _summaryOffset = _scroll.offset;
+      _scroll.jumpTo(0);
+    }
+    setState(() => section = next);
+    if (next == AccountDetailSection.summary) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _scroll.hasClients) {
+          _scroll.jumpTo(
+            _summaryOffset.clamp(0.0, _scroll.position.maxScrollExtent),
+          );
+        }
+      });
+    }
+  }
+
+  void _back() {
+    if (section != widget.initial && widget.read() != null) {
+      _show(widget.initial);
+    } else {
+      Navigator.pop(context);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  Widget _inset(Widget child) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 940),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: context.desktopGutter),
+        child: child,
       ),
-    ],
+    ),
   );
-}
 
-class _ExpiryDetails extends StatelessWidget {
-  const _ExpiryDetails({required this.row});
-  final AccountTableEntry row;
-  @override
-  Widget build(BuildContext context) {
-    final batches = row.expiryBatches;
+  Widget _body(AccountTableEntry? row, String? source) {
+    if (row == null) return const Text('该账号已不在保存列表中。');
+    final theme = context.theme;
+    final summary = section == AccountDetailSection.summary;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _BalanceFacts(row),
-        const SizedBox(height: 22),
-        Text(
-          '已知到期批次',
-          style: context.theme.typography.body.md.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if (batches.isEmpty) const Text('平台未提供可核实的到期明细。'),
-        for (final batch in batches)
-          _AccountFact(creditTime(batch.at), batch.amount ?? '额度未知'),
-        if (row.credits case final credits? when credits.withoutExpiry > 0)
+        if (row.notice case final notice?)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text('另有 ${accountPoints(credits.withoutExpiry)} 积分到期时间未知。'),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Semantics(liveRegion: true, child: Text(notice)),
           ),
-        if (row.expiryDetails != null) row.expiryDetails!,
-        if (row.actions == null && row.onActivate != null)
+        if (summary && row.needsAttention)
           Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FButton(
-                mainAxisSize: MainAxisSize.min,
-                size: FButtonSizeVariant.sm,
-                onPress: row.activationEnabled ? row.onActivate : null,
-                child: const Text('切换客户端账号'),
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              row.status,
+              style: theme.typography.body.sm.copyWith(
+                color: context.desktopPalette.warning,
               ),
             ),
           ),
+        if (!summary)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Semantics(
+              header: true,
+              child: Text(
+                section.title,
+                style: theme.typography.display.sm.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        switch (section) {
+          AccountDetailSection.summary => _AccountSummary(
+            row: row,
+            onOpen: _show,
+          ),
+          AccountDetailSection.expiry => _ExpiryDetails(
+            row: row,
+            batch: widget.batch,
+          ),
+          AccountDetailSection.receipt => _Receipts(row),
+          AccountDetailSection.quota => row.details,
+          AccountDetailSection.profile => _AccountProfile(
+            row: row,
+            source: source,
+          ),
+        },
       ],
+    );
+  }
+
+  Widget _page(BuildContext context, Widget? _) {
+    final row = widget.read();
+    final app =
+        widget.app ??
+        ManagedApp.values.where((a) => a.name == row?.appId).firstOrNull;
+    final source = app == null
+        ? row?.sourceLabel ?? row?.detailPlatform
+        : '${app.label} · ${app.region}';
+    final favoriteId = row?.preferenceId ?? widget.preferenceId;
+    final prefs = widget.preferences;
+    final theme = context.theme;
+    final divider = Container(height: 1, color: theme.colors.border);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _inset(
+          _DetailHeader(
+            label: row?.label ?? '账号已移除',
+            app: app,
+            source: source,
+            onBack: _back,
+            favorite:
+                favoriteId != null && (prefs?.isFavorite(favoriteId) ?? false),
+            toggleFavorite: row != null && prefs != null && favoriteId != null
+                ? () => prefs.toggleFavorite(favoriteId)
+                : null,
+          ),
+        ),
+        divider,
+        Expanded(
+          child: SingleChildScrollView(
+            controller: _scroll,
+            child: _inset(
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: _body(row, source),
+              ),
+            ),
+          ),
+        ),
+        if (row?.actions case final actions?) ...[
+          divider,
+          _inset(
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Align(alignment: Alignment.centerLeft, child: actions),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+    return ColoredBox(
+      key: const Key('account-detail-page'),
+      color: theme.colors.background,
+      child: DefaultTextStyle(style: theme.typography.body.sm, child: content),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
+    child: Focus(
+      autofocus: true,
+      child: ListenableBuilder(listenable: _changes, builder: _page),
+    ),
+  );
+}
+
+class _DetailHeader extends StatelessWidget {
+  const _DetailHeader({
+    required this.label,
+    required this.app,
+    required this.source,
+    required this.onBack,
+    required this.favorite,
+    required this.toggleFavorite,
+  });
+  final String label;
+  final ManagedApp? app;
+  final String? source;
+  final bool favorite;
+  final VoidCallback onBack;
+  final VoidCallback? toggleFavorite;
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.theme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      child: Row(
+        children: [
+          FButton.icon(
+            key: const Key('account-back'),
+            variant: FButtonVariant.ghost,
+            semanticsLabel: '返回',
+            onPress: onBack,
+            child: const Icon(FLucideIcons.arrowLeft, size: 18),
+          ),
+          const SizedBox(width: 10),
+          if (app case final platform?) ...[
+            Container(
+              width: 42,
+              height: 42,
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.colors.border),
+                borderRadius: theme.style.borderRadius.lg,
+              ),
+              child: Image.asset(
+                platform.iconAsset,
+                excludeFromSemantics: true,
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  header: true,
+                  child: Text(
+                    label,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.typography.display.lg.copyWith(
+                      fontSize: 21,
+                      height: 1.22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (source != null)
+                  Text(
+                    source!,
+                    style: theme.typography.body.xs.copyWith(
+                      color: theme.colors.mutedForeground,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (toggleFavorite != null)
+            FButton.icon(
+              key: const Key('detail-favorite'),
+              variant: FButtonVariant.ghost,
+              selected: favorite,
+              semanticsLabel: favorite ? '取消收藏' : '收藏账号',
+              onPress: toggleFavorite,
+              child: Icon(
+                FLucideIcons.star,
+                size: 18,
+                color: favorite
+                    ? context.desktopPalette.brand
+                    : theme.colors.mutedForeground,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

@@ -1,4 +1,6 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:material_ui/material_ui.dart' show MaterialPage;
 import 'package:forui/forui.dart';
 
 import 'desktop_theme.dart';
@@ -31,7 +33,9 @@ class PluginModelServicesPage extends StatefulWidget {
 class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   late var vm = ModelWorkspaceViewModel(widget.application.models);
   final _search = TextEditingController();
-  late String? _localSelection = widget.selectedModelId;
+  final _autoSearch = TextEditingController();
+  late final _path = <String>[?widget.selectedModelId];
+  final _navigator = GlobalKey<NavigatorState>();
 
   @override
   void didUpdateWidget(PluginModelServicesPage oldWidget) {
@@ -41,46 +45,89 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
       vm = ModelWorkspaceViewModel(widget.application.models);
       _search.clear();
     }
-    if (oldWidget.selectedModelId != widget.selectedModelId) {
-      _localSelection = widget.selectedModelId;
+    if (oldWidget.selectedModelId != widget.selectedModelId &&
+        _path.lastOrNull != widget.selectedModelId) {
+      _path
+        ..clear()
+        ..addAll([?widget.selectedModelId]);
     }
   }
 
   void _select(String? id) {
-    final callback = widget.onSelectModel;
-    if (callback != null) {
-      callback(id);
-    } else {
-      setState(() => _localSelection = id);
-    }
+    if (id == _path.lastOrNull) return;
+    setState(() {
+      if (id == null) {
+        _path.clear();
+      } else if (_path.contains(id)) {
+        _path.removeRange(_path.indexOf(id) + 1, _path.length);
+      } else {
+        _path.add(id);
+      }
+    });
+    widget.onSelectModel?.call(id);
+  }
+
+  void _back() {
+    if (_path.isEmpty) return;
+    setState(_path.removeLast);
+    widget.onSelectModel?.call(_path.lastOrNull);
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _autoSearch.dispose();
     vm.dispose();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Navigator(
+    key: _navigator,
+    pages: [
+      MaterialPage<void>(
+        key: const ValueKey('model-catalog'),
+        child: _page(null),
+      ),
+      for (final id in _path)
+        MaterialPage<void>(
+          key: ValueKey(id),
+          name: id,
+          child: CallbackShortcuts(
+            bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
+            child: Focus(autofocus: true, child: _page(id)),
+          ),
+        ),
+    ],
+    onDidRemovePage: (page) {
+      if (page.name != null && page.name == _path.lastOrNull) _back();
+    },
+  );
+
+  Widget _page(String? id) {
     final app = widget.application;
     return ListenableBuilder(
-      listenable: Listenable.merge([vm, app.models, app.connection]),
+      listenable: Listenable.merge([
+        vm,
+        app.models,
+        app.connection,
+        _autoSearch,
+      ]),
       builder: (context, _) {
-        final id = widget.onSelectModel == null
-            ? _localSelection
-            : widget.selectedModelId;
         final auto = id == 'auto';
-        final (:selected, :candidates, :excluded, :visible, :noSources) = vm
-            .snapshot(id);
+        final (
+          :selected,
+          :candidates,
+          :excluded,
+          :visible,
+          :noSources,
+        ) = vm.snapshot(
+          id,
+          queryOverride: auto ? _autoSearch.text.trim().toLowerCase() : null,
+        );
+        final query = auto ? _autoSearch.text.trim() : vm.query;
         return WorkspacePage(
           title: selected?.name ?? (auto ? 'LoongPass Auto' : '模型连接'),
-          subtitle: selected != null
-              ? '模型名称使用厂商 API 标准 ID。'
-              : auto
-              ? null
-              : '管理 Magpie 能使用的模型与账号。',
           action: selected == null && !auto
               ? FButton(
                   variant: FButtonVariant.outline,
@@ -96,8 +143,8 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   size: FButtonSizeVariant.sm,
                   mainAxisSize: MainAxisSize.min,
                   prefix: const Icon(FLucideIcons.arrowLeft, size: 16),
-                  onPress: () => _select(null),
-                  child: const Text('全部模型'),
+                  onPress: _back,
+                  child: Text(_path.length > 1 ? '返回' : '全部模型'),
                 ),
           children: [
             if (app.connection.busy) const Text('正在更新 Magpie 连接…'),
@@ -109,23 +156,22 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    FSwitch(
-                      key: ValueKey('model-published-${selected.id}'),
-                      value: selected.published,
-                      enabled: !vm.busy,
-                      leadingLabel: true,
-                      label: const Text('在 Magpie 中显示'),
-                      description: Text('打开后可单独选择 ${selected.name}。'),
-                      onChange: (value) => vm.publish(selected.id, value),
-                    ),
-                    const SizedBox(height: 16),
+                    if (selected.official)
+                      FSwitch(
+                        key: ValueKey('model-published-${selected.id}'),
+                        value: selected.published,
+                        enabled: !vm.busy,
+                        leadingLabel: true,
+                        label: const Text('在 Magpie 中显示'),
+                        onChange: (value) => vm.publish(selected.id, value),
+                      ),
+                    if (selected.official) const SizedBox(height: 16),
                     FSwitch(
                       key: ValueKey('model-enabled-${selected.id}'),
                       value: selected.enabled,
                       enabled: !vm.busy,
                       leadingLabel: true,
                       label: const Text('参与 Auto'),
-                      description: const Text('关闭后 Auto 将跳过此模型，不影响单独选择。'),
                       onChange: (value) => vm.participate(selected.id, value),
                     ),
                   ],
@@ -159,56 +205,67 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   onOpen: () => _select('auto'),
                 ),
               const SizedBox(height: 20),
-              Text(
-                auto ? '模型顺序' : '模型目录',
-                style: context.theme.typography.body.lg.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 200,
-                    child: FTextField(
-                      key: const Key('model-search'),
-                      hint: '搜索模型、别名或账号',
-                      size: FTextFieldSizeVariant.sm,
-                      prefixBuilder: (context, style, variants) =>
-                          const Icon(FLucideIcons.search, size: 16),
-                      control: FTextFieldControl.managed(
-                        controller: _search,
-                        onChange: (value) => vm.search(value.text),
-                      ),
-                    ),
+              if (auto)
+                Text(
+                  '模型顺序',
+                  style: context.theme.typography.body.lg.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  if (!auto)
+                ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, box) => Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
                     SizedBox(
-                      width: 68 + MediaQuery.textScalerOf(context).scale(88),
-                      child: FSwitch(
-                        key: const Key('show-all-models'),
-                        value: vm.showAll,
-                        label: const Text('显示全部模型'),
-                        onChange: vm.setShowAll,
+                      width:
+                          box.maxWidth <
+                              520 *
+                                  MediaQuery.textScalerOf(context).scale(14) /
+                                  14
+                          ? box.maxWidth
+                          : 272,
+                      child: FTextField(
+                        key: const Key('model-search'),
+                        hint: '搜索模型、别名或账号',
+                        size: FTextFieldSizeVariant.sm,
+                        prefixBuilder: (context, style, variants) =>
+                            const Icon(FLucideIcons.search, size: 16),
+                        control: FTextFieldControl.managed(
+                          controller: auto ? _autoSearch : _search,
+                          onChange: (value) {
+                            if (!auto) vm.search(value.text);
+                          },
+                        ),
                       ),
                     ),
-                  if (vm.query.isNotEmpty && !auto)
-                    FButton(
-                      key: const Key('retain-models'),
-                      variant: FButtonVariant.outline,
-                      size: FButtonSizeVariant.sm,
-                      mainAxisSize: MainAxisSize.min,
-                      onPress: vm.busy || visible.isEmpty
-                          ? null
-                          : () => vm.retain(visible),
-                      child: Flexible(
-                        child: Text('Auto 仅使用筛选结果（${visible.length}）'),
+                    if (!auto)
+                      SizedBox(
+                        width: 68 + MediaQuery.textScalerOf(context).scale(88),
+                        child: FSwitch(
+                          key: const Key('show-all-models'),
+                          value: vm.showAll,
+                          label: const Text('显示全部模型'),
+                          onChange: vm.setShowAll,
+                        ),
                       ),
-                    ),
-                ],
+                    if (query.isNotEmpty && !auto)
+                      FButton(
+                        key: const Key('retain-models'),
+                        variant: FButtonVariant.outline,
+                        size: FButtonSizeVariant.sm,
+                        mainAxisSize: MainAxisSize.min,
+                        onPress: vm.busy || visible.isEmpty
+                            ? null
+                            : () => vm.retain(visible),
+                        child: Flexible(
+                          child: Text('Auto 仅使用筛选结果（${visible.length}）'),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               if (!auto)
@@ -227,11 +284,11 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                     ],
                   ),
                 ),
-              if (visible.isEmpty && (vm.query.isEmpty || excluded.isEmpty))
+              if (visible.isEmpty && (query.isEmpty || excluded.isEmpty))
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Text(
-                    vm.query.isNotEmpty
+                    query.isNotEmpty
                         ? '没有匹配的模型。可搜索模型、别名或账号。'
                         : auto
                         ? '暂无参与 Auto 的模型。'
@@ -245,12 +302,12 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                 onSelect: _select,
                 onPublish: vm.publish,
                 onMove: vm.move,
-                filtered: vm.query.isNotEmpty,
+                filtered: query.isNotEmpty,
               ),
               if (excluded.isNotEmpty)
                 ExcludedAutoModels(
                   models: excluded,
-                  searching: vm.query.isNotEmpty,
+                  searching: query.isNotEmpty,
                   busy: vm.busy,
                   onJoin: (id) => vm.participate(id, true),
                 ),

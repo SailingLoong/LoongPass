@@ -12,10 +12,11 @@ class SettingsOption extends StatelessWidget {
   const SettingsOption({
     super.key,
     required this.title,
-    required this.description,
+    this.description,
     required this.control,
   });
-  final String title, description;
+  final String title;
+  final String? description;
   final Widget control;
 
   @override
@@ -29,14 +30,15 @@ class SettingsOption extends StatelessWidget {
           title,
           style: theme.typography.body.sm.copyWith(fontWeight: FontWeight.w600),
         ),
-        const SizedBox(height: 4),
-        Text(
-          description,
-          style: theme.typography.body.xs.copyWith(
-            color: theme.colors.mutedForeground,
-            height: 1.5,
+        if (description != null) const SizedBox(height: 4),
+        if (description != null)
+          Text(
+            description!,
+            style: theme.typography.body.xs.copyWith(
+              color: theme.colors.mutedForeground,
+              height: 1.5,
+            ),
           ),
-        ),
       ],
     );
     return DecoratedBox(
@@ -122,16 +124,8 @@ class SettingsAppearance extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Text(
-        '界面偏好',
-        style: context.theme.typography.display.lg.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      const SizedBox(height: 12),
       SettingsOption(
         title: '主题',
-        description: '跟随系统或固定使用浅色、深色外观。',
         control: _Choice(
           key: const Key('appearance-theme'),
           value: preferences.themeMode,
@@ -145,7 +139,6 @@ class SettingsAppearance extends StatelessWidget {
       ),
       SettingsOption(
         title: '账号行距',
-        description: '仅改变列表密度，不隐藏账号字段。',
         control: _Choice(
           key: const Key('account-row-density'),
           value: preferences.comfortable,
@@ -277,7 +270,6 @@ class SettingsPlatforms extends StatelessWidget {
           for (final entry in invitations.entries)
             SettingsOption(
               title: entry.key.label,
-              description: '邀请码仅作用于这个平台。',
               control: FButton(
                 key: ValueKey('invitation-${entry.key.name}'),
                 size: FButtonSizeVariant.sm,

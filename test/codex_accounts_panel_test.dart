@@ -133,19 +133,21 @@ void main() {
       await details(tester, 'official-a');
       expect(
         find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
+          of: find.byKey(const Key('account-detail-page')),
           matching: find.textContaining('workspace-a'),
         ),
         findsOneWidget,
       );
       expect(
         find.descendant(
-          of: find.byKey(const Key('account-detail-sheet')),
+          of: find.byKey(const Key('account-detail-page')),
           matching: find.textContaining('plus'),
         ),
         findsOneWidget,
       );
-      expect(find.text('最近一次成功领取'), findsNothing);
+      expect(find.byKey(const Key('detail-receipt')), findsNothing);
+      expect(find.byKey(const Key('detail-expiry')), findsNothing);
+      expect(find.text('可用余额'), findsNothing);
       expect(find.textContaining('切换成功'), findsNothing);
       expect(calls, ['codexAccountsStatus']);
     },

@@ -73,13 +73,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
     SettingsSection.data => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '本机数据',
-          style: context.theme.typography.display.lg.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
         DecoratedBox(
           decoration: BoxDecoration(
             color: context.desktopPalette.sidebar,
@@ -87,17 +80,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
           ),
           child: const Padding(
             padding: EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '授权资料保存在本机',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                SizedBox(height: 6),
-                Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
-              ],
-            ),
+            child: Text('授权以明文保存在本机应用私有目录。界面偏好单独保存。'),
           ),
         ),
         SettingsOption(
@@ -107,7 +90,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
         ),
         SettingsOption(
           title: '账号服务',
-          description: '账号与额度由各平台提供。',
           control: _link('查看账号', widget.onOpenAccounts),
         ),
       ],
@@ -129,7 +111,6 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
     listenable: Listenable.merge([widget.preferences, section]),
     builder: (context, _) => WorkspacePage(
       title: '设置',
-      subtitle: '管理外观、平台偏好和本机应用。',
       children: [
         if (widget.preferences.error case final error?) ...[
           Text(error),

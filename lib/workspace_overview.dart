@@ -7,15 +7,13 @@ class WorkspaceOverviewPage extends StatefulWidget {
     required this.onOpenApp,
     this.rewards,
     this.onOpenRewards,
-    this.onOpenAccounts,
-    this.onOpenReceipts,
     this.serviceStatus,
   });
   final AccountWorkspaceRegistry registry;
 
   /// Starts the chosen platform's add-account flow from the first-run prompt.
   final ValueChanged<ManagedApp> onOpenApp;
-  final VoidCallback? onOpenRewards, onOpenAccounts, onOpenReceipts;
+  final VoidCallback? onOpenRewards;
   final PluginRewards? rewards;
   final Widget? serviceStatus;
   @override
@@ -32,7 +30,6 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
       if (accounts.isEmpty) {
         return WorkspacePage(
           title: '总览',
-          subtitle: '本机工作区',
           children: [
             widget.serviceStatus ?? _FirstAccountPrompt(widget.onOpenApp),
           ],
@@ -46,8 +43,6 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
       );
       return WorkspacePage(
         title: '总览',
-        subtitle:
-            '已保存 ${accounts.length} 个账号，分布在 ${accounts.map((a) => a.app).toSet().length} 个平台。',
         action: widget.rewards == null
             ? null
             : RewardBatchAction(
@@ -60,66 +55,12 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
             RewardBatchStatus(rewards: widget.rewards!),
           attention(AccountAttention.actionRequired),
           const SizedBox(height: 26),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final calendar = _ExpiryCalendar(
-                accounts: accounts,
-                registry: registry,
-              );
-              final pending = attention(AccountAttention.awaitingVerification);
-              if (constraints.maxWidth <
-                  580 * MediaQuery.textScalerOf(context).scale(14) / 14) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [calendar, const SizedBox(height: 20), pending],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 2, child: calendar),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.only(left: 16),
-                      decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: context.theme.colors.border),
-                        ),
-                      ),
-                      child: pending,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-          if (widget.onOpenAccounts != null ||
-              widget.onOpenReceipts != null) ...[
-            const SizedBox(height: 24),
-            Container(height: 1, color: context.theme.colors.border),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 12,
-              children: [
-                if (widget.onOpenAccounts != null)
-                  FButton(
-                    variant: FButtonVariant.ghost,
-                    mainAxisSize: MainAxisSize.min,
-                    prefix: const Icon(FLucideIcons.wallet, size: 16),
-                    onPress: widget.onOpenAccounts,
-                    child: const Text('查看全部账号'),
-                  ),
-                if (widget.onOpenReceipts != null)
-                  FButton(
-                    variant: FButtonVariant.ghost,
-                    mainAxisSize: MainAxisSize.min,
-                    prefix: const Icon(FLucideIcons.history, size: 16),
-                    onPress: widget.onOpenReceipts,
-                    child: const Text('最近成功领取'),
-                  ),
-              ],
-            ),
+          _ExpiryCalendar(accounts: accounts, registry: registry),
+          if (accounts.any(
+            (a) => a.entry.attention == AccountAttention.awaitingVerification,
+          )) ...[
+            const SizedBox(height: 22),
+            attention(AccountAttention.awaitingVerification),
           ],
         ],
       );

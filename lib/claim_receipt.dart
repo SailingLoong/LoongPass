@@ -14,15 +14,21 @@ class ClaimReceipt {
   final String unit, amountLabel;
   final DateTime? confirmedAt, observedAt, creditExpiresAt;
   final String? day;
-  String get display {
+  String get quantity {
     final value = amount;
-    final quantity = value == null
+    return value == null
         ? '已领取 · 金额未知'
         : '$amountLabel+${value == value.roundToDouble() ? value.toStringAsFixed(0) : value} $unit';
+  }
+
+  String get timestamp {
     final time = confirmedAt ?? observedAt;
-    final timestamp = time == null
+    return time == null
         ? '${day == null ? '' : '$day '}时间未知'
         : "${confirmedAt == null ? '核验于 ' : ''}${time.toLocal().toString().substring(0, 16)}";
+  }
+
+  String get display {
     final expiry = creditExpiresAt?.toLocal();
     return [
       quantity,

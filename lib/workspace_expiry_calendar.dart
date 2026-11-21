@@ -131,7 +131,7 @@ class _ExpiryCalendarState extends State<_ExpiryCalendar> {
           _AccountLine(
             batch.account,
             widget.registry,
-            expiry: true,
+            batchAt: batch.at,
             status: '${accountTime(batch.at)} 到期',
             amount: batch.amount ?? '额度未知',
           ),

@@ -8,14 +8,10 @@ import 'desktop_theme.dart';
 class WorkspaceToolbar extends StatelessWidget {
   const WorkspaceToolbar({
     super.key,
-    required this.section,
-    required this.leaf,
     required this.narrow,
     required this.onToggle,
     this.action,
   });
-  final String section;
-  final String? leaf;
   final bool narrow;
   final VoidCallback onToggle;
   final Widget? action;
@@ -45,21 +41,7 @@ class WorkspaceToolbar extends StatelessWidget {
               child: const Icon(FLucideIcons.panelLeft, size: 17),
             ),
             const SizedBox(width: 8),
-            if (!narrow) ...[
-              const Text('本机工作区'),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('/'),
-              ),
-            ],
-            Expanded(
-              child: Text(
-                [section, ?leaf].join('  /  '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: style.copyWith(color: colors.foreground),
-              ),
-            ),
+            const Spacer(),
             if (!narrow || action == null) _LocalDate(short: narrow),
             if (action != null)
               Flexible(

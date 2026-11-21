@@ -21,10 +21,12 @@ class AccountTableEntry {
     this.expiringAmount,
     this.expiryAt,
     this.receipt,
+    this.previousReceipts = const [],
     this.observedAt,
     this.preferenceId,
     this.sourceLabel,
     this.detailPlatform,
+    this.plan,
     this.officialId,
     this.authorizationLabel,
     this.attention = AccountAttention.none,
@@ -41,6 +43,7 @@ class AccountTableEntry {
     this.expiryDetails,
     this.actions,
     this.statusLabel,
+    this.highlightStatus = false,
   }) : _expiryBatches = expiryBatches;
   final String id, label, identity, balance, status;
   final Widget details;
@@ -64,20 +67,25 @@ class AccountTableEntry {
   final bool activationEnabled;
   final bool hasCredits, hasRewards;
   final String? accountSummary, statusLabel;
+  final bool highlightStatus;
+  String? get listStatus =>
+      needsAttention || highlightStatus ? statusLabel ?? status : null;
   final Widget? expiryDetails, actions;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
   final ClaimReceipt? receipt;
+  final List<ClaimReceipt> previousReceipts;
   String get latestClaim => receipt?.display ?? '暂无已确认记录';
   final DateTime? observedAt;
   final String? preferenceId, sourceLabel;
-  final String? detailPlatform, officialId, authorizationLabel;
+  final String? detailPlatform, officialId, authorizationLabel, plan;
   DateTime? get queriedAt => observedAt ?? credits?.observedAt;
   AccountTableEntry inApp(String appId, String appLabel) => AccountTableEntry(
     id: '$appId/$id',
     preferenceId: '$appId/$id',
     sourceLabel: appLabel,
     detailPlatform: detailPlatform,
+    plan: plan,
     officialId: officialId,
     authorizationLabel: authorizationLabel,
     label: label,
@@ -89,6 +97,7 @@ class AccountTableEntry {
     expiringAmount: expiringAmount,
     expiryAt: expiryAt,
     receipt: receipt,
+    previousReceipts: previousReceipts,
     observedAt: observedAt,
     attention: attention,
     resolution: resolution,
@@ -104,6 +113,7 @@ class AccountTableEntry {
     expiryDetails: expiryDetails,
     actions: actions,
     statusLabel: statusLabel,
+    highlightStatus: highlightStatus,
   );
   DateTime? get nextExpiry =>
       expiryAt ??

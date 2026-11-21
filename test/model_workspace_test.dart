@@ -80,56 +80,80 @@ void main() {
   );
 
   for (final width in [1280.0, 480.0]) {
-    testDesktopWidgets('sidebar searches native aliases at width $width', (
-      tester,
-    ) async {
-      tester.view.physicalSize = Size(width, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final app = ModelWorkspaceFixture();
-      final preferences = UiPreferences();
-      addTearDown(app.dispose);
-      addTearDown(preferences.dispose);
-      await tester.pumpWidget(
-        AccountToolApp(application: app, preferences: preferences),
-      );
-      await tester.pumpAndSettle();
-      Future<void> openNarrowNavigation() async {
-        if (width == 480) {
-          await tester.tap(find.byKey(const Key('toggle-sidebar')));
-          await tester.pumpAndSettle();
+    testDesktopWidgets(
+      'catalog searches a native alias in the main area at width $width',
+      (tester) async {
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final app = ModelWorkspaceFixture();
+        final preferences = UiPreferences();
+        addTearDown(app.dispose);
+        addTearDown(preferences.dispose);
+        await tester.pumpWidget(
+          AccountToolApp(application: app, preferences: preferences),
+        );
+        await tester.pumpAndSettle();
+        Future<void> openNarrowNavigation() async {
+          if (width == 480) {
+            await tester.tap(find.byKey(const Key('toggle-sidebar')));
+            await tester.pumpAndSettle();
+          }
         }
-      }
 
-      await openNarrowNavigation();
-      await tester.tap(find.byKey(const Key('nav-models')));
-      await tester.pumpAndSettle();
-      await openNarrowNavigation();
-      await tester.enterText(find.byKey(const Key('model-nav-search')), '1017');
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('model-nav-deepseek-flash')), findsOneWidget);
-      expect(find.byKey(const Key('model-nav-MiniMax-M3')), findsNothing);
-      await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
-      await tester.pumpAndSettle();
-      expect(
-        tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
-        'deepseek-flash',
-      );
-      expect(app.accounts.refreshes, 0);
-      app.models.routingSettings = {
-        'version': 2,
-        'published': {'MiniMax-M3': true},
-      };
-      await app.models.reorderModels(['MiniMax-M3', 'deepseek-flash']);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
-      expect(
-        tester.widget<AppWorkspace>(find.byType(AppWorkspace)).selectedModelId,
-        'deepseek-flash',
-      );
-      expect(tester.takeException(), isNull);
-    });
+        await openNarrowNavigation();
+        await tester.tap(find.byKey(const Key('nav-models')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('model-nav-search')), findsNothing);
+        await tester.enterText(find.byKey(const Key('model-search')), '1017');
+        await tester.pumpAndSettle();
+        final result = find.byKey(const Key('model-deepseek-flash'));
+        expect(result, findsOneWidget);
+        expect(find.byKey(const Key('model-MiniMax-M3')), findsNothing);
+        await tester.tap(
+          find.descendant(of: result, matching: find.text('deepseek-flash')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<AppWorkspace>(find.byType(AppWorkspace))
+              .selectedModelId,
+          'deepseek-flash',
+        );
+        await tester.tap(find.text('全部模型').hitTestable());
+        await tester.pumpAndSettle();
+        final searchField = find.descendant(
+          of: find.byKey(const Key('model-search')),
+          matching: find.byType(EditableText),
+        );
+        expect(
+          tester.widget<EditableText>(searchField).controller.text,
+          '1017',
+        );
+        expect(result.hitTestable(), findsOneWidget);
+        expect(find.byKey(const Key('model-MiniMax-M3')), findsNothing);
+        await tester.tap(
+          find.descendant(of: result, matching: find.text('deepseek-flash')),
+        );
+        await tester.pumpAndSettle();
+        expect(app.accounts.refreshes, 0);
+        app.models.routingSettings = {
+          'version': 2,
+          'published': {'MiniMax-M3': true},
+        };
+        await app.models.reorderModels(['MiniMax-M3', 'deepseek-flash']);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('model-nav-deepseek-flash')), findsNothing);
+        expect(
+          tester
+              .widget<AppWorkspace>(find.byType(AppWorkspace))
+              .selectedModelId,
+          'deepseek-flash',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testDesktopWidgets(
@@ -163,43 +187,40 @@ void main() {
       expect(find.text('60 credits'), findsOneWidget);
       expect(find.text('48 credits'), findsOneWidget);
       expect(find.text('32.5 credits'), findsOneWidget);
-      await tester.tap(find.text('日常账号 14').hitTestable());
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('account-qoderCn/saved-13')).hitTestable(),
-        findsOneWidget,
-      );
-      final selected = find.byWidgetPredicate(
-        (widget) => widget is Semantics && widget.properties.selected == true,
-      );
-      expect(
-        find.ancestor(
-          of: find.byKey(const Key('account-qoderCn/saved-13')),
-          matching: selected,
-        ),
-        findsOneWidget,
-      );
-      expect(app.accounts.refreshes, 0);
-
-      expect(preferences.appsExpanded, isTrue);
-      expect(preferences.modelsExpanded, isFalse);
-      await tester.tap(find.byKey(const Key('nav-models')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('海外账号').hitTestable());
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('account-qoder/global-13')).hitTestable(),
-        findsOneWidget,
-      );
-      expect(
-        find.ancestor(
-          of: find.byKey(const Key('account-qoder/global-13')),
-          matching: selected,
-        ),
-        findsOneWidget,
-      );
+      for (final (label, balance, region) in [
+        ('日常账号 14', '60 credits', 'Qoder CN · cn'),
+        ('海外账号', '48 credits', 'Qoder · global'),
+      ]) {
+        await tester.tap(find.text(label).hitTestable());
+        await tester.pumpAndSettle();
+        final detail = find.byKey(const Key('account-detail-page'));
+        final sidebar = find.byKey(const Key('nav-overview'));
+        expect(sidebar.hitTestable(), findsOneWidget);
+        expect(
+          tester.getRect(detail).left,
+          greaterThanOrEqualTo(tester.getRect(sidebar).right),
+        );
+        expect(tester.getRect(detail).width, greaterThan(800));
+        expect(find.text(label), findsOneWidget);
+        expect(find.text(balance, findRichText: true), findsOneWidget);
+        final profile = find.byKey(const Key('detail-profile'));
+        await tester.ensureVisible(profile);
+        await tester.tap(profile);
+        await tester.pumpAndSettle();
+        expect(find.text('user-13'), findsOneWidget);
+        expect(find.text(region), findsOneWidget);
+        final back = find.byKey(const Key('account-back'));
+        await tester.tap(back);
+        await tester.pumpAndSettle();
+        await tester.tap(back);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('account-detail-page')), findsNothing);
+        expect(
+          find.byKey(const Key('model-published-deepseek-flash')),
+          findsOneWidget,
+        );
+        expect(app.accounts.refreshes, 0);
+      }
 
       await app.models.reorderModels(['deepseek-flash', 'MiniMax-M3']);
       await tester.pumpAndSettle();

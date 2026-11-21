@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'account_amount.dart';
 import 'account_table_entry.dart';
 export 'account_table_entry.dart';
 import 'account_details.dart';
@@ -21,11 +22,13 @@ class CompactAccountsTable extends StatefulWidget {
     super.key,
     required this.entries,
     this.preferenceScope = 'accounts',
+    this.registry,
     this.hasCredits = true,
     this.hasRewards = true,
     this.emptyMessage = '选择平台并添加账号，开始管理你的账号与额度。',
   });
   final List<AccountTableEntry> entries;
+  final AccountWorkspaceRegistry? registry;
   final String preferenceScope, emptyMessage;
   final bool hasCredits, hasRewards;
   @override
@@ -35,8 +38,8 @@ class CompactAccountsTable extends StatefulWidget {
 class CompactAccountsTableState extends State<CompactAccountsTable> {
   final _search = TextEditingController();
   GlobalKey _revealedAccount = GlobalKey();
-  String? _highlightedId, _pendingReveal;
-  final _horizontalScroll = ScrollController();
+  String? _highlightedId, _pendingReveal, _revealTarget;
+
   late final _live = ValueNotifier(widget.entries);
   final _favorites = <String>{};
   UiPreferences? _preferences;
@@ -76,6 +79,7 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
       _highlightedId = id;
       _revealedAccount = GlobalKey();
       _pendingReveal = id;
+      _revealTarget = id;
     });
     return true;
   }
@@ -113,7 +117,7 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
   @override
   void dispose() {
     _search.dispose();
-    _horizontalScroll.dispose();
+
     _live.dispose();
     final source = _source;
     if (source != null)
@@ -123,16 +127,26 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
     super.dispose();
   }
 
-  void _details(String id, {bool expiry = false}) => showAccountDetails(
-    context,
-    listenable: _live,
-    read: () => _live.value.where((e) => e.id == id).firstOrNull,
-    expiry: expiry,
-    platform: _source == null
-        ? null
-        : '${_source!.app.label} · ${_source!.app.region}',
-    preferenceId: '${_preferenceScope}/$id',
-  );
+  void _details(String id, {bool expiry = false}) {
+    setState(() => _highlightedId = id);
+    final registry = widget.registry ?? _source?.registry;
+    final app = _source?.app;
+    List<AccountTableEntry> entries() => registry == null
+        ? _live.value
+        : app == null
+        ? registry.entries
+        : registry.entriesFor(app);
+    showAccountDetails(
+      context,
+      listenable: registry ?? _live,
+      read: () => entries().where((e) => e.id == id).firstOrNull,
+      section: expiry
+          ? AccountDetailSection.expiry
+          : AccountDetailSection.summary,
+      app: _source?.app,
+      preferenceId: '$_preferenceScope/$id',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -158,141 +172,44 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (widget.entries.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16, top: 4),
-            child: LayoutBuilder(
-              builder: (context, box) {
-                final search = FTextField(
-                  key: const Key('account-search'),
-                  hint: '搜索账号或平台',
-                  size: FTextFieldSizeVariant.sm,
-                  prefixBuilder: (context, style, variants) =>
-                      const Icon(FLucideIcons.search, size: 16),
-                  control: FTextFieldControl.managed(
-                    controller: _search,
-                    onChange: (text) => setState(() {
-                      _model.search = text.text;
-                      _model.page = 0;
-                    }),
-                  ),
-                );
-                final platforms = {
-                  for (final e in widget.entries)
-                    if (e.appId != null) e.appId!,
-                };
-                final filters = Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: [
-                    if (platforms.isNotEmpty)
-                      SizedBox(
-                        width: 134 * _textScale,
-                        child: FSelect<String>(
-                          key: const Key('account-platform-filter'),
-                          builder: selectFieldSemantics,
-                          size: FTextFieldSizeVariant.sm,
-                          items: {
-                            '全部平台': '',
-                            for (final app in ManagedApp.values)
-                              if (platforms.contains(app.name) ||
-                                  _model.platform == app.name)
-                                '${app.label} · ${app.region}': app.name,
-                          },
-                          control: FSelectControl.lifted(
-                            value: _model.platform ?? '',
-                            onChange: (value) => setState(() {
-                              _model.platform = value == '' ? null : value;
-                              _model.page = 0;
-                            }),
-                          ),
-                        ),
-                      ),
-                    for (final f in AccountFilter.values.where(
-                      (f) => _hasCredits || f != AccountFilter.expiring,
-                    ))
-                      FButton(
-                        variant: _model.filter == f
-                            ? FButtonVariant.secondary
-                            : FButtonVariant.ghost,
-                        selected: _model.filter == f,
-                        size: FButtonSizeVariant.sm,
-                        mainAxisSize: MainAxisSize.min,
-                        onPress: () => setState(() {
-                          _model.filter = f;
-                          _model.page = 0;
-                        }),
-                        child: Text(f.label),
-                      ),
-                  ],
-                );
-                return box.maxWidth >= 760 * _textScale
-                    ? Row(
-                        children: [
-                          SizedBox(width: 200 * _textScale, child: search),
-                          const SizedBox(width: 12),
-                          Expanded(child: filters),
-                        ],
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [search, const SizedBox(height: 8), filters],
-                      );
-              },
-            ),
-          ),
+        if (widget.entries.isNotEmpty) _controls(),
         if (visible.isNotEmpty)
           LayoutBuilder(
             builder: (context, box) {
-              final columns = _columns;
-              if (box.maxWidth < 640) {
-                return _narrowRows(visible);
-              }
-              final minimumWidth =
-                  columns.fold(0.0, (sum, column) => sum + column.width) *
-                  _textScale;
-              final scrolls = box.maxWidth < minimumWidth;
-              return RawScrollbar(
-                controller: _horizontalScroll,
-                thumbVisibility: scrolls,
-                scrollbarOrientation: ScrollbarOrientation.top,
-                thickness: 5,
-                radius: const Radius.circular(3),
-                thumbColor: colors.mutedForeground.withValues(alpha: .5),
-                child: SingleChildScrollView(
-                  key: const Key('account-table-scroll'),
-                  controller: _horizontalScroll,
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.only(top: scrolls ? 10 : 0),
-                  child: SizedBox(
-                    width: math.max(box.maxWidth, minimumWidth),
-                    child: Table(
-                      columnWidths: {
-                        0: const FlexColumnWidth(),
-                        for (var i = 1; i < columns.length; i++)
-                          i: FixedColumnWidth(columns[i].width * _textScale),
-                      },
-                      defaultVerticalAlignment:
-                          TableCellVerticalAlignment.middle,
-                      children: [
-                        TableRow(
-                          decoration: BoxDecoration(
-                            color: context.desktopPalette.sidebar,
-                          ),
+              final wide = box.maxWidth >= 620 * _textScale;
+              final stacked = box.maxWidth < 360 * _textScale;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!stacked)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 12, 12, 8),
+                      child: DefaultTextStyle(
+                        style: context.theme.typography.body.xs.copyWith(
+                          color: colors.mutedForeground,
+                        ),
+                        child: Row(
                           children: [
-                            for (final column in columns) _heading(column),
+                            const Expanded(flex: 3, child: Text('账号')),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                _hasCredits ? '可用余额' : '套餐 / 工作区',
+                                textAlign: TextAlign.end,
+                              ),
+                            ),
+                            if (wide && _hasCredits)
+                              const Expanded(
+                                flex: 2,
+                                child: Text('最近到期', textAlign: TextAlign.end),
+                              ),
                           ],
                         ),
-                        for (final entry in visible)
-                          TableRow(
-                            key: ValueKey('row-${entry.id}'),
-                            decoration: _rowDecoration(entry),
-                            children: _fields(entry),
-                          ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
+                  for (final entry in visible)
+                    _accountRow(entry, wide: wide, stacked: stacked),
+                ],
               );
             },
           ),
@@ -384,19 +301,6 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
                     ),
                   ),
                 ),
-                if (widget.entries.isNotEmpty)
-                  FTooltip(
-                    tipBuilder: (context, controller) =>
-                        Text('余额按官方单位展示 · 点击查看明细和查询时间'),
-                    child: Semantics(
-                      tooltip: '余额按官方单位展示 · — 表示数据未知 · 点击查看明细和查询时间',
-                      child: Icon(
-                        FLucideIcons.info,
-                        size: 14,
-                        color: colors.mutedForeground,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -404,421 +308,383 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
     );
   }
 
-  List<({String label, double width, AccountSort? sort})> get _columns => [
-    (
-      label: '账号',
-      width: widget.entries.any((e) => e.onActivate != null) ? 276 : 220,
-      sort: AccountSort.name,
-    ),
-    if (_hasCredits) ...[
-      (label: '即将到期额度', width: 128, sort: null),
-      (label: '到期时间', width: 120, sort: AccountSort.expiry),
-    ],
-    if (_hasRewards) (label: '最近领取时间', width: 132, sort: AccountSort.claim),
-    if (_hasCredits) (label: '余额', width: 140, sort: null),
-    if (!_hasCredits) (label: '套餐 / 工作区', width: 240, sort: null),
-  ];
-
-  Widget _narrowRows(Iterable<AccountTableEntry> visible) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Wrap(
-        children: [
-          for (final column in _columns)
-            if (column.sort != null) _heading(column),
-        ],
-      ),
-      for (final entry in visible)
-        Builder(
-          builder: (context) {
-            final fields = _fields(entry);
-            return Container(
-              decoration: _rowDecoration(entry),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  fields.first,
-                  Wrap(
-                    children: [
-                      for (int i = 1; i < fields.length; i++)
-                        FractionallySizedBox(
-                          widthFactor: _textScale > 1.4 ? 1 : .5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                child: Text(
-                                  _columns[i].label,
-                                  style: context.theme.typography.body.xs
-                                      .copyWith(
-                                        color: context
-                                            .theme
-                                            .colors
-                                            .mutedForeground,
-                                      ),
-                                ),
-                              ),
-                              fields[i],
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-    ],
-  );
-
-  BoxDecoration _rowDecoration(AccountTableEntry entry) => BoxDecoration(
-    color: entry.id == _highlightedId ? context.desktopPalette.selected : null,
-    border: Border(
-      bottom: BorderSide(
-        color: context.theme.colors.border.withValues(alpha: .45),
-      ),
-    ),
-  );
-
-  Widget _heading(({String label, double width, AccountSort? sort}) column) {
-    final label = column.label, sort = column.sort;
-    final active = sort != null && _model.sort == sort;
-    final text = Text(
-      label,
-      textAlign: label == '余额' ? TextAlign.right : TextAlign.start,
-      maxLines: 1,
-      softWrap: false,
-      style: context.theme.typography.body.sm.copyWith(
-        fontWeight: FontWeight.w500,
-        color: active
-            ? context.theme.colors.foreground
-            : context.theme.colors.mutedForeground,
+  Widget _controls() {
+    final platforms = {
+      for (final e in widget.entries)
+        if (e.appId != null) e.appId!,
+    };
+    final search = FTextField(
+      key: const Key('account-search'),
+      hint: '搜索账号或平台',
+      size: FTextFieldSizeVariant.sm,
+      prefixBuilder: (_, style, variants) =>
+          const Icon(FLucideIcons.search, size: 16),
+      control: FTextFieldControl.managed(
+        controller: _search,
+        onChange: (text) => setState(() {
+          _model.search = text.text;
+          _model.page = 0;
+        }),
       ),
     );
-    if (sort == null)
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        child: text,
-      );
-    final hint = !active
-        ? '按$label升序'
-        : _model.descending
-        ? '恢复默认排序'
-        : '按$label降序';
-    return FTooltip(
-      tipBuilder: (context, controller) => Text(hint),
-      child: FButton(
-        key: ValueKey('account-sort-${sort.name}'),
-        semanticsTooltip: hint,
-        variant: FButtonVariant.ghost,
-        size: FButtonSizeVariant.sm,
-        mainAxisAlignment: MainAxisAlignment.start,
-        style: const FButtonStyleDelta.delta(
-          contentStyle: FButtonContentStyleDelta.delta(
-            padding: EdgeInsetsGeometryDelta.value(
-              EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            ),
-          ),
-        ),
-        onPress: () => setState(() => _model.sortBy(sort)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+    final active =
+        _model.platform != null || _model.filter != AccountFilter.all;
+    final filter = FPopoverMenu(
+      menuAnchor: Alignment.topRight,
+      childAnchor: Alignment.bottomRight,
+      menuBuilder: (context, controller, _) => [
+        FItemGroup(
           children: [
-            text,
-            const SizedBox(width: 5),
-            Icon(
-              active
-                  ? (_model.descending
-                        ? FLucideIcons.arrowDown
-                        : FLucideIcons.arrowUp)
-                  : FLucideIcons.chevronsUpDown,
-              size: 12,
-              color: context.theme.colors.mutedForeground,
-            ),
+            for (final f in AccountFilter.values.where(
+              (f) => _hasCredits || f != AccountFilter.expiring,
+            ))
+              FItem(
+                title: Text(f.label),
+                suffix: f == _model.filter
+                    ? const Icon(FLucideIcons.check, size: 14)
+                    : null,
+                onPress: () {
+                  setState(() {
+                    _model.filter = f;
+                    _model.page = 0;
+                  });
+                  controller.hide();
+                },
+              ),
           ],
         ),
-      ),
-    );
-  }
-
-  List<Widget> _fields(AccountTableEntry entry) => [
-    Semantics(
-      key: entry.id == _highlightedId ? _revealedAccount : null,
-      selected: entry.id == _highlightedId,
-      child: _AccountName(
-        entry: entry,
-        app:
-            _source?.app ??
-            ManagedApp.values
-                .where((app) => app.name == entry.appId)
-                .firstOrNull,
-        height: _rowHeight,
-        favorite: _favorite(entry),
-        onFavorite: () => setState(() {
-          if (_preferences != null) {
-            _preferences!.toggleFavorite(_preferenceKey(entry));
-          } else {
-            _favorites.contains(entry.id)
-                ? _favorites.remove(entry.id)
-                : _favorites.add(entry.id);
-          }
-        }),
-        onDetails: () => _details(entry.id),
-      ),
-    ),
-    if (_hasCredits) ...[
-      entry.hasCredits ? _expiry(entry) : _cell('不适用'),
-      entry.hasCredits ? _expiry(entry, time: true) : _cell('不适用'),
-    ],
-    if (_hasRewards) entry.hasRewards ? _claimTime(entry) : _cell('不适用'),
-    if (_hasCredits)
-      entry.hasCredits
-          ? _actionCell(
-              key: 'balance-${entry.id}',
-              onPress: () => _details(entry.id),
-              child: _cell(
-                entry.balance == '—' ? '未知' : entry.balance,
-                balance: true,
-                tooltip: entry.queriedAt == null
-                    ? '查询时间未知 · 查看账号详情'
-                    : '${accountDate(entry.queriedAt!)} ${accountTime(entry.queriedAt!)} 查询 · 查看账号详情',
-              ),
-            )
-          : _cell('不适用'),
-    if (!_hasCredits) _cell(entry.accountSummary ?? entry.identity),
-  ];
-
-  Widget _cell(
-    String text, {
-    String? tooltip,
-    Color? color,
-    bool balance = false,
-  }) {
-    final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Text(
-        text,
-        textAlign: balance ? TextAlign.right : TextAlign.start,
-        style: context.theme.typography.body.sm.copyWith(
-          fontFeatures: const [FontFeature.tabularFigures()],
-          color: color,
-          fontWeight: balance ? FontWeight.w600 : FontWeight.w400,
-        ),
-      ),
-    );
-    return tooltip == null
-        ? content
-        : FTooltip(
-            tipBuilder: (context, controller) => Text(tooltip),
-            child: Semantics(tooltip: tooltip, child: content),
-          );
-  }
-
-  Widget _dateCell(DateTime date, {Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          accountDate(date),
-          style: context.theme.typography.body.sm.copyWith(color: color),
-        ),
-        Text(
-          accountTime(date),
-          style: context.theme.typography.body.xs.copyWith(
-            color: color ?? context.theme.colors.mutedForeground,
+        if (platforms.isNotEmpty)
+          FItemGroup(
+            children: [
+              for (final app in <ManagedApp?>[
+                null,
+                ...ManagedApp.values.where((a) => platforms.contains(a.name)),
+              ])
+                FItem(
+                  key: ValueKey('filter-platform-${app?.name}'),
+                  title: Text(
+                    app == null ? '全部平台' : '${app.label} · ${app.region}',
+                  ),
+                  suffix: _model.platform == app?.name
+                      ? const Icon(FLucideIcons.check, size: 14)
+                      : null,
+                  onPress: () {
+                    setState(() {
+                      _model.platform = app?.name;
+                      _model.page = 0;
+                    });
+                    controller.hide();
+                  },
+                ),
+            ],
           ),
+      ],
+      builder: (context, controller, _) => FButton(
+        key: const Key('account-filter'),
+        variant: active ? FButtonVariant.secondary : FButtonVariant.ghost,
+        selected: active,
+        size: FButtonSizeVariant.sm,
+        mainAxisSize: MainAxisSize.min,
+        prefix: const Icon(FLucideIcons.listFilter, size: 16),
+        onPress: controller.toggle,
+        child: const Text('筛选'),
+      ),
+    );
+    final favorite = FButton.icon(
+      key: const Key('account-favorites'),
+      variant: _model.favoritesOnly
+          ? FButtonVariant.secondary
+          : FButtonVariant.ghost,
+      selected: _model.favoritesOnly,
+      size: FButtonSizeVariant.sm,
+      semanticsLabel: '仅看收藏',
+      onPress: () => setState(() {
+        _model.favoritesOnly = !_model.favoritesOnly;
+        _model.page = 0;
+      }),
+      child: const Icon(FLucideIcons.star, size: 16),
+    );
+    final sort = FPopoverMenu(
+      menuAnchor: Alignment.topRight,
+      childAnchor: Alignment.bottomRight,
+      menuBuilder: (context, controller, _) => [
+        FItemGroup(
+          children: [
+            for (final order in <(AccountSort?, bool, String)>[
+              (null, false, '默认排序'),
+              (AccountSort.name, false, '名称升序'),
+              (AccountSort.name, true, '名称降序'),
+              if (_hasCredits) ...[
+                (AccountSort.expiry, false, '最近到期优先'),
+                (AccountSort.expiry, true, '最晚到期优先'),
+              ],
+              if (_hasRewards) ...[
+                (AccountSort.claim, true, '最近领取优先'),
+                (AccountSort.claim, false, '最早领取优先'),
+              ],
+            ])
+              FItem(
+                title: Text(order.$3),
+                suffix: _model.sort == order.$1 && _model.descending == order.$2
+                    ? const Icon(FLucideIcons.check, size: 14)
+                    : null,
+                onPress: () {
+                  setState(() {
+                    _model.sort = order.$1;
+                    _model.descending = order.$2;
+                    _model.page = 0;
+                  });
+                  controller.hide();
+                },
+              ),
+          ],
         ),
       ],
-    ),
-  );
-
-  Widget _claimTime(AccountTableEntry row) {
-    final receipt = row.receipt;
-    if (receipt == null) return _cell('暂无回执', tooltip: '暂无已确认的领取记录');
-    return _actionCell(
-      key: 'claim-${row.id}',
-      onPress: () => _details(row.id),
-      child: receipt.confirmedAt != null
-          ? _dateCell(receipt.confirmedAt!)
-          : _cell(
-              receipt.day ?? '—',
-              tooltip: '已确认领取，具体时间未知',
-              color: context.theme.colors.mutedForeground,
-            ),
-    );
-  }
-
-  Widget _actionCell({
-    required String key,
-    required VoidCallback onPress,
-    required Widget child,
-  }) => ConstrainedBox(
-    constraints: BoxConstraints(minHeight: _rowHeight),
-    child: FButton(
-      key: ValueKey(key),
-      variant: FButtonVariant.ghost,
-      size: FButtonSizeVariant.sm,
-      mainAxisSize: MainAxisSize.max,
-      mainAxisAlignment: MainAxisAlignment.start,
-      style: const FButtonStyleDelta.delta(
-        contentStyle: FButtonContentStyleDelta.delta(
-          padding: EdgeInsetsGeometryDelta.value(EdgeInsets.zero),
-        ),
+      builder: (context, controller, _) => FButton.icon(
+        key: const Key('account-sort'),
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        semanticsLabel: '排序',
+        onPress: controller.toggle,
+        child: const Icon(FLucideIcons.arrowUpDown, size: 16),
       ),
-      onPress: onPress,
-      child: Expanded(child: child),
-    ),
-  );
-
-  Widget _expiry(AccountTableEntry row, {bool time = false}) {
-    final expiry = row.nextExpiry;
-    if (expiry == null) return _cell('未知', tooltip: '平台未提供可核实的到期信息');
-    final now = DateTime.now();
-    final urgent =
-        expiry.isAfter(now) &&
-        expiry.isBefore(now.add(const Duration(days: 7)));
-    final color = urgent ? context.theme.colors.foreground : null;
-    return _actionCell(
-      key: '${time ? 'expiry-time' : 'expiry'}-${row.id}',
-      onPress: () => _details(row.id, expiry: true),
-      child: time
-          ? _dateCell(expiry, color: color)
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _cell(
-                  row.upcomingExpiryAmount == '—'
-                      ? '未知'
-                      : row.upcomingExpiryAmount,
-                  color: color,
-                ),
-                if (urgent)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      '7 天内到期',
-                      style: context.theme.typography.body.xs.copyWith(
-                        color: context.theme.colors.mutedForeground,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+    );
+    return LayoutBuilder(
+      builder: (context, box) {
+        final controls = Wrap(
+          spacing: 4,
+          runSpacing: 2,
+          children: [filter, favorite, sort],
+        );
+        if (box.maxWidth < 385 * _textScale)
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [search, controls],
+          );
+        return Row(
+          children: [
+            Expanded(child: search),
+            const SizedBox(width: 8),
+            controls,
+          ],
+        );
+      },
     );
   }
-}
 
-class _AccountName extends StatelessWidget {
-  const _AccountName({
-    required this.entry,
-    this.app,
-    required this.favorite,
-    required this.onFavorite,
-    required this.onDetails,
-    required this.height,
-  });
-  final AccountTableEntry entry;
-  final ManagedApp? app;
-  final bool favorite;
-  final double height;
-  final VoidCallback onFavorite, onDetails;
-  @override
-  Widget build(BuildContext context) {
-    final e = entry;
+  Widget _accountRow(
+    AccountTableEntry entry, {
+    required bool wide,
+    required bool stacked,
+  }) {
+    final app =
+        _source?.app ??
+        ManagedApp.values.where((app) => app.name == entry.appId).firstOrNull;
+    final platform =
+        entry.sourceLabel ??
+        (app == null ? entry.detailPlatform : '${app.label} · ${app.region}');
     final muted = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
     );
-    final description = [
-      e.label,
-      if (e.sourceLabel != null) e.sourceLabel!,
-      if (e.identity != e.label) e.identity,
-      e.status,
-    ].join('\n');
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: height),
-      child: Row(
-        children: [
-          FTooltip(
-            tipBuilder: (context, controller) =>
-                Text(favorite ? '取消常用' : '设为常用'),
-            child: Semantics(
-              tooltip: favorite ? '取消常用' : '设为常用',
-              child: FButton.icon(
-                variant: favorite
-                    ? FButtonVariant.secondary
-                    : FButtonVariant.ghost,
-                selected: favorite,
-                size: FButtonSizeVariant.sm,
-                onPress: onFavorite,
-                child: const Icon(FLucideIcons.star, size: 14),
+    final selected = entry.id == _highlightedId;
+    final favorite = _favorite(entry);
+    final name = Row(
+      children: [
+        if (app != null) ...[
+          Image.asset(
+            app.iconAsset,
+            width: 25,
+            height: 25,
+            excludeFromSemantics: true,
+          ),
+          const SizedBox(width: 10),
+        ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: context.theme.typography.body.sm.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              if (platform != null)
+                Text(
+                  platform,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: muted,
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final amounts = Column(
+      crossAxisAlignment: stacked
+          ? CrossAxisAlignment.start
+          : CrossAxisAlignment.end,
+      children: [
+        if (_hasCredits)
+          AccountAmount(
+            entry.hasCredits ? entry.balance : '不适用',
+            style: context.theme.typography.body.md.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            unitStyle: muted,
+          )
+        else
+          Text(entry.accountSummary ?? entry.identity, style: muted),
+        if (entry.listStatus case final state?)
+          Text(
+            state,
+            style: muted.copyWith(
+              color: entry.needsAttention
+                  ? context.desktopPalette.warning
+                  : context.desktopPalette.selectedForeground,
             ),
           ),
-          if (app case final platform?)
-            Image.asset(platform.iconAsset, width: 23, height: 23),
-          Expanded(
-            child: FTooltip(
-              tipBuilder: (context, controller) => Text(description),
-              child: FButton(
-                key: ValueKey('account-${e.id}'),
-                semanticsTooltip: description,
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment: MainAxisAlignment.start,
-                onPress: onDetails,
-                style: const FButtonStyleDelta.delta(
-                  contentStyle: FButtonContentStyleDelta.delta(
-                    padding: EdgeInsetsGeometryDelta.value(
-                      EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                    ),
+      ],
+    );
+    final queried = entry.queriedAt;
+    final balance = !entry.hasCredits
+        ? amounts
+        : FTooltip(
+            key: ValueKey('balance-${entry.id}'),
+            tipBuilder: (context, controller) => Text(
+              queried == null
+                  ? '查询时间未知 · 查看账号详情'
+                  : '${accountDate(queried)} ${accountTime(queried)} 查询 · 查看账号详情',
+            ),
+            child: amounts,
+          );
+    final expiry = entry.nextExpiry;
+    final identity = FButton(
+      key: ValueKey('account-${entry.id}'),
+      variant: FButtonVariant.ghost,
+      mainAxisAlignment: MainAxisAlignment.start,
+      selected: selected,
+      style: const FButtonStyleDelta.delta(
+        contentStyle: FButtonContentStyleDelta.delta(
+          padding: EdgeInsetsGeometryDelta.value(
+            EdgeInsets.symmetric(horizontal: 5, vertical: 8),
+          ),
+        ),
+      ),
+      onPress: () => _details(entry.id),
+      child: Expanded(
+        child: stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  name,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: balance,
                   ),
-                ),
-                child: Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        e.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: context.theme.typography.body.sm.copyWith(
-                          fontWeight: FontWeight.w500,
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(flex: 3, child: name),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: balance),
+                ],
+              ),
+      ),
+    );
+    return Container(
+      key: ValueKey('row-${entry.id}'),
+      constraints: BoxConstraints(minHeight: _rowHeight),
+      decoration: BoxDecoration(
+        color: selected ? context.desktopPalette.selected : null,
+        border: Border(
+          left: BorderSide(
+            width: 2,
+            color: selected
+                ? context.desktopPalette.brand
+                : const Color(0x00000000),
+          ),
+          bottom: BorderSide(
+            color: context.theme.colors.border.withValues(alpha: .65),
+          ),
+        ),
+      ),
+      child: Semantics(
+        key: entry.id == _revealTarget ? _revealedAccount : null,
+        selected: selected,
+        child: Row(
+          children: [
+            FButton.icon(
+              size: FButtonSizeVariant.sm,
+              variant: FButtonVariant.ghost,
+              semanticsLabel: favorite ? '取消收藏' : '收藏账号',
+              selected: favorite,
+              onPress: () => setState(() {
+                if (_preferences != null) {
+                  _preferences!.toggleFavorite(_preferenceKey(entry));
+                } else if (favorite) {
+                  _favorites.remove(entry.id);
+                } else {
+                  _favorites.add(entry.id);
+                }
+              }),
+              child: Icon(
+                FLucideIcons.star,
+                size: 14,
+                color: favorite
+                    ? context.desktopPalette.brand
+                    : context.theme.colors.mutedForeground,
+              ),
+            ),
+            Expanded(flex: 5, child: identity),
+            if (wide && _hasCredits)
+              Expanded(
+                flex: 2,
+                child: expiry == null
+                    ? Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Text(
+                          entry.hasCredits ? '未知' : '不适用',
+                          style: muted,
+                          textAlign: TextAlign.end,
+                        ),
+                      )
+                    : FButton(
+                        key: ValueKey('expiry-${entry.id}'),
+                        variant: FButtonVariant.ghost,
+                        size: FButtonSizeVariant.sm,
+                        onPress: () => _details(entry.id, expiry: true),
+                        child: Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                groupAccountAmount(entry.upcomingExpiryAmount),
+                              ),
+                              Text(
+                                '${accountDate(expiry)} ${accountTime(expiry)}',
+                                style: muted,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      Text(
-                        [
-                          if (e.sourceLabel != null) e.sourceLabel!,
-                          e.statusLabel ?? e.status,
-                        ].join(' · '),
-                        style: muted,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
               ),
-            ),
-          ),
-          if (e.onActivate != null)
-            FButton(
-              key: ValueKey('activate-${e.id}'),
-              variant: FButtonVariant.ghost,
-              size: FButtonSizeVariant.sm,
-              mainAxisSize: MainAxisSize.min,
-              onPress: e.activationEnabled ? e.onActivate : null,
-              child: const Text('切换'),
-            ),
-          const SizedBox(width: 6),
-        ],
+            if (entry.onActivate != null)
+              FButton(
+                key: ValueKey('activate-${entry.id}'),
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
+                onPress: entry.activationEnabled ? entry.onActivate : null,
+                child: const Text('切换'),
+              ),
+          ],
+        ),
       ),
     );
   }
