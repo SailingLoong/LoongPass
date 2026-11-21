@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -5,10 +6,63 @@ import '../lib/app_sidebar.dart';
 import '../lib/main.dart';
 import '../lib/plugin_model_page.dart';
 import '../lib/ui_preferences.dart';
+import '../lib/workspace_page.dart';
 import 'desktop_test_app.dart';
 import 'model_workspace_fixture.dart';
 
 void main() {
+  testDesktopWidgets(
+    'model navigation shows a single stationary page from the first frame',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1080, 748);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final app = ModelWorkspaceFixture();
+      addTearDown(app.dispose);
+      await tester.pumpWidget(AccountToolApp(application: app));
+      await tester.pumpAndSettle();
+
+      final heading = find.byType(WorkspaceHeading);
+      final origin = tester.getTopLeft(heading);
+      void expectPage(String title) {
+        expect(heading, findsOneWidget);
+        expect(tester.widget<WorkspaceHeading>(heading).title, title);
+        expect(tester.getTopLeft(heading), origin);
+      }
+
+      Future<void> open(Finder control, String title) async {
+        await tester.tap(control);
+        await tester.pump();
+        expectPage(title);
+        await tester.pump(const Duration(milliseconds: 80));
+        expectPage(title);
+      }
+
+      final catalog = find.byKey(const Key('nav-models'));
+      await open(catalog, '模型连接');
+      await open(
+        find.byKey(const Key('model-nav-deepseek-flash')),
+        'deepseek-flash',
+      );
+      await open(find.byKey(const Key('model-nav-MiniMax-M3')), 'MiniMax-M3');
+      await open(catalog, '模型连接');
+      await open(
+        find.byKey(const Key('open-model-deepseek-flash')),
+        'deepseek-flash',
+      );
+      await open(find.text('全部模型'), '模型连接');
+      await open(find.byKey(const Key('model-nav-auto')), 'LoongPass Auto');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pump();
+      expectPage('模型连接');
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+    }),
+  );
+
   testDesktopWidgets('default sidebar contains Auto without concrete models', (
     tester,
   ) async {

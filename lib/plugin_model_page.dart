@@ -1,6 +1,5 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:material_ui/material_ui.dart' show MaterialPage;
 import 'package:forui/forui.dart';
 
 import 'desktop_theme.dart';
@@ -35,7 +34,6 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   final _search = TextEditingController();
   final _autoSearch = TextEditingController();
   late final _path = <String>[?widget.selectedModelId];
-  final _navigator = GlobalKey<NavigatorState>();
 
   @override
   void didUpdateWidget(PluginModelServicesPage oldWidget) {
@@ -82,26 +80,18 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Navigator(
-    key: _navigator,
-    pages: [
-      MaterialPage<void>(
-        key: const ValueKey('model-catalog'),
-        child: _page(null),
-      ),
+  Widget build(BuildContext context) => IndexedStack(
+    sizing: StackFit.expand,
+    index: _path.length,
+    children: [
+      _page(null),
       for (final id in _path)
-        MaterialPage<void>(
+        CallbackShortcuts(
           key: ValueKey(id),
-          name: id,
-          child: CallbackShortcuts(
-            bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
-            child: Focus(autofocus: true, child: _page(id)),
-          ),
+          bindings: {const SingleActivator(LogicalKeyboardKey.escape): _back},
+          child: Focus(autofocus: true, child: _page(id)),
         ),
     ],
-    onDidRemovePage: (page) {
-      if (page.name != null && page.name == _path.lastOrNull) _back();
-    },
   );
 
   Widget _page(String? id) {
