@@ -136,12 +136,14 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
 
   Future<void> _refresh() => _run(() async {
     await widget.accounts.refresh();
-    for (final account in widget.accounts.accounts) {
-      if (widget.providerIds.contains(account.provider) &&
-          account.active &&
-          account.provider == 'zcode')
-        await widget.rewards.zcode.refresh(account.key);
-    }
+    await Future.wait([
+      for (final account in widget.accounts.accounts)
+        if (widget.providerIds.contains(account.provider) &&
+            account.provider == 'zcode' &&
+            account.active &&
+            account.uid.isNotEmpty)
+          widget.rewards.refresh(account.key),
+    ]);
   });
 
   Future<void> _verifyResult(PluginAccount account) =>

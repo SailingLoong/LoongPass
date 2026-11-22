@@ -83,7 +83,7 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "a4c94625d80e29fc137db67ac3db4e0d623df10cc284b3b7252c4d0136882441",
+      "sha256": "545806e2c98c03c9f7af7a0d12b76fd4521dc1b078aed4d4db37972ece0d178e",
       "upstreamSha256": "d51d1712e89d5e1d94c719c36eaa7f49edd52c671f984c39aaf5ffab317f1179"
     },
     {

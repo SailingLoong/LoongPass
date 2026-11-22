@@ -2569,7 +2569,7 @@ function tiersOf(v) {
 // that gave up (signal) has every hook it would still have asked told, so
 // a timed-out listing stops its vendor reads instead of multiplying them
 // (#4678).
-async function providers({ proxies, off, offAccounts } = {}, signal) {
+async function providers({ proxies, off, offAccounts, account } = {}, signal) {
   const stored = readAuth()
   // a provider switched off in magpie is asked nothing: its models hook
   // (and the sign-in renewal before it) would reach its vendor. It is
@@ -2577,12 +2577,13 @@ async function providers({ proxies, off, offAccounts } = {}, signal) {
   const quiet = new Set(Array.isArray(off) ? off : [])
   // Optional account admission is applied before any models or renewal hook.
   // Without it the native default-account behavior remains unchanged.
-  const filtered = Array.isArray(offAccounts)
-  const blocked = new Set(filtered ? offAccounts : [])
+  if (account !== undefined && (typeof account !== "string" || !account)) throw new Error("invalid catalog account")
+  const filtered = account !== undefined || Array.isArray(offAccounts)
+  const blocked = new Set(Array.isArray(offAccounts) ? offAccounts : [])
   // every provider is listed side by side, each models hook given
   // listWait: one whose vendor is stuck holds up no other's row
   const row = async ([id, a]) => {
-    const keys = accountsOf(stored, id).filter((k) => !blocked.has(k))
+    const keys = accountsOf(stored, id).filter((k) => !blocked.has(k) && (account === undefined || k === account))
     const through = (k) => proxies?.[id]?.[k ?? keys[0] ?? ""] ?? proxies?.[id]?.[""] ?? ""
     const gen = infoGen
     if (quiet.has(id) || (filtered && keys.length === 0)) {
@@ -2603,7 +2604,10 @@ async function providers({ proxies, off, offAccounts } = {}, signal) {
     ])
     return rowOf(id, a, keys, stored, p, own)
   }
-  return Promise.all([...auths()].map(row))
+  const sources = auths()
+  if (account === undefined) return Promise.all([...sources].map(row))
+  const id = providerOf(account)
+  return sources.has(id) ? [await row([id, sources.get(id)])] : []
 }
 
 // rowOf is the providers row of id (registered as a), its accounts keys

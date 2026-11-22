@@ -17,6 +17,8 @@ class _Host implements PluginRuntime {
   bool offline = false;
   bool unreadable = false;
   int listings = 0;
+  bool holdAllUsage = false;
+  final limits = <String, int>{};
 
   @override
   final providerIds = ['slow', 'fast'];
@@ -39,16 +41,30 @@ class _Host implements PluginRuntime {
             key: {'type': 'oauth', 'uid': key, 'accountId': key},
         };
       case 'providers':
-        listings++;
-        final listed = List.of(keys);
-        if (!catalogRequested.isCompleted) catalogRequested.complete();
-        await catalog.future;
-        if (offline) throw StateError('offline');
+        final account = params['account'];
+        final quiet =
+            account == null &&
+            providerIds.every(
+              (id) => (params['off'] as List? ?? []).contains(id),
+            );
+        if (account == null) listings++;
+        final listed = keys
+            .where((key) => account == null || key == account)
+            .toList();
+        if (!quiet) {
+          if (!catalogRequested.isCompleted) catalogRequested.complete();
+          await catalog.future;
+          if (offline) throw StateError('offline');
+        }
         return [
-          for (final id in providerIds)
+          for (final id in providerIds.where(
+            (id) =>
+                account == null || (account as String).split('#').first == id,
+          ))
             {
               'id': id,
               'usage': true,
+              'maxAccounts': limits[id] ?? 0,
               'models': [
                 {'id': 'model', 'url': 'https://example.invalid'},
               ],
@@ -63,7 +79,7 @@ class _Host implements PluginRuntime {
       case 'usage':
         final key = params['account'] as String;
         usageCalls.add(key);
-        if (key == 'slow#1') await slowUsage.future;
+        if (holdAllUsage || key == 'slow#1') await slowUsage.future;
         return {
           'windows': [
             {'balance': 12.5, 'unit': 'credits'},
@@ -152,6 +168,7 @@ void main() {
   test(
     'another provider publishes its balance while the first one is pending',
     () async {
+      host.limits['slow'] = 1;
       final observed = <String>{};
       accounts.addListener(() {
         observed.addAll(
@@ -176,6 +193,26 @@ void main() {
         await startup;
         await accounts.refresh();
       }
+    },
+  );
+
+  test(
+    'account queries share three slots and at most two per source',
+    () async {
+      host.keys.addAll(['slow#3', 'fast#2', 'fast#3']);
+      host.holdAllUsage = true;
+      host.catalog.complete();
+      final startup = accounts.start();
+      try {
+        await host.catalogRequested.future;
+        await pumpEventQueue();
+        expect(host.usageCalls.toSet(), {'slow#1', 'slow#2', 'fast#1'});
+      } finally {
+        host.release();
+        await startup;
+        await accounts.refresh();
+      }
+      expect(host.usageCalls.toSet(), host.keys.toSet());
     },
   );
 

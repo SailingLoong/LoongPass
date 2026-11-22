@@ -900,6 +900,36 @@ void main() {
     expect(h.hooks, hasLength(2));
   });
 
+  test('independent assisted check-ins overlap within the account limit', () async {
+    final h = await open(additionalProviders: ['second']);
+    await h.addSlot('b', uid: 'B');
+    await h.addSlot('c', uid: 'C');
+    await h.addSlot('d', uid: 'D', providerId: 'second');
+    await h.control({'hold': true});
+    final batch = h.rewards.claimAll();
+    try {
+      final deadline = Stopwatch()..start();
+      while (h.hooks.length < 3 && deadline.elapsed < const Duration(seconds: 3)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(h.hooks, hasLength(3));
+      var extraReadStarted = false;
+      final extraRead = h.accounts.runAccountTask('extra#read', () async {
+        extraReadStarted = true;
+      });
+      await pumpEventQueue();
+      expect(extraReadStarted, isFalse);
+      await File('${h.directory.path}/release').create();
+      await extraRead;
+    } finally {
+      await File('${h.directory.path}/release').create();
+      await batch;
+    }
+    expect(h.hooks, hasLength(4));
+    expect(h.rewards.batch.value!.checked, 4);
+    expect(h.rewards.batch.value!.failures, isEmpty);
+  });
+
   test('new accounts and a new reward window wait for another click', () async {
     final h = await open();
     final first = h.key;

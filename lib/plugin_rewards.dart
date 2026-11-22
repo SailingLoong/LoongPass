@@ -83,21 +83,19 @@ class PluginRewards {
     }
     _ticking = true;
     try {
-      for (final a in accounts.accounts) {
-        if (_closed) break;
-        if (!_eligible(a)) continue;
-        try {
-          if (a.provider == 'zcode') {
-            await _exclusive(a, () => zcode.refresh(a.key));
-          } else if (accounts.providers[a.provider]?['checkinStatus'] == true) {
-            await _exclusive(a, () async {
-              await _prepare(a, submit: false);
-            });
-          }
-        } catch (_) {
-          /* Each account keeps its own durable outcome. */
-        }
-      }
+      await Future.wait([
+        for (final a in accounts.accounts)
+          if (_eligible(a) &&
+              (a.provider == 'zcode' ||
+                  accounts.providers[a.provider]?['checkinStatus'] == true))
+            _exclusive(a, () async {
+              if (a.provider == 'zcode') {
+                await zcode.refresh(a.key);
+              } else {
+                await _prepare(a, submit: false);
+              }
+            }).catchError((_) {}),
+      ]);
     } finally {
       _ticking = false;
       if (_again && !_closed) {
@@ -170,8 +168,8 @@ class PluginRewards {
   Future<void> _claimAll(List<PluginAccount> targets) async {
     final failures = <String>[];
     var checked = 0;
-    for (final account in targets) {
-      if (_closed) break;
+    Future<void> checkAccount(PluginAccount account) async {
+      if (_closed) return;
       try {
         await _claim(account, refreshUsage: false);
       } catch (_) {
@@ -187,6 +185,8 @@ class PluginRewards {
         );
       }
     }
+
+    await Future.wait(targets.map(checkAccount));
     var balanceUnavailable = false;
     if (!_closed && targets.any((account) => account.provider != 'zcode')) {
       try {
@@ -237,10 +237,15 @@ class PluginRewards {
     final lock =
         '${accounts.store.identity}\u0000${pluginRewardIdentity(account.provider, account.realm, account.uid)}';
     final previous = _queues[lock] ?? Future<void>.value();
-    final work = previous.then((_) {}, onError: (_) {}).then((_) async {
-      _check(account);
-      await action();
-    });
+    final work = previous
+        .then((_) {}, onError: (_) {})
+        .then(
+          (_) => accounts.runAccountTask(account.key, () async {
+            if (_closed) return;
+            _check(account);
+            await action();
+          }),
+        );
     late final Future<void> finished;
     finished = work.whenComplete(() {
       if (identical(_queues[lock], finished)) _queues.remove(lock);
@@ -260,9 +265,10 @@ class PluginRewards {
     PluginAccount account, {
     required bool refreshUsage,
     Future<String?> Function(ZcodeCaptchaConfig)? verify,
-  }) {
+  }) async {
     final key = account.key;
-    return _exclusive(account, () async {
+    var updateBalance = false;
+    await _exclusive(account, () async {
       if (account.provider == 'zcode') {
         await zcode.claim(key, verify: verify);
         _check(account);
@@ -299,15 +305,16 @@ class PluginRewards {
         reward.addAll(result);
         _saveJournal(data, account, reward);
       });
-      // Usage is only a balance observation and never reconciles this intent.
-      if (refreshUsage && _definitive.contains(result['status'])) {
-        try {
-          await accounts.refresh();
-        } catch (_) {
-          /* Facts retain the receipt. */
-        }
-      }
+      updateBalance = refreshUsage && _definitive.contains(result['status']);
     });
+    // Release the account slot before scheduling a whole catalog refresh.
+    if (updateBalance && !_closed) {
+      try {
+        await accounts.refresh();
+      } catch (_) {
+        /* Facts retain the receipt. */
+      }
+    }
   }
 
   Future<Map<String, dynamic>?> _prepare(
@@ -448,19 +455,18 @@ class PluginRewards {
 
   Future<void> refresh(String key, {bool includeUsage = false}) async {
     final account = _account(key);
-    return _exclusive(account, () async {
+    await _exclusive(account, () async {
       if (account.provider == 'zcode') {
-        await Future.wait([
-          zcode.refresh(key),
-          if (includeUsage) accounts.refresh(),
-        ]);
+        await zcode.refresh(key);
       } else {
         await _prepare(account, submit: false);
-        _check(account);
-        await accounts.refresh();
       }
       _check(account);
     });
+    if (!_closed && (includeUsage || account.provider != 'zcode')) {
+      await accounts.refresh();
+      _check(account);
+    }
   }
 
   Future<void> close() async {
