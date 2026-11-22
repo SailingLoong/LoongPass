@@ -191,6 +191,7 @@ class _Harness {
       },
     });
     await accounts.start();
+    await accounts.refresh();
     final harness = _Harness(directory, runtime, accounts, store);
     harness.rewards = PluginRewards(
       accounts,

@@ -111,6 +111,10 @@ class PluginAccounts extends ChangeNotifier {
   Timer? _renewal, _catalogTimer, _eventTimer;
   bool _closed = false, _maintaining = false;
   String? error;
+  bool _catalogReady = false;
+
+  /// A complete observation is required before publishing routing to Magpie.
+  bool get catalogReady => _catalogReady;
 
   Map<String, Map<String, dynamic>> get providers =>
       Map.unmodifiable(_providers);
@@ -178,9 +182,10 @@ class PluginAccounts extends ChangeNotifier {
     return Map.unmodifiable(facts);
   }
 
+  /// Restores verified local identities. Provider observations arrive separately.
   Future<void> start() async {
     _data = (await store.read()).data;
-    await refresh();
+    final native = await _reconcile();
     _events = runtime.events.listen((event) {
       if (!{'auth', 'signIn', 'recovered'}.contains(event['event'])) return;
       _eventTimer?.cancel();
@@ -197,24 +202,50 @@ class PluginAccounts extends ChangeNotifier {
       const Duration(minutes: 15),
       (_) => unawaited(refresh().catchError((_) {})),
     );
+    unawaited(_startRefresh(native).catchError((_) {}));
   }
 
-  Future<void> refresh() =>
-      _refreshing ??= _refresh().whenComplete(() => _refreshing = null);
-  Future<void> _refresh() async {
-    if (_closed) return;
-    try {
-      final native = await credentials.all();
-      for (final entry in (_data['accounts'] as Map? ?? {}).entries) {
-        if (entry.value['removed'] == true && native.containsKey(entry.key)) {
-          await runtime.call('signOut', {
-            'provider': entry.value['provider'],
-            'account': entry.key,
-          });
-          native.remove(entry.key);
-        }
+  Future<void> refresh() => _startRefresh();
+
+  Future<void> _startRefresh([Map<String, Map<String, dynamic>>? restored]) =>
+      _refreshing ??= _refresh(restored).whenComplete(() => _refreshing = null);
+
+  Future<Map<String, Map<String, dynamic>>> _reconcile() async {
+    final native = await _readCredentials();
+    for (final entry in (_data['accounts'] as Map? ?? {}).entries) {
+      if (entry.value['removed'] == true && native.containsKey(entry.key)) {
+        await runtime.call('signOut', {
+          'provider': entry.value['provider'],
+          'account': entry.key,
+        });
+        native.remove(entry.key);
       }
-      await _observe(native);
+    }
+    await _observe(native);
+    return native;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> _readCredentials() async {
+    try {
+      return await credentials.all();
+    } catch (_) {
+      _native = {};
+      rethrow;
+    }
+  }
+
+  Future<void> _refresh(Map<String, Map<String, dynamic>>? restored) async {
+    if (_closed) return;
+    if (error != null) {
+      error = null;
+      notifyListeners();
+    }
+    try {
+      final native = restored ?? await _reconcile();
+      if (_closed) return;
+      final registrations = {
+        for (final key in native.keys) key: _row(key)?['registrationId'],
+      };
       final connected = {for (final key in native.keys) key.split('#').first};
       // Exclude individual slots before native catalog/renewal hooks. Healthy
       // siblings still populate their own catalog even on a cold start.
@@ -231,7 +262,7 @@ class PluginAccounts extends ChangeNotifier {
       }) as List;
       if (_closed) return;
       // Native model/refresh hooks may have rotated a credential while listing.
-      await _observe(await credentials.all());
+      await _observe(await _readCredentials());
       _providers = {
         for (final row in rows)
           if (enabledProviders.contains(row['id']))
@@ -243,115 +274,141 @@ class PluginAccounts extends ChangeNotifier {
               ],
             }),
       };
-      for (final provider in _providers.values) {
-        for (final account in provider['accounts'] as List) {
-          if (_closed) return;
-          final key = account['key'] as String;
-          try {
-            final expected = Map<String, dynamic>.from(_row(key)!);
-            await _live(key, expected);
-            Map? loaded;
-            var catalogFailed = account['fellBack'] == true;
-            try {
-              loaded = await runtime.call('load', {
-                'provider': provider['id'],
-                'account': key,
-              }) as Map;
-            } catch (_) {
-              catalogFailed = true;
+      final providers = _providers.values
+          .where((provider) => (provider['accounts'] as List).isNotEmpty)
+          .toList();
+      final pending = providers.iterator;
+      Future<void> refreshProviders() async {
+        while (!_closed && pending.moveNext()) {
+          final provider = pending.current;
+          for (final account in provider['accounts'] as List) {
+            if (_closed) return;
+            final key = account['key'] as String;
+            if (_row(key)?['registrationId'] == registrations[key]) {
+              await _refreshAccount(provider, account);
             }
-            await _live(key, expected);
-            final own = account['models'] as List?;
-            List<Map<String, dynamic>>? models;
-            if (loaded != null &&
-                (account['fellBack'] != true || !_catalogs.containsKey(key))) {
-              models = List.unmodifiable([
-                for (final model in provider['models'] as List)
-                  if (own == null || own.contains(model['id']))
-                    Map<String, dynamic>.unmodifiable({
-                      ...Map<String, dynamic>.from(model),
-                      'url': loaded['baseURL'] != ''
-                          ? loaded['baseURL']
-                          : model['url'] != ''
-                          ? model['url']
-                          : provider['api'],
-                    }),
-              ]);
-            }
-            ({Map<String, dynamic> value, DateTime at})? observedUsage;
-            String? usageFailure;
-            var signIn = '';
-            if (provider['usage'] == true) {
-              try {
-                final usage = await runtime.call('usage', {
-                  'provider': provider['id'],
-                  'account': key,
-                });
-                if (usage is! Map) throw const FormatException('Invalid usage');
-                signIn = usage['signIn'] is String ? usage['signIn'] : '';
-                if (signIn == 'expired' ||
-                    usage['error'] is String &&
-                        (usage['error'] as String).trim().isNotEmpty) {
-                  usageFailure = signIn == 'expired'
-                      ? 'authorization_required'
-                      : 'usage_unavailable';
-                } else {
-                  observedUsage = (
-                    value: Map.unmodifiable(Map<String, dynamic>.from(usage)),
-                    at: DateTime.now(),
-                  );
-                }
-              } catch (_) {
-                usageFailure = 'usage_unavailable';
-              }
-            }
-            await _live(key, expected);
-            if (models != null) _catalogs[key] = models;
-            if (observedUsage != null) {
-              _usage[key] = observedUsage.value;
-              _queried[key] = observedUsage.at;
-              if (provider['id'] == 'zcode') {
-                final gift = ZcodeGiftExpiry.fromUsage(
-                  observedUsage.value,
-                  observedUsage.at,
-                );
-                if (gift.observedAt != null) {
-                  _gifts[key] = (owner: _giftOwner(expected), expiry: gift);
-                }
-              }
-            }
-            if (usageFailure != null &&
-                signIn != 'renewed' &&
-                (_errors[key] == 'authorization_required' ||
-                    _usage[key]?['signIn'] == 'expired'))
-              usageFailure = 'authorization_required';
-            _errors.remove(key);
-            if (catalogFailed) _errors[key] = 'catalog_unavailable';
-            if (usageFailure != null) {
-              // Keep verified quantities and their original observation time.
-              // Error strings may contain private response data; publish only
-              // a stable failure and this attempt's native sign-in signal.
-              // UI attention can retain known expiry, but a failed RPC cannot
-              // replay an old renewal/expiry as a new event to Magpie.
-              _usage[key] = Map.unmodifiable({
-                ...?_usage[key],
-                'error': 'Usage query unavailable',
-                'signIn': signIn.isEmpty ? 'kept' : signIn,
-              });
-              _errors[key] = usageFailure;
-            }
-          } catch (_) {
-            _errors.putIfAbsent(key, () => 'account_unavailable');
           }
+          if (!_closed && !_catalogReady) notifyListeners();
         }
       }
+
+      // Each provider's slots share its plugin. Keep those requests serial,
+      // while independent providers can finish and publish their balances.
+      await Future.wait([
+        for (final _ in providers.take(3)) refreshProviders(),
+      ]);
+      if (_closed) return;
+      _catalogReady = true;
       error = null;
     } catch (_) {
-      _native = {};
+      _catalogReady = false;
       error = 'catalog_unavailable';
       rethrow;
     } finally {
       if (!_closed) notifyListeners();
+    }
+  }
+
+  Future<void> _refreshAccount(
+    Map<String, dynamic> provider,
+    Map account,
+  ) async {
+    final key = account['key'] as String;
+    try {
+      final expected = Map<String, dynamic>.from(_row(key)!);
+      await _live(key, expected);
+      Map? loaded;
+      var catalogFailed = account['fellBack'] == true;
+      try {
+        loaded = await runtime.call('load', {
+          'provider': provider['id'],
+          'account': key,
+        }) as Map;
+      } catch (_) {
+        catalogFailed = true;
+      }
+      await _live(key, expected);
+      final own = account['models'] as List?;
+      List<Map<String, dynamic>>? models;
+      if (loaded != null &&
+          (account['fellBack'] != true || !_catalogs.containsKey(key))) {
+        models = List.unmodifiable([
+          for (final model in provider['models'] as List)
+            if (own == null || own.contains(model['id']))
+              Map<String, dynamic>.unmodifiable({
+                ...Map<String, dynamic>.from(model),
+                'url': loaded['baseURL'] != ''
+                    ? loaded['baseURL']
+                    : model['url'] != ''
+                    ? model['url']
+                    : provider['api'],
+              }),
+        ]);
+      }
+      ({Map<String, dynamic> value, DateTime at})? observedUsage;
+      String? usageFailure;
+      var signIn = '';
+      if (provider['usage'] == true) {
+        try {
+          final usage = await runtime.call('usage', {
+            'provider': provider['id'],
+            'account': key,
+          });
+          if (usage is! Map) throw const FormatException('Invalid usage');
+          signIn = usage['signIn'] is String ? usage['signIn'] : '';
+          if (signIn == 'expired' ||
+              usage['error'] is String &&
+                  (usage['error'] as String).trim().isNotEmpty) {
+            usageFailure = signIn == 'expired'
+                ? 'authorization_required'
+                : 'usage_unavailable';
+          } else {
+            observedUsage = (
+              value: Map.unmodifiable(Map<String, dynamic>.from(usage)),
+              at: DateTime.now(),
+            );
+          }
+        } catch (_) {
+          usageFailure = 'usage_unavailable';
+        }
+      }
+      await _live(key, expected);
+      if (models != null) _catalogs[key] = models;
+      if (observedUsage != null) {
+        _usage[key] = observedUsage.value;
+        _queried[key] = observedUsage.at;
+        if (provider['id'] == 'zcode') {
+          final gift = ZcodeGiftExpiry.fromUsage(
+            observedUsage.value,
+            observedUsage.at,
+          );
+          if (gift.observedAt != null) {
+            _gifts[key] = (owner: _giftOwner(expected), expiry: gift);
+          }
+        }
+      }
+      if (usageFailure != null &&
+          signIn != 'renewed' &&
+          (_errors[key] == 'authorization_required' ||
+              _usage[key]?['signIn'] == 'expired'))
+        usageFailure = 'authorization_required';
+      _errors.remove(key);
+      if (catalogFailed) _errors[key] = 'catalog_unavailable';
+      if (usageFailure != null) {
+        // Keep verified quantities and their original observation time.
+        // Error strings may contain private response data; publish only
+        // a stable failure and this attempt's native sign-in signal.
+        // UI attention can retain known expiry, but a failed RPC cannot
+        // replay an old renewal/expiry as a new event to Magpie.
+        _usage[key] = Map.unmodifiable({
+          ...?_usage[key],
+          'error': 'Usage query unavailable',
+          'signIn': signIn.isEmpty ? 'kept' : signIn,
+        });
+        _errors[key] = usageFailure;
+      }
+    } catch (_) {
+      _errors.putIfAbsent(key, () => 'account_unavailable');
     }
   }
 
@@ -382,6 +439,12 @@ class PluginAccounts extends ChangeNotifier {
     return next;
   }
 
+  Future<void> _refreshAfterAccountChange() async {
+    // An in-flight listing may have captured the previous registration.
+    await _refreshing?.catchError((_) {});
+    await refresh();
+  }
+
   Future<void> remove(String key) async {
     await edit((data) {
       final row = (data['accounts'] as Map)[key] as Map;
@@ -392,7 +455,7 @@ class PluginAccounts extends ChangeNotifier {
       'provider': key.split('#').first,
       'account': key,
     });
-    await refresh();
+    await _refreshAfterAccountChange();
   }
 
   Future<void> authorizationSaved(
@@ -440,7 +503,7 @@ class PluginAccounts extends ChangeNotifier {
       _discard(key);
       throw StateError('Authorization changed the saved identity');
     }
-    await refresh();
+    await _refreshAfterAccountChange();
     if (!_active(key, _row(key))) throw StateError('Account unavailable');
   }
 
@@ -466,7 +529,7 @@ class PluginAccounts extends ChangeNotifier {
   }
 
   Future<void> _maintain() async {
-    if (_closed || _maintaining) return;
+    if (_closed || _maintaining || _refreshing != null) return;
     _maintaining = true;
     try {
       for (final account in accounts.where(
@@ -587,6 +650,7 @@ class PluginAccounts extends ChangeNotifier {
   }
 
   Future<void> _observe(Map<String, Map<String, dynamic>> native) async {
+    if (_closed) return;
     _native = native;
     await edit((data) {
       final rows =

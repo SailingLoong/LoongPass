@@ -70,6 +70,10 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
   }
 
   Future<void> _authorize([PluginAccount? account]) => _run(() async {
+    if (widget.accounts.providers.isEmpty) {
+      await widget.accounts.refresh();
+      if (!mounted) return;
+    }
     final saved = await showFDialog<String>(
       context: context,
       barrierDismissible: false,

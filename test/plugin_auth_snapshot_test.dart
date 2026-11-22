@@ -81,6 +81,7 @@ void main() {
           enabledProviders: {'minimax-code'},
         );
         await accounts.start();
+        await accounts.refresh();
         expect(accounts.accounts.single.active, true);
         expect(accounts.accounts.single.models, isNotEmpty);
         expect(

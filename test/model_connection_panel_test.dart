@@ -14,6 +14,8 @@ import 'magpie_fixture.dart';
 
 class _Models extends ChangeNotifier implements PluginModelService {
   @override
+  bool catalogReady = true;
+  @override
   bool get enabled => true;
   @override
   bool get running => true;

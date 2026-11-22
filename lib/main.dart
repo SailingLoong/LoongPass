@@ -203,6 +203,32 @@ class _AccountPageState extends State<_AccountPage> {
       ),
     ),
   );
+  Widget? get _accountStatus {
+    final accounts = _application?.accounts;
+    if (accounts == null) return _status;
+    if (accounts.catalogReady) return null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: accounts.error == null
+          ? const Text('正在刷新模型与额度…')
+          : Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                const Text('模型与额度刷新失败'),
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () =>
+                      unawaited(accounts.refresh().catchError((_) {})),
+                  child: const Text('重试'),
+                ),
+              ],
+            ),
+    );
+  }
+
   Map<ManagedApp, Widget> _pages(Set<String> accountsWithoutModels) => {
     for (final app in ManagedApp.values)
       app: AccountPresentationScope(
@@ -265,7 +291,8 @@ class _AccountPageState extends State<_AccountPage> {
   void _modelsChanged() {
     if (!mounted) return;
     setState(() {
-      if (_selectedModelId != 'auto' &&
+      if (_application!.models.catalogReady &&
+          _selectedModelId != 'auto' &&
           !_application!.models.catalog.any(
             (model) => model.id == _selectedModelId,
           )) {
@@ -313,7 +340,7 @@ class _AccountPageState extends State<_AccountPage> {
         key: _workspace,
         preferences: widget.preferences,
         modelIds: [
-          if (_application != null) 'auto',
+          if (_application?.models.catalogReady == true) 'auto',
           ...?_application?.models.catalog
               .where((model) => model.published)
               .map((model) => model.id),
@@ -330,14 +357,15 @@ class _AccountPageState extends State<_AccountPage> {
           _application?.connection.accountsWithoutModels ?? const {},
         ),
         sections: {
-          WorkspaceSection.models: _application == null
-              ? WorkspacePage(title: '模型连接', children: [_status])
-              : PluginModelServicesPage(
-                  application: _application!,
-                  selectedModelId: _selectedModelId,
-                  onSelectModel: _selectModel,
-                  onOpenAccount: _openAccount,
-                ),
+          WorkspaceSection.models: switch (_accountStatus) {
+            final status? => WorkspacePage(title: '模型连接', children: [status]),
+            null => PluginModelServicesPage(
+              application: _application!,
+              selectedModelId: _selectedModelId,
+              onSelectModel: _selectModel,
+              onOpenAccount: _openAccount,
+            ),
+          },
           WorkspaceSection.settings: WorkspaceSettingsPage(
             section: _settingsTopic,
             onOpenAccounts: _openAccounts,
@@ -351,18 +379,18 @@ class _AccountPageState extends State<_AccountPage> {
             onOpenApp: _addAccount,
             rewards: _application?.rewards,
             onOpenRewards: _openActivity,
-            serviceStatus: _application == null ? _status : null,
+            serviceStatus: _accountStatus,
           ),
           WorkspaceSection.accounts: WorkspaceAccountsPage(
             key: _accountsPage,
             registry: _registry,
             onOpenApp: _addAccount,
-            serviceStatus: _application == null ? _status : null,
+            serviceStatus: _accountStatus,
           ),
           WorkspaceSection.activity: WorkspaceActivityPage(
             registry: _registry,
             rewards: _application?.rewards,
-            serviceStatus: _application == null ? _status : null,
+            serviceStatus: _accountStatus,
           ),
         },
       ),

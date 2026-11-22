@@ -31,6 +31,7 @@ class PluginModelService extends ChangeNotifier {
   bool _closed = false;
   String? error;
   bool get enabled => _data['enabled'] == true;
+  bool get catalogReady => accounts.catalogReady;
   bool get running => _server != null;
   Uri? get endpoint => _server == null
       ? null
@@ -47,8 +48,9 @@ class PluginModelService extends ChangeNotifier {
   Map get _rows => _data['grants'] as Map? ?? {};
   Map get routingSettings =>
       Map.unmodifiable(jsonDecode(jsonEncode(_data['routing'] ?? {})) as Map);
-  List<PluginModel> get catalog =>
-      pluginModelCatalog(grants, routingSettings, DateTime.now());
+  List<PluginModel> get catalog => catalogReady
+      ? pluginModelCatalog(grants, routingSettings, DateTime.now())
+      : const [];
   bool get routingConnected => _data['routingConnected'] == true;
   Future<void> markRoutingConnected() =>
       _edit((data) => data['routingConnected'] = true);
@@ -307,6 +309,12 @@ class PluginModelService extends ChangeNotifier {
       final grant = _authorize(request);
       if (grant == null) {
         await _json(request.response, 401, {'error': 'grant_unavailable'});
+        return;
+      }
+      if (!catalogReady) {
+        await _json(request.response, HttpStatus.serviceUnavailable, {
+          'error': 'catalog_pending',
+        });
         return;
       }
       final account = grant.account;

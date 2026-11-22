@@ -6,10 +6,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forui/forui.dart';
 
 import '../lib/main.dart';
+import '../lib/plugin_accounts.dart';
 import 'desktop_test_app.dart';
 import 'model_workspace_fixture.dart';
 
 void main() {
+  testDesktopWidgets(
+    'saved accounts remain accessible while balances are loading',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1080, 748);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      final app = ModelWorkspaceFixture();
+      addTearDown(app.dispose);
+      final saved = app.accounts.accounts.first;
+      app.accounts.catalogReady = false;
+      app.accounts.accounts
+        ..clear()
+        ..add(
+          PluginAccount(
+            key: saved.key,
+            facts: saved.facts,
+            active: true,
+            models: [],
+          ),
+        );
+      await tester.pumpWidget(AccountToolApp(application: app));
+      await tester.pumpAndSettle();
+      expect(find.text('正在刷新模型与额度…').hitTestable(), findsOneWidget);
+      await tester.tap(find.byKey(const Key('nav-accounts')));
+      await tester.pumpAndSettle();
+      expect(find.text(saved.label).hitTestable(), findsOneWidget);
+      expect(find.text('无可用模型').hitTestable(), findsNothing);
+      expect(find.text('需要重新授权').hitTestable(), findsNothing);
+      app.models.completeCatalog();
+      await tester.pumpAndSettle();
+      expect(find.text('正在刷新模型与额度…').hitTestable(), findsNothing);
+      expect(find.text('无可用模型').hitTestable(), findsOneWidget);
+    },
+  );
+
   Future<void> openAccounts(WidgetTester tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(1080, 748);

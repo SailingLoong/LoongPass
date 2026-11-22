@@ -48,6 +48,7 @@ void main() {
           },
         });
         await accounts.start();
+        await accounts.refresh();
         final account = accounts.accounts.single;
         expect(account.key, 'fixture#a');
         expect(account.uid, 'official-a');
@@ -220,7 +221,10 @@ class _IdentityHarness {
       },
     );
     await harness.replace({});
-    if (start) await accounts.start();
+    if (start) {
+      await accounts.start();
+      await accounts.refresh();
+    }
     return harness;
   }
 }
@@ -439,6 +443,7 @@ void _identityTests() {
     final h = await open(start: false);
     await h.control({'loadThrows': true});
     await h.accounts.start();
+    await h.accounts.refresh();
     final account = h.accounts.accounts.single;
     expect((account.usage!['windows'] as List).single, containsPair('amount', 1.25));
     expect(account.error, 'catalog_unavailable');
@@ -453,6 +458,7 @@ void _identityTests() {
       'usageResult': {'error': 'expired-private-detail', 'signIn': 'expired'},
     });
     await h.accounts.start();
+    await h.accounts.refresh();
     final account = h.accounts.accounts.single;
     expect(account.error, 'authorization_required');
     expect(account.queriedAt, isNull);
@@ -471,6 +477,7 @@ void _identityTests() {
       {'name': 'Credits', 'amount': 1.25, 'limit': 100.125, 'unit': 'credits'},
     ]}});
     await h.accounts.start();
+    await h.accounts.refresh();
     final before = h.accounts.accounts.single;
     final service = PluginModelService(accounts: h.accounts, store: MemoryAccountStore('models'), port: 0);
     final client = HttpClient();
@@ -506,6 +513,7 @@ void _identityTests() {
         final h = await open(facts: facts, auth: {'expires': 1}, start: false);
         final before = await h.saved();
         await h.accounts.start();
+        await h.accounts.refresh();
         final account = h.accounts.accounts.single;
         expect(account.active, false);
         expect(account.facts['quarantine'], isNotNull);
@@ -544,6 +552,7 @@ void _identityTests() {
       });
       final before = (await h.accounts.credentials.account(h.key));
       await h.accounts.start();
+      await h.accounts.refresh();
       Future<void> check(PluginAccounts accounts) async {
         final bad = accounts.accounts.firstWhere((a) => a.key == h.key);
         final good = accounts.accounts.firstWhere((a) => a.key == goodKey);
@@ -573,6 +582,7 @@ void _identityTests() {
       );
       try {
         await restarted.start();
+        await restarted.refresh();
         await check(restarted);
         expect(h.calls, isNot(contains('refresh')));
       } finally {
