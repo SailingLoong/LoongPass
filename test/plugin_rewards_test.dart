@@ -169,9 +169,12 @@ class _Harness {
       ],
     );
     final store = MemoryAccountStore(directory.path);
-    store.afterWrite = () =>
-        File('${directory.path}/facts.json')
-            .writeAsString(jsonEncode(store.data));
+    store.afterWrite = () async {
+      // The native hooks can read during a Dart commit, just like the app.
+      final staged = File('${directory.path}/facts.next');
+      await staged.writeAsString(jsonEncode(store.data));
+      await staged.rename('${directory.path}/facts.json');
+    };
     final accounts = PluginAccounts(
       runtime: runtime,
       directory: directory.path,
@@ -850,14 +853,13 @@ void main() {
 
   test('uncertain intent acknowledgement cannot be retried from a stale in-memory snapshot', () async {
     final h = await open();
+    final mirrorFacts = h.store.afterWrite;
     h.store.afterWrite = () async {
       throw StateError('commit acknowledgement lost');
     };
     await expectLater(h.rewards.claim(h.key), throwsStateError);
     expect(h.reward['status'], 'pending');
-    h.store.afterWrite = () =>
-        File('${h.directory.path}/facts.json')
-            .writeAsString(jsonEncode(h.store.data));
+    h.store.afterWrite = mirrorFacts;
     await h.rewards.claim(h.key);
     expect(h.hooks, isEmpty);
   });
@@ -1253,15 +1255,14 @@ void main() {
           },
         };
       });
+      final mirrorFacts = h.store.afterWrite;
       h.store.afterWrite = () async {
         throw StateError('commit acknowledgement lost');
       };
       await expectLater(h.rewards.claim(h.key), throwsStateError);
       expect(h.reward['attemptId'], 'lost-ack');
       expect(h.store.data['accounts']['old-random']['reward'], isNull);
-      h.store.afterWrite = () =>
-          File('${h.directory.path}/facts.json')
-              .writeAsString(jsonEncode(h.store.data));
+      h.store.afterWrite = mirrorFacts;
       await h.rewards.claim(h.key);
       expect(h.hooks, isEmpty);
     },
