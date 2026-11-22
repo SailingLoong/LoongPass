@@ -5,16 +5,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.3</title>
-            <pubDate>Sat, 21 Nov 2026 17:36:14 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.59</link>
-            <sparkle:version>59</sparkle:version>
-            <sparkle:shortVersionString>1.0.3-beta.59</sparkle:shortVersionString>
+            <pubDate>Sun, 22 Nov 2026 06:15:23 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.61</link>
+            <sparkle:version>61</sparkle:version>
+            <sparkle:shortVersionString>1.0.3-beta.61</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.3-beta.59
+            <description sparkle:format="markdown">LoongPass 1.0.3-beta.61
 
-- Magpie 和 LoongPass Auto 共用一份模型列表。在「模型连接」勾选要显示的模型即可。升级会沿用已有展示选择，新发现的模型默认关闭。
-- 默认的「模型优先」按 Magpie「路由」中的顺序调用，每个模型只列一次。LoongPass 运行且已连接时，每分钟同步顺序。「积分到期优先」也只使用这批模型，到期时刻相同再按 Magpie 顺序选择。
-- 账号没有任何可用模型时，「账号与积分」和「连接设置」会在账号旁标出「无可用模型」。有模型恢复可用时，标识会消失。
+- 重启先显示本机已保存的账号。模型和额度按账号在后台并发刷新，每个账号查完即可显示结果。
+- 账号刷新与辅助签到合计最多同时处理 3 个账号，同一来源最多 2 个。插件限制更低时按插件限制执行，同一账号的操作依次处理。
+- 点击「辅助签到」后，不同账号可以同时核对和辅助领取。每笔领取仍按账号核对官方回执并保存。
 
 安装与升级
 
@@ -22,10 +22,10 @@ macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZI
 
 macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.59/LoongPass-macOS-universal.zip" length="49044823" type="application/octet-stream" sparkle:edSignature="ctxpH/WORFc/N6pqJYg6/DAtLpIzZSR1MJWGVSZP+DSaFSGg7U+Eb0zRGQ7+IXxqW30S5Pe3DPu99etTAsH/BA=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.61/LoongPass-macOS-universal.zip" length="49048615" type="application/octet-stream" sparkle:edSignature="sFhdRmyc/EPV6S7oFmOUrvz7QMKBlfo7maZGgU2vLz2zlm1iIgM8MRl2mTUDjspIJZnLHUzYe3ueRyCeIC48CA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: AC5JpniZm2cwad3CL9ItyO+IjNlxru6BUT4h/TY/7jBG+yClpvzXzMBlvRsioiN5jByK3fklhcnBHt+gST9XCg==
-length: 2233
+edSignature: fVvikdZSqOF8Kg+4Xge0kU6ja9kxdLXuy312noLd77YFusI1JeW9bYY9xyzViQsxbwnE6sxD2OY2POol2rkzAA==
+length: 2071
 -->
