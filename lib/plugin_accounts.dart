@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'plugin_runtime.dart';
+import 'plugin_account_tasks.dart';
 import 'plugin_credentials.dart';
 import 'account_document_store.dart';
 import 'account_registration.dart';
@@ -95,6 +96,7 @@ class PluginAccounts extends ChangeNotifier {
   }) : credentials = PluginCredentials(runtime);
   final PluginRuntime runtime;
   final PluginCredentials credentials;
+  final _tasks = PluginAccountTasks();
   final AccountDocumentStore store;
   final Set<String> enabledProviders;
   Map<String, dynamic> _data = {};
@@ -246,23 +248,16 @@ class PluginAccounts extends ChangeNotifier {
       final registrations = {
         for (final key in native.keys) key: _row(key)?['registrationId'],
       };
-      final connected = {for (final key in native.keys) key.split('#').first};
-      // Exclude individual slots before native catalog/renewal hooks. Healthy
-      // siblings still populate their own catalog even on a cold start.
-      final offAccounts = [
-        for (final key in native.keys)
-          if (!_active(key, _row(key))) key,
-      ];
+      // Read capabilities and slots locally. Every vendor hook then goes
+      // through the same per-account budget as usage and rewards.
       final rows = await runtime.call('providers', {
-        'off': [
-          for (final id in runtime.providerIds)
-            if (!enabledProviders.contains(id) || !connected.contains(id)) id,
+        'off': runtime.providerIds,
+        'offAccounts': [
+          for (final key in native.keys)
+            if (!_active(key, _row(key))) key,
         ],
-        'offAccounts': offAccounts,
       }) as List;
       if (_closed) return;
-      // Native model/refresh hooks may have rotated a credential while listing.
-      await _observe(await _readCredentials());
       _providers = {
         for (final row in rows)
           if (enabledProviders.contains(row['id']))
@@ -274,29 +269,14 @@ class PluginAccounts extends ChangeNotifier {
               ],
             }),
       };
-      final providers = _providers.values
-          .where((provider) => (provider['accounts'] as List).isNotEmpty)
-          .toList();
-      final pending = providers.iterator;
-      Future<void> refreshProviders() async {
-        while (!_closed && pending.moveNext()) {
-          final provider = pending.current;
-          for (final account in provider['accounts'] as List) {
-            if (_closed) return;
-            final key = account['key'] as String;
-            if (_row(key)?['registrationId'] == registrations[key]) {
-              await _refreshAccount(provider, account);
-            }
-          }
-          if (!_closed && !_catalogReady) notifyListeners();
-        }
-      }
-
-      // Each provider's slots share its plugin. Keep those requests serial,
-      // while independent providers can finish and publish their balances.
       await Future.wait([
-        for (final _ in providers.take(3)) refreshProviders(),
+        for (final provider in _providers.values)
+          for (final account in provider['accounts'] as List)
+            _refreshSlot(account['key'], registrations[account['key']]),
       ]);
+      if (_closed) return;
+      // A catalog or usage hook can change the native credential store.
+      await _observe(await _readCredentials());
       if (_closed) return;
       _catalogReady = true;
       error = null;
@@ -309,13 +289,43 @@ class PluginAccounts extends ChangeNotifier {
     }
   }
 
+  Future<void> runAccountTask(String key, Future<void> Function() action) {
+    final limit = _providers[key.split('#').first]?['maxAccounts'] as int? ?? 0;
+    return _tasks.run(key, limit, action);
+  }
+
+  Future<void> _refreshSlot(String key, Object? registration) => runAccountTask(
+    key,
+    () async {
+      final row = _row(key);
+      if (!_active(key, row) || row!['registrationId'] != registration) return;
+      final expected = Map<String, dynamic>.from(row);
+      try {
+        await _live(key, expected);
+      } catch (_) {
+        return;
+      }
+      final rows = await runtime.call('providers', {'account': key}) as List;
+      if (_closed) return;
+      final provider = rows.singleOrNull as Map?;
+      final slots = provider?['accounts'] as List? ?? const [];
+      final slot = slots.where((s) => s['key'] == key).firstOrNull as Map?;
+      if (provider == null || slot == null) {
+        _discard(key);
+        return;
+      }
+      await _refreshAccount(key, expected, provider, slot);
+      if (!_closed && !_catalogReady) notifyListeners();
+    },
+  );
+
   Future<void> _refreshAccount(
-    Map<String, dynamic> provider,
+    String key,
+    Map<String, dynamic> expected,
+    Map provider,
     Map account,
   ) async {
-    final key = account['key'] as String;
     try {
-      final expected = Map<String, dynamic>.from(_row(key)!);
       await _live(key, expected);
       Map? loaded;
       var catalogFailed = account['fellBack'] == true;
@@ -537,7 +547,9 @@ class PluginAccounts extends ChangeNotifier {
       )) {
         if (_closed) break;
         try {
-          await currentCredential(account.key);
+          await runAccountTask(account.key, () async {
+            if (!_closed) await currentCredential(account.key);
+          });
         } catch (_) {
           _errors[account.key] = 'renewal_unavailable';
         }

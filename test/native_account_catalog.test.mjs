@@ -109,3 +109,15 @@ test('omitting offAccounts preserves the native multi-account contract', async (
   expect(row.models.map(m => m.id).sort()).toEqual(['blocked-uid','healthy-uid']);
   expect((await calls()).filter(c => c.hook === 'models').map(c => c.uid).sort()).toEqual(['blocked-uid','healthy-uid']);
 });
+
+test('a scheduled account lists only its own models and never renews siblings', async () => {
+  await seed();
+  const [row] = (await rpc('providers', {account:'fixture#good'})).result;
+  expect(row.accounts.map(a => a.key)).toEqual(['fixture#good']);
+  expect(row.models.map(m => m.id)).toEqual(['healthy-uid']);
+  expect((await calls()).map(c => c.uid)).not.toContain('blocked-uid');
+  const before = await calls();
+  const [missing] = (await rpc('providers', {account:'fixture#removed'})).result;
+  expect(missing.accounts).toEqual([]);
+  expect(await calls()).toEqual(before);
+});
