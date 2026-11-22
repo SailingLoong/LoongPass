@@ -39,6 +39,8 @@ class ModelWorkspaceFixture implements PluginApplication {
 class WorkspaceFixtureAccounts extends ChangeNotifier
     implements PluginAccounts {
   @override
+  bool catalogReady = true;
+  @override
   final providers = <String, Map<String, dynamic>>{};
   @override
   Set<String> get enabledProviders => {'qoder-cn', 'qoder'};
@@ -106,7 +108,14 @@ class WorkspaceFixtureAccounts extends ChangeNotifier
 class WorkspaceFixtureModels extends ChangeNotifier
     implements PluginModelService {
   WorkspaceFixtureModels(this.accounts);
+  void completeCatalog() {
+    accounts.catalogReady = true;
+    notifyListeners();
+  }
+
   final WorkspaceFixtureAccounts accounts;
+  @override
+  bool get catalogReady => accounts.catalogReady;
   @override
   bool get enabled => true;
   @override

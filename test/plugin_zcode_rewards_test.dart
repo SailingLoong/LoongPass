@@ -275,6 +275,7 @@ void main() {
       enabledProviders: {'zcode'},
     );
     await accounts.start();
+    await accounts.refresh();
     await legacy({});
     official = _Official();
     rewards = PluginZcodeRewards(

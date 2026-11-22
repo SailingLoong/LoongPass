@@ -97,6 +97,7 @@ void main() {
         });
       }
       await accounts.start();
+      await accounts.refresh();
       await service.start();
       await service.setModelPublished('deepseek-flash', true);
       await service.setModelPublished('glm-5.3', true);

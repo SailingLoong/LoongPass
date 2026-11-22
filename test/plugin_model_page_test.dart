@@ -21,6 +21,8 @@ class _Service extends ChangeNotifier implements PluginModelService {
   int changes = 0;
   void publish() => notifyListeners();
   @override
+  bool catalogReady = true;
+  @override
   bool get enabled => true;
   @override
   bool get running => true;

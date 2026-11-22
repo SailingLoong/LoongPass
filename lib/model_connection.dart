@@ -48,11 +48,13 @@ class ModelConnection extends ChangeNotifier {
       : _selected
             .where((g) => inspection!.accountIds!.contains(g.account.key))
             .length;
-  bool get canConnect => models.running && selectedAccounts > 0 && !busy;
+  bool get canConnect =>
+      models.running && models.catalogReady && selectedAccounts > 0 && !busy;
 
   String get _sourceState => jsonEncode([
     models.enabled,
     models.running,
+    models.catalogReady,
     models.endpoint?.toString(),
     for (final g in _selected)
       [g.account.key, g.account.registrationId, g.token],
@@ -69,6 +71,7 @@ class ModelConnection extends ChangeNotifier {
   }
 
   Set<String> get accountsWithoutModels {
+    if (!models.catalogReady) return const {};
     final available = routing.availableAccounts;
     return {
       for (final grant in models.grants)
@@ -144,7 +147,7 @@ class ModelConnection extends ChangeNotifier {
   void _schedule({bool retry = false}) {
     _quotaBoundary?.cancel();
     _quotaBoundary = null;
-    if (_closed || !_started || !models.running) return;
+    if (_closed || !_started || !models.running || !models.catalogReady) return;
     final catalog = models.catalog;
     // Quota facts can change with time even when an upstream snapshot remains
     // identical. Schedule that boundary here, independently of view/request reads.
@@ -205,6 +208,7 @@ class ModelConnection extends ChangeNotifier {
     }
     if (_closed) return;
     if (!models.routingConnected) await models.markRoutingConnected();
+    if (_closed || source != _source) return;
     final snapshot = _routingFor(models.catalog);
     final state = _routingState(snapshot);
     final groups = snapshot.groups.keys.toSet();
@@ -212,7 +216,7 @@ class ModelConnection extends ChangeNotifier {
     // on a retry or after a process restart.
     final previous = models.managedGroups;
     await models.saveManagedGroups({...previous, ...groups});
-    if (_closed) return;
+    if (_closed || source != _source) return;
     final order = await _client.syncRouting(
       bridgePath,
       snapshot,
@@ -233,7 +237,7 @@ class ModelConnection extends ChangeNotifier {
     required bool inspect,
     bool restore = false,
   }) async {
-    if (_closed || busy) return;
+    if (_closed || busy || (save && !models.catalogReady)) return;
     final revision = _revision;
     _scheduled?.cancel();
     busy = true;

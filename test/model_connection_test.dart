@@ -13,6 +13,8 @@ import 'magpie_fixture.dart';
 
 class _Models extends ChangeNotifier implements PluginModelService {
   @override
+  bool catalogReady = true;
+  @override
   bool enabled = true;
   @override
   bool running = true;
@@ -77,6 +79,35 @@ String _listing(List<String> ids) {
 }
 
 void main() {
+  test('startup preserves saved Magpie groups until the catalog is known', () async {
+    final models = _Models()
+      ..catalogReady = false
+      ..routingConnected = true
+      ..managedGroups = {'previous'};
+    final calls = <List<String>>[];
+    final connection = ModelConnection(
+      models, '/bridge',
+      client: MagpieConnection(run: (args, {input}) async {
+        calls.add(args);
+        if (args.join(' ') == 'plugin list --json') return _listing(['one', 'two']);
+        return '';
+      }),
+    )..start();
+    addTearDown(models.dispose);
+    addTearDown(connection.dispose);
+    await connection.connect();
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(calls, isEmpty);
+    expect(models.managedGroups, {'previous'});
+    expect(connection.accountsWithoutModels, isEmpty);
+    models.catalogReady = true;
+    models.changed();
+    expect(connection.canConnect, isTrue);
+    expect(connection.accountsWithoutModels, {'one', 'two'});
+    await connection.connect();
+    expect(calls, isNotEmpty);
+  });
+
   test(
     'Auto changes priority using only credit spendable by each model',
     () async {

@@ -54,6 +54,7 @@ class PluginRewards {
   }
 
   String _signature() => jsonEncode([
+    accounts.catalogReady,
     for (final a in accounts.accounts)
       [
         a.key,
@@ -75,7 +76,7 @@ class PluginRewards {
   }
 
   Future<void> _tick() async {
-    if (_closed) return;
+    if (_closed || !accounts.catalogReady) return;
     if (_ticking) {
       _again = true;
       return;
