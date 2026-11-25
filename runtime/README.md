@@ -47,7 +47,9 @@ exact original hashes, in addition to checking every effective file/package. Eac
 have a source hash; mere presence on disk is insufficient.
 An upstream update must pass native factory, auth, usage, check-in, stream, tool,
 bridge and migration contracts before real-client acceptance and packaging.
-Do not automatically update packages at application startup.
+Do not automatically update packages at application startup. Source alignment is done by the
+daily upstream sync in the LoongPass workspace, which follows the steps above unattended and
+merges only after its test gates pass (see `upstream/SYNC.md` there).
 
 ## Local source changes
 
