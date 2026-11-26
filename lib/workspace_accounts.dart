@@ -6,6 +6,8 @@ import 'account_workspace_registry.dart';
 import 'compact_accounts_table.dart';
 import 'desktop_theme.dart';
 import 'managed_app.dart';
+import 'magpie_usage.dart';
+import 'workspace_usage.dart';
 import 'plugin_rewards.dart';
 import 'reward_batch_action.dart';
 import 'ui_preferences.dart';
@@ -233,6 +235,15 @@ class _AccountLine extends StatelessWidget {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
+              if (batchAt != null &&
+                  entry
+                          .expiryModels[(at: batchAt!, amount: amount)]
+                          ?.isNotEmpty ==
+                      true)
+                Text(
+                  '查看可用模型',
+                  style: muted.copyWith(color: context.desktopPalette.brand),
+                ),
             ],
           );
           final item = FItem(

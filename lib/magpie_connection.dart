@@ -39,6 +39,30 @@ class MagpieConnection {
   final Future<List<Map<String, dynamic>>> Function()? _readProviders;
   final Future<String> Function()? _locateExecutable;
 
+  /// Discover the serving gateway, including a custom port or portable install.
+  Future<Uri> localGateway() async {
+    const args = ['status', '--json'];
+    final output = _command == null
+        ? await _run(
+            await _executable(),
+            args,
+            timeout: const Duration(seconds: 8),
+          )
+        : await _command(args);
+    final data = jsonDecode(output);
+    if (data is! Map || data['running'] != true || data['url'] is! String) {
+      throw const FormatException('Magpie gateway unavailable');
+    }
+    final uri = Uri.parse(data['url']);
+    final ip = InternetAddress.tryParse(uri.host);
+    if (uri.scheme != 'http' ||
+        uri.userInfo.isNotEmpty ||
+        !(ip?.isLoopback == true || uri.host == 'localhost')) {
+      throw const FormatException('Expected local Magpie gateway');
+    }
+    return uri;
+  }
+
   /// Explicit diagnostics use native commands; no vendor request is sent here.
   Future<MagpieInspection> inspect() async {
     String? executable;

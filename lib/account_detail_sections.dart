@@ -339,13 +339,24 @@ class _ExpiryDetailsState extends State<_ExpiryDetails> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (batches.isEmpty) const Text('平台未提供可核实的到期明细。'),
-        for (var i = 0; i < batches.length; i++)
+        for (var i = 0; i < batches.length; i++) ...[
           _Fact(
             creditTime(batches[i].at),
             batches[i].amount ?? '额度未知',
             selected: i == first,
             key: i == first ? _target : null,
           ),
+          if ((first < 0 || i == first) &&
+              row.expiryModels.containsKey(batches[i]))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Text(
+                row.expiryModels[batches[i]]!.isEmpty
+                    ? '暂无可核实的已开放模型'
+                    : '可用模型  ${row.expiryModels[batches[i]]!.join('、')}',
+              ),
+            ),
+        ],
         if (row.credits case final credits? when credits.withoutExpiry > 0)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),

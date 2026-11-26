@@ -13,6 +13,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../lib/app_update_view.dart';
 import '../lib/main.dart';
+import '../lib/magpie_usage.dart';
 import '../lib/managed_app.dart';
 import '../lib/model_connection.dart';
 import '../lib/plugin_accounts.dart';
@@ -56,6 +57,8 @@ class _DesignAccounts extends WorkspaceFixtureAccounts {
 
 class _DesignApplication implements PluginApplication {
   @override
+  final usage = MagpieUsage();
+  @override
   final WorkspaceFixtureAccounts accounts = _DesignAccounts();
   @override
   late final WorkspaceFixtureModels models = WorkspaceFixtureModels(accounts);
@@ -65,6 +68,7 @@ class _DesignApplication implements PluginApplication {
   late final connection = ModelConnection(models, '/synthetic/bridge');
 
   Future<void> dispose() async {
+    usage.dispose();
     await rewards.close();
     connection.dispose();
     models.dispose();

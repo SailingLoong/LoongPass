@@ -7,6 +7,7 @@ import 'credit_summary_view.dart';
 import 'native_zcode_activity.dart';
 import 'plugin_accounts.dart';
 import 'plugin_credit_balance.dart';
+import 'plugin_model_catalog.dart';
 import 'plugin_rewards.dart';
 import 'plugin_sign_in_dialog.dart';
 import 'plugin_zcode_binding.dart';
@@ -21,6 +22,7 @@ class PluginAccountsPanel extends StatefulWidget {
     required this.providerIds,
     required this.title,
     this.accountsWithoutModels = const {},
+    this.modelCatalog = const [],
     this.activate,
     this.registrationUrl,
   });
@@ -28,6 +30,7 @@ class PluginAccountsPanel extends StatefulWidget {
   final PluginRewards rewards;
   final Set<String> providerIds;
   final Set<String> accountsWithoutModels;
+  final List<PluginModel> modelCatalog;
   final String title;
   final Future<String> Function(String)? activate;
   final Uri? Function()? registrationUrl;
@@ -635,7 +638,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     final next = nextPluginCreditExpiry(batches);
     final expiryBatches = [
       for (final batch in batches)
-        (at: batch.at, amount: _formatBalance(batch.amount)),
+        (at: batch.at.toLocal(), amount: _formatBalance(batch.amount)),
     ];
     final expiryObservation = _expiryObservation(a);
     final receipts = _receipts(a).toList(growable: false);
@@ -669,6 +672,16 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       attention: _attention(a),
       resolution: _resolution(a),
       expiryBatches: expiryBatches,
+      expiryModels: {
+        for (var i = 0; i < batches.length; i++)
+          expiryBatches[i]: spendableModels(
+            widget.modelCatalog,
+            a,
+            batches[i],
+            batches,
+            DateTime.now(),
+          ),
+      },
       onActivate: _canActivate(a) ? () => _activate(a) : null,
       activationEnabled: !_busy && a.active,
     );

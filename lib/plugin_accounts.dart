@@ -9,6 +9,7 @@ import 'plugin_credentials.dart';
 import 'account_document_store.dart';
 import 'account_registration.dart';
 import 'plugin_credit_balance.dart';
+import 'credit_expiry_history.dart';
 
 /// ZCode activity eligibility belongs to the official regional account, even
 /// when the native host exposes separate personal and team profiles.
@@ -117,6 +118,37 @@ class PluginAccounts extends ChangeNotifier {
 
   /// A complete observation is required before publishing routing to Magpie.
   bool get catalogReady => _catalogReady;
+
+  List<AccountExpiryRecord> get expiryHistory {
+    final result = <AccountExpiryRecord>[];
+    final seen = <String>{};
+    for (final row
+        in (_data['accounts'] as Map? ?? const {}).values.whereType<Map>()) {
+      if (row['removed'] == true) continue;
+      final owner = creditHistoryOwner(row);
+      if (!seen.add(owner)) continue;
+      final records = _data['expiryHistory']?[owner] as Map? ?? const {};
+      final batches = records.values
+          .map(CreditExpiryEvidence.read)
+          .whereType<CreditExpiryEvidence>()
+          .toList();
+      final identified = {
+        for (final b in batches)
+          if (b.sourceId.isNotEmpty) (b.timestamp, b.unit),
+      };
+      for (final batch in batches) {
+        if (batch.sourceId.isEmpty &&
+            identified.contains((batch.timestamp, batch.unit)))
+          continue;
+        result.add((
+          provider: row['provider'] as String,
+          account: (row['label'] ?? row['uid'] ?? '') as String,
+          batch: batch,
+        ));
+      }
+    }
+    return result;
+  }
 
   Map<String, Map<String, dynamic>> get providers =>
       Map.unmodifiable(_providers);
@@ -395,6 +427,40 @@ class PluginAccounts extends ChangeNotifier {
           if (gift.observedAt != null) {
             _gifts[key] = (owner: _giftOwner(expected), expiry: gift);
           }
+        }
+        final at = observedUsage.at;
+        final evidence =
+            pluginCreditExpiryBatches(
+                  observedUsage.value,
+                  const {},
+                  at,
+                  provider: provider['id'],
+                  queriedAt: at,
+                )
+                .map(
+                  (b) => CreditExpiryEvidence(
+                    b.at,
+                    b.amount?.unit ?? b.reportedUnit ?? '',
+                    dateOnly: b.dateOnly,
+                  ),
+                )
+                .toList();
+        final owner = creditHistoryOwner(expected);
+        if (updateCreditHistory(
+          Map<String, dynamic>.of(_data),
+          owner,
+          evidence,
+          at,
+        )) {
+          await edit((data) {
+            final current = data['accounts']?[key];
+            if (current is Map &&
+                current['removed'] != true &&
+                current['registrationId'] == expected['registrationId'] &&
+                creditHistoryOwner(current) == owner) {
+              updateCreditHistory(data, owner, evidence, at);
+            }
+          });
         }
       }
       if (usageFailure != null &&

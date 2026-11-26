@@ -7,9 +7,16 @@ class PluginCreditBalance {
 }
 
 class PluginCreditExpiry {
-  const PluginCreditExpiry(this.at, this.amount);
+  const PluginCreditExpiry(
+    this.at,
+    this.amount, {
+    this.dateOnly = false,
+    this.reportedUnit,
+  });
   final DateTime at;
   final PluginCreditBalance? amount;
+  final bool dateOnly;
+  final String? reportedUnit;
 }
 
 num? _number(Object? value) => value is num && value.isFinite ? value : null;
@@ -95,7 +102,12 @@ class ZcodeGiftExpiry {
       final at = _windowExpiryTime(window);
       if (at == null) continue;
       observed = true;
-      final batch = _expiry(at, window['runsOut'], window['unit']);
+      final batch = _expiry(
+        at,
+        window['runsOut'],
+        window['unit'],
+        dateOnly: _dateOnly(window),
+      );
       if (batch != null) batches.add(batch);
     }
     return observed
@@ -127,7 +139,16 @@ DateTime? _windowExpiryTime(Map window) {
   return at is String ? DateTime.tryParse(at) : null;
 }
 
-PluginCreditExpiry? _expiry(DateTime? at, Object? amount, Object? unit) {
+bool _dateOnly(Map window) =>
+    window['runsOutAt'] is String &&
+    RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(window['runsOutAt']);
+
+PluginCreditExpiry? _expiry(
+  DateTime? at,
+  Object? amount,
+  Object? unit, {
+  bool dateOnly = false,
+}) {
   final value = _number(amount);
   if (at == null || (value != null && value <= 0)) return null;
   return PluginCreditExpiry(
@@ -135,6 +156,8 @@ PluginCreditExpiry? _expiry(DateTime? at, Object? amount, Object? unit) {
     value != null && unit is String && unit.isNotEmpty
         ? PluginCreditBalance(value, unit)
         : null,
+    dateOnly: dateOnly,
+    reportedUnit: unit is String ? unit : null,
   );
 }
 
@@ -165,6 +188,7 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
       _windowExpiryTime(window),
       window['runsOut'],
       window['unit'],
+      dateOnly: _dateOnly(window),
     );
     if (value != null && value.at.isAfter(now))
       windows.add((

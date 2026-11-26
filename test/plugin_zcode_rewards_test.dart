@@ -292,6 +292,66 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test(
+    'closed official balances reconcile once per entitlement across profiles',
+    () async {
+      await profile(_teamKey);
+      final end = _time ~/ 1000 - 60;
+      official.plans.add({
+        ..._plan('instance'),
+        'ends_at': end,
+        'status': 'active',
+      });
+      Map<String, dynamic> bucket(String id, int spent, int remaining) => {
+        'user_plan_id': 'instance',
+        'entitlement_id': id,
+        'unit_type': 'tokens',
+        'total_units': 20000000,
+        'used_units': spent,
+        'remaining_units': remaining,
+        'expires_at': end,
+      };
+      official.buckets.addAll([
+        bucket('trial', 7654322, 12345678),
+        bucket('spent', 20000000, 0),
+        bucket('inconsistent', 105, 600),
+      ]);
+      await rewards.refresh(_key);
+      expect(
+        accounts.expiryHistory.where((r) => r.batch.unused != null),
+        isEmpty,
+      );
+      official.plans.single['status'] = 'expired';
+      await rewards.refresh(_teamKey);
+      await rewards.refresh(_key);
+      final settled = accounts.expiryHistory
+          .where((r) => (r.batch.unused ?? 0) > 0)
+          .single;
+      expect(
+        (settled.provider, settled.batch.unit, settled.batch.unused),
+        ('zcode', 'tokens', 12345678),
+      );
+      expect(settled.batch.at.millisecondsSinceEpoch, end * 1000);
+      expect(
+        accounts.expiryHistory.where((r) => r.batch.unused == null),
+        hasLength(1),
+      );
+      expect(accounts.expiryHistory.where((r) => r.batch.unused == 0), hasLength(1));
+      expect(store.data['expiryHistory'], hasLength(1));
+      official.buckets.clear();
+      await rewards.refresh(_key);
+      expect(
+        accounts.expiryHistory
+            .where((r) => (r.batch.unused ?? 0) > 0)
+            .single
+            .batch
+            .unused,
+        12345678,
+      );
+      expect(official.posts, 0);
+    },
+  );
+
   test('device reservation excludes current and every historical device and never changes auth', () async {
     const first = '33333333-2222-4333-8444-555555555555';
     const second = '44444444-2222-4333-8444-555555555555';

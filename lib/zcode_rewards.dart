@@ -1,5 +1,8 @@
 // Server-offer and bucket projections adapted from LoongPort's claim.rs and
 // session_checks.rs (MIT). No scheduling, credentials or calendar inference.
+import 'dart:convert';
+
+import 'credit_expiry_history.dart';
 import 'zcode_api.dart';
 
 class ZcodeOffer {
@@ -116,12 +119,14 @@ class ZcodeBalance {
   final List<Map<String, dynamic>> plans;
   final List<ZcodeBucket> buckets;
   final Set<String> entitledModels;
+  final List<CreditExpiryEvidence> expiryEvidence;
   ZcodeBalance._(
     this.serverTime,
     this.checkedAt,
     this.plans,
     this.buckets,
     Set<String> entitledModels,
+    this.expiryEvidence,
   ) : entitledModels = Set.unmodifiable(entitledModels);
   factory ZcodeBalance.parse(Map<String, dynamic> body, int nowMs) {
     final data = zcodeData(body), raw = zcodeData(body)['plans'];
@@ -149,6 +154,8 @@ class ZcodeBalance {
       plans.add(normalized);
     }
     final buckets = <ZcodeBucket>[];
+    final evidence = <String, CreditExpiryEvidence>{};
+    final ambiguous = <String>{};
     final entitledModels = <String>{};
     final rawBuckets = data['balances'];
     if (rawBuckets != null && rawBuckets is! List)
@@ -159,6 +166,22 @@ class ZcodeBalance {
         throw const ZcodeFailure('invalid_response');
       final plan = _planForBucket(plans, b);
       final expires = _seconds(b['expires_at']);
+      final history = _expiryEvidence(plan, b, time);
+      if (history != null && !ambiguous.contains(history.key)) {
+        final old = evidence[history.key];
+        if (old != null &&
+            (!zcodeText(b['entitlement_id']) || old.unused != history.unused)) {
+          ambiguous.add(history.key);
+          evidence[history.key] = CreditExpiryEvidence(
+            history.at,
+            history.unit,
+            sourceId: history.sourceId,
+            dateOnly: history.dateOnly,
+          );
+        } else {
+          evidence[history.key] = history;
+        }
+      }
       // A bucket is usable only when tied to an observed active entitlement.
       if (plan == null ||
           !_usable(plan, time) ||
@@ -207,7 +230,87 @@ class ZcodeBalance {
       (a, b) =>
           (a.expiresAt ?? 253402300799).compareTo(b.expiresAt ?? 253402300799),
     );
-    return ZcodeBalance._(time, nowMs, plans, buckets, entitledModels);
+    return ZcodeBalance._(
+      time,
+      nowMs,
+      plans,
+      buckets,
+      entitledModels,
+      List.unmodifiable(evidence.values),
+    );
+  }
+
+  /// Settle only an officially expired instance with reconciled final units.
+  /// Reading the last active balance after a local clock boundary is insufficient.
+  static CreditExpiryEvidence? _expiryEvidence(
+    Map? plan,
+    Map b,
+    int serverTime,
+  ) {
+    final instance = b['user_plan_id'], unit = b['unit_type'];
+    if (plan == null ||
+        !zcodeText(instance) ||
+        plan['user_plan_id'] != instance ||
+        !zcodeText(unit))
+      return null;
+    final bucketEnd = _seconds(b['expires_at']),
+        planEnd = zcodePlanExpiry(plan);
+    final raw = b['expires_at'];
+    final dayOnly =
+        raw is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(raw);
+    final boundaries = [
+      if (bucketEnd != null) bucketEnd,
+      if (planEnd != null) planEnd,
+    ]..sort();
+    DateTime? at = boundaries.isEmpty
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(
+            boundaries.first * 1000,
+            isUtc: true,
+          );
+    var onlyDate = false;
+    if (dayOnly) {
+      final civil = DateTime.tryParse(raw);
+      if (civil == null || civil.toIso8601String().split('T').first != raw)
+        return null;
+      if (at == null || !at.toLocal().isBefore(civil)) {
+        at = civil;
+        onlyDate = true;
+      }
+    }
+    if (at == null || (raw != null && bucketEnd == null && !dayOnly))
+      return null;
+    final end = onlyDate ? DateTime(at.year, at.month, at.day + 1) : at;
+    final closed =
+        plan['status'] == 'expired' &&
+        end.millisecondsSinceEpoch <= serverTime * 1000;
+    num? units(Object? raw) {
+      final n = raw is num
+          ? raw
+          : raw is String
+          ? num.tryParse(raw)
+          : null;
+      return n != null && n.isFinite && n >= 0 ? n : null;
+    }
+
+    final total = units(b['total_units']),
+        used = units(b['used_units']),
+        left = units(b['remaining_units']);
+    num? unused;
+    if (closed && total != null && used != null && used <= total) {
+      final difference = total - used;
+      if (b['remaining_units'] == null ||
+          left != null && (difference == left || used + left == total)) {
+        unused = left ?? difference;
+      }
+    }
+    return CreditExpiryEvidence(
+      at,
+      unit,
+      unused: unused,
+      dateOnly: onlyDate,
+      sourceId: jsonEncode([instance, b['entitlement_id'], b['period_start']]),
+    );
   }
 
   static Map<String, dynamic>? _planForBucket(

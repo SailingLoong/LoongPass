@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 import 'managed_app.dart';
+import 'magpie_usage.dart';
 import 'model_connection.dart';
 import 'native_account_document_store.dart';
 import 'native_legacy_sources.dart';
@@ -32,6 +33,7 @@ class PluginApplication {
     this.models,
     this.rewards,
     this.connection,
+    this.usage,
   );
   final PluginInstallation installation;
   final PluginRuntime runtime;
@@ -39,6 +41,7 @@ class PluginApplication {
   final PluginModelService models;
   final PluginRewards rewards;
   final ModelConnection connection;
+  final MagpieUsage usage;
   String get bridgePath => installation.bridgePath;
 
   static Future<PluginApplication> start({required String language}) async {
@@ -119,6 +122,7 @@ class PluginApplication {
         models,
         rewards,
         ModelConnection(models, installation.bridgePath)..start(),
+        MagpieUsage()..start(),
       );
     } catch (_) {
       await rewards?.close();
@@ -133,6 +137,7 @@ class PluginApplication {
       WorkBuddyPluginFeatures(accounts)
           .activate(key, apply: WorkBuddyDesktopFlutter.activate);
   Future<void> close() async {
+    usage.dispose();
     connection.dispose();
     await rewards.close();
     await models.close();

@@ -20,6 +20,7 @@ import 'plugin_application.dart';
 import 'plugin_accounts.dart';
 import 'plugin_accounts_panel.dart';
 import 'plugin_model_page.dart';
+import 'plugin_model_catalog.dart';
 import 'invitation_settings.dart';
 
 const _appLocale = Locale('zh', 'CN');
@@ -229,7 +230,10 @@ class _AccountPageState extends State<_AccountPage> {
     );
   }
 
-  Map<ManagedApp, Widget> _pages(Set<String> accountsWithoutModels) => {
+  Map<ManagedApp, Widget> _pages(
+    Set<String> accountsWithoutModels,
+    List<PluginModel> catalog,
+  ) => {
     for (final app in ManagedApp.values)
       app: AccountPresentationScope(
         app: app,
@@ -247,6 +251,7 @@ class _AccountPageState extends State<_AccountPage> {
                       key: _pluginPanels[app],
                       accounts: _application!.accounts,
                       accountsWithoutModels: accountsWithoutModels,
+                      modelCatalog: catalog,
                       rewards: _application!.rewards,
                       providerIds: providersForApp(app),
                       title: app.label,
@@ -333,69 +338,74 @@ class _AccountPageState extends State<_AccountPage> {
   }
 
   @override
-  Widget build(BuildContext context) => FScaffold(
-    childPad: false,
-    child: SafeArea(
-      child: AppWorkspace(
-        key: _workspace,
-        preferences: widget.preferences,
-        modelIds: [
-          if (_application?.models.catalogReady == true) 'auto',
-          ...?_application?.models.catalog
-              .where((model) => model.published)
-              .map((model) => model.id),
-        ],
-        selectedModelId: _selectedModelId,
-        onSelectModel: _selectModel,
-        initialApp: ManagedApp.workbuddy,
-        footerBuilder: (context, compact) => AppUpdateBadge(
-          updates: _updates,
-          compact: compact,
-          onOpen: _openUpdates,
-        ),
-        pages: _pages(
-          _application?.connection.accountsWithoutModels ?? const {},
-        ),
-        sections: {
-          WorkspaceSection.models: switch (_accountStatus) {
-            final status? => WorkspacePage(title: '模型连接', children: [status]),
-            null => PluginModelServicesPage(
-              application: _application!,
-              selectedModelId: _selectedModelId,
-              onSelectModel: _selectModel,
-              onOpenAccount: _openAccount,
+  Widget build(BuildContext context) {
+    final catalog = _application?.models.catalog ?? const <PluginModel>[];
+    return FScaffold(
+      childPad: false,
+      child: SafeArea(
+        child: AppWorkspace(
+          key: _workspace,
+          preferences: widget.preferences,
+          modelIds: [
+            if (_application?.models.catalogReady == true) 'auto',
+            ...catalog
+                .where((model) => model.published)
+                .map((model) => model.id),
+          ],
+          selectedModelId: _selectedModelId,
+          onSelectModel: _selectModel,
+          initialApp: ManagedApp.workbuddy,
+          footerBuilder: (context, compact) => AppUpdateBadge(
+            updates: _updates,
+            compact: compact,
+            onOpen: _openUpdates,
+          ),
+          pages: _pages(
+            _application?.connection.accountsWithoutModels ?? const {},
+            catalog,
+          ),
+          sections: {
+            WorkspaceSection.models: switch (_accountStatus) {
+              final status? => WorkspacePage(title: '模型连接', children: [status]),
+              null => PluginModelServicesPage(
+                application: _application!,
+                selectedModelId: _selectedModelId,
+                onSelectModel: _selectModel,
+                onOpenAccount: _openAccount,
+              ),
+            },
+            WorkspaceSection.settings: WorkspaceSettingsPage(
+              section: _settingsTopic,
+              onOpenAccounts: _openAccounts,
+              onOpenRewards: _openActivity,
+              preferences: widget.preferences,
+              updates: _updates,
+              invitations: widget.invitations,
+            ),
+            WorkspaceSection.overview: WorkspaceOverviewPage(
+              usage: _application?.usage,
+              registry: _registry,
+              onOpenApp: _addAccount,
+              rewards: _application?.rewards,
+              onOpenRewards: _openActivity,
+              serviceStatus: _accountStatus,
+            ),
+            WorkspaceSection.accounts: WorkspaceAccountsPage(
+              key: _accountsPage,
+              registry: _registry,
+              onOpenApp: _addAccount,
+              serviceStatus: _accountStatus,
+            ),
+            WorkspaceSection.activity: WorkspaceActivityPage(
+              registry: _registry,
+              rewards: _application?.rewards,
+              serviceStatus: _accountStatus,
             ),
           },
-          WorkspaceSection.settings: WorkspaceSettingsPage(
-            section: _settingsTopic,
-            onOpenAccounts: _openAccounts,
-            onOpenRewards: _openActivity,
-            preferences: widget.preferences,
-            updates: _updates,
-            invitations: widget.invitations,
-          ),
-          WorkspaceSection.overview: WorkspaceOverviewPage(
-            registry: _registry,
-            onOpenApp: _addAccount,
-            rewards: _application?.rewards,
-            onOpenRewards: _openActivity,
-            serviceStatus: _accountStatus,
-          ),
-          WorkspaceSection.accounts: WorkspaceAccountsPage(
-            key: _accountsPage,
-            registry: _registry,
-            onOpenApp: _addAccount,
-            serviceStatus: _accountStatus,
-          ),
-          WorkspaceSection.activity: WorkspaceActivityPage(
-            registry: _registry,
-            rewards: _application?.rewards,
-            serviceStatus: _accountStatus,
-          ),
-        },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class AccountWorkspacePage extends StatelessWidget {

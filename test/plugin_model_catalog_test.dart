@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_accounts.dart';
+import '../lib/plugin_credit_balance.dart';
 import '../lib/plugin_model_catalog.dart';
 import '../lib/model_names.dart';
 import '../lib/plugin_model_quota.dart';
@@ -28,6 +29,76 @@ PluginModelGrant grant(
 );
 
 void main() {
+  test('expiring batch shows only matching published, available, paid models of its account', () {
+    final later = now.add(const Duration(days: 2)),
+        earlier = now.add(const Duration(days: 1));
+    Map<String, dynamic> window(DateTime time, List<String> models) => {
+      'models': models,
+      'balance': 50,
+      'runsOut': 12.5,
+      'unit': 'credits',
+      'runsOutAt': time.toIso8601String(),
+    };
+    final account = grant(
+      'one',
+      'workbuddy',
+      [
+        {'id': 'glm-5.3'},
+        {'id': 'MiniMax-M3'},
+        {'id': 'deepseek-flash', 'free': true},
+      ],
+      windows: [
+        window(earlier, ['MiniMax-M3']),
+        window(later, ['glm-5.3', 'deepseek-flash']),
+      ],
+    );
+    final other = grant(
+      'two',
+      'workbuddy',
+      [
+        {'id': 'MiniMax-M3'},
+      ],
+      windows: [
+        window(later, ['MiniMax-M3']),
+      ],
+    );
+    final settings = {
+      'version': 4,
+      'published': {
+        'glm-5.3': true,
+        'MiniMax-M3': true,
+        'deepseek-flash': true,
+      },
+    };
+    final catalog = pluginModelCatalog([account, other], settings, now);
+    final batches = pluginCreditExpiryBatches(account.account.usage, {}, now);
+    expect(
+      spendableModels(catalog, account.account, batches.last, batches, now),
+      ['glm-5.3'],
+    );
+    expect(
+      spendableModels(catalog, account.account, batches.first, batches, now),
+      ['MiniMax-M3'],
+    );
+    expect(
+      spendableModels(catalog, account.account, batches.first, [
+        ...batches,
+        batches.first,
+      ], now),
+      isEmpty,
+    );
+    expect(
+      spendableModels(
+        pluginModelCatalog([account], {}, now),
+        account.account,
+        batches.last,
+        batches,
+        now,
+      ),
+      isEmpty,
+    );
+  });
+
   test('versioned preferences retain missing catalogs and prioritize explicit choices', () {
     final legacy = {
       'models': {'glm-5.3': false},
