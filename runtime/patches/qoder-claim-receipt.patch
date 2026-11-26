@@ -1,6 +1,8 @@
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 7e9bdc2..c47a5a7 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -3462,6 +3462,8 @@
+@@ -3589,6 +3589,8 @@ async function checkinOf(provider, account, expectedScope) {
    const num = (v) => (typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0)
    // An absent or invalid receipt amount is unknown, never zero credits.
    const credit = typeof r.credit === "number" && Number.isFinite(r.credit) && r.credit >= 0 ? { credit: r.credit } : {}
@@ -9,7 +11,7 @@
    const message = typeof r.message === "string" ? r.message : ""
    // a time that doesn't read is not told
    const t = typeof r.until === "number" ? r.until : typeof r.until === "string" ? Date.parse(r.until) : NaN
-@@ -3470,7 +3472,10 @@
+@@ -3597,7 +3599,10 @@ async function checkinOf(provider, account, expectedScope) {
      const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
      return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
    }
@@ -21,9 +23,11 @@
  }
  
  // ---- calls made outside magpie -------------------------------------------------
+diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
+index 5c28760..224f431 100644
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -2985,6 +2985,39 @@
+@@ -3120,6 +3120,39 @@ const campaignScope = (c) => {
  // askAgain is a check-in's until: when to ask again, with room.
  const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
  
@@ -63,7 +67,7 @@
  // when is a time Qoder gives: an RFC 3339 string, else seconds or
  // milliseconds, as a number or its text.
  function when(v) {
-@@ -3688,15 +3721,17 @@
+@@ -3862,15 +3895,17 @@ const makePlugin = (site) => async ({ client }) => {
        if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
        const now = Date.now()
        const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
@@ -89,7 +93,7 @@
          // the next day's credits open at a time the list says: ask then,
          // not half an hour later
          if (campaigns.length) {
-@@ -3717,26 +3752,15 @@
+@@ -3891,26 +3926,15 @@ const makePlugin = (site) => async ({ client }) => {
        if (readOnly) return typeof campaign.campaignId === "string" && campaign.campaignId.trim()
          ? { outcome: "claimable", ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
          : { outcome: "unknown" }
@@ -108,14 +112,14 @@
 +        claim = await claimRes.json()
        } catch {
 -        return { outcome: "failed", message: `claim: unreadable reply ${claimRaw.trim().slice(0, 120) || "(empty)"}` }
-+        return { outcome: "failed", message: "claim: unreadable reply" }
-       }
+-      }
 -      const said = claim?.status ?? claim?.data?.status
 -      if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
 -      if (said === "CLAIMED") {
 -        const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
 -        return { outcome: "claimed", ...(Number.isFinite(amount) && amount > 0 ? { credit: amount } : {}), ...askAgain(nextOpens(campaign)), ...campaignScope(campaign) }
--      }
++        return { outcome: "failed", message: "claim: unreadable reply" }
+       }
 -      return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
 +      return claimReceipt(campaign, claim)
      } catch (e) {

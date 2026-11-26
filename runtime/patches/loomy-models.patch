@@ -1,8 +1,10 @@
 # Preserve live native model contracts, reasoning metadata and request levels.
 # Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
+diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
+index 4c1e3a6..902f7a6 100644
 --- a/runtime/vendor/plugins/loomy/index.mjs
 +++ b/runtime/vendor/plugins/loomy/index.mjs
-@@ -337,16 +337,15 @@
+@@ -337,16 +337,15 @@ function normalizePhone(raw) {
  
  // ── chat body adaptation ───────────────────────────────────────────────────
  
@@ -22,7 +24,7 @@
    }
    if (typeof body.reasoning_effort === "string") {
      const folded = of(body.reasoning_effort)
-@@ -436,9 +435,14 @@
+@@ -436,9 +435,14 @@ function catalogModel(entry) {
    if (context != null) limit.context = context
    if (output != null) limit.output = output
    if (Object.keys(limit).length) config.limit = limit
@@ -40,7 +42,7 @@
    if (rate) config.rate = rate
    return { id, config }
  }
-@@ -450,7 +454,7 @@
+@@ -450,7 +454,7 @@ function catalogModel(entry) {
  // models.dev doesn't know, went as a text-only model of no known
  // vision (plugins#1141). What the vendor doesn't say keeps what was known
  // of the model (models.dev, the static table).
@@ -49,7 +51,7 @@
    const caps = entry?.capabilities ?? {}
    const had = was?.capabilities ?? { temperature: true, toolcall: true, input: { text: true }, output: { text: true } }
    const capabilities = { ...had, input: { ...(had.input ?? { text: true }) } }
-@@ -464,7 +468,13 @@
+@@ -464,7 +468,13 @@ function listedModel(was, m, entry) {
      ...(was ?? {}),
      ...m.config,
      id: m.id,
@@ -64,7 +66,7 @@
      capabilities,
    }
  }
-@@ -605,8 +615,12 @@
+@@ -605,8 +615,12 @@ export async function LoomyAuthPlugin({ client } = {}) {
              const session = now?.access ?? a.access
              if (!session) return errorResponse(401, "Loomy 登录态缺失，请重新登录")
  
@@ -79,7 +81,7 @@
              try {
                foldReasoning(chat)
                if (prefersTagFormat(chat.model)) rewriteImagesToTags(chat)
-@@ -776,7 +790,7 @@
+@@ -776,7 +790,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
            for (const entry of entries) {
              const m = catalogModel(entry)
              if (!m) continue

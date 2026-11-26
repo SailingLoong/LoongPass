@@ -1,102 +1,10 @@
 # Native usage precision, balances and seat ownership for LoongPass.
 # Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
---- a/runtime/vendor/plugins/minimax/index.mjs
-+++ b/runtime/vendor/plugins/minimax/index.mjs
-@@ -805,7 +805,10 @@
-     if (exp <= now) continue
-     total += granted
-     left += Math.min(rest, granted)
--    if (rest > 0 && (!soonest || exp < soonest.at)) soonest = { at: exp, n: rest }
-+    if (rest > 0) {
-+      if (!soonest || exp < soonest.at) soonest = { at: exp, n: rest }
-+      else if (exp === soonest.at) soonest.n += rest
-+    }
-   }
-   if (!(total > 0)) return undefined
-   const used = Math.max(0, total - left)
-@@ -814,10 +817,10 @@
-     name: "Credits",
-     used: (100 * used) / total,
-     display: `${round(used)} / ${round(total)}`,
--    amount: round(used),
--    limit: round(total),
-+    amount: used,
-+    limit: total,
-     unit: "credits",
--    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: round(soonest.n) } : {}),
-+    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: soonest.n } : {}),
-   }
- }
- 
---- a/runtime/vendor/plugins/trae/index.mjs
-+++ b/runtime/vendor/plugins/trae/index.mjs
-@@ -176,15 +176,15 @@
-           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
-           const windows = []
-           if (q.unlimited) out.balance = "unlimited"
--          else if (q.limit > 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
-+          else if (q.limit >= 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
-           const c = page ? credits(page) : null
-           if (c && !c.unlimited && c.limit > 0) {
-             const w = {
-               name: "Credits",
-               used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)),
-               display: `${round(c.used)} / ${round(c.limit)}`,
--              amount: round(c.used),
--              limit: round(c.limit),
-+              amount: c.used,
-+              limit: c.limit,
-               unit: "credits",
-               aside: true,
-             }
-@@ -209,7 +209,7 @@
-           // WorkBuddy's does, so magpie says it in the window's row, used or
-           // left, in its own words and number format, rather than as an
-           // English balance line beside it (yetone/magpie#694)
--          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: round(c.used), limit: round(c.limit), unit: "credits" }
-+          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: c.used, limit: c.limit, unit: "credits" }
-           if (c.until) w.resetsAt = new Date(c.until).toISOString()
-           if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
-           out.windows = [w]
-@@ -331,9 +331,7 @@
-           if (!q) return { error: "Trae Global usage: the console named no seat pool", signIn, user: a.name }
-           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
-           if (q.unlimited) out.balance = "unlimited"
--          else if (q.limit > 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
--          // a pool of nothing leaves the card nothing to show (#1143)
--          else return { error: `Trae Global usage: the console gives this seat a pool of $${q.limit}`, signIn, user: a.name || a.uid }
-+          else if (q.limit >= 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
-           return out
-         },
-       },
-@@ -3412,13 +3410,13 @@
-   const w = {
-     name: "Seat Usage",
-     display: used === null ? `? / ${money(pool.limit)}` : `${money(used)} / ${money(pool.limit)}`,
--    limit: round(pool.limit),
-+    limit: pool.limit,
-     unit,
-   }
-   if (used === null) w.used = null
-   else {
--    w.used = Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100
--    w.amount = round(used)
-+    w.used = pool.limit > 0 ? Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100 : 0
-+    w.amount = used
-   }
-   if (until) w.resetsAt = until
-   return w
-@@ -3468,6 +3466,7 @@
-   const me = uid === undefined || uid === null || uid === "" ? null : String(uid)
-   const ids = new Set(list.map((u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id))).filter((s) => s !== ""))
-   let seats = list
-+  if (ids.size === 0 && list.length > 1) return null
-   if (ids.size > 0) {
-     // the seats carry ids: take the account's own. With no id from the quota,
-     // a single seat's answer is that seat; several seats' is not knowable.
+diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
+index b7eede3..4c1e3a6 100644
 --- a/runtime/vendor/plugins/loomy/index.mjs
 +++ b/runtime/vendor/plugins/loomy/index.mjs
-@@ -102,30 +102,13 @@
+@@ -102,30 +102,13 @@ const messageOf = (payload) => String(payload?.desc ?? payload?.message ?? "").t
  
  const beijingMidnight = () => Math.floor((Date.now() + 8 * 3600e3) / 86400e3) * 86400e3 + 86400e3 - 8 * 3600e3
  
@@ -133,7 +41,7 @@
    if (dailyWallet) {
      // no span either: magpie reads a window with a span and no reset as
      // renewing a span from now, which would rank it again
-@@ -669,7 +652,7 @@
+@@ -669,7 +652,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
            if (AUTH_CODES.has(code)) return { error: lapsedText(a, messageOf(payload) || `code=${code}`), signIn: "expired" }
            if (code !== OK) return { error: `积分查询失败：${messageOf(payload) || `code=${code}`}`, signIn: "kept" }
            const data = payload?.data?.data ?? payload?.data ?? {}
@@ -142,7 +50,7 @@
            const permanent = toNum(data.balance)
            // this endpoint is a records list, so a reply without the balance
            // fields is a realistic case — "unknown" must not read as a
-@@ -695,14 +678,14 @@
+@@ -695,14 +678,14 @@ export async function LoomyAuthPlugin({ client } = {}) {
            const dailySpent = dailyLimit != null && dailyRemaining != null ? Math.min(dailyLimit, Math.max(0, dailyLimit - dailyRemaining)) : null
            const dailyWallet =
              dailyLimit != null && dailyRemaining != null
@@ -160,9 +68,41 @@
            const windows = [...(dailyWallet ? [dailyWallet] : []), ...(permanentWallet ? [permanentWallet] : [])]
            // A request draws the daily credits first and the permanent ones
            // after, so the account stops only when both are gone (gocccy0 on
+diff --git a/runtime/vendor/plugins/minimax/index.mjs b/runtime/vendor/plugins/minimax/index.mjs
+index e142df6..7d107ea 100644
+--- a/runtime/vendor/plugins/minimax/index.mjs
++++ b/runtime/vendor/plugins/minimax/index.mjs
+@@ -805,7 +805,10 @@ function creditsWindow(batches, now = Date.now()) {
+     if (exp <= now) continue
+     total += granted
+     left += Math.min(rest, granted)
+-    if (rest > 0 && (!soonest || exp < soonest.at)) soonest = { at: exp, n: rest }
++    if (rest > 0) {
++      if (!soonest || exp < soonest.at) soonest = { at: exp, n: rest }
++      else if (exp === soonest.at) soonest.n += rest
++    }
+   }
+   if (!(total > 0)) return undefined
+   const used = Math.max(0, total - left)
+@@ -814,10 +817,10 @@ function creditsWindow(batches, now = Date.now()) {
+     name: "Credits",
+     used: (100 * used) / total,
+     display: `${round(used)} / ${round(total)}`,
+-    amount: round(used),
+-    limit: round(total),
++    amount: used,
++    limit: total,
+     unit: "credits",
+-    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: round(soonest.n) } : {}),
++    ...(soonest ? { runsOutAt: new Date(soonest.at).toISOString(), runsOut: soonest.n } : {}),
+   }
+ }
+ 
+diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
+index dfa9779..3a3bf64 100644
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -3142,15 +3142,14 @@
+@@ -3183,15 +3183,14 @@ function parseUsage(env) {
    if (typeof plan === "string") out.plan = plan
    const until = when(field("expiresAt", "expires_at"))
    if (until) out.until = until
@@ -184,7 +124,7 @@
      const unit = b.unit || "credits"
      // the count too, so magpie says "183 / 2,000 credits left" as Qoder's
      // own panel does, not a bare share (jzing.draw on Discord); the plan's
-@@ -3159,13 +3158,20 @@
+@@ -3200,13 +3199,20 @@ function parseUsage(env) {
      if (name === "Credits" && until) w.resetsAt = until
      out.windows.push(w)
      if (SPENT_IN_TURN.has(name)) turn.push({ w, used: Math.min(used, total), total, unit })
@@ -207,7 +147,7 @@
      const used = turn.reduce((a, p) => a + p.used, 0)
      const total = turn.reduce((a, p) => a + p.total, 0)
      for (const p of turn) p.w.aside = true
-@@ -3179,13 +3185,32 @@
+@@ -3220,13 +3226,32 @@ function parseUsage(env) {
      out.windows.unshift(sum)
    }
    const dedicated = field("dedicatedResourcePackages", "dedicated_resource_packages")
@@ -242,3 +182,71 @@
      const pools = [field("userQuota", "user_quota"), field("addOnQuota", "add_on_quota"), field("orgResourcePackage", "org_resource_package")]
      if (pools.some(zero)) out.windows.push({ name: "Credits", used: 100, display: "0 credits left" })
    }
+diff --git a/runtime/vendor/plugins/trae/index.mjs b/runtime/vendor/plugins/trae/index.mjs
+index 3e76ece..f2f1f65 100644
+--- a/runtime/vendor/plugins/trae/index.mjs
++++ b/runtime/vendor/plugins/trae/index.mjs
+@@ -176,15 +176,15 @@ const SITES = {
+           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
+           const windows = []
+           if (q.unlimited) out.balance = "unlimited"
+-          else if (q.limit > 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
++          else if (q.limit >= 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
+           const c = page ? credits(page) : null
+           if (c && !c.unlimited && c.limit > 0) {
+             const w = {
+               name: "Credits",
+               used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)),
+               display: `${round(c.used)} / ${round(c.limit)}`,
+-              amount: round(c.used),
+-              limit: round(c.limit),
++              amount: c.used,
++              limit: c.limit,
+               unit: "credits",
+               aside: true,
+             }
+@@ -209,7 +209,7 @@ const SITES = {
+           // WorkBuddy's does, so magpie says it in the window's row, used or
+           // left, in its own words and number format, rather than as an
+           // English balance line beside it (yetone/magpie#694)
+-          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: round(c.used), limit: round(c.limit), unit: "credits" }
++          const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: c.used, limit: c.limit, unit: "credits" }
+           if (c.until) w.resetsAt = new Date(c.until).toISOString()
+           if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
+           out.windows = [w]
+@@ -331,9 +331,7 @@ const SITES = {
+           if (!q) return { error: "Trae Global usage: the console named no seat pool", signIn, user: a.name }
+           const out = { plan: "Enterprise", user: a.name || a.uid, signIn }
+           if (q.unlimited) out.balance = "unlimited"
+-          else if (q.limit > 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
+-          // a pool of nothing leaves the card nothing to show (#1143)
+-          else return { error: `Trae Global usage: the console gives this seat a pool of $${q.limit}`, signIn, user: a.name || a.uid }
++          else if (q.limit >= 0) out.windows = [seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), DOLLARS, "usd")]
+           return out
+         },
+       },
+@@ -3960,13 +3958,13 @@ function seatUsageWindow(pool, used, until, money, unit) {
+   const w = {
+     name: "Seat Usage",
+     display: used === null ? `? / ${money(pool.limit)}` : `${money(used)} / ${money(pool.limit)}`,
+-    limit: round(pool.limit),
++    limit: pool.limit,
+     unit,
+   }
+   if (used === null) w.used = null
+   else {
+-    w.used = Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100
+-    w.amount = round(used)
++    w.used = pool.limit > 0 ? Math.round(Math.max(0, Math.min(100, (used / pool.limit) * 100)) * 100) / 100 : 0
++    w.amount = used
+   }
+   if (until) w.resetsAt = until
+   return w
+@@ -4016,6 +4014,7 @@ function seatSpentOf(v, uid) {
+   const me = uid === undefined || uid === null || uid === "" ? null : String(uid)
+   const ids = new Set(list.map((u) => (u?.user_id === undefined || u?.user_id === null ? "" : String(u.user_id))).filter((s) => s !== ""))
+   let seats = list
++  if (ids.size === 0 && list.length > 1) return null
+   if (ids.size > 0) {
+     // the seats carry ids: take the account's own. With no id from the quota,
+     // a single seat's answer is that seat; several seats' is not knowable.

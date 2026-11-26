@@ -71,6 +71,31 @@ XcW+ML9FoCI6AOvOzwIDAQAB
 
 const QODER_SYS = "You are a Qoder agent. Use the instructions below and the tools available to you to assist the user."
 
+// Qoder answers a system prompt that opens with Claude Code's identity
+// line with 400 "Cannot find model", on any model; the same request with
+// only that line swapped for the Claude Agent SDK's goes through (ByFanX
+// on X, 11-24). asAgentSDK makes that swap, in what Qoder is sent only:
+// the line is matched whatever its white space, and the rest of the
+// prompt goes as written. Claude Code's SDK form (", running within the
+// Claude Agent SDK.") is swapped the same way.
+const CLAUDE_CODE_LINE = /You\s+are\s+Claude\s+Code,\s+Anthropic's\s+official\s+CLI\s+for\s+Claude(?:,\s+running\s+within\s+the\s+Claude\s+Agent\s+SDK)?\./g
+const AGENT_SDK_LINE = "You are a Claude agent, built on Anthropic's Claude Agent SDK."
+const asAgentSDK = (text) => text.replace(CLAUDE_CODE_LINE, AGENT_SDK_LINE)
+
+// Qoder CN puts a request whose system prompt holds DeepSeek Harness's
+// opener, "You are an AI agent powered by DeepSeek Harness.", in a queue
+// that never moves: 10605, nothing ahead, keepalives until the agent gives
+// up (#1517, #1220). The same request with that line one character shorter,
+// or with no such line, is answered at once, every time (lirenQa1's bisect
+// on #1220: the flip sits on exactly those 48 characters; tools, size,
+// max_completion_tokens and the session header changed nothing). The match
+// is the line whole, as WorkBuddy's on the same opener (its OPENERS), so a
+// comma before "powered by" says the same thing and passes. harnessComma
+// sets it in the system text Qoder is sent only; the user's own messages go
+// as written.
+const HARNESS_OPENER = /(\bYou are (?:an?|the)\s[^\n.,]{0,60}?\b(?:agent|assistant))\s+(powered by|running on|running in|built on|based on)\b/gi
+const harnessComma = (text) => text.replace(HARNESS_OPENER, "$1, $2")
+
 const hexID = () => randomUUID().replaceAll("-", "")
 
 // ---- the COSY envelope --------------------------------------------------------
@@ -1510,7 +1535,8 @@ function modelConfig(m, thinking) {
 // none is given). A site on this protocol with its own values (QwenWork)
 // passes itself last.
 function qoderBody(chat, m, named = "", task, site) {
-  const system = (chat.messages ?? []).filter((x) => x.role === "system" || x.role === "developer").map((x) => textOf(x.content)).filter(Boolean).join("\n\n")
+  const given = (chat.messages ?? []).filter((x) => x.role === "system" || x.role === "developer").map((x) => textOf(x.content)).filter(Boolean).join("\n\n")
+  const system = harnessComma(asAgentSDK(given))
   const tools = chat.tool_choice !== "none" ? (chat.tools ?? []).filter((t) => t?.type === "function" && t.function?.name) : []
   const baseSystem = site?.systemPrompt ?? QODER_SYS
   let sysText = system ? baseSystem + "\n\n" + system : baseSystem
@@ -2098,6 +2124,10 @@ class MarkdownCode {
     this.finishRun()
     return !!this.fence || this.inlineTicks > 0 || this.indented
   }
+  // copy is this state as it stands, to ask of text not added here
+  copy() {
+    return Object.assign(new MarkdownCode(), this)
+  }
   finishRun() {
     if (!this.runLength) return
     if (this.fence) {
@@ -2246,12 +2276,18 @@ class Splitter {
   sawTool = false
   after = false // a bare call just ended: the closes and blanks after it are dropped
   markdown = new MarkdownCode()
+  lineStart = true // nothing sent yet, or the last text sent ended its line
   jsonBuf = null // a {"tool_calls": ...} object being read (plugins#1113)
   constructor(tools = []) {
     this.tools = tools.filter((t) => (t?.function ?? t)?.name)
   }
-  text(out, t) {
+  // keep tracks the text sent on, for what is read from it below
+  keep(t) {
     this.markdown.add(t)
+    this.lineStart = t.endsWith("\n")
+  }
+  text(out, t) {
+    this.keep(t)
     out.push({ text: t })
   }
   // bare reads text that may hold a bare call, comb starting at its tag x:
@@ -2347,11 +2383,16 @@ class Splitter {
         }
         const i = comb.indexOf(CALL_OPEN)
         const x = this.tools.length ? comb.search(XML_AT) : -1
-        const start = !this.sent || this.sent.endsWith("\n")
+        const start = this.lineStart
         let k = -1
         for (const jm of comb.matchAll(JSON_AT_ALL)) {
           const at = jm.index + jm[1].length
-          if ((jm[1] || start) && !quoted(this.sent + comb.slice(0, at))) {
+          // asked of a copy up to the object itself, so an indented line reads as
+          // code; what comes before it is not sent when it is no call
+          const brace = comb.indexOf("{", jm.index)
+          const before = this.markdown.copy()
+          before.add(comb.slice(0, brace))
+          if ((jm[1] || start) && !before.beforeTag) {
             k = at
             break
           }
@@ -2383,7 +2424,7 @@ class Splitter {
               }
           const h = this.tools.length ? comb.search(XML_HOLD) : -1
           if (h >= 0) keep = Math.max(keep, comb.length - h)
-          keep = Math.max(keep, jsonHold(comb, !this.sent || this.sent.endsWith("\n")))
+          keep = Math.max(keep, jsonHold(comb, this.lineStart))
           if (keep < comb.length) this.text(out, comb.slice(0, comb.length - keep))
           this.textBuf = comb.slice(comb.length - keep)
           break
@@ -2439,7 +2480,7 @@ class Splitter {
         }
       }
       const t = CALL_OPEN + body
-      this.markdown.add(t)
+      this.keep(t)
       return [{ text: t }]
     }
     if (this.textBuf) {
@@ -4448,4 +4489,4 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
 export const protocol = { makePlugin, deviceSignIn, exchangeDeviceGrant, openapi, siteOf }
 
 // for tests
-export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, kimiModel, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }
+export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, asAgentSDK, harnessComma, qoderMessages, kimiModel, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }

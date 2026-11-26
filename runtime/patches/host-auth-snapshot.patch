@@ -1,8 +1,10 @@
 # Native auth snapshots retain the host-owned recovery decision.
 # Source: https://github.com/yetone/magpie @ f534245f1c0893c5eaaa5b2a1c918ff27085a9c3
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 07bbf01..2d724f7 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -3722,6 +3722,12 @@
+@@ -3850,6 +3850,12 @@ const handlers = {
      watchHeavy(p.heavy)
      return { plugins: loaded.map(withProviders) }
    },

@@ -15,6 +15,8 @@ const JSON_CALL = '<tool_call>{"name":"echo","arguments":{"value":"example"}}</t
 const XML_CALL = '<tool_call><function=echo><parameter=value>example</parameter></function></tool_call>'
 const FUNCTION_CALL = '<function=echo><parameter=value>example</parameter></function>'
 const INVOKE_CALL = '<invoke name="echo"><parameter name="value">example</parameter></invoke>'
+// a reply that is OpenAI's own tool_calls object written as text, a line of its own
+const OPENAI_CALL = '{"tool_calls":[{"function":{"name":"echo","arguments":"{\\"value\\":\\"example\\"}"}}]}'
 const MODEL_URL = 'https://gateway.qoder.com.cn/algo/api/v2/model/list?Encode=1'
 const CHAT_URL = 'https://gateway.qoder.com.cn/algo/api/v2/service/pro/sse/agent_chat_generation?FetchKeys=llm_model_result&AgentId=agent_common&Encode=1'
 
@@ -158,6 +160,26 @@ for (const stream of [false, true]) {
     })
     test(`${mode}: absent tools leave JSON text unchanged (${chunking})`, async () => {
       literal(await reply({ stream, deltas: deltas(JSON_CALL), extra: { tools: [] } }), JSON_CALL)
+    })
+    test(`${mode}: OpenAI tool_calls object on a line of its own becomes a call (${chunking})`, async () => {
+      invoked(await reply({ stream, deltas: deltas(`Sure:\n${OPENAI_CALL}`) }), 'Sure:\n')
+    })
+    test(`${mode}: OpenAI tool_calls object inside a line stays text (${chunking})`, async () => {
+      const text = `Use ${OPENAI_CALL} as an example.`
+      literal(await reply({ stream, deltas: deltas(text) }), text)
+    })
+    for (const [name, text] of [
+      ['fence', `Example:\n\`\`\`json\n${OPENAI_CALL}\n\`\`\`\n`],
+      ['indented block', `Example:\n\n    ${OPENAI_CALL}\n`],
+      ['code span', `Use \`${OPENAI_CALL}\` as an example.`],
+    ]) {
+      test(`${mode}: OpenAI tool_calls object inside a ${name} remains exact text (${chunking})`, async () => {
+        literal(await reply({ stream, deltas: deltas(text) }), text)
+      })
+    }
+    test(`${mode}: OpenAI tool_calls object split across its key becomes a call (${chunking})`, async () => {
+      const key = '{"tool_'
+      invoked(await reply({ stream, deltas: [{ content: `Sure:\n${key}` }, { content: OPENAI_CALL.slice(key.length) }] }), 'Sure:\n')
     })
   }
   const native = [

@@ -110,12 +110,41 @@ function queueLine(line) {
   }
 }
 
+// wireLineMax is the longest line magpie reads from this process, its
+// newline included (maxWireLine in host.go, told at init as lineMax). A
+// longer one is read as a child that never ends a line: magpie kills this
+// process, and every plugin's provider goes down with it (#5699).
+let wireLineMax = 32 << 20
+
+// lineFor is msg's line, or, when that would be longer than wireLineMax,
+// an error for its call in its place (cut), so only that call fails and not
+// this process. An event with no call to fail is dropped (line null). Both
+// are said in the log, by size only.
+function lineFor(msg) {
+  const line = JSON.stringify(msg) + "\n"
+  // a UTF-16 unit is at most 3 bytes of UTF-8: count only a line that may pass
+  if (line.length * 3 <= wireLineMax) return { line, cut: false }
+  const size = Buffer.byteLength(line)
+  if (size <= wireLineMax) return { line, cut: false }
+  const what = msg.id == null ? `an event (${String(msg.event).slice(0, 40)})` : "an answer"
+  queueLine(JSON.stringify({ event: "log", level: "warn", message: `plugin host: ${what} of ${size} bytes is longer than the ${wireLineMax} bytes a line may carry; ${msg.id == null ? "dropped" : "that call failed"}` }) + "\n")
+  if (msg.id == null) return { line: null, cut: true }
+  return { line: JSON.stringify({ id: msg.id, error: { message: `the plugin's answer is ${size} bytes, longer than the ${wireLineMax} bytes the plugin host may send at once` } }) + "\n", cut: true }
+}
+
 // send queues one message, ignoring whether it was written.
-const send = (msg) => queueLine(JSON.stringify(msg) + "\n").promise
+const send = (msg) => {
+  const { line } = lineFor(msg)
+  return line == null ? Promise.resolve(null) : queueLine(line).promise
+}
 
 // sendCancelable is send, with a way to give the wait up. A string is a
-// line made already (chunkLine).
-const sendCancelable = (msg) => queueLine(typeof msg === "string" ? msg : JSON.stringify(msg) + "\n")
+// line made already (chunkLine), a frame's size.
+const sendCancelable = (msg) => {
+  if (typeof msg === "string") return queueLine(msg)
+  const { line } = lineFor(msg)
+  return line == null ? { promise: Promise.resolve(null), cancel: () => {} } : queueLine(line)
+}
 
 // chunkLine is JSON.stringify({id, event: "chunk", data}) + "\n", made by
 // joining: base64 has nothing JSON escapes, and stringify scanning every
@@ -342,6 +371,7 @@ const sessions = new Map() // oauth sign-in in progress → its authorize result
 const inflight = new Map() // fetch id → its lifecycle and owned resources
 const renewing = new Map() // account → its sign-in's renewal under way
 const unrenewed = new Map() // account → its last renewal that failed: {at, secret, gone, error, n}
+const unsaved = new Map() // account → a renewal the vendor gave whose save failed: {secret (the one it replaces), fields}
 let config = { provider: {} } // what the plugins' config hooks made of it
 
 // loadWait bounds one plugin's load (its import and its plugin function)
@@ -730,10 +760,11 @@ function asked(input, init) {
 // that asked works (WorkDirHeader and WorkGitHeader in internal/provider),
 // that a queue needn't be waited out (FallbackHeader), and the session and
 // subagent the agent named (SessionToPluginHeader, SubagentToPluginHeader)
-// and the effort asked of a model with variants (EffortHeader):
+// and the effort asked of a model with variants (EffortHeader), and the
+// agent the request came from (CallerAgentHeader and the two beside it):
 // for the plugin to read, never for its vendor, so a plugin that sends on
 // the headers it was given sends them nowhere.
-const MAGPIE_ONLY = ["x-magpie-work-dir", "x-magpie-work-git", "x-magpie-fallback", "x-magpie-session", "x-magpie-subagent", "x-magpie-effort"]
+const MAGPIE_ONLY = ["x-magpie-work-dir", "x-magpie-work-git", "x-magpie-fallback", "x-magpie-session", "x-magpie-subagent", "x-magpie-effort", "x-magpie-caller-agent", "x-magpie-caller-name", "x-magpie-caller-via"]
 
 function unsaid(input, init) {
   if (input instanceof Request && MAGPIE_ONLY.some((k) => input.headers.has(k))) {
@@ -984,6 +1015,33 @@ function authStateOf(buf) {
   return { all: {}, known: false }
 }
 
+// authKnown is each sign-in as this host last read or wrote it: key → its
+// JSON. Another magpie writes plugin-auth.json too: the window while the
+// gateway runs as a service, or the other way round. A sign-in it saved
+// again over an account this host had a loader for (settle: the same
+// Google account signed in again with agy-cli's "Add another Google
+// account", its home now in its metadata) was served by the loader made
+// from the old one until the host restarted (mayne_wong on X: a gateway
+// run as a LaunchDaemon kept answering 401 for an account the window had
+// put right). So a sign-in that reads otherwise than this host left it is
+// forgotten as one changed here is (forgetAccount), and magpie is told of
+// an account added or removed (an "auth" event), which it lists again.
+let authKnown = null // Map key → JSON
+
+// noteAuth takes all, the sign-ins as just read (own false) or as this
+// host is writing them (own true).
+function noteAuth(all, own = false) {
+  const now = new Map(Object.entries(all).map(([k, v]) => [k, JSON.stringify(v)]))
+  const was = authKnown
+  authKnown = now
+  if (own || !was) return
+  for (const k of new Set([...was.keys(), ...now.keys()])) {
+    if (was.get(k) === now.get(k)) continue
+    forgetAccount(k)
+    if (!was.has(k) || !now.has(k)) send({ event: "auth", provider: providerOf(k), account: k })
+  }
+}
+
 // authSeen is plugin-auth.json as last parsed, kept while the file has the
 // same time, size and inode: every request read and parsed it two or three
 // times (its account, its renewal, the plugin's getAuth), ~0.6 ms each for
@@ -1016,6 +1074,7 @@ function readAuth() {
     return e.all
   }
   const s = readAuthState(buf)
+  if (s.known) noteAuth(s.all)
   authSeen = st && s.own ? { mtimeMs: st.mtimeMs, size: st.size, ino: st.ino, raw: Date.now() - st.mtimeMs > AUTH_SETTLED ? null : buf, all: s.all } : null
   return s.all
 }
@@ -1179,10 +1238,15 @@ function changeAuth(change) {
     const unlock = await lockAuth()
     try {
       const { all, known } = await readAuthStateAsync()
+      // what another magpie saved since this host's last read
+      if (known) noteAuth(all)
       const out = change(all)
       // sign-ins that don't read are never written over with none: a
       // sign-out of one of them waits for the file to be put right
-      if (out !== false && (known || Object.keys(all).length > 0)) await writeAuth(all)
+      if (out !== false && (known || Object.keys(all).length > 0)) {
+        await writeAuth(all)
+        noteAuth(all, true)
+      }
       return out
     } finally {
       unlock()
@@ -1265,6 +1329,8 @@ function inScope(provider, key, fn, signIn = false) {
   }
   return scope.run({ provider, key, had }, fn)
 }
+// opens.js names the plugin whose program it refused by this
+globalThis[Symbol.for("magpie.spawnedBy")] = () => scope.getStore()?.provider ?? ""
 
 function whoOf(a) {
   return a?.accountId ?? a?.metadata?.email ?? a?.email ?? ""
@@ -1633,6 +1699,9 @@ async function gatewayBegin(p, signal) {
   run.timer = setTimeout(() => closeGateway(run), GATEWAY_RUN_TTL)
   run.timer.unref()
   let body = p.body
+  // whether a hook's body was taken: one that returns undefined, throws, times
+  // out or is rolled back keeps the caller's, whose bytes need no wire
+  let rewritten = false
   // The total budget bounds many installed hooks as well as one slow hook.
   const total = AbortSignal.any([signal, run.controller.signal, AbortSignal.timeout(gatewayBudget())])
   for (const h of gatewayHooks) {
@@ -1651,7 +1720,9 @@ async function gatewayBegin(p, signal) {
         outcome = code
         bytes = Number.isSafeInteger(count) && count >= 0 && count <= 32768 ? count : 0
       }
-      const ctx = { ...p.context, options: structuredClone(h.options), state: {}, signal: ownSignal, report }
+      // each hook its own copy: ctx.caller is an object, and one hook's
+      // change to it reaches no other hook
+      const ctx = { ...structuredClone(p.context), options: structuredClone(h.options), state: {}, signal: ownSignal, report }
       const result = await bounded(Promise.resolve().then(() => h.onRequest(structuredClone(body), ctx)), ownSignal)
       let next = body
       if (result !== undefined) {
@@ -1668,6 +1739,7 @@ async function gatewayBegin(p, signal) {
         if (JSON.stringify(next[key]) !== JSON.stringify(body[key])) throw new Error("context hook changed client tools, model or streaming")
       }
       if (JSON.stringify(next.config?.tools) !== JSON.stringify(body.config?.tools) || JSON.stringify(next.config?.toolConfig) !== JSON.stringify(body.config?.toolConfig)) throw new Error("context hook changed client tools")
+      if (next !== body) rewritten = true
       body = next
       run.plugins.push({ h, ctx })
     } catch {
@@ -1690,6 +1762,13 @@ async function gatewayBegin(p, signal) {
     signal.throwIfAborted()
     return null
   }
+  // No hook rewrote the body: the run's identity is all the caller needs,
+  // and it keeps the bytes it already has. Nothing the size of the request
+  // crosses the wire, so a request no hook touched never makes a line too
+  // long for magpie to read (#5699), and isn't serialized again (#5168). A
+  // rewritten one too long for a line fails this request only (lineFor),
+  // which goes as it came.
+  if (!rewritten) return { id: run.id, token: run.token, unchanged: true }
   return { id: run.id, token: run.token, body }
 }
 
@@ -3079,7 +3158,10 @@ function renewal(provider, key) {
   let r = renewing.get(key)
   if (r) return r
   const f = unrenewed.get(key)
-  if (f && f.secret === secretOf(stored) && (f.gone || Date.now() - f.at < retryAfter(f.n ?? 1))) return null
+  // a renewal whose save failed is saved again at once: it asks the
+  // vendor nothing (unsaved)
+  const held = unsaved.get(key)?.secret === secretOf(stored)
+  if (f && f.secret === secretOf(stored) && !held && (f.gone || Date.now() - f.at < retryAfter(f.n ?? 1))) return null
   pending++ // the host doesn't leave in the middle of it
   r = renew(provider, key, a).finally(() => {
     renewing.delete(key)
@@ -3245,9 +3327,13 @@ async function renewLocked(provider, key, a, was) {
   const at = renewAt(a, now)
   if (!at || Date.now() < at) return
   was = now
-  let got
+  // a renewal the vendor gave for this very sign-in, whose save failed:
+  // the vendor has spent its refresh token, so what it gave is saved now
+  // rather than the spent one sent again (see unsaved below)
+  const held = unsaved.get(key)
+  let got = held && held.secret === secretOf(was) ? held.fields : undefined
   try {
-    got = await inScope(provider, key, () => a.refresh(JSON.parse(JSON.stringify(was)), provider))
+    got ??= await inScope(provider, key, () => a.refresh(JSON.parse(JSON.stringify(was)), provider))
   } catch (e) {
     // the token was spent by a host that didn't wait for this one's lock
     // (a magpie from before it) and saved what it got: not signed out
@@ -3271,10 +3357,26 @@ async function renewLocked(provider, key, a, was) {
   // that one stands. Checked under the lock the save is made under, so
   // nothing comes between the two.
   const { type: _t, ...fields } = got
-  const kept = await changeAuth((all) => {
-    if (changed(all[key], was)) return false
-    all[key] = { ...was, ...fields, type: "oauth" }
-  })
+  // A save that fails (plugin-auth.json refused to be replaced: a file
+  // another program holds open on Windows, a full disk) lost what the
+  // vendor gave, and one that spends a refresh token once (MiniMax) turned
+  // the old token away at the next renewal and signed the account out
+  // (Tiemo404 on X). What it gave is kept, and saved at the next try; the
+  // sign-in on disk goes on as it is till then.
+  let kept
+  try {
+    kept = await changeAuth((all) => {
+      if (changed(all[key], was)) return false
+      all[key] = { ...was, ...fields, type: "oauth" }
+    })
+  } catch (e) {
+    unsaved.set(key, { secret: secretOf(was), fields })
+    const why = `saving the renewed sign-in: ${e?.message ?? e}`
+    failedRenewal(key, was, false, why)
+    send({ event: "log", level: "error", message: `${auths().get(provider)?.spec ?? provider}: auth.refresh: ${why}` })
+    return
+  }
+  unsaved.delete(key)
   if (kept === false) return
   unrenewed.delete(key)
   forgetAccount(key)
@@ -3289,9 +3391,11 @@ async function renewLocked(provider, key, a, was) {
 // the account's scope, whatever the loader keeps (its fetch) saves to it.
 async function options(provider, key) {
   await fresh(provider, key)
+  // read first: a sign-in another magpie saved since drops the loader
+  // made from the one before (noteAuth)
+  const stored = readAuth()[key]
   if (loaders.has(key)) return loaders.get(key)
   const a = auths().get(provider)?.auth
-  const stored = readAuth()[key]
   let opts = {}
   if (a?.loader && stored) {
     const p = await infoOf(provider, key)
@@ -3607,6 +3711,25 @@ async function staleAccess(key, before) {
   return "kept"
 }
 
+// callerOf is the agent a request came from, as magpie's headers for the
+// plugin say it: {agent: "claude", name: "Claude Code", via: [computers]},
+// via empty for an agent on this computer, else the computers another
+// magpie passed it on through, the agent's first. undefined when magpie
+// said none.
+function callerOf(headers) {
+  const dec = (v) => {
+    try {
+      return decodeURIComponent(v ?? "")
+    } catch {
+      return ""
+    }
+  }
+  const agent = dec(headers?.["x-magpie-caller-agent"])
+  if (!agent) return undefined
+  const via = String(headers["x-magpie-caller-via"] ?? "").split(",").map(dec).filter(Boolean)
+  return { agent, name: dec(headers["x-magpie-caller-name"]) || agent, via }
+}
+
 async function fetchAs(id, record, key, params) {
   const { controller: ctl, gate } = record
   const { provider, model, npm, url, method, headers, body, session } = params
@@ -3631,6 +3754,9 @@ async function fetchAs(id, record, key, params) {
       checkFetch(record)
       m = p.models[model] ?? { id: model, providerID: provider, api: { id: model, npm } }
     }
+    // input.agent stays OpenCode's own agent ("build"), which a plugin may
+    // go by; who asked is magpie's input.caller
+    const caller = callerOf(headers)
     for (const x of said) {
       const fn = x.hooks["chat.headers"]
       const out = { headers: {} }
@@ -3639,6 +3765,7 @@ async function fetchAs(id, record, key, params) {
           {
             sessionID: session ?? "",
             agent: "build",
+            ...(caller ? { caller: structuredClone(caller) } : {}),
             model: m,
             provider: { source: "custom", info: p, options: o },
             message: { id: "", sessionID: session ?? "", role: "user", time: { created: Date.now() }, agent: "build", model: { providerID: provider, modelID: model } },
@@ -3734,6 +3861,7 @@ const handlers = {
     chosen = p.options ?? {}
     if (p.loadMillis > 0) loadWait = p.loadMillis
     if (p.listMillis > 0) listWait = p.listMillis
+    if (Number.isSafeInteger(p.lineMax) && p.lineMax > 0) wireLineMax = p.lineMax
     await loadPlugins(p.plugins ?? [])
     // from here on, when magpie holds this host as the one calls go to
     watchHeavy(p.heavy)
@@ -3931,8 +4059,16 @@ rl.on("line", (line) => {
       .then(() => gatewayRequest(msg.params ?? {}, ctl.signal))
       .then(
         (result) => {
-          if (!ctl.signal.aborted) return send({ id: msg.id, result })
-          if (msg.params?.operation === "begin" && result?.id) closeGateway(gatewayRuns.get(result.id))
+          const begun = msg.params?.operation === "begin" && result?.id
+          if (ctl.signal.aborted) {
+            if (begun) closeGateway(gatewayRuns.get(result.id))
+            return
+          }
+          const { line, cut } = lineFor({ id: msg.id, result })
+          // a rewritten body too long to send back: the request goes as it
+          // came, so its run, which no one will finish, ends here
+          if (cut && begun) closeGateway(gatewayRuns.get(result.id))
+          return queueLine(line).promise
         },
         () => { if (!ctl.signal.aborted) return send({ id: msg.id, result: null }) },
       )

@@ -1,8 +1,10 @@
 # Native host usage preserves unknown quantities for LoongPass.
 # Source: https://github.com/yetone/magpie @ f534245f1c0893c5eaaa5b2a1c918ff27085a9c3
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index bbb3763..491570e 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -3349,6 +3349,7 @@
+@@ -3453,6 +3453,7 @@ async function usageOf(provider, account, signal) {
    }
    const text = (v) => (typeof v === "string" ? v : "")
    const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
@@ -10,7 +12,7 @@
    const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
    return {
      plan: text(u.plan),
-@@ -3374,8 +3375,8 @@
+@@ -3478,8 +3479,8 @@ async function usageOf(provider, account, signal) {
        resetsAt: when(w?.resetsAt),
        resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
        display: text(w?.display),
@@ -21,7 +23,7 @@
        unit: text(w?.unit),
        span: Math.max(0, num(w?.span)),
        model: text(w?.model),
-@@ -3385,7 +3386,7 @@
+@@ -3489,7 +3490,7 @@ async function usageOf(provider, account, signal) {
        pool: text(w?.pool),
        aside: !!w?.aside,
        runsOutAt: when(w?.runsOutAt),

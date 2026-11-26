@@ -1,8 +1,10 @@
 # Native API identity separate from provider inputs for LoongPass.
 # Source: https://github.com/yetone/magpie @ f534245f1c0893c5eaaa5b2a1c918ff27085a9c3
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 491570e..44fd6d6 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2754,7 +2754,7 @@
+@@ -2833,7 +2833,7 @@ function validate(provider, index, key, value) {
  // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
  // a sign-in the plugin says is another provider's, a new account of
  // that one). It gives the provider and where the account is kept.
@@ -11,7 +13,7 @@
    const id = result.provider ?? provider
    if (id !== provider) key = freshKey(id)
    if ("refresh" in result) {
-@@ -2762,7 +2762,7 @@
+@@ -2841,7 +2841,7 @@ async function save(provider, key, result, inputs, apiKey, method) {
      await setAuth(key, { type: "oauth", refresh, access, expires, ...extra })
    } else if ("key" in result || apiKey) {
      const md = { ...plainAnswers(provider, method, inputs), ...(result.metadata ?? {}) }
@@ -20,7 +22,7 @@
    }
    return { provider: id, account: await settle(id, key) }
  }
-@@ -2962,13 +2962,16 @@
+@@ -3041,13 +3041,16 @@ async function importFiles({ provider, texts, proxy }, signal) {
    return { results }
  }
  
@@ -39,7 +41,7 @@
      return { ok: true, provider, account: await settle(provider, at) }
    }
    const r = await signingIn(signal, proxy ?? "", provider, at, () => m.authorize(inputs ?? {}, { signal }))
-@@ -2976,7 +2979,7 @@
+@@ -3055,7 +3058,7 @@ async function apiKey({ provider, method, inputs, key, account, proxy }, signal)
    if (!r || r.type !== "success") return failed(r)
    // nothing to keep: no key typed, and the plugin's authorize gave none
    if (!("key" in r) && !("refresh" in r) && !key) return { ok: false, error: `${provider}'s sign-in gave no key` }

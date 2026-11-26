@@ -1,7 +1,9 @@
 # Verify the owner of a desktop paid entitlement before matching or reusing it.
+diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
+index 15ccc9c..f9a3693 100644
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -1666,114 +1666,6 @@
+@@ -1709,114 +1709,6 @@ function readJSON(path) {
    }
  }
  
@@ -116,7 +118,7 @@
  // located gives a sign-in that has only ZCode's key location (ownLocation)
  // its key: the secret of the key it names, read as ZCode lists the
  // project's keys (BigModel's token bare, Z.ai's as a Bearer). Nothing is
-@@ -1880,43 +1772,31 @@
+@@ -1923,44 +1815,32 @@ function ownSignIn() {
    const store = readJSON(join(zcodeDir(), "credentials.json"))
    if (!store || typeof store !== "object") return null
    const key = secret()
@@ -162,7 +164,6 @@
      info = JSON.parse(decrypt(key, store[`oauth:${family}:user_info`]) ?? "{}")
 -  } catch {}
 -  return { ...s, user: who(info), uid: uidOf(info) }
--}
 +  } catch { return null }
 +  const uid = uidOf(info)
 +  const choice = settings?.providerFamilyConnectionSelections?.[site]
@@ -176,13 +177,14 @@
 +  const boundKey = typeof paid === "string" && paid.includes(".") ? paid : ""
 +  if (!jwt && !boundKey) return null
 +  return { site, base: SITES[site].base, key: boundKey, jwt, uid, user: who(info), desktopUid: uid }
-+}
-+
-+const TEAM_SIGN_IN = "Use the official team browser sign-in to verify the selected ZCode seat"
+ }
  
++const TEAM_SIGN_IN = "Use the official team browser sign-in to verify the selected ZCode seat"
++
  // asZCode is the sign-in "as ZCode": what it reads is ZCode's own.
  function asZCode() {
-@@ -1927,6 +1807,7 @@
+   return {
+@@ -1970,6 +1850,7 @@ function asZCode() {
      async callback() {
        const own = ownSignIn()
        if (!own) return { type: "failed", error: ownStoreUnreadable() ? UNREADABLE_SIGN_IN : "ZCode isn't signed in on this computer; sign in to ZCode, or sign in to Z.ai or BigModel here" }
@@ -190,7 +192,7 @@
        const { user, uid, ...s } = own
        if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
        const state = { source: "zcode", device: anyDevice, ...s }
-@@ -1951,8 +1832,11 @@
+@@ -1994,8 +1875,11 @@ function stateOf(auth) {
        const own = ownSignIn()
        // Display names can change and IDs can repeat across regions.
        if (own?.uid && own.site === s.site && own.uid === auth.uid && accountIdOf(own.site, own.uid) === auth.accountId) {

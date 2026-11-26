@@ -1,8 +1,10 @@
 # Compose native model and tool response transforms.
 # Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
+diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
+index 72a3fb9..7aaa329 100644
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -3240,8 +3240,8 @@
+@@ -3283,8 +3283,8 @@ export async function ZCodeAuthPlugin({ client, magpie } = {}, options = {}) {
              let giftName = ""
              let asked = ""
              let renamed = false

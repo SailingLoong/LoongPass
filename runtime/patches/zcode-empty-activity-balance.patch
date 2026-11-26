@@ -1,8 +1,10 @@
 # Keep verified empty Start Plan observations separate from quota read failures.
 # Source: https://github.com/magpie-community/plugins @ 836f2e4e4cd899318c422d67cc1b2b30baaf1e06
+diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
+index f9a3693..5e619e3 100644
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -647,7 +647,12 @@
+@@ -647,7 +647,12 @@ async function giftOf(s) {
      if (active && !(end > 0 && (!startNum(active.end) || end < startNum(active.end)))) continue
      active = { name: first(str(p.name), "Start Plan"), end, until: end > 0 ? new Date(Math.trunc(end) * 1000).toISOString() : "" }
    }
@@ -16,7 +18,7 @@
    // with no live plan, the one starting soonest names the card
    const out = { plan: active?.name ?? pending[0].name, windows: [], live: !!active, pending }
    if (active?.until) Object.assign(out, { until: active.until, renew: "off" })
-@@ -1115,14 +1120,13 @@
+@@ -1157,14 +1162,13 @@ function giftSignIn(s, key) {
    return null
  }
  
@@ -34,7 +36,7 @@
    const best = bestBuckets(g.windows)
    const label = byPlan(g.windows)
    g.windows = countedFirst(g.windows.map(({ _plan, _spent, ...w }, i) => {
-@@ -3481,7 +3485,11 @@
+@@ -3524,7 +3528,11 @@ export async function ZCodeAuthPlugin({ client, magpie } = {}, options = {}) {
              }
              const team = await teamUsage(s, key)
              card = saved(gift || giftReadable(s) ? await dualUsage(s, team) : team)
