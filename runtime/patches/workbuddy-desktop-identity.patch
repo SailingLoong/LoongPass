@@ -1,7 +1,9 @@
 
+diff --git a/runtime/vendor/plugins/workbuddy/index.mjs b/runtime/vendor/plugins/workbuddy/index.mjs
+index 7480061..f1d9e6f 100644
 --- a/runtime/vendor/plugins/workbuddy/index.mjs
 +++ b/runtime/vendor/plugins/workbuddy/index.mjs
-@@ -2199,7 +2199,9 @@
+@@ -2458,7 +2458,9 @@ function readDesktop(site) {
    try {
      const f = JSON.parse(readFileSync(desktopFile(site), "utf8"))
      const t = f?.auth ?? {}
@@ -12,7 +14,7 @@
      const now = Date.now()
      const acct = f.account
      return {
-@@ -2245,7 +2247,7 @@
+@@ -2504,7 +2506,7 @@ function desktopSignIn(site) {
      async callback() {
        const d = readDesktop(site)
        if (!d) return { type: "failed", error: notDesktop(site) }
@@ -21,7 +23,7 @@
      },
    }
  }
-@@ -2391,6 +2393,9 @@
+@@ -2650,6 +2652,9 @@ async function importSignIns(site, texts) {
  // desktopHeld is what a desktop sign-in was renewed to here, by site and
  // account: kept in memory only, never written where the app keeps it.
  const desktopHeld = new Map()
@@ -31,7 +33,7 @@
  
  // current is the sign-in a stored auth names, fresh: WorkBuddy desktop's,
  // read where it keeps it, or one kept here.
-@@ -2398,9 +2403,13 @@
+@@ -2657,9 +2662,13 @@ async function current(site, client, auth) {
    if (auth?.source !== "desktop") return fresh(site, client, auth)
    const d = readDesktop(site)
    if (!d) throw new Error(notDesktop(site))
@@ -46,7 +48,7 @@
    desktopHeld.set(k, a)
    return a
  }
-@@ -2541,17 +2550,22 @@
+@@ -2800,17 +2809,22 @@ const refreshRefused = (e) => e instanceof WBError && (e.status === 401 || /inva
  // desktopSignIn).
  async function reissued(site, client, getAuth, a, began) {
    if (a.source === "desktop") {

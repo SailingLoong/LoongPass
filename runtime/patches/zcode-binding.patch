@@ -1,8 +1,10 @@
 # Native ZCode device-preserving reauthorization and reward request context.
 # Optional public host capabilities; default upstream sign-in behavior is unchanged.
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 7bf35f2..07bbf01 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -1195,8 +1195,9 @@
+@@ -1259,8 +1259,9 @@ function changeAuth(change) {
    return run
  }
  
@@ -13,7 +15,7 @@
      all[key] = info
    })
    forgetAccount(key)
-@@ -2632,6 +2633,8 @@
+@@ -2711,6 +2712,8 @@ function rowOf(id, a, keys, stored, p, own) {
      usage: typeof a.auth.usage === "function",
      checkin: typeof a.auth.checkin === "function",
      calls: typeof a.auth.calls === "function",
@@ -22,7 +24,7 @@
      checkinStatus: typeof a.auth.checkinStatus === "function",
      // its sign-ins are renewed in the background as they come due, so
      // long before expires (keepSignedIn)
-@@ -2755,17 +2758,18 @@
+@@ -2834,17 +2837,18 @@ function validate(provider, index, key, value) {
  // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
  // a sign-in the plugin says is another provider's, a new account of
  // that one). It gives the provider and where the account is kept.
@@ -38,15 +40,14 @@
    } else if ("key" in result || apiKey) {
      const md = { ...plainAnswers(provider, method, inputs), ...(result.metadata ?? {}) }
 -    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) })
--  }
--  return { provider: id, account: await settle(id, key) }
 +    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) }, expected)
-+  }
+   }
+-  return { provider: id, account: await settle(id, key) }
 +  return { provider: id, account: expected === undefined ? await settle(id, key) : key }
  }
  
  // plainAnswers are the answers to an "api" method's questions that the
-@@ -2804,17 +2808,24 @@
+@@ -2883,17 +2887,24 @@ let nextSession = 1
  // callback(code, { signal }), authorize(inputs, { signal }); OpenCode
  // passes none), and whatever the plugin answers after it is dropped,
  // nothing saved.
@@ -76,7 +77,7 @@
    if (signal?.aborted) throw abortedSignIn()
    // a plugin that can't start the sign-in may say why as an api method's
    // authorize does ({ type: "failed", error }) rather than throw; with no
-@@ -2824,7 +2835,7 @@
+@@ -2903,7 +2914,7 @@ async function authorize({ provider, method, inputs, account, proxy }, signal) {
    if (a?.type === "failed") return failed(a)
    if (typeof a?.callback !== "function") return { ok: false, error: `${provider}'s sign-in gave nothing to finish it with` }
    const session = String(nextSession++)
@@ -85,7 +86,7 @@
    // opened (not OpenCode's) is a page the plugin's own CLI opened already:
    // Grok Build's `grok login` opens it on macOS and Windows, and magpie's
    // opening it too showed it twice (andyfmyth on X)
-@@ -2858,7 +2869,7 @@
+@@ -2937,7 +2948,7 @@ async function callback({ session, code }, signal) {
    if (!r || r.type !== "success") return failed(r)
    const kept = keptAs(r)
    if (!kept) return { ok: false, error: `${s.provider}'s sign-in gave nothing to keep` }
@@ -94,7 +95,7 @@
  }
  
  // keptAs is an OAuth callback's success r as save keeps it. save keeps an
-@@ -3724,6 +3735,13 @@
+@@ -3852,6 +3863,13 @@ const handlers = {
    installCli,
    load,
    usage,
@@ -108,9 +109,11 @@
    checkin,
    calls,
    checkinStatus,
+diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
+index 0710be9..72a3fb9 100644
 --- a/runtime/vendor/plugins/zcode/index.mjs
 +++ b/runtime/vendor/plugins/zcode/index.mjs
-@@ -1496,14 +1496,29 @@
+@@ -1538,14 +1538,29 @@ const uidOf = (u) => {
    return typeof uid === "string" ? uid.trim() : Number.isSafeInteger(uid) ? String(uid) : ""
  }
  const accountIdOf = (site, uid) => `${site}:${uid}`
@@ -142,7 +145,7 @@
    let flow
    try {
      flow = await call("POST", ZCODE + "/api/v1/oauth/cli/init", { auth: poll, body: { provider: site }, device })
-@@ -1542,6 +1557,7 @@
+@@ -1585,6 +1600,7 @@ async function authorize(site, log, onTeam = false) {
          if (got.status !== "ready" || !token) return fail("ZCode sign-in: unexpected answer " + got.status)
          const uid = uidOf(got.user)
          if (!uid) return fail("ZCode sign-in: the account's official user ID is missing; sign in again")
@@ -150,7 +153,7 @@
          let s
          try {
            s = await signedIn(site, token, first(got.token), device, onTeam)
-@@ -3135,6 +3151,16 @@
+@@ -3178,6 +3194,16 @@ export async function ZCodeAuthPlugin({ client, magpie } = {}, options = {}) {
      },
      auth: {
        provider: PROVIDER,

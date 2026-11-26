@@ -30,11 +30,11 @@
   "sources": {
     "magpie": {
       "url": "https://github.com/yetone/magpie",
-      "commit": "f534245f1c0893c5eaaa5b2a1c918ff27085a9c3"
+      "commit": "5fd855eb753543f3c2bfd690877ee2407b783195"
     },
     "plugins": {
       "url": "https://github.com/magpie-community/plugins",
-      "commit": "836f2e4e4cd899318c422d67cc1b2b30baaf1e06"
+      "commit": "605789637ab26497f17e89d6a9ca34c0ac4307ce"
     }
   },
   "bun": {
@@ -49,17 +49,17 @@
   "packages": [
     {
       "name": "workbuddy",
-      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.37",
+      "spec": "@magpie-community/opencode-workbuddy-auth@0.2.41",
       "target": "vendor/plugins/workbuddy"
     },
     {
       "name": "qoder",
-      "spec": "@magpie-community/opencode-qoder-auth@0.2.71",
+      "spec": "@magpie-community/opencode-qoder-auth@0.2.73",
       "target": "vendor/plugins/qoder"
     },
     {
       "name": "minimax",
-      "spec": "@magpie-community/opencode-minimax-auth@0.2.9",
+      "spec": "@magpie-community/opencode-minimax-auth@0.2.10",
       "target": "vendor/plugins/minimax"
     },
     {
@@ -69,12 +69,12 @@
     },
     {
       "name": "trae",
-      "spec": "@magpie-community/opencode-trae-auth@0.2.46",
+      "spec": "@magpie-community/opencode-trae-auth@0.2.57",
       "target": "vendor/plugins/trae"
     },
     {
       "name": "zcode",
-      "spec": "@magpie-community/opencode-zcode-auth@0.1.68",
+      "spec": "@magpie-community/opencode-zcode-auth@0.1.70",
       "target": "vendor/plugins/zcode"
     }
   ],
@@ -83,8 +83,8 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "545806e2c98c03c9f7af7a0d12b76fd4521dc1b078aed4d4db37972ece0d178e",
-      "upstreamSha256": "d51d1712e89d5e1d94c719c36eaa7f49edd52c671f984c39aaf5ffab317f1179"
+      "sha256": "be3346e94266775226f85d3d0f36dbbc1511de1edad4d097b02a6e71b90e7dce",
+      "upstreamSha256": "223444becd7e9ceb44e8dd617aed9d7bbd0f56e6fda5a2fa89e5978e97955a29"
     },
     {
       "source": "magpie",
@@ -96,14 +96,14 @@
       "source": "plugins",
       "path": "packages/workbuddy/README.md",
       "target": "vendor/plugins/workbuddy/README.md",
-      "sha256": "c6be6b5000134d11aef05e8c04f15dd674100ecdfb6d69f75ed0bc7ae6891920"
+      "sha256": "b741829f0810e1716694a46968650580fd048534e49cb3c9b060653bd2fc1813"
     },
     {
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "02b7736181094210dcdda7e133b39736ed14d6a2e82d6f4f66b053370856c7db",
-      "upstreamSha256": "3b44d8bad00b855c6001bc6ec37d69340f62c3a323de7a2037a59607c1c0471e"
+      "sha256": "eb46bf21919fbe8cde648ab58ac0bfde9a61f31ac389738f8475b03a0f517124",
+      "upstreamSha256": "84d8a4e17f463096b217b3f78303a0584ac566ead078f8ea23583501317eb13b"
     },
     {
       "source": "plugins",
@@ -121,7 +121,7 @@
       "source": "plugins",
       "path": "packages/workbuddy/package.json",
       "target": "vendor/plugins/workbuddy/package.json",
-      "sha256": "69523168b187fbb838e0b28f9fd788d0cc43bf30939333b5363cea8ab9096aa0"
+      "sha256": "05083cb3596c18eb549f33d9f9e57f6b347ccd11b6a2d1c2acca7e7f43120f92"
     },
     {
       "source": "plugins",
@@ -139,14 +139,14 @@
       "source": "plugins",
       "path": "packages/qoder/README.md",
       "target": "vendor/plugins/qoder/README.md",
-      "sha256": "e82e33637d3aa7e2e582aec1ccf5ac4e51a072bf3f63b0a14c88fae4e3a2253a"
+      "sha256": "72e0dd48972eeb23caa2af41581a500b350867363c76bce526e49b1ec9d2773c"
     },
     {
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "135d3253b406a6f6121c769008da3d1185659cd2fc3b49a362c5c8e54de491bf",
-      "upstreamSha256": "3a0eff3997d17322f430c449256c7bba0406a5c89de83dfeeb6e60baba1f53f2"
+      "sha256": "1d29303924c3002f08dbec824753cd667e02936a50ad40a4ea67b97fe1a2b679",
+      "upstreamSha256": "d761219a6f7c14334fe1248dea97207c5423520282d5ee18131e1b237a396146"
     },
     {
       "source": "plugins",
@@ -164,7 +164,7 @@
       "source": "plugins",
       "path": "packages/qoder/package.json",
       "target": "vendor/plugins/qoder/package.json",
-      "sha256": "ddb20ceeab68690e46b10ba2ae4f8671b39f377a5c1a170985c690acecd8f34b"
+      "sha256": "da659f8bedf101ec87d7c05b44db53ad51770525a34a06be19db15ec742bc7d7"
     },
     {
       "source": "plugins",
@@ -176,7 +176,7 @@
       "source": "plugins",
       "path": "packages/minimax/README.md",
       "target": "vendor/plugins/minimax/README.md",
-      "sha256": "05c9dad88dc487404f1de68c21b061aea9492190842fbaab0708ee531fb0f40f"
+      "sha256": "2bfb402998725b33c5b4f7493d6caf6a0d06329374951589290b44fc668b6b5e"
     },
     {
       "source": "plugins",
@@ -188,8 +188,8 @@
       "source": "plugins",
       "path": "packages/minimax/index.mjs",
       "target": "vendor/plugins/minimax/index.mjs",
-      "sha256": "46e08b231b4c0f5b9283ee7ba1b5d0443cf1c8d7e75a2aa18eaca33953b09774",
-      "upstreamSha256": "2db25b05b4dd6e67e070c7d992e872c2ce58855a9fd0e3adde598e6787cbb9a9"
+      "sha256": "4105788f88c6ceaa4647929eebe21708ee375fe34c5aab52ad25398f921f4316",
+      "upstreamSha256": "f03c35942e4b0f6b6549e06e0f03a28f05f9cd8f60dbfd5a21e98ca674173a09"
     },
     {
       "source": "plugins",
@@ -219,7 +219,7 @@
       "source": "plugins",
       "path": "packages/minimax/package.json",
       "target": "vendor/plugins/minimax/package.json",
-      "sha256": "fa2b97cfd8adf8ce1015fda7afcba64512b842413dfa06144955bc4932fbd2e3"
+      "sha256": "b2004489bd12f6b19d22b0c46f689738d28bc6e5d8b6426e41719b101c57156b"
     },
     {
       "source": "plugins",
@@ -274,14 +274,14 @@
       "source": "plugins",
       "path": "packages/trae/README.md",
       "target": "vendor/plugins/trae/README.md",
-      "sha256": "c8afaa3757e6324fa05bd387e8ec9e09f0ec06a0817e8e98ec36b2988095e798"
+      "sha256": "9143780ec19f665a56ce7e76b156c0a996de04b27961b3f4a8eda17a6c1c9b16"
     },
     {
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "bc3e58e95769102104511f803e832413483cef16e88a09b4431dd3ef8528ad0b",
-      "upstreamSha256": "53e888c4709039c1387d1a392043390f08ca47fa8317e1e1acdcd43502930804"
+      "sha256": "39dbbf09f827fcc3b46cad07d194268bad69f4733e6f73e3622e386fc1425081",
+      "upstreamSha256": "769adfbde56769c853526af2c673dcfee7f754b5e9be8f4bc77d59217ea50126"
     },
     {
       "source": "plugins",
@@ -299,7 +299,7 @@
       "source": "plugins",
       "path": "packages/trae/package.json",
       "target": "vendor/plugins/trae/package.json",
-      "sha256": "8ee96f64df388e923fdf5c2c187b9cdec008a7135570ae1ee9b5d098313dc812"
+      "sha256": "2ff27952803b0e52c91ab244ca07f5f74955a3d640b0b98433034465d7d17fb1"
     },
     {
       "source": "plugins",
@@ -311,14 +311,14 @@
       "source": "plugins",
       "path": "packages/zcode/README.md",
       "target": "vendor/plugins/zcode/README.md",
-      "sha256": "7a088a264b104040c880661fd99b1c9a1208ba36bc56bef72b95e07cbf98349b"
+      "sha256": "b167d6d8e1caf204db1b4045dace1de11c03e0b8d28d72185abd66bcd1c9c5d9"
     },
     {
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "1d42046b3fc1f4fd66db65099e27c42be684fa735b18bc042365efef5bc54f55",
-      "upstreamSha256": "804410b252752a21f2b43074b90bb2443a76094b2e77faebf50c0310d9337ca3"
+      "sha256": "79960b53d934f6bdb7b6c2c024dfa8467e418fcc1be224974947547649faf559",
+      "upstreamSha256": "af361ed54c29416f39827c183feac009c140940c941c0cc92b9bca2445d683a8"
     },
     {
       "source": "plugins",
@@ -336,8 +336,8 @@
       "source": "plugins",
       "path": "packages/zcode/package.json",
       "target": "vendor/plugins/zcode/package.json",
-      "sha256": "a754755b0268db9b076a273749230ab51acd72368e883dd31e8567931fbcb670",
-      "upstreamSha256": "33172a41cd1238f640153b26b81a4bbfd264416dea80cd220f7b810864563fe3"
+      "sha256": "65f0ca1afe4cec6734dafed5226e528ff23db1bc67276c1b699d3126889afb0c",
+      "upstreamSha256": "80de9d1d7a3fd7320686aae69a8ea414369fd6af8ef9f1b3961282341d6791cb"
     },
     {
       "source": "plugins",

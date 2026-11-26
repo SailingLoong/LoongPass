@@ -1,7 +1,9 @@
 
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 44fd6d6..7bf35f2 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2632,6 +2632,7 @@
+@@ -2711,6 +2711,7 @@ function rowOf(id, a, keys, stored, p, own) {
      usage: typeof a.auth.usage === "function",
      checkin: typeof a.auth.checkin === "function",
      calls: typeof a.auth.calls === "function",
@@ -9,7 +11,7 @@
      // its sign-ins are renewed in the background as they come due, so
      // long before expires (keepSignedIn)
      renews: keepsAlive(a.auth),
-@@ -3414,30 +3415,66 @@
+@@ -3518,30 +3519,66 @@ async function usageOf(provider, account, signal) {
  // again later that day after a failure, or at until; a hook that throws is
  // a failure.
  // Run in the account's scope, a token it renews is saved to that account.
@@ -75,15 +77,14 @@
    if (!checkinOutcomes.includes(r.outcome)) {
      const said = r.outcome === undefined || r.outcome === null ? "no outcome" : JSON.stringify(r.outcome)
 -    return { outcome: "failed", credit: 0, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
--  }
--  return { outcome: r.outcome, credit: num(r.credit), streak: Math.round(num(r.streak)), message, until }
 +    return { outcome: "failed", ...credit, streak: 0, message: message ? `the plugin answered ${said}: ${message}` : `the plugin answered ${said}`, until }
-+  }
+   }
+-  return { outcome: r.outcome, credit: num(r.credit), streak: Math.round(num(r.streak)), message, until }
 +  return { outcome: r.outcome, ...credit, streak: Math.round(num(r.streak)), message, until, ...(typeof r.scope === "string" && r.scope.trim() ? { scope: r.scope } : {}) }
  }
  
  // ---- calls made outside magpie -------------------------------------------------
-@@ -3689,6 +3726,7 @@
+@@ -3817,6 +3854,7 @@ const handlers = {
    usage,
    checkin,
    calls,
@@ -91,70 +92,11 @@
    keepSignedIn,
    // setOptions takes the user's option values over, as init did: the
    // plugin reads them when it next asks (#2038)
---- a/runtime/vendor/plugins/workbuddy/index.mjs
-+++ b/runtime/vendor/plugins/workbuddy/index.mjs
-@@ -2656,7 +2656,7 @@
- // upstream failures are asked again twice (the bounded retry quota-hub
- // observed on the billing endpoint; callers may shorten the waits for a
- // test).
--async function checkinOf(site, a, { waits = [0, 0] } = {}) {
-+async function checkinOf(site, a, { waits = [0, 0], readOnly = false } = {}) {
-   let status
-   try {
-     status = await meter(site, a, "/v2/billing/meter/checkin-activity-status")
-@@ -2667,13 +2667,16 @@
-     if (e?.status !== undefined || e?.code !== undefined) return { outcome: "failed", message: e.message }
-     throw e
-   }
-+  if (readOnly && typeof status?.active !== "boolean") return { outcome: "unknown" }
-   if (!status?.active) return { outcome: "inactive" }
-+  if (readOnly && typeof (status.today_checked_in ?? status.todayCheckedIn) !== "boolean") return { outcome: "unknown" }
-   if (status.today_checked_in ?? status.todayCheckedIn) {
-     // today_credit is what today actually gave, the built-in's word for a
-     // day already in; daily_credit is the day's grant
-     const credit = Number(status.today_credit ?? status.daily_credit)
-     return { outcome: "done", ...(Number.isFinite(credit) && credit > 0 ? { credit } : {}) }
-   }
-+  if (readOnly) return { outcome: "claimable" }
-   const paths = ["/v2/billing/meter/daily-checkin"]
-   for (let attempt = 0; ; attempt++) {
-     let i = 0
-@@ -4412,6 +4415,15 @@
-   // account. Bounded as refusedSystems is.
-   const commaSystems = new Set()
-   return async ({ client, magpie }) => {
-+  // Both public hooks share the native preflight; only checkin may claim.
-+  const checkin = async (getAuth, readOnly = false) => {
-+    const auth = await getAuth()
-+    // an API key reads no credits (see usage), so it has no day to claim
-+    if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
-+    if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
-+    const a = await current(site, client, auth)
-+    return await checkinOf(site, a, { waits: [2000, 4000], readOnly })
-+  }
-   // each account's list as last read, for FREE_ONLY: {at, list}
-   const lists = new Map()
-   const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
-@@ -4530,14 +4542,8 @@
-       // full 30 minutes (magpie-community/plugins#149). checkinOf returns
-       // an outcome only for answers it read and classified.
-       ...(site.ai ? {} : {
--        async checkin(getAuth) {
--          const auth = await getAuth()
--          // an API key reads no credits (see usage), so it has no day to claim
--          if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
--          if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
--          const a = await current(site, client, auth)
--          return await checkinOf(site, a, { waits: [2000, 4000] })
--        },
-+        checkin: (getAuth) => checkin(getAuth),
-+        checkinStatus: (getAuth) => checkin(getAuth, true),
-       }),
-       options: [
-         {
+diff --git a/runtime/vendor/plugins/minimax/index.mjs b/runtime/vendor/plugins/minimax/index.mjs
+index 7d107ea..5234a2b 100644
 --- a/runtime/vendor/plugins/minimax/index.mjs
 +++ b/runtime/vendor/plugins/minimax/index.mjs
-@@ -874,7 +874,7 @@
+@@ -874,7 +874,7 @@ async function checkinCall(site, access, userID, path, body) {
  // hasn't started, or the panel has none), ineligible (the day isn't
  // available); a throw is failed. streak counts the claimed days up to and
  // including today.
@@ -163,7 +105,7 @@
    if (!String(userID ?? "").trim()) userID = (await identity(site, access)).realUserID
    const panel = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/status")
    const days = Array.isArray(panel?.data?.days) ? panel.data.days : null
-@@ -885,6 +885,7 @@
+@@ -885,6 +885,7 @@ async function checkinOf(site, access, userID) {
    const claimable = sorted.filter((d) => d?.status === 2)
    if (todays.length > 1 || claimable.length > 1) throw new Error("check-in: malformed panel")
    const today = todays[0]
@@ -171,7 +113,7 @@
    if (!today) return { outcome: "inactive" }
    const streakFrom = (i) => {
      let n = 0
-@@ -896,6 +897,7 @@
+@@ -896,6 +897,7 @@ async function checkinOf(site, access, userID) {
      return { outcome: "done", ...(points ? { credit: points } : {}), streak: streakFrom(sorted.indexOf(today)) }
    }
    if (today.status === 2) {
@@ -179,7 +121,7 @@
      const claim = await checkinCall(site, access, userID, "/minimax-cloud/api/v1/signin/claim", {})
      const r = pos(claim?.data, "claim_result")
      const credit = pos(claim?.data, "points")
-@@ -1028,6 +1030,34 @@
+@@ -1038,6 +1040,34 @@ function makePlugin(site) {
      const fresh = accountSession(site, client)
      // magpie's host (OpenCode has no magpie): see inputsOf
      const host = Boolean(magpie)
@@ -214,7 +156,7 @@
  
      // one conversation id for requests that come with none of their own
      const session = randomUUID()
-@@ -1204,33 +1234,8 @@
+@@ -1214,33 +1244,8 @@ function makePlugin(site) {
          // the daily check-in (每日签到): magpie runs it once a day per
          // account, and its Check in now button asks right away; the
          // outcome lands on the account's Usage card.
@@ -250,9 +192,11 @@
          methods: [
            {
              type: "oauth",
+diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
+index 3a3bf64..5c28760 100644
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -3067,6 +3067,15 @@
+@@ -3108,6 +3108,15 @@ const nextOpens = (c) => {
    return start === undefined ? end : Math.max(end, start + DAY_MS)
  }
  
@@ -268,7 +212,7 @@
  // askAgain is a check-in's until: when to ask again, with room.
  const askAgain = (t) => (Number.isFinite(t) ? { until: new Date(t + OPEN_ROOM_MS).toISOString() } : {})
  
-@@ -3771,7 +3780,7 @@
+@@ -3812,7 +3821,7 @@ const makePlugin = (site) => async ({ client }) => {
    // checkin claims the daily credits through the same campaigns page as
    // Qoder's client. A campaign already claimed is done; one not available
    // is inactive, never an error that magpie would retry all day.
@@ -277,7 +221,7 @@
      let cred
      try {
        if ((await getAuth())?.lingma) return { outcome: "inactive", message: "a Lingma 1.0 dedicated domain has no daily credits" }
-@@ -3812,13 +3821,14 @@
+@@ -3853,13 +3862,14 @@ const makePlugin = (site) => async ({ client }) => {
        if (listRes.status !== 200) return { outcome: "failed", message: `campaigns: HTTP ${listRes.status}` }
        const now = Date.now()
        const active = (c) => (at(c.startAt) ?? -Infinity) <= now && now < (at(c.endAt) ?? Infinity)
@@ -293,7 +237,7 @@
          }
          // the next day's credits open at a time the list says: ask then,
          // not half an hour later
-@@ -3837,6 +3847,13 @@
+@@ -3878,6 +3888,13 @@ const makePlugin = (site) => async ({ client }) => {
          // say that much, and where the credits can still be claimed.
          return { outcome: "inactive", message: noCampaign(site.name) }
        }
@@ -307,7 +251,7 @@
        const claimRes = await call(base.replace(/\/$/, "") + "/" + encodeURIComponent(campaign.campaignId) + "/claim", "POST", "{}")
        let claim = {}
        let claimRaw = ""
-@@ -3850,7 +3867,7 @@
+@@ -3891,7 +3908,7 @@ const makePlugin = (site) => async ({ client }) => {
        if (claimRes.status !== 200) return { outcome: "failed", message: `claim: HTTP ${claimRes.status}` }
        if (said === "CLAIMED") {
          const amount = Number(claim?.benefit?.amount ?? claim?.data?.benefit?.amount ?? campaign.benefit?.amount)
@@ -316,7 +260,7 @@
        }
        return { outcome: "failed", message: `claim: ${said || "unknown answer"}` }
      } catch (e) {
-@@ -4279,7 +4296,7 @@
+@@ -4320,7 +4337,7 @@ const makePlugin = (site) => async ({ client }) => {
        // the daily check-in reads the vendor's desktop device identity and
        // posts it to the campaign endpoint: a site without one (QwenWork)
        // sets checkin: false and gets none
@@ -325,9 +269,11 @@
      },
      async config(config) {
        config.provider ??= {}
+diff --git a/runtime/vendor/plugins/trae/index.mjs b/runtime/vendor/plugins/trae/index.mjs
+index f2f1f65..1139bde 100644
 --- a/runtime/vendor/plugins/trae/index.mjs
 +++ b/runtime/vendor/plugins/trae/index.mjs
-@@ -3791,15 +3791,18 @@
+@@ -4339,15 +4339,18 @@ const makePlugin = (site) => async ({ client }) => {
      return { body }
    }
  
@@ -347,7 +293,7 @@
      const read = async (res) => {
        const text = await res.text()
        let v
-@@ -4234,7 +4237,8 @@
+@@ -4789,7 +4792,8 @@ const makePlugin = (site) => async ({ client }) => {
      auth: {
        provider: site.id,
        usage,
@@ -357,3 +303,66 @@
        // magpie renews the token LEAD_MS before its end, once, before its
        // requests, models and usage ask; the check before each request
        // stays for OpenCode, which doesn't call this
+diff --git a/runtime/vendor/plugins/workbuddy/index.mjs b/runtime/vendor/plugins/workbuddy/index.mjs
+index 371dcd9..7480061 100644
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -2915,7 +2915,7 @@ async function meter(site, a, path, body = {}) {
+ // upstream failures are asked again twice (the bounded retry quota-hub
+ // observed on the billing endpoint; callers may shorten the waits for a
+ // test).
+-async function checkinOf(site, a, { waits = [0, 0] } = {}) {
++async function checkinOf(site, a, { waits = [0, 0], readOnly = false } = {}) {
+   let status
+   try {
+     status = await meter(site, a, "/v2/billing/meter/checkin-activity-status")
+@@ -2926,13 +2926,16 @@ async function checkinOf(site, a, { waits = [0, 0] } = {}) {
+     if (e?.status !== undefined || e?.code !== undefined) return { outcome: "failed", message: e.message }
+     throw e
+   }
++  if (readOnly && typeof status?.active !== "boolean") return { outcome: "unknown" }
+   if (!status?.active) return { outcome: "inactive" }
++  if (readOnly && typeof (status.today_checked_in ?? status.todayCheckedIn) !== "boolean") return { outcome: "unknown" }
+   if (status.today_checked_in ?? status.todayCheckedIn) {
+     // today_credit is what today actually gave, the built-in's word for a
+     // day already in; daily_credit is the day's grant
+     const credit = Number(status.today_credit ?? status.daily_credit)
+     return { outcome: "done", ...(Number.isFinite(credit) && credit > 0 ? { credit } : {}) }
+   }
++  if (readOnly) return { outcome: "claimable" }
+   const paths = ["/v2/billing/meter/daily-checkin"]
+   for (let attempt = 0; ; attempt++) {
+     let i = 0
+@@ -4691,6 +4694,15 @@ function makePlugin(site) {
+   // account. Bounded as refusedSystems is.
+   const commaSystems = new Set()
+   return async ({ client, magpie }) => {
++  // Both public hooks share the native preflight; only checkin may claim.
++  const checkin = async (getAuth, readOnly = false) => {
++    const auth = await getAuth()
++    // an API key reads no credits (see usage), so it has no day to claim
++    if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
++    if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
++    const a = await current(site, client, auth)
++    return await checkinOf(site, a, { waits: [2000, 4000], readOnly })
++  }
+   // each account's list as last read, for FREE_ONLY: {at, list}
+   const lists = new Map()
+   const listKey = (a) => `${a.uid ?? ""}|${a.enterpriseId ?? ""}|${a.source === "key" ? a.key : ""}`
+@@ -4813,14 +4825,8 @@ function makePlugin(site) {
+       // full 30 minutes (magpie-community/plugins#149). checkinOf returns
+       // an outcome only for answers it read and classified.
+       ...(site.ai ? {} : {
+-        async checkin(getAuth) {
+-          const auth = await getAuth()
+-          // an API key reads no credits (see usage), so it has no day to claim
+-          if (auth?.type === "api") return { outcome: "ineligible", message: "check-in needs a signed-in account, not an API key" }
+-          if (auth?.type !== "oauth" || !(auth.access || auth.source)) return { outcome: "failed", message: "not signed in" }
+-          const a = await current(site, client, auth)
+-          return await checkinOf(site, a, { waits: [2000, 4000] })
+-        },
++        checkin: (getAuth) => checkin(getAuth),
++        checkinStatus: (getAuth) => checkin(getAuth, true),
+       }),
+       options: [
+         {

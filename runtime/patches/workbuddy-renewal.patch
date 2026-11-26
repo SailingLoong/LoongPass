@@ -1,8 +1,10 @@
 # WorkBuddy CN browser OAuth uses the native host renewal lock and scheduling.
 # Protocol reference: iJetLi/dsh-providers-hub @ 77a0e87a368124c4b926c74d9060459efa7804d5
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index c47a5a7..4c1d560 100644
 --- a/runtime/vendor/magpie/host.js
 +++ b/runtime/vendor/magpie/host.js
-@@ -2990,6 +2990,7 @@
+@@ -3092,6 +3092,7 @@ async function apiKey({ provider, method, inputs, key, account, accountId, proxy
  //     for good, and the account is marked.
  //   auth.refreshLead: how long (ms) before expires a token is renewed,
  //     5 minutes when not said.
@@ -10,7 +12,7 @@
  //   auth.keepAlive: false leaves an account nothing uses to lapse; any
  //     other value has the magpie serving the gateway renew it in the
  //     background as it comes due too (keepSignedIn, #5080).
-@@ -3036,7 +3037,10 @@
+@@ -3138,7 +3139,10 @@ function leadOf(a) {
  function renewAt(a, stored) {
    if (typeof a?.refresh !== "function" || stored?.type !== "oauth") return 0
    const exp = Number(stored.expires)
@@ -22,9 +24,11 @@
  }
  
  // renewal is the renewal of the sign-in at key under way, started now if
+diff --git a/runtime/vendor/plugins/workbuddy/index.mjs b/runtime/vendor/plugins/workbuddy/index.mjs
+index 5128b45..cc2659f 100644
 --- a/runtime/vendor/plugins/workbuddy/index.mjs
 +++ b/runtime/vendor/plugins/workbuddy/index.mjs
-@@ -271,9 +271,10 @@
+@@ -275,9 +275,10 @@ function moved(site, a, url) {
  
  // merge takes a token WorkBuddy gave (sign-in or refresh) into the
  // stored sign-in, times given as at-ms or in-seconds.
@@ -36,12 +40,10 @@
    if (got.refreshToken) out.refresh = got.refreshToken
    if (got.domain) out.domain = got.domain
    if (got.tokenType) out.tokenType = got.tokenType
-@@ -297,6 +298,24 @@
- 
- function refreshable(a) {
+@@ -347,6 +348,24 @@ function refreshable(a) {
    return !!a.refresh && !(a.refreshExpiresAt && Date.now() >= a.refreshExpiresAt)
-+}
-+
+ }
+ 
 +// The China service may revoke an idle refresh grant before the access token
 +// expires. A legacy access token's iat is read only to schedule its renewal.
 +function browserRefreshAt(a) {
@@ -58,10 +60,12 @@
 +  }
 +  if (!Number.isSafeInteger(issued) || issued <= 0 || issued > Date.now() || (a.expires > 0 && issued >= a.expires)) return 0
 +  return issued + 7 * 24 * 60 * 60 * 1000
- }
- 
++}
++
  // renew spends a's refresh token, once: those who come while it runs, or
-@@ -315,7 +334,7 @@
+ // within KEEP_RENEWED_MS of it, get what it gave. save keeps the result.
+ function renew(site, a, save) {
+@@ -363,7 +382,7 @@ function renew(site, a, save) {
          ...enterpriseHeaders(a),
        }, {})
        if (!got?.accessToken) throw Object.assign(new Error("WorkBuddy gave no refreshed token"), { bare: true })
@@ -70,7 +74,7 @@
        renewed.set(key, { next, at: Date.now() })
        await save?.(next)
        return next
-@@ -331,7 +350,7 @@
+@@ -379,7 +398,7 @@ function merged(a, next) {
    for (const k of TOKEN_FIELDS) if (k in next) out[k] = next[k]
    return out
  }
@@ -78,8 +82,8 @@
 +const TOKEN_FIELDS = ["access", "refresh", "expires", "refreshExpiresAt", "tokenObtainedAt", "domain", "tokenType"]
  
  // fresh is the sign-in with an access token that isn't about to end:
- // refreshed (and saved) when it is. A refresh that fails, or a refresh
-@@ -2150,7 +2169,7 @@
+ // refreshed (and saved) when it is, or when it comes near the end of a
+@@ -2409,7 +2428,7 @@ async function browserSignIn(site) {
          const q = encodeURIComponent(state.state)
          const token = await poll(site, `/v2/plugin/auth/token?state=${q}`, {}, [11217], deadline)
          if (!token.accessToken) return { type: "failed", error: `${site.name} sent back no token` }
@@ -88,7 +92,7 @@
          const who = await poll(site, `/v2/plugin/login/account?state=${q}`, {
            Authorization: "Bearer " + a.access,
            "X-Domain": domainOf(site, a),
-@@ -2179,6 +2198,7 @@
+@@ -2438,6 +2457,7 @@ function success(site, a, name) {
      domain: a.domain ?? "",
      ...(a.enterpriseId ? { enterpriseId: a.enterpriseId } : {}),
      ...(a.refreshExpiresAt ? { refreshExpiresAt: a.refreshExpiresAt } : {}),
@@ -96,9 +100,9 @@
      ...(a.tokenType ? { tokenType: a.tokenType } : {}),
    }
  }
-@@ -4518,6 +4538,7 @@
-       // which doesn't call this. Desktop's sign-in has no expiry stored
-       // and is renewed as before.
+@@ -4827,6 +4847,7 @@ function makePlugin(site) {
+       // doesn't call this. Desktop's sign-in has no expiry stored and is
+       // renewed as before.
        refreshLead: LEAD_MS,
 +      ...(site.id === "workbuddy" ? { refreshAt: browserRefreshAt } : {}),
        rotating: true,

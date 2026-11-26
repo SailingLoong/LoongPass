@@ -1,7 +1,9 @@
 
+diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
+index 3fc3dda..dfa9779 100644
 --- a/runtime/vendor/plugins/qoder/index.mjs
 +++ b/runtime/vendor/plugins/qoder/index.mjs
-@@ -636,6 +636,25 @@
+@@ -661,6 +661,25 @@ function siteOf(site, a) {
    return s
  }
  
@@ -27,7 +29,7 @@
  async function deviceSignIn(site) {
    const verifier = b64url(randomBytes(64))
    const challenge = b64url(createHash("sha256").update(verifier).digest())
-@@ -661,20 +680,7 @@
+@@ -686,20 +705,7 @@ async function deviceSignIn(site) {
          } catch {} // a hiccup: ask again
          await new Promise((r) => setTimeout(r, 2000))
        }
@@ -49,7 +51,7 @@
        let email = ""
        let name = ""
        let uid = dt.user_id
-@@ -1979,6 +1985,8 @@
+@@ -2005,6 +2011,8 @@ function parseCall(v, tools = []) {
    return { name, args: JSON.stringify(args) }
  }
  
@@ -58,7 +60,7 @@
  // propsOf is the parameters the request declared for tool name
  const propsOf = (tools, name) => (tools.find((t) => (t.function ?? t)?.name === name)?.function ?? {}).parameters?.properties ?? {}
  
-@@ -2049,7 +2057,7 @@
+@@ -2075,7 +2083,7 @@ function xmlCall(s, end, tools) {
      return { text: true }
    }
    const name = m[1].trim()
@@ -67,7 +69,7 @@
    const body = s.slice(m[0].length)
    const c = body.match(closeRe)
    const n = body.search(XML_NEXT)
-@@ -2070,12 +2078,85 @@
+@@ -2096,12 +2104,89 @@ function xmlCall(s, end, tools) {
    return { call: { name, args: JSON.stringify(p.args) }, rest: whole ? body.slice(stop + c[0].length) : body.slice(stop) }
  }
  
@@ -96,6 +98,10 @@
 +  get beforeTag() {
 +    this.finishRun()
 +    return !!this.fence || this.inlineTicks > 0 || this.indented
++  }
++  // copy is this state as it stands, to ask of text not added here
++  copy() {
++    return Object.assign(new MarkdownCode(), this)
 +  }
 +  finishRun() {
 +    if (!this.runLength) return
@@ -159,23 +165,29 @@
  }
  
  // callish says a block was on its way to being a call: its JSON began, or
-@@ -2164,13 +2245,13 @@
+@@ -2190,13 +2275,19 @@ class Splitter {
    inCall = false
    sawTool = false
    after = false // a bare call just ended: the closes and blanks after it are dropped
 -  sent = "" // the text given out so far, to tell a block in code from a call
 +  markdown = new MarkdownCode()
++  lineStart = true // nothing sent yet, or the last text sent ended its line
    jsonBuf = null // a {"tool_calls": ...} object being read (plugins#1113)
    constructor(tools = []) {
      this.tools = tools.filter((t) => (t?.function ?? t)?.name)
    }
++  // keep tracks the text sent on, for what is read from it below
++  keep(t) {
++    this.markdown.add(t)
++    this.lineStart = t.endsWith("\n")
++  }
    text(out, t) {
 -    this.sent += t
-+    this.markdown.add(t)
++    this.keep(t)
      out.push({ text: t })
    }
    // bare reads text that may hold a bare call, comb starting at its tag x:
-@@ -2178,23 +2259,22 @@
+@@ -2204,23 +2295,22 @@ class Splitter {
    // when the turn ended in an error
    bare(out, comb, x, end) {
      const head = comb.slice(0, x)
@@ -203,7 +215,7 @@
      if (b.error) {
        out.push({ error: b.error })
        return false
-@@ -2240,6 +2320,10 @@
+@@ -2266,6 +2356,10 @@ class Splitter {
    }
    feed(input) {
      const out = []
@@ -214,7 +226,34 @@
      while (input) {
        if (this.jsonBuf !== null) {
          this.jsonBuf += input
-@@ -2306,6 +2390,10 @@
+@@ -2289,11 +2383,16 @@ class Splitter {
+         }
+         const i = comb.indexOf(CALL_OPEN)
+         const x = this.tools.length ? comb.search(XML_AT) : -1
+-        const start = !this.sent || this.sent.endsWith("\n")
++        const start = this.lineStart
+         let k = -1
+         for (const jm of comb.matchAll(JSON_AT_ALL)) {
+           const at = jm.index + jm[1].length
+-          if ((jm[1] || start) && !quoted(this.sent + comb.slice(0, at))) {
++          // asked of a copy up to the object itself, so an indented line reads as
++          // code; what comes before it is not sent when it is no call
++          const brace = comb.indexOf("{", jm.index)
++          const before = this.markdown.copy()
++          before.add(comb.slice(0, brace))
++          if ((jm[1] || start) && !before.beforeTag) {
+             k = at
+             break
+           }
+@@ -2325,13 +2424,17 @@ class Splitter {
+               }
+           const h = this.tools.length ? comb.search(XML_HOLD) : -1
+           if (h >= 0) keep = Math.max(keep, comb.length - h)
+-          keep = Math.max(keep, jsonHold(comb, !this.sent || this.sent.endsWith("\n")))
++          keep = Math.max(keep, jsonHold(comb, this.lineStart))
+           if (keep < comb.length) this.text(out, comb.slice(0, comb.length - keep))
+           this.textBuf = comb.slice(comb.length - keep)
+           break
          }
          if (i > 0) this.text(out, comb.slice(0, i))
          input = comb.slice(i + CALL_OPEN.length)
@@ -225,7 +264,7 @@
          this.inCall = true
          continue
        }
-@@ -2318,10 +2406,10 @@
+@@ -2344,10 +2447,10 @@ class Splitter {
        }
        const body = comb.slice(0, j)
        const c = parseCall(body, this.tools)
@@ -238,7 +277,7 @@
          this.inCall = false
          out.push({ error: UNREADABLE })
          return out
-@@ -2342,14 +2430,16 @@
+@@ -2368,14 +2471,16 @@ class Splitter {
        const body = this.callBuf
        this.inCall = false
        this.callBuf = ""
@@ -255,11 +294,11 @@
        }
        const t = CALL_OPEN + body
 -      this.sent += t
-+      this.markdown.add(t)
++      this.keep(t)
        return [{ text: t }]
      }
      if (this.textBuf) {
-@@ -2451,6 +2541,10 @@
+@@ -2477,6 +2582,10 @@ async function* events(body, tools = []) {
      for (const tc of delta.tool_calls ?? []) {
        const i = Number(tc.index ?? 0)
        const name = typeof tc.function?.name === "string" ? tc.function.name.trim() : ""
@@ -270,7 +309,7 @@
        const args = tc.function?.arguments ?? ""
        if (!tc.id && !name && !args) continue
        let call = native.get(i)
-@@ -2995,6 +3089,19 @@
+@@ -3021,6 +3130,19 @@ function when(v) {
  // account used up (magpie-community/plugins#454).
  const SPENT_IN_TURN = new Set(["Credits", "Add-on credits", "Shared credits"])
  
@@ -290,7 +329,7 @@
  // spentOf is the credits a usage envelope says the account has used of
  // what it has ("800 / 800 credits") when the pools spent in turn
  // (SPENT_IN_TURN) have none left together, and "" when they have some, or
-@@ -3007,11 +3114,12 @@
+@@ -3033,11 +3155,12 @@ function spentOf(env) {
    let pools = 0
    for (const [a, b] of [["userQuota", "user_quota"], ["addOnQuota", "add_on_quota"], ["orgResourcePackage", "org_resource_package"]]) {
      const p = u[a] !== undefined ? u[a] : u[b]
@@ -308,7 +347,7 @@
      pools++
      total += t
      used += t > 0 ? Math.min(Math.max(n, 0), t) : 0
-@@ -4271,7 +4379,7 @@
+@@ -4297,7 +4420,7 @@ export async function QwenWorkEnterpriseAuthPlugin({ client }) {
  // businessProduct, sessionType, systemPrompt, userInfoPath, normalizeUser,
  // deviceOnly, deviceRefreshTarget, rsaKey, cosyVersion, fallbackModels and
  // the vpcDomain branch of siteOf), and the openapi fetch.
@@ -316,4 +355,4 @@
 +export const protocol = { makePlugin, deviceSignIn, exchangeDeviceGrant, openapi, siteOf }
  
  // for tests
- export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, qoderMessages, kimiModel, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }
+ export const _internal = { spentOf, OUTPUT_CAPS, LEARNED_CAPS, outputCap, fetchListing, accountIdentity, deviceRefreshBody, qwenworkClientHeaders, freeView, maskPhone, phoneLabelOf, realEmailOf, chatHeaders, machineOS, machineHostname, cosyHeaders, typedUnions, Splitter, campaignRuntime, RUNTIMES, campaignPage, campaignTarget, vpcInstance, vpcSite, dedicatedOrigin, dedicatedHost, dedicatedSite, lingmaRoots, lingmaDecode, lingmaSite, lingmaHeaders, LINGMA_MODELS, parseUsage, gfmt, when, failure, modelInfo, qoderBody, asAgentSDK, harnessComma, qoderMessages, kimiModel, cacheMarked, sessionOf, namedSession, taskOf, TASKS, TASK_MAX, TASK_IDLE, SESSION, SITES, decodeBody, events, QUEUE, queueState }

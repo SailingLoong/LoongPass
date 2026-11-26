@@ -1,4 +1,6 @@
 # Preserve the previous LoongPass account admission limit using the native host setting.
+diff --git a/runtime/vendor/plugins/zcode/package.json b/runtime/vendor/plugins/zcode/package.json
+index 32006d0..c3f267c 100644
 --- a/runtime/vendor/plugins/zcode/package.json
 +++ b/runtime/vendor/plugins/zcode/package.json
 @@ -14,6 +14,7 @@
