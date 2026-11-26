@@ -133,7 +133,7 @@ class _ExpiryCalendarState extends State<_ExpiryCalendar> {
             widget.registry,
             batchAt: batch.at,
             status: '${accountTime(batch.at)} 到期',
-            amount: batch.amount ?? '额度未知',
+            amount: batch.amount,
           ),
       ],
     );

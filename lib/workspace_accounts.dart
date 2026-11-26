@@ -192,6 +192,7 @@ class _AccountLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entry = account.entry;
+    final displayAmount = amount ?? (batchAt == null ? null : '额度未知');
     final resolution = showResolution ? entry.resolution : null;
     final action = resolution == null
         ? null
@@ -222,9 +223,9 @@ class _AccountLine extends StatelessWidget {
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
             children: [
-              if (amount != null)
+              if (displayAmount != null)
                 Text(
-                  amount!,
+                  displayAmount,
                   style: context.theme.typography.body.sm.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -258,7 +259,7 @@ class _AccountLine extends StatelessWidget {
             ),
             subtitle: wide
                 ? Text(account.app.label)
-                : amount == null
+                : displayAmount == null
                 ? Text(
                     '${account.app.label} · $stateText',
                     style: muted,
