@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?><!-- sparkle-sign-warning:
 IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
---><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.3-beta.61</title><sparkle:version>61</sparkle:version><sparkle:shortVersionString>1.0.3-beta.61</sparkle:shortVersionString><description>LoongPass 1.0.3-beta.61
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>LoongPass Windows</title><link>https://loongpass.com</link><description>Signed Windows x64 updates</description><item><title>LoongPass 1.0.3-beta.62</title><sparkle:version>62</sparkle:version><sparkle:shortVersionString>1.0.3-beta.62</sparkle:shortVersionString><description>LoongPass 1.0.3-beta.62
 
-- 重启先显示本机已保存的账号。模型和额度按账号在后台并发刷新，每个账号查完即可显示结果。
-- 账号刷新与辅助签到合计最多同时处理 3 个账号，同一来源最多 2 个。插件限制更低时按插件限制执行，同一账号的操作依次处理。
-- 点击「辅助签到」后，不同账号可以同时核对和辅助领取。每笔领取仍按账号核对官方回执并保存。
+- 总览新增「今日调用」和「近 7 天到期未用」。点击可按天查看，选中一天可查看分小时明细。
+- 调用次数来自本机 Magpie 路由给 LoongPass 的请求，重试合并计数。明细中可看最终失败次数、已记录的输入和输出 tokens，以及最近使用的模型和账号。
+- 到期未用按平台和单位分别统计。ZCode 已结算且可对账的额度计入总量；只有到期时间的批次显示为「待核实」。
+- 总览的额度到期日程可查看能消耗该笔额度的已开放模型。
 
 安装与升级
 
 macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZIP。已安装用户可在设置中开启「接收 Beta 版更新」，然后选择「检查更新」。
 
 macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
-</description><enclosure url="https://loongpass.com/api/download/v1.0.3-beta.61/LoongPass-Windows-x64-Setup.exe" length="29272890" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="wzDlP5gLj+A9vFmxFQfx7e7xvf7PSghCHgtk6Dsq9c940FRVaFBp5ZmdfAkEeVs7sPACcyWlk6cCIQaeYJ1zAA==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
-edSignature: e1fsgzNfvkofTxGxfb9uOwOng5Y+YqYQPybvEK4Shv8zeSaQOW7KPg/4mZeWeL89oHtnttuoIbllhotpfM0LBw==
-length: 1914
+</description><enclosure url="https://loongpass.com/api/download/v1.0.3-beta.62/LoongPass-Windows-x64-Setup.exe" length="29304110" type="application/octet-stream" sparkle:os="windows-x64" sparkle:edSignature="KT2rYIwIsw1WFt2WcIkTdTM1yvfbe2o4xYVUdfoqKtRtSNIjq1nWSLaFYjI5UoE6cQ9Z/P74hGU47J83eQTPAg==" sparkle:installerArguments="/SILENT /CLOSEAPPLICATIONS /RELAUNCH=1"></enclosure></item></channel></rss><!-- sparkle-signatures:
+edSignature: D7tdZSbzo5Gnohyq2qXl7aF66mQUUj+kRuV+Vx0j/U/UFuzg/VDkbTnyOyqLRlQ0JdvT36Ac6mGOH8nGZjBpDg==
+length: 2033
 -->
