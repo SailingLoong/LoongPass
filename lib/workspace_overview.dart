@@ -8,6 +8,7 @@ class WorkspaceOverviewPage extends StatefulWidget {
     this.rewards,
     this.onOpenRewards,
     this.serviceStatus,
+    this.usage,
   });
   final AccountWorkspaceRegistry registry;
 
@@ -16,6 +17,7 @@ class WorkspaceOverviewPage extends StatefulWidget {
   final VoidCallback? onOpenRewards;
   final PluginRewards? rewards;
   final Widget? serviceStatus;
+  final MagpieUsage? usage;
   @override
   State<WorkspaceOverviewPage> createState() => _WorkspaceOverviewPageState();
 }
@@ -27,11 +29,17 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
     builder: (context, _) {
       final registry = widget.registry;
       final accounts = registry.accounts;
+      final usage = widget.usage;
+      final owner = widget.rewards?.accounts;
+      final summary = usage == null || owner == null
+          ? null
+          : WorkspaceUsageSummary(usage: usage, accounts: owner);
       if (accounts.isEmpty) {
         return WorkspacePage(
           title: '总览',
           children: [
             widget.serviceStatus ?? _FirstAccountPrompt(widget.onOpenApp),
+            if (summary != null) summary,
           ],
         );
       }
@@ -54,6 +62,7 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
           if (widget.rewards != null)
             RewardBatchStatus(rewards: widget.rewards!),
           attention(AccountAttention.actionRequired),
+          if (summary != null) summary,
           const SizedBox(height: 26),
           _ExpiryCalendar(accounts: accounts, registry: registry),
           if (accounts.any(

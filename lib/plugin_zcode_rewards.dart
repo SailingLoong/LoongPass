@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'credit_expiry_history.dart';
 import 'plugin_accounts.dart';
 import 'zcode_api.dart';
 import 'zcode_rewards.dart';
@@ -254,6 +255,7 @@ class _RewardSession {
   late Map<String, dynamic> reward;
   late Map<String, String> context;
   late String _persisted;
+  List<CreditExpiryEvidence> _expiryEvidence = const [];
   late Map<String, dynamic> _snapshot;
 
   void check() {
@@ -395,6 +397,7 @@ class _RewardSession {
       owner.now(),
     );
     reward['buckets'] = b.buckets.map((b) => b.toJson()).toList();
+    _expiryEvidence = b.expiryEvidence;
     reward['plans'] = b.plans;
     reward['checkedAt'] = b.checkedAt;
     return b;
@@ -632,6 +635,12 @@ class _RewardSession {
           throw const ZcodeFailure('cancelled');
         }
         prepare?.call(data);
+        updateCreditHistory(
+          data,
+          creditHistoryOwner(account.facts),
+          _expiryEvidence,
+          DateTime.fromMillisecondsSinceEpoch(owner.now()),
+        );
         final zcode =
             data.putIfAbsent('zcode', () => <String, dynamic>{}) as Map;
         final journals =

@@ -36,10 +36,12 @@ class PluginModelQuota {
     this.expiry,
     this.windows, {
     this.nextChangeAt,
+    this.expiringWindows = const [],
   });
   final ModelQuotaStatus status;
   final PluginCreditExpiry? expiry;
   final List<Map<String, dynamic>> windows;
+  final List<Map<String, dynamic>> expiringWindows;
   final DateTime? nextChangeAt;
 }
 
@@ -101,6 +103,7 @@ PluginModelQuota pluginModelQuota(Map? usage, String nativeId, DateTime now) {
     status,
     pluginCreditExpiry({'windows': expiring}, const {}, now),
     List.unmodifiable(windows),
+    expiringWindows: List.unmodifiable(expiring),
     nextChangeAt: nextChangeAt,
   );
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../lib/model_connection.dart';
+import '../lib/magpie_usage.dart';
+import '../lib/credit_expiry_history.dart';
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_application.dart';
 import '../lib/plugin_model_catalog.dart';
@@ -24,8 +26,11 @@ class ModelWorkspaceFixture implements PluginApplication {
   late final ModelConnection connection;
   @override
   late final PluginRewards rewards;
+  @override
+  final usage = MagpieUsage();
 
   void dispose() {
+    usage.dispose();
     rewards.close();
     connection.dispose();
     models.dispose();
@@ -38,6 +43,8 @@ class ModelWorkspaceFixture implements PluginApplication {
 
 class WorkspaceFixtureAccounts extends ChangeNotifier
     implements PluginAccounts {
+  @override
+  final expiryHistory = <AccountExpiryRecord>[];
   @override
   bool catalogReady = true;
   @override

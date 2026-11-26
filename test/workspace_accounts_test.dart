@@ -211,6 +211,14 @@ void main() {
     (tester) async {
       final registry = AccountWorkspaceRegistry();
       addTearDown(registry.dispose);
+      final tomorrow = DateTime.now()
+          .copyWith(hour: 12, minute: 0)
+          .add(const Duration(days: 1));
+      final unknown = (at: tomorrow, amount: null);
+      final later = (
+        at: tomorrow.add(const Duration(days: 1)),
+        amount: '48.5 credits',
+      );
       registry.publish(ManagedApp.zcode, Object(), [
         AccountTableEntry(
           id: 'expiry',
@@ -218,9 +226,12 @@ void main() {
           identity: 'synthetic',
           balance: '未知',
           status: 'ready',
-          expiryAt: DateTime.now()
-              .copyWith(hour: 12, minute: 0)
-              .add(const Duration(days: 1)),
+          expiryAt: tomorrow,
+          expiryBatches: [unknown, later],
+          expiryModels: {
+            unknown: [],
+            later: ['glm-5.3'],
+          },
           expiryDetails: const Text('Owner expiry details'),
           details: const Text('Details'),
         ),
@@ -241,6 +252,16 @@ void main() {
       await tester.tap(find.text('Known date'));
       await tester.pumpAndSettle();
       expect(find.text('Owner expiry details'), findsOneWidget);
+      expect(find.text('暂无可核实的已开放模型'), findsOneWidget);
+      expect(find.textContaining('glm-5.3'), findsNothing);
+      await tester.tap(find.byKey(const Key('account-back')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('expiry-day-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('查看可用模型'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('glm-5.3'), findsOneWidget);
+      expect(find.text('暂无可核实的已开放模型'), findsNothing);
     },
   );
   testDesktopWidgets(

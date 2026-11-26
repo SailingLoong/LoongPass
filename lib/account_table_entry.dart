@@ -41,6 +41,7 @@ class AccountTableEntry {
     this.hasRewards = true,
     this.accountSummary,
     this.expiryDetails,
+    this.expiryModels = const {},
     this.actions,
     this.statusLabel,
     this.highlightStatus = false,
@@ -73,6 +74,7 @@ class AccountTableEntry {
   String? get listStatus =>
       needsAttention || highlightStatus ? statusLabel ?? status : null;
   final Widget? expiryDetails, actions;
+  final Map<AccountExpiryBatch, List<String>> expiryModels;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
   final ClaimReceipt? receipt;
@@ -113,6 +115,7 @@ class AccountTableEntry {
     hasRewards: hasRewards,
     accountSummary: accountSummary,
     expiryDetails: expiryDetails,
+    expiryModels: expiryModels,
     actions: actions,
     statusLabel: statusLabel,
     highlightStatus: highlightStatus,

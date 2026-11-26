@@ -6,6 +6,8 @@ import 'account_workspace_registry.dart';
 import 'compact_accounts_table.dart';
 import 'desktop_theme.dart';
 import 'managed_app.dart';
+import 'magpie_usage.dart';
+import 'workspace_usage.dart';
 import 'plugin_rewards.dart';
 import 'reward_batch_action.dart';
 import 'ui_preferences.dart';
@@ -190,6 +192,7 @@ class _AccountLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entry = account.entry;
+    final displayAmount = amount ?? (batchAt == null ? null : '额度未知');
     final resolution = showResolution ? entry.resolution : null;
     final action = resolution == null
         ? null
@@ -220,9 +223,9 @@ class _AccountLine extends StatelessWidget {
                 ? CrossAxisAlignment.end
                 : CrossAxisAlignment.start,
             children: [
-              if (amount != null)
+              if (displayAmount != null)
                 Text(
-                  amount!,
+                  displayAmount,
                   style: context.theme.typography.body.sm.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -233,6 +236,15 @@ class _AccountLine extends StatelessWidget {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
               ),
+              if (batchAt != null &&
+                  entry
+                          .expiryModels[(at: batchAt!, amount: amount)]
+                          ?.isNotEmpty ==
+                      true)
+                Text(
+                  '查看可用模型',
+                  style: muted.copyWith(color: context.desktopPalette.brand),
+                ),
             ],
           );
           final item = FItem(
@@ -247,7 +259,7 @@ class _AccountLine extends StatelessWidget {
             ),
             subtitle: wide
                 ? Text(account.app.label)
-                : amount == null
+                : displayAmount == null
                 ? Text(
                     '${account.app.label} · $stateText',
                     style: muted,

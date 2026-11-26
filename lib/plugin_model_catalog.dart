@@ -63,6 +63,53 @@ class PluginModelBinding {
   }
 }
 
+/// Match a particular account batch, including later deadlines and excluded
+/// zero-rate models. Two indistinguishable batches cannot prove an allocation.
+List<String> spendableModels(
+  List<PluginModel> catalog,
+  PluginAccount account,
+  PluginCreditExpiry batch,
+  List<PluginCreditExpiry> accountBatches,
+  DateTime now,
+) {
+  bool same(PluginCreditExpiry other) =>
+      other.at.isAtSameMomentAs(batch.at) &&
+      other.amount?.unit == batch.amount?.unit &&
+      other.amount?.amount == batch.amount?.amount;
+  if (batch.amount == null ||
+      !batch.at.isAfter(now) ||
+      accountBatches.where(same).length != 1)
+    return [];
+  return [
+    for (final model in catalog)
+      if (model.published &&
+          model.official &&
+          model.bindings.any((binding) {
+            if (binding.account.key != account.key ||
+                !binding.available ||
+                binding.native['free'] == true)
+              return false;
+            final rate = binding.native['rate'];
+            if (account.provider == 'workbuddy' && rate is num && rate <= 0)
+              return false;
+            final windows = binding.quota.expiringWindows.where((window) {
+              if (account.provider != 'workbuddy') return true;
+              // The pinned plugin can lack pricing when the supplier model read fails.
+              return rate is num && rate > 0 ||
+                  (window['models'] as List?)?.isNotEmpty == true ||
+                  (window['notModels'] as List?)?.isNotEmpty == true ||
+                  (window['model'] as String?)?.isNotEmpty == true;
+            }).toList();
+            return pluginCreditExpiryBatches(
+              {'windows': windows},
+              const {},
+              now,
+            ).any(same);
+          }))
+        model.name,
+  ];
+}
+
 class PluginModel {
   PluginModel(
     this.id,
