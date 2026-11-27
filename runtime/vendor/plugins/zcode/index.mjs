@@ -1594,7 +1594,8 @@ function installedDevice() {
 // the account's own plan (the host keeps one entry per account name).
 async function authorize(site, log, onTeam = false, context = {}) {
   const poll = "Bearer " + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
-  const device = context.device ?? installedDevice() ?? uuid()
+  const device = context.device ?? installedDevice()
+  if (!device) return { type: "failed", error: "zcode_device_required" }
   const expectedUid = context.expectedUid
   if (!deviceID(device) || context.expectedRealm !== undefined && context.expectedRealm !== site) throw new Error("ZCode sign-in: invalid target binding")
   let flow
@@ -1883,7 +1884,9 @@ function asZCode() {
       if (own.teamSignIn) return { type: "failed", error: TEAM_SIGN_IN }
       const { user, uid, ...s } = own
       if (!uid) return { type: "failed", error: "ZCode's selected account has no official user ID; sign in to Z.ai or BigModel here" }
-      const state = { source: "zcode", device: anyDevice, ...s }
+      const device = installedDevice()
+      if (!device) return { type: "failed", error: "zcode_device_required" }
+      const state = { source: "zcode", ...s, device }
       return { type: "success", refresh: JSON.stringify(state), access: s.key || s.jwt || "", expires: 0, accountId: accountIdOf(s.site, uid), uid, name: user }
     },
   }
@@ -3114,11 +3117,20 @@ export async function ZCodeAuthPlugin({ client, magpie } = {}, options = {}) {
     },
     auth: {
       provider: PROVIDER,
+      deviceBinding(auth) {
+        if (auth?.type !== "oauth") return
+        try {
+          const s = savedGrant(auth)
+          return { owner: accountIdOf(s.site, s.uid), device: s.device.toLowerCase() }
+        } catch { return undefined }
+      },
       // Optional public host hooks: authorization still goes through the
       // same native callback and is saved only by the host.
       async reauthorize(getAuth, context = {}) {
         const s = savedGrant(await getAuth(), context)
-        return authorize(s.site, log, isTeam(s), { device: context.device ?? s.device, expectedUid: s.uid, expectedRealm: s.site })
+        const device = context.device ?? s.device
+        if (!deviceID(device) || (device.toLowerCase() !== s.device.toLowerCase() && device.toLowerCase() !== installedDevice())) throw new Error("zcode_device_required")
+        return authorize(s.site, log, isTeam(s), { device: device.toLowerCase(), expectedUid: s.uid, expectedRealm: s.site })
       },
       async rewardContext(getAuth) {
         const s = savedGrant(await getAuth())

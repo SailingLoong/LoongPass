@@ -136,6 +136,7 @@ class _AccountSummary extends StatelessWidget {
             label: '套餐与额度',
             icon: FLucideIcons.layers,
             value: row.plan,
+            note: row.giftGrants.isEmpty ? null : row.giftGrants.join('\n'),
             onOpen: onOpen,
           ),
         ] else ...[

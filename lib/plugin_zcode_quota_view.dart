@@ -15,6 +15,11 @@ class _ZcodeGiftDetails extends StatelessWidget {
     final reward = _reward(account);
     final buckets = zcodeBuckets(reward).toList();
     final plans = zcodePlans(reward).toList();
+    final planNames = {
+      for (final p in plans)
+        if (p['user_plan_id'] is String && p['name'] is String)
+          p['user_plan_id']: p['name'],
+    };
     final rewardTime = _millis(reward['checkedAt']);
     final secondary = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
@@ -40,13 +45,7 @@ class _ZcodeGiftDetails extends StatelessWidget {
             Text(
               [
                 if (_text(entitlement['show_name']) case final name?) name,
-                if (zcodeUnits(entitlement['grant_units']) case final amount?)
-                  '${switch (entitlement['period']) {
-                    'daily' => '每日发放',
-                    'weekly' => '每周发放',
-                    'monthly' => '每月发放',
-                    _ => '发放',
-                  }} ${_number(amount)} ${_text(entitlement['unit_type']) ?? '单位未知'}',
+                if (_grantText(entitlement) case final grant?) grant,
                 if (zcodeTime(entitlement['effective_at'] ?? p['starts_at'])
                     case final at?)
                   '${creditTime(at)} 生效',
@@ -68,7 +67,18 @@ class _ZcodeGiftDetails extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4),
             child: Text(
               [
-                '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit}',
+                if (plans.length > 1)
+                  if (planNames[bucket.instance] case final String name) name,
+                bucket.label,
+                '总量 ${_bucketAmount(bucket.total, bucket.unit)}',
+                '已用 ${_bucketAmount(bucket.used, bucket.unit)}',
+                '剩余 ${_bucketAmount(bucket.remaining, bucket.unit)}',
+                if (bucket.models.isNotEmpty) '适用模型 ${bucket.models.join('、')}',
+                if (zcodeTime(bucket.periodStart) case final at?)
+                  '${creditTime(at)} 起算',
+                if (zcodeTime(bucket.periodEnd) case final at?)
+                  if (bucket.periodEnd != bucket.expiresAt)
+                    '${creditTime(at)} 本期结束',
                 if (account.usesZcodeRewardExpiry)
                   if (zcodeTime(bucket.expiresAt) case final at?)
                     '${creditTime(at)} 到期',
@@ -78,6 +88,32 @@ class _ZcodeGiftDetails extends StatelessWidget {
       ],
     );
   }
+}
+
+String _bucketAmount(num? amount, String unit) =>
+    amount == null ? '未知' : groupAccountAmount('${_number(amount)} $unit');
+
+String? _grantText(Map entitlement, {bool summary = false}) {
+  final amount = zcodeUnits(entitlement['grant_units']);
+  if (amount == null) return null;
+  final period = switch (entitlement['period']) {
+    'daily' => '每日发放',
+    'weekly' => '每周发放',
+    'monthly' => '每月发放',
+    _ => summary ? '获赠' : '发放',
+  };
+  return '$period ${_bucketAmount(amount, _text(entitlement['unit_type']) ?? '单位未知')}';
+}
+
+List<String> _zcodeGiftGrants(PluginAccount account) {
+  final now = DateTime.now();
+  return [
+    for (final p in zcodePlans(_reward(account)))
+      if (p['status'] == 'active' &&
+          zcodeTime(p['ends_at'])?.isAfter(now) != false)
+        for (final e in zcodeEntitlements(p))
+          if (_grantText(e, summary: true) case final grant?) grant,
+  ];
 }
 
 Iterable<Map> _zcodeClaimGroups(Map reward) sync* {

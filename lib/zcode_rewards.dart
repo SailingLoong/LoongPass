@@ -120,8 +120,9 @@ Iterable<Map> zcodeEntitlements(Map plan) =>
 
 class ZcodeBucket {
   final String label, unit;
-  final num? remaining;
-  final int? expiresAt;
+  final num? remaining, total, used;
+  final int? expiresAt, periodStart, periodEnd;
+  final List<String> models;
   final String? instance, planId;
   const ZcodeBucket(
     this.label,
@@ -130,12 +131,22 @@ class ZcodeBucket {
     this.expiresAt, {
     this.instance,
     this.planId,
+    this.total,
+    this.used,
+    this.periodStart,
+    this.periodEnd,
+    this.models = const [],
   });
   Map<String, dynamic> toJson() => {
     'label': label,
     'unit': unit,
     'remaining': remaining,
     'expiresAt': expiresAt,
+    if (total != null) 'total': total,
+    if (used != null) 'used': used,
+    if (periodStart != null) 'periodStart': periodStart,
+    if (periodEnd != null) 'periodEnd': periodEnd,
+    if (models.isNotEmpty) 'models': models,
     if (instance != null) 'instance': instance,
     if (planId != null) 'planId': planId,
   };
@@ -144,6 +155,11 @@ class ZcodeBucket {
     value['unit'],
     zcodeUnits(value['remaining']),
     _seconds(value['expiresAt']),
+    total: zcodeUnits(value['total']),
+    used: zcodeUnits(value['used']),
+    periodStart: _seconds(value['periodStart']),
+    periodEnd: _seconds(value['periodEnd']),
+    models: (value['models'] as List? ?? const []).whereType<String>().toList(),
     instance: value['instance'] as String?,
     planId: value['planId'] as String?,
   );
@@ -235,13 +251,33 @@ class ZcodeBalance {
           : planEnd == null
           ? expires
           : (expires < planEnd ? expires : planEnd);
-      final used = zcodeUnits(b['used_units']),
-          total = zcodeUnits(b['total_units']);
+      final reportedUsed = zcodeUnits(b['used_units']),
+          total = zcodeUnits(b['total_units']),
+          left = zcodeUnits(b['remaining_units']);
       final remaining = b['remaining_units'] != null
-          ? zcodeUnits(b['remaining_units'])
-          : used != null && total != null && used <= total
-          ? total - used
+          ? left
+          : reportedUsed != null && total != null && reportedUsed <= total
+          ? total - reportedUsed
           : null;
+      final used =
+          b['used_units'] == null &&
+              total != null &&
+              left != null &&
+              left <= total
+          ? total - left
+          : reportedUsed;
+      final models = <String>{};
+      for (final capability
+          in (b['capabilities'] is List ? b['capabilities'] as List : const [])
+              .whereType<String>()) {
+        final name = capability.trim();
+        final model = name.startsWith('model:')
+            ? name.substring(6).trim()
+            : name.contains(':')
+            ? ''
+            : name;
+        if (model.isNotEmpty) models.add(model);
+      }
       buckets.add(
         ZcodeBucket(
           zcodeText(b['show_name'])
@@ -252,23 +288,17 @@ class ZcodeBalance {
           zcodeText(b['unit_type']) ? b['unit_type'] : '单位未知',
           remaining,
           end,
+          total: total,
+          used: used,
+          periodStart: _seconds(b['period_start']),
+          periodEnd: _seconds(b['period_end']),
+          models: models.toList(),
           planId: plan['plan_id'] as String?,
           instance: plan['user_plan_id'] as String?,
         ),
       );
-      final available = remaining != null && remaining > 0;
-      if (available && b['capabilities'] is List) {
-        for (final capability in b['capabilities']) {
-          if (capability is! String) continue;
-          final name = capability.trim();
-          final model = name.startsWith('model:')
-              ? name.substring(6).trim()
-              : name.contains(':')
-              ? ''
-              : name;
-          if (model.isNotEmpty) entitledModels.add(model.toLowerCase());
-        }
-      }
+      if (remaining != null && remaining > 0)
+        entitledModels.addAll(models.map((name) => name.toLowerCase()));
     }
     buckets.sort(
       (a, b) =>

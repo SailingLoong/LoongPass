@@ -18,6 +18,17 @@ import 'credit_expiry_history.dart';
 String zcodeRewardIdentity(String realm, String uid) =>
     jsonEncode([realm, uid]);
 
+typedef ZcodeDeviceBinding = ({String owner, String device});
+
+bool zcodeDeviceConflict(
+  ZcodeDeviceBinding target,
+  Iterable<ZcodeDeviceBinding> others,
+) => others.any(
+  (other) => target.owner == other.owner
+      ? target.device != other.device
+      : target.device == other.device,
+);
+
 /// Daily reward facts belong to the official identity, not a native slot.
 String pluginRewardIdentity(String provider, String realm, String uid) =>
     jsonEncode([provider, realm, uid]);
@@ -56,6 +67,13 @@ class PluginAccount {
   String get realm => facts['realm'] ?? '';
   String get registrationId => facts['registrationId'];
   final String? zcodeDevice;
+  ZcodeDeviceBinding? get zcodeBinding =>
+      active && provider == 'zcode' && uid.isNotEmpty && zcodeDevice != null
+      ? (
+          owner: zcodeRewardIdentity(realm, uid),
+          device: zcodeDevice!.toLowerCase(),
+        )
+      : null;
   bool get zcodeGiftOnly =>
       provider == 'zcode' && facts['zcodeGiftOnly'] == true;
 
@@ -237,6 +255,38 @@ class PluginAccounts extends ChangeNotifier {
     } on ZcodeFailure {
       return null;
     }
+  }
+
+  /// Read the native owner's current file, including slots not yet imported
+  /// into the UI. A conflict must stop a submission even after a captcha.
+  Future<bool> hasZcodeBindingConflict(
+    PluginAccount account,
+    String device,
+  ) async {
+    final Map<String, Map<String, dynamic>> native;
+    try {
+      native = await credentials.all();
+    } catch (_) {
+      throw const ZcodeFailure('credential_unavailable');
+    }
+    if (!_sameIdentity(account.key, account.facts, native[account.key]) ||
+        _savedZcodeDevice(native[account.key]) != device) {
+      throw const ZcodeFailure('cancelled');
+    }
+    final target = (
+      owner: zcodeRewardIdentity(account.realm, account.uid),
+      device: device,
+    );
+    return zcodeDeviceConflict(target, [
+      for (final entry in native.entries)
+        if (entry.key.split('#').first == 'zcode')
+          if (_identity(entry.key, entry.value) case final identity?)
+            if (_savedZcodeDevice(entry.value) case final mid?)
+              (
+                owner: zcodeRewardIdentity(identity.realm, identity.uid),
+                device: mid,
+              ),
+    ]);
   }
 
   Future<void> setZcodeGiftOnly(PluginAccount account, bool value) =>

@@ -1013,11 +1013,12 @@ void main() {
     expect(row.receipt?.creditExpiresAt, end.toLocal());
     expect(row.balance, isNot(contains('300000000')));
     expect(row.expiringAmount, isNull);
+    expect(find.text('获赠 300,000,000 token'), findsOneWidget);
     await tester.tap(find.byKey(const Key('account-zcode#weekend')));
     await tester.pumpAndSettle();
     await openDetailSection(tester, 'quota');
     expect(find.textContaining('Weekend Build'), findsWidgets);
-    expect(find.textContaining('发放 300000000 token'), findsWidgets);
+    expect(find.textContaining('发放 300,000,000 token'), findsWidgets);
     expect(find.textContaining(creditTime(effective)), findsWidgets);
     expect(find.textContaining(creditTime(end)), findsWidgets);
     final billingMode = find.byKey(const Key('zcode-plan-zcode#weekend'));
@@ -1028,6 +1029,81 @@ void main() {
     await tester.pumpAndSettle();
     expect(rewards.accounts.accounts.single.zcodeGiftOnly, isTrue);
   });
+
+  testDesktopWidgets(
+    'an externally issued gift shows grant, window use and expiry without inventing a claim',
+    (tester) async {
+      final at = DateTime.utc(2099, 11, 30, 1);
+      final end = at.millisecondsSinceEpoch ~/ 1000;
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#gift',
+          active: true,
+          models: const [],
+          facts: {
+            'provider': 'zcode',
+            'uid': 'holder',
+            'realm': 'bigmodel',
+            'registrationId': 'one',
+            'reward': {
+              'status': 'observedClaimed',
+              'checkedAt': DateTime.now().millisecondsSinceEpoch,
+              'plans': [
+                {
+                  'plan_id': 'promo',
+                  'user_plan_id': 'held',
+                  'status': 'active',
+                  'name': 'Weekend Build',
+                  'ends_at': end,
+                  'entitlements': [
+                    {
+                      'unit_type': 'token',
+                      'grant_units': 300000000,
+                      'period': 'one_time',
+                    },
+                  ],
+                },
+              ],
+              'buckets': [
+                {
+                  'planId': 'promo',
+                  'instance': 'held',
+                  'label': 'Flash',
+                  'unit': 'token',
+                  'total': 300000000,
+                  'used': 50000000,
+                  'remaining': 250000000,
+                  'expiresAt': end,
+                  'models': ['GLM-5.3-Flash'],
+                },
+              ],
+            },
+          },
+        ),
+      );
+      final row = tester
+          .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
+          .entries
+          .single;
+      expect(row.receipt, isNull);
+      expect(row.inApp('zcode', 'ZCode').giftGrants, ['获赠 300,000,000 token']);
+      expect(find.text('获赠 300,000,000 token'), findsOneWidget);
+      expect(row.balance, '250000000 token');
+      expect(row.nextExpiry, at);
+      await tester.tap(find.byKey(const Key('account-zcode#gift')));
+      await tester.pumpAndSettle();
+      await openDetailSection(tester, 'quota');
+      expect(
+        find.textContaining(
+          '总量 300,000,000 token · 已用 50,000,000 token · 剩余 250,000,000 token',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('适用模型 GLM-5.3-Flash'), findsOneWidget);
+      expect(find.textContaining(creditTime(at)), findsWidgets);
+    },
+  );
 
   for (final (activityNewer, hasGift) in [
     (true, false),
@@ -1174,7 +1250,7 @@ void main() {
       await detailBack(tester);
       await openDetailSection(tester, 'quota');
       expect(
-        find.textContaining('Gift tokens：剩余 12345678 tokens'),
+        find.textContaining('总量 未知 · 已用 未知 · 剩余 12,345,678 tokens'),
         findsOneWidget,
       );
       expect(find.text('套餐额度查询未完成。'), findsOneWidget);
@@ -1453,7 +1529,7 @@ void main() {
             key: 'zcode#other',
             active: true,
             models: const [],
-            facts: {...target.facts, 'uid': 'other'},
+            facts: {...target.facts, 'uid': 'official-a'},
             zcodeDevice: localDevice,
           ),
         ],
@@ -1615,7 +1691,7 @@ void main() {
       expect(find.textContaining('99999.125'), findsWidgets);
       expect(find.textContaining('100000'), findsWidgets);
       expect(find.textContaining('0.875'), findsWidgets);
-      expect(find.textContaining('12345678 tokens'), findsWidgets);
+      expect(find.textContaining('12,345,678 tokens'), findsWidgets);
       expect(find.text('已获活动额度'), findsWidgets);
       expect(find.textContaining('GLM Coding Lite'), findsWidgets);
       expect(find.text('最近一次官方额度查询未完成。'), findsNothing);

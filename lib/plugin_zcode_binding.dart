@@ -1,5 +1,30 @@
 import 'plugin_accounts.dart';
 
+bool zcodeBindingConflicts(
+  PluginAccount account,
+  Iterable<PluginAccount> accounts, {
+  String? device,
+}) {
+  final mid = device ?? account.zcodeDevice;
+  if (mid == null ||
+      !account.active ||
+      account.provider != 'zcode' ||
+      account.uid.isEmpty)
+    return false;
+  return zcodeDeviceConflict(
+    (
+      owner: zcodeRewardIdentity(account.realm, account.uid),
+      device: mid.toLowerCase(),
+    ),
+    accounts
+        .where((a) => a.key != account.key)
+        .map((a) => a.zcodeBinding)
+        .nonNulls,
+  );
+}
+
+const zcodeBindingGuidance = '设备绑定冲突。请核对账号，在该账号实际使用的 ZCode 设备上重新授权。';
+
 String? zcodeBindingLabel(
   String? device,
   Iterable<PluginAccount> accounts, {
