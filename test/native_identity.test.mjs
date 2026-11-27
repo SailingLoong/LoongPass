@@ -50,31 +50,18 @@ async function loomySignIn(phone, uid) {
 }
 
 const jwt = 'e30.' + Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url') + '.fake';
-async function zcodeSignIn(site, { user = { user_id: 'shared-uid', email: 'same@example.invalid' }, paid = false, team = false } = {}) {
-  const api = site === 'bigmodel' ? 'bigmodel.cn' : 'api.z.ai';
-  globalThis.fetch = async (input, init = {}) => {
-    const url = new URL(String(input));
-    const answer = (data) => Response.json({ code: 0, data });
-    if (url.hostname === 'zcode.z.ai') {
-      if (url.pathname === '/api/v1/oauth/cli/init') {
-        expect(JSON.parse(init.body).provider).toBe(site);
-        return answer({ flow_id: 'synthetic', authorize_url: `https://${site === 'bigmodel' ? 'bigmodel.cn' : 'z.ai'}/login`, poll_interval_sec: 1 });
-      }
-      if (url.pathname === '/api/v1/oauth/cli/poll/synthetic') return answer({ status: 'ready', user, token: jwt, [site]: { access_token: 'fake-vendor-token' } });
-      if (url.pathname === '/api/v1/zcode-plan/billing/balance') return answer({ plans: [{ plan_id: 'gift', status: 'active', name: 'Start Plan' }], balances: [] });
-    }
-    if (url.pathname === '/api/biz/subscription/list' && url.hostname === (site === 'bigmodel' ? 'open.bigmodel.cn' : api)) return answer([{ status: 'VALID', productName: 'GLM Coding Pro' }]);
-    if (url.hostname !== api) return noNetwork();
-    if (url.pathname === '/api/auth/z/login') return answer({ access_token: 'fake-biz-token' });
-    if (url.pathname === '/api/biz/customer/getCustomerInfo') return answer({ organizations: paid || team ? [{ organizationId: 'org', projects: [{ projectId: 'project', projectType: team ? 2 : 1 }] }] : [] });
-    if (url.pathname.endsWith('/api_keys')) return answer([{ apiKey: 'fake-key', name: team ? 'zcode-team-api-key' : 'zcode-api-key', keyType: team ? 2 : 1 }]);
-    if (url.pathname.endsWith('/api_keys/copy/fake-key')) return answer({ secretKey: 'fake-secret' });
-    if (url.pathname === '/api/biz/team/subscribe/product/querySubscribeDetail') return answer({ status: 'EFFECTIVE', memberGrantStatus: 'VALID', productName: 'GLM Coding Team' });
-    return noNetwork();
-  };
-  const hooks = await ZCodeAuthPlugin();
-  const method = hooks.auth.methods[team ? 2 : site === 'bigmodel' ? 1 : 0];
-  return (await method.authorize({ site })).callback();
+async function zcodeSignIn(site, options = {}) {
+  const home = await mkdtemp(join(temporary, 'browser-'));
+  const runner = fileURLToPath(new URL('./fixtures/zcode_browser_signin.mjs', import.meta.url));
+  const child = Bun.spawn([process.execPath, runner, join(packages, 'zcode/index.mjs')], {
+    cwd: home,
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+    stdin: new TextEncoder().encode(JSON.stringify({ site, options })),
+    stdout: 'pipe', stderr: 'pipe',
+  });
+  const [output, errors, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+  expect(code, errors).toBe(0);
+  return JSON.parse(output);
 }
 
 test('Loomy SMS stores official identity separately from a colliding masked label', async () => {
