@@ -54,6 +54,12 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   late final PluginAccount? _target;
   bool _useLocalDevice = false;
 
+  String? get _localDeviceLabel => zcodeBindingLabel(
+    widget.localZcodeDevice,
+    widget.accounts.accounts,
+    selecting: true,
+  );
+
   List<Map> get _methods => [
     for (final m
         in widget.accounts.providers[_provider]?['methods'] as List? ??
@@ -390,9 +396,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               builder: selectFieldSemantics,
                               label: const Text('绑定设备'),
                               items: {
-                                '沿用账号绑定 · ${_target.zcodeDevice ?? '已保存设备'}':
+                                '沿用账号绑定 · ${zcodeBindingLabel(_target.zcodeDevice, widget.accounts.accounts) ?? '已保存设备'}':
                                     false,
-                                '本机 ZCode · ${widget.localZcodeDevice}': true,
+                                '本机 ZCode · $_localDeviceLabel': true,
                               },
                               control: FSelectControl.lifted(
                                 value: _useLocalDevice,
@@ -402,7 +408,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               ),
                             )
                           else if (zcodeBindingLabel(
-                                _target!,
+                                _target!.zcodeDevice,
                                 widget.accounts.accounts,
                               )
                               case final device?)
@@ -413,7 +419,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                             _provider == 'zcode' &&
                             _chosen['type'] == 'oauth' &&
                             widget.localZcodeDevice != null)
-                          Text('本机 ZCode 设备 ID · ${widget.localZcodeDevice}'),
+                          Text('本机 ZCode 设备 ID · $_localDeviceLabel'),
                         if (_step == _Step.select && _target == null) ...[
                           if (widget.providerIds
                                   .where(widget.accounts.providers.containsKey)

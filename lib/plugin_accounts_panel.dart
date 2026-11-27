@@ -649,7 +649,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       ].join(' · '),
       officialId: a.uid.isEmpty ? null : a.uid,
       deviceBinding: a.provider == 'zcode'
-          ? zcodeBindingLabel(a, widget.accounts.accounts) ?? '尚未核实'
+          ? zcodeBindingLabel(a.zcodeDevice, widget.accounts.accounts) ?? '尚未核实'
           : null,
       authorizationLabel: _needsAuthorization(a) ? '需要重新授权' : '已保存授权',
       balance: _balance(a),
@@ -675,6 +675,9 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       observedAt: a.balanceObservedAt,
       receipt: receipt,
       previousReceipts: receipts.skip(1).toList(growable: false),
+      unconfirmedClaimTimes: a.provider == 'zcode'
+          ? _zcodeUnconfirmedClaims(_reward(a))
+          : const [],
       notice: _messageAccount == a.key ? _message : null,
       expiryAt: next?.at,
       expiringAmount: _formatBalance(next?.amount),

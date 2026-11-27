@@ -449,11 +449,11 @@ void main() {
       zcodeDevice: device,
     );
     expect(
-      zcodeBindingLabel(target, [target, other(target.uid, _device)]),
+      zcodeBindingLabel(target.zcodeDevice, [target, other(target.uid, _device)]),
       _device,
     );
     expect(
-      zcodeBindingLabel(target, [
+      zcodeBindingLabel(target.zcodeDevice, [
         target,
         other('different', _device),
         other('third', _oldDevice),

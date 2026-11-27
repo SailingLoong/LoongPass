@@ -900,6 +900,53 @@ void main() {
     },
   );
 
+  testDesktopWidgets(
+    'ZCode retains an unanswered historical submission when today has no offer',
+    (tester) async {
+      final submitted = DateTime.utc(2026, 11, 6, 12, 38);
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#history',
+          active: true,
+          models: const [],
+          facts: {
+            'provider': 'zcode',
+            'uid': 'one',
+            'realm': 'bigmodel',
+            'registrationId': 'one',
+            'reward': {
+              'status': 'noOffer',
+              'claims': {},
+              'buckets': [],
+              'bindingHistory': [
+                {
+                  'claims': {},
+                  'bindingHistory': [
+                    {
+                      'claims': {
+                        'previous': {
+                          'state': 'pending',
+                          'submittedAt': submitted.millisecondsSinceEpoch,
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ),
+      );
+      await tester.tap(find.byKey(const Key('account-zcode#history')));
+      await tester.pumpAndSettle();
+      await openDetailSection(tester, 'receipt');
+      expect(find.textContaining('官方回执未确认'), findsOneWidget);
+      expect(find.textContaining(creditTime(submitted)), findsOneWidget);
+      expect(find.textContaining('已领取'), findsNothing);
+    },
+  );
+
   testDesktopWidgets('ZCode shows a confirmed grant before its first balance', (
     tester,
   ) async {
@@ -1385,6 +1432,7 @@ void main() {
     'target reauthorization uses native capability without choosing a login method',
     (tester) async {
       final runtime = _Runtime()..auto = true;
+      const localDevice = '11111111-2222-4333-8444-555555555555';
       final target = PluginAccount(
         key: 'zcode#one',
         active: true,
@@ -1399,7 +1447,16 @@ void main() {
       );
       final accounts = _Accounts(
         runtime,
-        rows: [target],
+        rows: [
+          target,
+          PluginAccount(
+            key: 'zcode#other',
+            active: true,
+            models: const [],
+            facts: {...target.facts, 'uid': 'other'},
+            zcodeDevice: localDevice,
+          ),
+        ],
         providers: {
           'zcode': {
             'name': 'ZCode',
@@ -1408,7 +1465,6 @@ void main() {
           },
         },
       );
-      const localDevice = '11111111-2222-4333-8444-555555555555';
       await tester.pumpWidget(
         DesktopTestApp(
           home: Scaffold(
@@ -1442,7 +1498,7 @@ void main() {
       final deviceField = find.byKey(const ValueKey('zcode-login-device'));
       await tester.tap(deviceField);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('本机 ZCode · $localDevice').last);
+      await tester.tap(find.text('本机 ZCode · $localDevice · 已有 1 个账号绑定').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.text('继续').evaluate().isEmpty

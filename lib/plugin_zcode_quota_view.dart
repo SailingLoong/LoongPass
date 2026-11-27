@@ -80,15 +80,39 @@ class _ZcodeGiftDetails extends StatelessWidget {
   }
 }
 
+Iterable<Map> _zcodeClaimGroups(Map reward) sync* {
+  if (reward['claims'] case final Map claims) yield claims;
+  if (reward['bindingHistory'] case final List history) {
+    for (final previous in history.reversed.whereType<Map>()) {
+      yield* _zcodeClaimGroups(previous);
+    }
+  }
+}
+
+List<DateTime> _zcodeUnconfirmedClaims(Map reward) {
+  final pending = <(Object?, DateTime)>{}, settled = <(Object?, DateTime)>{};
+  for (final claims in _zcodeClaimGroups(reward)) {
+    for (final entry in claims.entries) {
+      final claim = entry.value;
+      if (claim is! Map) continue;
+      final at = _millis(claim['submittedAt']);
+      if (at == null) continue;
+      final id = (entry.key, at);
+      if ({'pending', 'unknown'}.contains(claim['state'])) {
+        pending.add(id);
+      } else {
+        settled.add(id);
+      }
+    }
+  }
+  return pending.difference(settled).map((id) => id.$2).toList()
+    ..sort((a, b) => b.compareTo(a));
+}
+
 List<ClaimReceipt> _zcodeReceipts(Map reward) {
   final receipts = <ClaimReceipt>[];
   final seen = <String>{};
-  for (final claims in [
-    reward['claims'],
-    for (final binding
-        in (reward['bindingHistory'] as List? ?? const []).reversed)
-      if (binding is Map) binding['claims'],
-  ].whereType<Map>()) {
+  for (final claims in _zcodeClaimGroups(reward)) {
     for (final entry in claims.entries) {
       if (entry.value is! Map) continue;
       final latest = entry.value as Map;

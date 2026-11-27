@@ -22,6 +22,7 @@ class AccountTableEntry {
     this.expiryAt,
     this.receipt,
     this.previousReceipts = const [],
+    this.unconfirmedClaimTimes = const [],
     this.observedAt,
     this.preferenceId,
     this.sourceLabel,
@@ -80,6 +81,7 @@ class AccountTableEntry {
   final String? notice;
   final ClaimReceipt? receipt;
   final List<ClaimReceipt> previousReceipts;
+  final List<DateTime> unconfirmedClaimTimes;
   String get latestClaim => receipt?.display ?? '暂无已确认记录';
   final DateTime? observedAt;
   final String? preferenceId, sourceLabel;
@@ -108,6 +110,7 @@ class AccountTableEntry {
     expiryAt: expiryAt,
     receipt: receipt,
     previousReceipts: previousReceipts,
+    unconfirmedClaimTimes: unconfirmedClaimTimes,
     observedAt: observedAt,
     attention: attention,
     resolution: resolution,
