@@ -27,7 +27,8 @@
     "patches/zcode-desktop-owner.patch",
     "patches/zcode-empty-activity-balance.patch",
     "patches/zcode-gift-units.patch",
-    "patches/zcode-installed-device.patch"
+    "patches/zcode-installed-device.patch",
+    "patches/zcode-device-ownership.patch"
   ],
   "sources": {
     "magpie": {
@@ -85,7 +86,7 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "be3346e94266775226f85d3d0f36dbbc1511de1edad4d097b02a6e71b90e7dce",
+      "sha256": "23bafc8606ad6d4470c9a49862a2fd99564d2e78ffd4363a21f64ea57b68d34e",
       "upstreamSha256": "223444becd7e9ceb44e8dd617aed9d7bbd0f56e6fda5a2fa89e5978e97955a29"
     },
     {
@@ -319,7 +320,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "2c1dd9801441f4c4157f6e32cdce0c538b85947e03b3888809f4f4257e482e5a",
+      "sha256": "b5b57db5d3a9c599897ac63477473a698b8a187b1afb70a5fa3832dbfe7d835d",
       "upstreamSha256": "af361ed54c29416f39827c183feac009c140940c941c0cc92b9bca2445d683a8"
     },
     {
@@ -382,6 +383,7 @@
     "patches/zcode-desktop-owner.patch",
     "patches/zcode-empty-activity-balance.patch",
     "patches/zcode-gift-units.patch",
-    "patches/zcode-installed-device.patch"
+    "patches/zcode-installed-device.patch",
+    "patches/zcode-device-ownership.patch"
   ]
 }

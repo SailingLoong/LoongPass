@@ -98,21 +98,37 @@ for (const team of [false, true]) {
 }
 
 test('explicit native rebind freezes the chosen device for init, poll and returned grant', async () => {
-  const requests = official();
-  const hooks = await ZCodeAuthPlugin();
-  const context = { device: nextDevice, expectedUid: 'official-a', expectedRealm: 'bigmodel' };
-  const pending = await hooks.auth.reauthorize(async () => grant(), context);
-  context.device = device;
-  const result = await pending.callback();
-  expect(result.type).toBe('success');
-  expect(JSON.parse(result.refresh).device).toBe(nextDevice);
-  expect(requests.filter(r => r.url.pathname.includes('/oauth/cli/')).map(r => r.headers.get('x-device-mid'))).toEqual([nextDevice, nextDevice]);
+  const home = process.env.LOONGPASS_TEST_DEVICE_HOME;
+  if (!home) {
+    const dir = await mkdtemp(join(temporary, 'desktop-'));
+    const child = Bun.spawn([process.execPath, 'test', fileURLToPath(import.meta.url), '-t', 'explicit native rebind freezes'], {
+      env: {...process.env, HOME:dir, USERPROFILE:dir, LOONGPASS_TEST_DEVICE_HOME:dir}, stdout:'pipe', stderr:'pipe',
+    });
+    const [code, log] = await Promise.all([child.exited, new Response(child.stderr).text()]);
+    expect(code, log).toBe(0);
+    return;
+  }
+    const requests = official();
+    const hooks = await ZCodeAuthPlugin();
+    const context = { device: nextDevice, expectedUid: 'official-a', expectedRealm: 'bigmodel' };
+    expect(await hooks.auth.methods[1].authorize()).toMatchObject({type:'failed', error:'zcode_device_required'});
+    await expect(hooks.auth.reauthorize(async () => grant(), context)).rejects.toThrow('zcode_device_required');
+    expect(requests).toHaveLength(0);
+    const dir = join(home, '.zcode', 'v2');
+    await mkdir(dir, {recursive:true});
+    await writeFile(join(dir, 'telemetry-state.json'), JSON.stringify({deviceMid:nextDevice}));
+    const pending = await hooks.auth.reauthorize(async () => grant(), context);
+    context.device = device;
+    const result = await pending.callback();
+    expect(result.type).toBe('success');
+    expect(JSON.parse(result.refresh).device).toBe(nextDevice);
+    expect(requests.filter(r => r.url.pathname.includes('/oauth/cli/')).map(r => r.headers.get('x-device-mid'))).toEqual([nextDevice, nextDevice]);
 });
 
 test('a different official UID cannot produce a replacement grant or query its paid entitlement', async () => {
   const requests = official({ uid: 'other-account' });
   const hooks = await ZCodeAuthPlugin();
-  const pending = await hooks.auth.reauthorize(async () => grant(), { device: nextDevice });
+  const pending = await hooks.auth.reauthorize(async () => grant());
   expect((await pending.callback()).type).toBe('failed');
   expect(requests.map(r => r.url.pathname)).toEqual(['/api/v1/oauth/cli/init', '/api/v1/oauth/cli/poll/synthetic']);
 });
@@ -135,7 +151,7 @@ test('reward context is native client metadata bound to the verified saved grant
   await expect(hooks.auth.rewardContext(async () => ({ type: 'api', key: 'synthetic' }))).rejects.toThrow();
 });
 
-async function host(run) {
+async function host(run, provider = 'synthetic') {
   const directory = await mkdtemp(join(temporary, 'host-'));
   const fixture = join(directory, 'fixture.mjs');
   await writeFile(fixture, `export const Synthetic = async () => ({
@@ -173,7 +189,8 @@ async function host(run) {
   });
   const authPath = join(directory, 'plugin-auth.json');
   try {
-    await rpc('init', { directory, authPath, plugins: [{ spec: 'synthetic', target: fixture }] });
+    const target = provider === 'zcode' ? join(temporary, 'zcode/index.mjs') : fixture;
+    await rpc('init', { directory, authPath, plugins: [{ spec: provider, target }] });
     await run({ rpc, saved: async () => JSON.parse(await readFile(authPath, 'utf8')) });
   } finally {
     child.stdin.end();
@@ -184,6 +201,26 @@ async function host(run) {
     expect(errors).toBe('');
   }
 }
+
+test('concurrent native imports enforce one device per regional identity in both directions', async () => {
+  await host(async ({ rpc, saved }) => {
+    const native = (uid, mid, team = false) => ({
+      ...grant(team), uid, accountId: 'bigmodel:' + uid + (team ? ' (team)' : ''),
+      refresh: JSON.stringify({site:'bigmodel', jwt, device:mid}),
+    });
+    const keep = (auth, key) => rpc('import', {provider:'zcode', auth, key});
+    const attempts = await Promise.allSettled(['one', 'two'].map(uid => keep(native(uid, device))));
+    expect(attempts.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    expect(attempts.find(r => r.status === 'rejected').reason.message).toBe('zcode_device_in_use');
+    const before = await saved(), [slot, original] = Object.entries(before)[0];
+    await expect(keep(native(original.uid, nextDevice))).rejects.toThrow('zcode_account_device_mismatch');
+    await expect(keep(native('another', nextDevice), slot)).rejects.toThrow();
+    expect(await saved()).toEqual(before);
+    await keep(native(original.uid, device.toUpperCase(), true));
+    await keep(native('independent', nextDevice));
+    expect(Object.keys(await saved())).toHaveLength(3);
+  }, 'zcode');
+});
 
 test('host advertises declared capabilities, scopes reward context, and preserves default no-prompt login', async () => {
   await host(async ({ rpc, saved }) => {

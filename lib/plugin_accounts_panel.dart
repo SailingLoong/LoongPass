@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'account_amount.dart';
 import 'claim_receipt.dart';
 import 'compact_accounts_table.dart';
 import 'credit_summary_view.dart';
@@ -322,8 +323,12 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       a.uid.isNotEmpty &&
       a.source != 'desktop';
 
-  ({String label, VoidCallback run})? _resolution(PluginAccount a) {
+  ({String label, VoidCallback run})? _resolution(
+    PluginAccount a,
+    bool conflict,
+  ) {
     if (_busy) return null;
+    if (conflict) return (label: '核对设备绑定', run: () => _authorize(a));
     if (_needsAuthorization(a))
       return (label: '重新授权', run: () => _authorize(a));
     if (_pending(a) && _canVerifyResult(a))
@@ -331,9 +336,10 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     return null;
   }
 
-  AccountAttention _attention(PluginAccount a) {
+  AccountAttention _attention(PluginAccount a, bool conflict) {
     final state = _rewardState(a);
     if (_needsAuthorization(a) ||
+        conflict ||
         {
           'captcha',
           'verificationRequired',
@@ -363,11 +369,11 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         : AccountAttention.none;
   }
 
-  Widget _actions(PluginAccount a) {
+  Widget _actions(PluginAccount a, bool conflict) {
     final pending = _pending(a);
     final verify = pending && _canVerifyResult(a);
     final state = _rewardState(a);
-    final primary = _needsAuthorization(a)
+    final primary = _needsAuthorization(a) || conflict
         ? 'authorize'
         : verify
         ? 'verify'
@@ -402,7 +408,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               enabled: !_busy,
               run: () => _verifyResult(a),
             ),
-          if (!pending && _canClaim(a))
+          if (!pending && !conflict && _canClaim(a))
             (
               id: 'claim',
               label: {'verificationRequired', 'captcha'}.contains(state)
@@ -623,12 +629,14 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             ),
           if (widget.accounts.error != null)
             const Text('最近一次查询未完成，当前保留已保存的结果。'),
-          CompactAccountsTable(entries: rows.map(_entry).toList()),
+          CompactAccountsTable(
+            entries: [for (final a in rows) _entry(a, rows)],
+          ),
         ],
       );
     },
   );
-  AccountTableEntry _entry(PluginAccount a) {
+  AccountTableEntry _entry(PluginAccount a, List<PluginAccount> rows) {
     final batches = a.creditExpiryBatches;
     final next = nextPluginCreditExpiry(batches);
     final expiryBatches = [
@@ -638,6 +646,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     final expiryObservation = _expiryObservation(a);
     final receipts = _receipts(a).toList(growable: false);
     final receipt = receipts.firstOrNull;
+    final conflict = zcodeBindingConflicts(a, rows);
     return AccountTableEntry(
       id: a.key,
       label: a.label.isEmpty ? '身份未提供' : a.label,
@@ -649,15 +658,16 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       ].join(' · '),
       officialId: a.uid.isEmpty ? null : a.uid,
       deviceBinding: a.provider == 'zcode'
-          ? zcodeBindingLabel(a.zcodeDevice, widget.accounts.accounts) ?? '尚未核实'
+          ? zcodeBindingLabel(a.zcodeDevice, rows) ?? '尚未核实'
           : null,
       authorizationLabel: _needsAuthorization(a) ? '需要重新授权' : '已保存授权',
       balance: _balance(a),
-      status: _status(a),
-      statusLabel: _statusLabel(a),
+      giftGrants: a.provider == 'zcode' ? _zcodeGiftGrants(a) : const [],
+      status: conflict ? '$zcodeBindingGuidance\n${_status(a)}' : _status(a),
+      statusLabel: conflict ? '设备绑定冲突' : _statusLabel(a),
       highlightStatus: _rewardState(a) == 'claimable',
       hasRewards: widget.rewards.supports(a) || _pending(a) || receipt != null,
-      actions: _actions(a),
+      actions: _actions(a, conflict),
       expiryDetails: expiryObservation,
       details: _quotaDetails(a),
       plan:
@@ -681,8 +691,8 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       notice: _messageAccount == a.key ? _message : null,
       expiryAt: next?.at,
       expiringAmount: _formatBalance(next?.amount),
-      attention: _attention(a),
-      resolution: _resolution(a),
+      attention: _attention(a, conflict),
+      resolution: _resolution(a, conflict),
       expiryBatches: expiryBatches,
       expiryModels: {
         for (var i = 0; i < batches.length; i++)
@@ -802,6 +812,7 @@ String _status(PluginAccount a) {
       '已有活动权益，本次未收到新的可领取活动。',
     'noOffer' when a.provider == 'zcode' => '官方本次未向这个账号与绑定设备返回可领取活动。',
     'device_required' => '无法核对这个账号的绑定设备，活动资格待核对。',
+    'deviceConflict' => zcodeBindingGuidance,
     'devicePending' => '这台设备已有另一个账号提交了本次活动，正在等待官方回执。',
     'deviceClaimed' => '这台设备已通过另一个账号领取过本次活动。',
     'noOffer' || 'inactive' => '当前没有可领取活动。',
@@ -847,6 +858,7 @@ String _statusLabel(PluginAccount a) {
     'noOffer' when a.provider == 'zcode' && _hasHeldPlan(a) => '已有活动权益',
     'noOffer' when a.provider == 'zcode' => '本账号与设备未收到活动',
     'device_required' => '绑定设备待核对',
+    'deviceConflict' => '设备绑定冲突',
     'devicePending' => '同设备领取待确认',
     'deviceClaimed' => '本设备已领取',
     'captcha' || 'verificationRequired' => '需要官方验证',

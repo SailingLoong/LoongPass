@@ -1240,10 +1240,23 @@ function changeAuth(change) {
       const { all, known } = await readAuthStateAsync()
       // what another magpie saved since this host's last read
       if (known) noteAuth(all)
+      const before = { ...all }
       const out = change(all)
       // sign-ins that don't read are never written over with none: a
       // sign-out of one of them waits for the file to be put right
       if (out !== false && (known || Object.keys(all).length > 0)) {
+        for (const key of Object.keys(all)) {
+          if (before[key] === all[key]) continue
+          const binding = auths().get(providerOf(key))?.auth?.deviceBinding
+          if (!binding) continue
+          const old = binding(before[key]), next = binding(all[key])
+          if (old && (!next || old.owner !== next.owner)) throw new Error(providerOf(key) + "_authorization_target_changed")
+          // A token renewal must still work for legacy conflicts so the user
+          // can read balances and receipts. New or changed bindings are unique.
+          if (next && (old?.device !== next.device || old?.owner !== next.owner)) {
+            checkDeviceBinding(all, key, binding, next)
+          }
+        }
         await writeAuth(all)
         noteAuth(all, true)
       }
@@ -1259,13 +1272,46 @@ function changeAuth(change) {
   return run
 }
 
-async function setAuth(key, info, expected) {
+function checkDeviceBinding(all, key, binding, next) {
+  for (const other of accountsOf(all, providerOf(key))) {
+    if (other === key) continue
+    const peer = binding(all[other])
+    if (!peer) continue
+    if (peer.device === next.device && peer.owner !== next.owner) throw new Error(providerOf(key) + "_device_in_use")
+    if (peer.owner === next.owner && peer.device !== next.device) throw new Error(providerOf(key) + "_account_device_mismatch")
+  }
+}
+
+async function setAuth(key, info, { expected, add = false, dedup = false } = {}) {
+  const provider = providerOf(key)
+  let removed
   await changeAuth((all) => {
     if (expected !== undefined && JSON.stringify(all[key]) !== expected) throw new Error("the authorization target changed")
+    if (add) key = freshKey(provider, all)
+    const binding = auths().get(provider)?.auth?.deviceBinding
+    const next = binding?.(info)
+    if (binding && info?.type === "oauth" && !next) throw new Error(provider + "_device_required")
+    const old = binding?.(all[key])
+    if (old && (!next || old.owner !== next.owner)) throw new Error(provider + "_authorization_target_changed")
+    if (next) checkDeviceBinding(all, key, binding, next)
+    if (dedup) {
+      const other = matchingAccount(all, provider, key, info)
+      if (other) {
+        if (renamedBy(info, all[other]) && all[other].accountId) info = { ...info, accountId: all[other].accountId }
+        if (all[key]) removed = key
+        delete all[key]
+        key = other
+      }
+    }
     all[key] = info
   })
+  if (removed) {
+    forgetAccount(removed)
+    send({ event: "auth", provider, account: removed })
+  }
   forgetAccount(key)
-  send({ event: "auth", provider: providerOf(key), account: key })
+  send({ event: "auth", provider, account: key })
+  return key
 }
 
 async function removeAuth(key) {
@@ -1307,8 +1353,7 @@ function accountKey(provider, account) {
 
 // freshKey is where a new sign-in to provider goes: its own id while that
 // is free.
-function freshKey(provider) {
-  const all = readAuth()
+function freshKey(provider, all = readAuth()) {
   if (!(provider in all)) return provider
   for (;;) {
     const k = provider + "#" + Math.random().toString(36).slice(2, 8)
@@ -1362,38 +1407,16 @@ function renamedBy(now, was) {
   return !!uid && uidOf(was) === uid && whoOf(now) !== whoOf(was) && (whoOf(now) === uid || whoOf(was) === uid)
 }
 
-// settle keeps a sign-in just saved at key once: one to an account already
-// signed in (the same account id and, where both have one, the same uid;
-// the same uid that one of them is named by; else the same secret)
-// replaces that one's and goes. It gives where it is kept. An account
-// named another way before keeps its account id, which the user's name
-// for it, its proxy and gateway keys are kept by.
-async function settle(provider, key) {
-  const k = await changeAuth((all) => {
-    const now = all[key]
-    if (!now) return false
-    const who = whoOf(now)
-    const secret = secretOf(now)
-    for (const k of accountsOf(all, provider)) {
-      if (k === key) continue
-      const was = all[k]
-      const other = uidOf(now) && uidOf(was) && uidOf(now) !== uidOf(was)
-      const renamed = renamedBy(now, was)
-      if ((who && whoOf(was) === who && !other) || renamed || (!who && !whoOf(was) && secret && secretOf(was) === secret)) {
-        all[k] = renamed && typeof was.accountId === "string" && was.accountId ? { ...now, accountId: was.accountId } : now
-        delete all[key]
-        return k
-      }
-    }
-    return false
-  })
-  if (k) {
-    forgetAccount(k)
-    forgetAccount(key)
-    send({ event: "auth", provider, account: k })
-    return k
+// Match sign-ins by the same native identity rules under the write lock so
+// overlapping callbacks cannot overwrite a slot chosen by another sign-in.
+function matchingAccount(all, provider, key, now) {
+  const who = whoOf(now), secret = secretOf(now)
+  for (const k of accountsOf(all, provider)) {
+    if (k === key) continue
+    const was = all[k]
+    const other = uidOf(now) && uidOf(was) && uidOf(now) !== uidOf(was)
+    if ((who && whoOf(was) === who && !other) || renamedBy(now, was) || (!who && !whoOf(was) && secret && secretOf(was) === secret)) return k
   }
-  return key
 }
 
 // ---- the client plugins are given --------------------------------------------
@@ -2845,18 +2868,19 @@ function validate(provider, index, key, value) {
 // save keeps a successful sign-in as OpenCode's CLI does, at key (or, for
 // a sign-in the plugin says is another provider's, a new account of
 // that one). It gives the provider and where the account is kept.
-async function save(provider, key, result, inputs, apiKey, method, accountId, expected) {
+async function save(provider, key, result, inputs, apiKey, method, accountId, expected, add = true) {
   const id = result.provider ?? provider
   if (expected !== undefined && id !== provider) throw new Error("the authorization provider changed")
-  if (id !== provider) key = freshKey(id)
+  if (id !== provider) key = id
+  const options = { expected, add: (id !== provider || add) && auths().get(id)?.auth?.single !== true, dedup: expected === undefined }
   if ("refresh" in result) {
     const { type: _t, provider: _p, refresh, access, expires, ...extra } = result
-    await setAuth(key, { type: "oauth", refresh, access, expires, ...extra }, expected)
+    key = await setAuth(key, { type: "oauth", refresh, access, expires, ...extra }, options)
   } else if ("key" in result || apiKey) {
     const md = { ...plainAnswers(provider, method, inputs), ...(result.metadata ?? {}) }
-    await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) }, expected)
+    key = await setAuth(key, { type: "api", key: result.key ?? apiKey, ...(accountId ? { accountId } : {}), ...(Object.keys(md).length ? { metadata: md } : {}) }, options)
   }
-  return { provider: id, account: expected === undefined ? await settle(id, key) : key }
+  return { provider: id, account: key }
 }
 
 // plainAnswers are the answers to an "api" method's questions that the
@@ -2922,7 +2946,7 @@ async function authorize({ provider, method, inputs, account, proxy, context }, 
   if (a?.type === "failed") return failed(a)
   if (typeof a?.callback !== "function") return { ok: false, error: `${provider}'s sign-in gave nothing to finish it with` }
   const session = String(nextSession++)
-  sessions.set(session, { provider, key, a, inputs, expected, proxy: proxy ?? "" })
+  sessions.set(session, { provider, key, a, inputs, expected, add: !account || account === "new", proxy: proxy ?? "" })
   // opened (not OpenCode's) is a page the plugin's own CLI opened already:
   // Grok Build's `grok login` opens it on macOS and Windows, and magpie's
   // opening it too showed it twice (andyfmyth on X)
@@ -2956,7 +2980,7 @@ async function callback({ session, code }, signal) {
   if (!r || r.type !== "success") return failed(r)
   const kept = keptAs(r)
   if (!kept) return { ok: false, error: `${s.provider}'s sign-in gave nothing to keep` }
-  return { ok: true, ...(await save(s.provider, s.key, kept, undefined, undefined, undefined, undefined, s.expected)) }
+  return { ok: true, ...(await save(s.provider, s.key, kept, undefined, undefined, undefined, undefined, s.expected, s.add)) }
 }
 
 // keptAs is an OAuth callback's success r as save keeps it. save keeps an
@@ -3070,15 +3094,15 @@ async function apiKey({ provider, method, inputs, key, account, accountId, proxy
   const at = signInKey(provider, account)
   if (typeof m.authorize !== "function") {
     const md = inputs && Object.keys(inputs).length ? { metadata: inputs } : {}
-    await setAuth(at, { type: "api", key, ...(accountId ? { accountId } : {}), ...md })
-    return { ok: true, provider, account: await settle(provider, at) }
+    const saved = await setAuth(at, { type: "api", key, ...(accountId ? { accountId } : {}), ...md }, { add: (!account || account === "new") && authOf(provider).single !== true, dedup: true })
+    return { ok: true, provider, account: saved }
   }
   const r = await signingIn(signal, proxy ?? "", provider, at, () => m.authorize(inputs ?? {}, { signal }))
   if (signal?.aborted) throw abortedSignIn()
   if (!r || r.type !== "success") return failed(r)
   // nothing to keep: no key typed, and the plugin's authorize gave none
   if (!("key" in r) && !("refresh" in r) && !key) return { ok: false, error: `${provider}'s sign-in gave no key` }
-  return { ok: true, ...(await save(provider, at, r, inputs, key, method, accountId)) }
+  return { ok: true, ...(await save(provider, at, r, inputs, key, method, accountId, undefined, !account || account === "new")) }
 }
 
 // ---- renewing a sign-in ------------------------------------------------------
@@ -3589,6 +3613,11 @@ async function checkinOf(provider, account, expectedScope) {
   if (!readAuth()[key]) throw new Error("not signed in")
   await fresh(provider, key)
   const p = await infoOf(provider, key)
+  if (a.deviceBinding) {
+    const all = readAuth(), binding = a.deviceBinding(all[key])
+    if (!binding) throw new Error(provider + "_device_required")
+    checkDeviceBinding(all, key, a.deviceBinding, binding)
+  }
   const r = (await inScope(provider, key, () => a.checkin(async () => authCopy(key), JSON.parse(JSON.stringify(p)), { expectedScope }))) ?? {}
   const num = (v) => (typeof v === "number" && isFinite(v) ? Math.max(0, v) : 0)
   // An absent or invalid receipt amount is unknown, never zero credits.
@@ -3932,9 +3961,7 @@ const handlers = {
       await setAuth(p.key, p.auth)
       return { account: p.key }
     }
-    const key = freshKey(p.provider)
-    await setAuth(key, p.auth)
-    return { account: await settle(p.provider, key) }
+    return { account: await setAuth(p.provider, p.auth, { add: true, dedup: true }) }
   },
   // take gives the accounts named (else every account of the provider) and
   // forgets them in one step: nothing renews a token between the two

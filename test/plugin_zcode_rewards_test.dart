@@ -614,7 +614,7 @@ void main() {
 
   test('equal official UIDs in different realms retain separate reward transactions', () async {
     const otherKey = 'zcode#synthetic-zai';
-    await profile(otherKey, realm: 'zai');
+    await profile(otherKey, realm: 'zai', device: _oldDevice);
     official.grant = false;
     official.loseReply = true;
     await rewards.claim(_key);
@@ -767,66 +767,43 @@ void main() {
     },
   );
 
-  test('two accounts sharing a device cannot submit the same offer concurrently or after a receipt', () async {
-    const other = 'zcode#other';
-    await profile(other, uid: 'official-b');
-    Map otherReward() =>
-        store.data['zcode']['rewards'][jsonEncode(['bigmodel', 'official-b'])];
-    official.grant = false; // Only the submitting account receives a receipt.
-    final dispatch = Completer<void>(), resume = Completer<void>();
-    official.beforeRequest = (r) async {
-      if (r.path == ZcodeApi.claimPath && !dispatch.isCompleted) {
-        dispatch.complete();
-        await resume.future;
-      }
-    };
-    final first = rewards.claim(_key);
-    await dispatch.future;
-    try {
-      await rewards.claim(other);
-      expect(otherReward()['status'], 'devicePending');
-    } finally {
-      resume.complete();
-      await first;
-    }
-    await rewards.close();
-    rewards = PluginZcodeRewards(
-      accounts,
-      api: ZcodeApi(official),
-      now: () => _time,
-    );
-    await rewards.claim(other);
-    expect(otherReward()['status'], 'deviceClaimed');
-    expect(official.posts, 1);
-  });
-
   test(
-    'device reservation is atomic when both accounts already passed discovery',
+    'a legacy shared device keeps read access and blocks both submissions',
     () async {
       const other = 'zcode#other';
       await profile(other, uid: 'official-b');
-      official.grant = false;
-      final bothReady = Completer<void>();
-      var checks = 0;
-      official.beforeRequest = (r) async {
-        if (r.path == ZcodeApi.configPath) {
-          if (++checks == 2) bothReady.complete();
-          await bothReady.future;
-        }
-      };
       await Future.wait([rewards.claim(_key), rewards.claim(other)]);
-      final statuses = (store.data['zcode']['rewards'] as Map).values.map(
-        (r) => r['status'],
+      expect(official.posts, 0);
+      final journals = (store.data['zcode']['rewards'] as Map).values;
+      expect(journals.map((r) => r['status']), everyElement('deviceConflict'));
+      expect(journals, hasLength(2));
+      expect(journals.map((r) => r['checkedAt']), everyElement(_time));
+      expect(
+        official.requests.any((r) => r.path == ZcodeApi.configPath),
+        isFalse,
       );
-      expect(statuses, contains('claimed'));
-      expect(statuses, anyElement(isIn(['devicePending', 'deviceClaimed'])));
-      expect(official.posts, 1);
+    },
+  );
+
+  test(
+    'a device conflict introduced during verification stops the claim',
+    () async {
+      official.captcha = true;
+      await rewards.claim(
+        _key,
+        verify: (_) async {
+          await profile('zcode#other', uid: 'official-b');
+          return 'synthetic-proof';
+        },
+      );
+      expect(official.posts, 0);
+      expect(reward()['status'], 'deviceConflict');
     },
   );
 
   test('device protection includes legacy receipts and expires with the issued entitlement', () async {
     const other = 'zcode#other';
-    await profile(other, uid: 'official-b');
+    await profile(other, uid: 'official-b', device: _oldDevice);
     Map otherReward() =>
         store.data['zcode']['rewards'][jsonEncode(['bigmodel', 'official-b'])];
     Future<void> receipt(String device, int endsAt) => legacy({
@@ -839,14 +816,14 @@ void main() {
         },
       ],
     });
-    await receipt(_device, _time ~/ 1000 + 1);
+    await receipt(_oldDevice, _time ~/ 1000 + 1);
     await rewards.claim(other);
     expect(otherReward()['status'], 'deviceClaimed');
     expect(official.posts, 0);
-    await receipt(_oldDevice, _time ~/ 1000 + 1);
+    await receipt(_device, _time ~/ 1000 + 1);
     await rewards.refresh(other);
     expect(otherReward()['status'], 'claimable');
-    await receipt(_device, _time ~/ 1000);
+    await receipt(_oldDevice, _time ~/ 1000);
     await rewards.claim(other);
     expect(official.posts, 1);
   });
@@ -1681,6 +1658,9 @@ void main() {
         'remaining_units': '12345678',
         'used_units': '7654322',
         'total_units': '20000000',
+        'capabilities': ['model:GLM-5.3-Flash', 'tool:search'],
+        'period_start': 1793890000,
+        'period_end': 1793903600,
         'expires_at': 1793903600,
       });
       await rewards.refresh(_key);
@@ -1689,6 +1669,11 @@ void main() {
           'label': 'GLM gift',
           'unit': 'tokens',
           'remaining': 12345678,
+          'total': 20000000,
+          'used': 7654322,
+          'models': ['GLM-5.3-Flash'],
+          'periodStart': 1793890000,
+          'periodEnd': 1793903600,
           'instance': 'current-gift',
           'planId': 'night',
           'expiresAt': 1793903600,

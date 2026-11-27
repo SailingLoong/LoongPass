@@ -548,6 +548,10 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
           )
         else
           Text(entry.accountSummary ?? entry.identity, style: muted),
+        for (final grant in entry.giftGrants) Text(grant, style: muted),
+        if (!wide && entry.giftGrants.isNotEmpty)
+          if (entry.nextExpiry case final at?)
+            Text('${accountDate(at)} ${accountTime(at)} 到期', style: muted),
         if (entry.listStatus case final state?)
           Text(
             state,

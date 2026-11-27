@@ -205,7 +205,21 @@ class PluginRuntime {
     final call = _calls.remove(id);
     if (call == null) return; // Late answer to a cancelled RPC.
     if (message['error'] != null) {
-      call.completeError(const PluginRuntimeFailure('plugin_request_failed'));
+      final error = message['error'];
+      final code = error is Map ? error['message'] : null;
+      const bindingErrors = {
+        'zcode_device_in_use',
+        'zcode_account_device_mismatch',
+        'zcode_device_required',
+        'zcode_authorization_target_changed',
+      };
+      call.completeError(
+        PluginRuntimeFailure(
+          bindingErrors.contains(code)
+              ? code as String
+              : 'plugin_request_failed',
+        ),
+      );
     } else if (message.containsKey('result')) {
       call.complete(message['result']);
     } else {

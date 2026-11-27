@@ -6,9 +6,24 @@ import 'package:material_ui/material_ui.dart' show SelectableText;
 import 'package:flutter/services.dart';
 
 import 'plugin_accounts.dart';
+import 'plugin_runtime.dart' show PluginRuntimeFailure;
 import 'plugin_sign_in.dart';
 import 'plugin_zcode_binding.dart';
 import 'select_field_semantics.dart';
+
+String? _bindingError(Object error) => switch (error) {
+  PluginSignInFailure(:final message) => _bindingMessage(message),
+  PluginRuntimeFailure(:final code) => _bindingMessage(code),
+  _ => null,
+};
+
+String? _bindingMessage(String code) => switch (code) {
+  'zcode_device_in_use' => zcodeBindingGuidance,
+  'zcode_account_device_mismatch' => '这个账号已有其他设备绑定。请在现有账号中核对绑定后重新授权。',
+  'zcode_device_required' => '请先在这台设备上打开官方 ZCode，再重新授权。',
+  'zcode_authorization_target_changed' => '授权身份已变更。请重新选择账号。',
+  _ => null,
+};
 
 class PluginSignInDialog extends StatefulWidget {
   const PluginSignInDialog({
@@ -53,6 +68,14 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   bool _registrationOpened = false;
   late final PluginAccount? _target;
   bool _useLocalDevice = false;
+
+  bool get _selectedDeviceConflict =>
+      _target != null &&
+      zcodeBindingConflicts(
+        _target,
+        widget.accounts.accounts,
+        device: _useLocalDevice ? widget.localZcodeDevice : _target.zcodeDevice,
+      );
 
   String? get _localDeviceLabel => zcodeBindingLabel(
     widget.localZcodeDevice,
@@ -119,11 +142,11 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     });
     try {
       await action();
-    } catch (_) {
+    } catch (e) {
       if (mounted && !_ended)
         setState(() {
           _step = _Step.failed;
-          _error = '授权未完成。请核对官方页面的结果后重新开始。';
+          _error = _bindingError(e) ?? '授权未完成。请核对官方页面的结果后重新开始。';
         });
     } finally {
       if (mounted && !_ended) setState(() => _busy = false);
@@ -170,6 +193,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
               a.realm == _target.realm,
         )) {
       throw StateError('Authorization target changed');
+    }
+    if (_selectedDeviceConflict) {
+      throw PluginSignInFailure('zcode_device_in_use');
     }
     if (_useLocalDevice &&
         _target != null &&
@@ -251,11 +277,11 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   Future<void> _finish() async {
     try {
       _complete(await _signIn.finish());
-    } catch (_) {
+    } catch (e) {
       if (mounted && !_ended)
         setState(() {
           _step = _Step.failed;
-          _error = '官方授权尚未完成或等待已结束，请重新开始。';
+          _error = _bindingError(e) ?? '官方授权尚未完成或等待已结束，请重新开始。';
         });
     }
   }
@@ -413,6 +439,8 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               )
                               case final device?)
                             Text('继续使用已绑定设备 $device'),
+                          if (_selectedDeviceConflict)
+                            const Text(zcodeBindingGuidance),
                         ],
                         if (_step == _Step.select &&
                             _target == null &&
@@ -700,7 +728,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                                 : '开始授权'
                           : '继续',
                     ),
-                    onPress: _busy || _target == null && _method == null
+                    onPress:
+                        _busy ||
+                            _target == null && _method == null ||
+                            _step == _Step.select && _selectedDeviceConflict
                         ? null
                         : _continue,
                   ),

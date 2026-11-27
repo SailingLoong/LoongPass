@@ -149,6 +149,7 @@ async function desktop(steps) {
     const hooks = await ZCodeAuthPlugin();
     const dir = join(homedir(), '.zcode/v2');
     mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'telemetry-state.json'), JSON.stringify({deviceMid:'01234567-89ab-4cde-abcd-0123456789ab'}));
     const seal = (value) => {
       const iv = randomBytes(12);
       const cipher = createCipheriv('aes-256-gcm', createHash('sha256').update('identity-fixture').digest(), iv);
@@ -216,6 +217,7 @@ test('ZCode 3.18 binds the active China profile and rejects a conflicting region
   const [active] = await desktop([state]);
   expect(active).toMatchObject({type: 'success', uid: 'active-cn'});
   expect(JSON.parse(active.refresh).key).toBe('');
+  expect(JSON.parse(active.refresh).device).toBe('01234567-89ab-4cde-abcd-0123456789ab');
   // Another paid slot remains on disk; only the selected official UID can pay.
   state.credentials['account-provider:coding-plan:account:bigmodel-individual-coding-plan:account:active-cn:api-key'] = 'own.paid';
   const [bound] = await desktop([state]);

@@ -146,6 +146,7 @@ class PluginZcodeRewards {
         await s.save();
         return;
       }
+      if (await s.blockConflictingBinding(selected.id)) return;
       var config = _verificationConfig(await s.request(ZcodeApi.configPath));
       for (var attempt = 0; attempt < 2; attempt++) {
         ZcodeVerification? verification;
@@ -173,13 +174,14 @@ class PluginZcodeRewards {
             return;
           }
         }
+        if (await s.blockConflictingBinding(selected.id)) return;
         final claim = await s.beginClaim(selected.id, balance);
         if (claim == null) return;
         var submitted = false;
         try {
           final request = ZcodeRequest(
             ZcodeApi.claimPath,
-            await s.boundToken(),
+            await s.boundToken(forClaim: true),
             s.context,
             {'plan_id': selected.id},
             verification,
@@ -387,12 +389,30 @@ class _RewardSession {
             e.value['retryAt'] > owner.now(),
       );
 
-  Future<String> boundToken() async {
+  Future<String> boundToken({bool forClaim = false}) async {
     final state = await credential();
     if (zcodeDeviceId(state['device']) != context['deviceMid']) {
       throw const ZcodeFailure('cancelled');
     }
+    if (forClaim &&
+        await owner.accounts.hasZcodeBindingConflict(
+          account,
+          context['deviceMid']!,
+        )) {
+      throw const ZcodeFailure('device_conflict');
+    }
     return state['jwt'];
+  }
+
+  Future<bool> blockConflictingBinding(String plan) async {
+    if (!await owner.accounts.hasZcodeBindingConflict(
+      account,
+      context['deviceMid']!,
+    ))
+      return false;
+    setStatus('deviceConflict', plan);
+    await save();
+    return true;
   }
 
   Future<Map<String, dynamic>> request(String path) async => owner.api.request(

@@ -28,6 +28,7 @@ class AccountTableEntry {
     this.sourceLabel,
     this.detailPlatform,
     this.plan,
+    this.giftGrants = const [],
     this.officialId,
     this.deviceBinding,
     this.authorizationLabel,
@@ -51,6 +52,7 @@ class AccountTableEntry {
   }) : _expiryBatches = expiryBatches;
   final String id, label, identity, balance, status;
   final Widget details;
+  final List<String> giftGrants;
   final CreditSummary? credits;
   final String? expiringAmount;
   final DateTime? expiryAt;
@@ -97,6 +99,7 @@ class AccountTableEntry {
     sourceLabel: appLabel,
     detailPlatform: detailPlatform,
     plan: plan,
+    giftGrants: giftGrants,
     officialId: officialId,
     deviceBinding: deviceBinding,
     authorizationLabel: authorizationLabel,
