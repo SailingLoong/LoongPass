@@ -261,6 +261,7 @@ class _AccountProfile extends StatelessWidget {
       _Fact('账号名称', row.label),
       _Fact('平台', row.detailPlatform ?? source ?? '未知'),
       _Fact('账号 ID', row.officialId ?? '未提供'),
+      if (row.deviceBinding case final device?) _Fact('绑定设备 ID', device),
       _Fact('授权状态', row.authorizationLabel ?? '未知'),
       if (row.hasRewards) _Fact('活动状态', row.status),
       if (row.hasCredits)

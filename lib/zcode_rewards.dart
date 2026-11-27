@@ -77,41 +77,83 @@ List<ZcodeOffer> zcodeMarketingOffers(Map<String, dynamic> body) {
   return offers.values.toList();
 }
 
-double? _amount(dynamic value) {
+num? zcodeUnits(Object? value) {
   final n = value is num
-      ? value.toDouble()
+      ? value
       : value is String
-      ? double.tryParse(value)
+      ? num.tryParse(value)
       : null;
   return n != null && n.isFinite && n >= 0 ? n : null;
 }
 
-int? _seconds(dynamic value) {
-  final n = _amount(value);
-  return n != null && n <= 253402300799 && n == n.truncateToDouble()
-      ? n.toInt()
-      : null;
+int? _seconds(Object? value) {
+  final n = zcodeUnits(value);
+  return n != null && n <= 253402300799 && n == n.truncate() ? n.toInt() : null;
 }
 
 int? zcodePlanExpiry(Map plan) => _seconds(plan['ends_at']);
 
+DateTime? zcodeTime(Object? value) {
+  final seconds = _seconds(value);
+  return seconds == null || seconds == 0
+      ? null
+      : DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+}
+
+Iterable<Map> zcodePlans(Map reward) =>
+    (reward['plans'] as List? ?? const []).whereType<Map>();
+
+Iterable<Map> zcodeEntitlements(Map plan) =>
+    (plan['entitlements'] as List? ?? const []).whereType<Map>();
+
+/// A recurring allowance or several independent entitlements cannot establish
+/// the amount added by a single receipt.
+({num amount, String unit})? zcodeReceiptAmount(Map plan) {
+  final entitlement = zcodeEntitlements(plan).singleOrNull;
+  if (entitlement == null || entitlement['period'] != 'one_time') return null;
+  final n = zcodeUnits(entitlement['grant_units']),
+      unit = entitlement['unit_type'];
+  return n != null && zcodeText(unit)
+      ? (amount: n, unit: unit as String)
+      : null;
+}
+
 class ZcodeBucket {
   final String label, unit;
-  final double? remaining;
+  final num? remaining;
   final int? expiresAt;
-  const ZcodeBucket(this.label, this.unit, this.remaining, this.expiresAt);
+  final String? instance, planId;
+  const ZcodeBucket(
+    this.label,
+    this.unit,
+    this.remaining,
+    this.expiresAt, {
+    this.instance,
+    this.planId,
+  });
   Map<String, dynamic> toJson() => {
     'label': label,
     'unit': unit,
     'remaining': remaining,
     'expiresAt': expiresAt,
+    if (instance != null) 'instance': instance,
+    if (planId != null) 'planId': planId,
   };
-  factory ZcodeBucket.fromJson(Map<String, dynamic> value) => ZcodeBucket(
+  factory ZcodeBucket.fromJson(Map value) => ZcodeBucket(
     value['label'],
     value['unit'],
-    _amount(value['remaining']),
+    zcodeUnits(value['remaining']),
     _seconds(value['expiresAt']),
+    instance: value['instance'] as String?,
+    planId: value['planId'] as String?,
   );
+}
+
+Iterable<ZcodeBucket> zcodeBuckets(Map reward) sync* {
+  for (final b in reward['buckets'] as List? ?? const []) {
+    if (b is Map && b['label'] is String && b['unit'] is String)
+      yield ZcodeBucket.fromJson(b);
+  }
 }
 
 class ZcodeBalance {
@@ -193,6 +235,13 @@ class ZcodeBalance {
           : planEnd == null
           ? expires
           : (expires < planEnd ? expires : planEnd);
+      final used = zcodeUnits(b['used_units']),
+          total = zcodeUnits(b['total_units']);
+      final remaining = b['remaining_units'] != null
+          ? zcodeUnits(b['remaining_units'])
+          : used != null && total != null && used <= total
+          ? total - used
+          : null;
       buckets.add(
         ZcodeBucket(
           zcodeText(b['show_name'])
@@ -201,18 +250,13 @@ class ZcodeBalance {
               ? plan['name']
               : '活动额度',
           zcodeText(b['unit_type']) ? b['unit_type'] : '单位未知',
-          _amount(b['remaining_units']),
+          remaining,
           end,
+          planId: plan['plan_id'] as String?,
+          instance: plan['user_plan_id'] as String?,
         ),
       );
-      final remaining = _amount(b['remaining_units']);
-      final used = _amount(b['used_units']), total = _amount(b['total_units']);
-      final available = remaining != null
-          ? remaining > 0
-          : b['remaining_units'] == null &&
-                used != null &&
-                total != null &&
-                used < total;
+      final available = remaining != null && remaining > 0;
       if (available && b['capabilities'] is List) {
         for (final capability in b['capabilities']) {
           if (capability is! String) continue;

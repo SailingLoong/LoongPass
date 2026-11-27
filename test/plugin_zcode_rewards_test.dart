@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../lib/plugin_accounts.dart';
 import '../lib/plugin_rewards.dart';
+import '../lib/plugin_model_service.dart';
 import '../lib/plugin_runtime.dart';
 import '../lib/plugin_zcode_binding.dart';
 import '../lib/plugin_zcode_rewards.dart';
@@ -246,7 +247,21 @@ void main() {
         {
           'spec': 'fixture',
           'target': File('test/fixtures/native_plugin.mjs').absolute.path,
-          'options': {'provider': 'zcode'},
+          'options': {
+            'provider': 'zcode',
+            'models': {
+              for (final id in ['GLM-5.3-Flash', 'GLM-5.3-Flash-Trial'])
+                id: {
+                  'id': id,
+                  'name': id,
+                  'api': {
+                    'npm': '@ai-sdk/anthropic',
+                    'id': id,
+                    'url': 'https://fixture.invalid/v1',
+                  },
+                },
+            },
+          },
         },
       ],
     );
@@ -291,6 +306,78 @@ void main() {
     await runtime.close();
     await directory.delete(recursive: true);
   });
+
+  test(
+    'a saved account spending choice governs the local Messages request',
+    () async {
+      final service = PluginModelService(
+        accounts: accounts,
+        store: MemoryAccountStore('models'),
+        port: 0,
+      );
+      final client = HttpClient();
+      try {
+        await service.start();
+        final account = accounts.accounts.single;
+        expect(account.zcodeDevice, _device);
+        expect(account.zcodeGiftOnly, isFalse);
+        await service.setModelPublished('glm-5.3-flash', true);
+        await service.enable(_key, true);
+        await service.setEnabled(true);
+        final token = service.grants.single.token;
+        const plain = 'GLM-5.3-Flash', trial = '$plain-Trial';
+        Future<HttpClientResponse> send(String marker, String model) async {
+          final r = await client.postUrl(
+            service.endpoint!.resolve('/plugin/fetch'),
+          );
+          r.headers.set('authorization', 'Bearer $token');
+          r.write(
+            jsonEncode({
+              'model': marker,
+              'npm': '@ai-sdk/anthropic',
+              'method': 'POST',
+              'url': 'https://fixture.invalid/v1/messages',
+              'headers': {},
+              'session': 'test',
+              'body': base64Encode(utf8.encode(jsonEncode({'model': model}))),
+            }),
+          );
+          return await r.close();
+        }
+
+        expect(
+          await (await send(plain, plain)).transform(utf8.decoder).join(),
+          contains(plain),
+        );
+        await accounts.setZcodeGiftOnly(account, true);
+        expect(
+          (await store.read()).data['accounts'][_key]['zcodeGiftOnly'],
+          isTrue,
+        );
+        final cached = await send(plain, plain);
+        expect(cached.statusCode, isNot(200));
+        await cached.drain<void>();
+        final wrongBody = await send(trial, plain);
+        expect(wrongBody.statusCode, 403);
+        await wrongBody.drain<void>();
+        final gift = await send(trial, trial);
+        expect(gift.statusCode, 200);
+        expect(
+          jsonDecode(
+            await gift.transform(utf8.decoder).join(),
+          )['body']['model'],
+          trial,
+        );
+        await accounts.setZcodeGiftOnly(account, false);
+        final normal = await send(plain, plain);
+        expect(normal.statusCode, 200);
+        await normal.drain<void>();
+      } finally {
+        client.close(force: true);
+        await service.close();
+      }
+    },
+  );
 
   test(
     'closed official balances reconcile once per entitlement across profiles',
@@ -352,57 +439,28 @@ void main() {
     },
   );
 
-  test('device reservation excludes current and every historical device and never changes auth', () async {
-    const first = '33333333-2222-4333-8444-555555555555';
-    const second = '44444444-2222-4333-8444-555555555555';
-    await legacy({
-      'bindingHistory': [
-        {
-          'context': {..._context, 'deviceMid': _oldDevice},
-          'claims': <String, dynamic>{},
-        },
-      ],
-    });
-    await accounts.edit((data) {
-      data['zcode'] = {
-        'devicePool': [_oldDevice, _device, first, second],
-      };
-    });
-    final before = jsonEncode(store.data);
-    final authBefore = await accounts.credentials.account(_key);
+  test('the device label counts distinct identities with the active native binding', () async {
     final target = accounts.accounts.single;
-    final a = await ZcodeDeviceReservation.take(accounts, target);
-    final b = await ZcodeDeviceReservation.take(accounts, target);
-    ZcodeDeviceReservation? replacement;
-    try {
-      expect(a.device, first);
-      expect(b.device, second);
-      await expectLater(
-        ZcodeDeviceReservation.take(accounts, target),
-        throwsA(
-          isA<ZcodeFailure>().having(
-            (e) => e.code,
-            'code',
-            'device_pool_empty',
-          ),
-        ),
-      );
-      a.release();
-      replacement = await ZcodeDeviceReservation.take(accounts, target);
-      expect(replacement.device, first);
-      a.release(); // An old lease cannot release its new holder.
-      await expectLater(
-        ZcodeDeviceReservation.take(accounts, target),
-        throwsA(isA<ZcodeFailure>()),
-      );
-      expect(jsonEncode(store.data), before);
-      expect(await accounts.credentials.account(_key), authBefore);
-      expect(official.requests, isEmpty);
-    } finally {
-      a.release();
-      b.release();
-      replacement?.release();
-    }
+    PluginAccount other(String uid, String device) => PluginAccount(
+      key: 'other',
+      active: true,
+      models: const [],
+      facts: {...target.facts, 'uid': uid},
+      zcodeDevice: device,
+    );
+    expect(
+      zcodeBindingLabel(target, [target, other(target.uid, _device)]),
+      _device,
+    );
+    expect(
+      zcodeBindingLabel(target, [
+        target,
+        other('different', _device),
+        other('third', _oldDevice),
+      ]),
+      '$_device · 2 个账号共用',
+    );
+    expect(official.requests, isEmpty);
   });
 
   test('binding capture archives a verified device change while retaining an unknown transaction', () async {
@@ -438,15 +496,6 @@ void main() {
       'pending',
     );
     expect(official.requests, isEmpty);
-    await accounts.edit((data) {
-      data['zcode']['devicePool'] = [_oldDevice, _device];
-    });
-    await expectLater(
-      ZcodeDeviceReservation.take(accounts, accounts.accounts.single),
-      throwsA(
-        isA<ZcodeFailure>().having((e) => e.code, 'code', 'device_pool_empty'),
-      ),
-    );
   });
 
   test('lost intent acknowledgement stays authoritative across personal and team profiles', () async {
@@ -1607,11 +1656,9 @@ void main() {
     expect(official.posts, 0);
     expect(reward()['context']['version'], '3.18.0');
     expect(reward()['context']['deviceMid'], _device);
-    expect(reward()['bindingHistory'][0]['context'], _context);
-    expect(
-      reward()['bindingHistory'][0]['claims']['night']['state'],
-      'pending',
-    );
+    expect(reward()['bindingHistory'], isEmpty);
+    expect(reward()['claims']['night']['context'], _context);
+    expect(reward()['claims']['night']['state'], 'pending');
     official.requests.clear();
     version = '3.18.1';
     await rewards.refresh(_key);
@@ -1641,7 +1688,9 @@ void main() {
         {
           'label': 'GLM gift',
           'unit': 'tokens',
-          'remaining': 12345678.0,
+          'remaining': 12345678,
+          'instance': 'current-gift',
+          'planId': 'night',
           'expiresAt': 1793903600,
         },
       ]);

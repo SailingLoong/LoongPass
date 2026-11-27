@@ -15,7 +15,7 @@ const auth = { type:'oauth', uid:'official-a', access:'dual.secret', expires:0,
 const balance = {
   server_time:now,
   plans:[{plan_id:'zai-start-plan',user_plan_id:'up1',name:'Start Plan',status:'active',ends_at:now+604800,entitlements:[{entitlement_id:'e1',period:'daily'}]}],
-  balances:[{plan_id:'zai-start-plan',user_plan_id:'up1',entitlement_id:'e1',show_name:'Trust Build',capabilities:['model:glm-5.3-flash'],total_units:1000,used_units:250,remaining_units:750,expires_at:now+3600}],
+  balances:[{plan_id:'zai-start-plan',user_plan_id:'up1',entitlement_id:'e1',show_name:'Trust Build',unit_type:'token',capabilities:['model:glm-5.3-flash'],total_units:1000,used_units:250,remaining_units:750,expires_at:now+3600}],
 };
 let directory, plugin, native;
 const sent = [];
@@ -78,8 +78,31 @@ test('an observed empty gift balance is a successful usage read, with no claim o
 test('gift quota exposes the remaining batch expiry for model routing', async () => {
   const gift = await native.giftOf(native.stateOf(auth));
   expect(gift.windows[0].runsOutAt).toBe(new Date((now + 3600) * 1000).toISOString());
-  expect(gift.windows[0].runsOut).toBe(750);
+  expect(gift.windows[0]).toMatchObject({ amount: 250, limit: 1000, balance: 750, unit: 'token', runsOut: 750 });
   expect(gift.windows[0].models).toEqual(['glm-5.3-flash']);
+});
+
+test('a gift with only a grant ceiling has no verified remaining amount', async () => {
+  const onlyGrant = { ...balance, balances: [{ ...balance.balances[0], used_units: null, remaining_units: null }] };
+  globalThis.fetch = async () => Response.json({code: 0, data: onlyGrant});
+  const gift = await native.giftOf(native.stateOf(auth));
+  expect(gift.windows[0].limit).toBe(1000);
+  expect(gift.windows[0].amount).toBeUndefined();
+  expect(gift.windows[0].balance).toBeUndefined();
+  expect(gift.windows[0].runsOut).toBeUndefined();
+});
+
+test('a refused explicit trial never debits the coding subscription', async () => {
+  stream = false; fallback = true;
+  const hooks = await plugin();
+  const loader = await hooks.auth.loader(async () => auth, {id:'zcode'});
+  const response = await loader.fetch('https://api.z.ai/api/anthropic/v1/messages', {
+    method:'POST', headers:{'content-type':'application/json'},
+    body:JSON.stringify({model:'GLM-5.3-Flash-Trial',max_tokens:1,messages:[{role:'user',content:'test'}]}),
+  });
+  expect(response.status).toBe(500);
+  await response.text();
+  expect(sent.map(r => r.path)).toEqual(['/api/v1/zcode-plan/anthropic/v1/messages']);
 });
 
 for (const mode of ['freeFirst','trial','plan fallback']) {

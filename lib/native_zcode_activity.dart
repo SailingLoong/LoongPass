@@ -4,6 +4,22 @@ import 'zcode_api.dart';
 
 const _files = MethodChannel('com.sailingloong.loongpass/files');
 
+/// Reuse the official client's observed device on this computer.
+Future<String?> installedZcodeDevice() async {
+  try {
+    final context = await _files.invokeMapMethod<String, dynamic>(
+      'zcodeRequestContext',
+    );
+    return context == null ? null : zcodeDeviceId(context['deviceMid']);
+  } on PlatformException {
+    return null;
+  } on MissingPluginException {
+    return null;
+  } on ZcodeFailure {
+    return null;
+  }
+}
+
 Future<Map<String, String>> nativeZcodeActivityContext(
   Map<String, dynamic> grantContext,
   String language,

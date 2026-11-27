@@ -1,0 +1,47 @@
+# Prefer the installed desktop identity for a new browser authorization.
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -18,7 +18,7 @@
+ // `name` the account's display label.
+ 
+ import { createDecipheriv, createHash } from "node:crypto"
+-import { existsSync, readFileSync, readdirSync } from "node:fs"
++import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readSync, readdirSync } from "node:fs"
+ import { arch, homedir, release, userInfo } from "node:os"
+ import { isAbsolute, join } from "node:path"
+ import PROMPT from "./prompt.mjs"
+@@ -1568,12 +1568,33 @@
+ }
+ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+ 
++// A new browser sign-in on this computer can reuse its installed desktop
++// device. Only this existing, user-owned telemetry file is an identity source.
++function installedDevice() {
++  const path = join(settingDir(), "telemetry-state.json")
++  let fd
++  try {
++    if (lstatSync(path).isSymbolicLink()) return undefined
++    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
++    const stat = fstatSync(fd)
++    if (!stat.isFile() || (process.getuid && stat.uid !== process.getuid()) || stat.size <= 0 || stat.size > 16384) return undefined
++    const bytes = Buffer.alloc(stat.size + 1)
++    if (readSync(fd, bytes, 0, bytes.length, 0) !== stat.size) return undefined
++    const mid = JSON.parse(bytes.toString("utf8", 0, stat.size)).deviceMid
++    return deviceID(mid) ? mid.toLowerCase() : undefined
++  } catch {
++    return undefined
++  } finally {
++    if (fd !== undefined) closeSync(fd)
++  }
++}
++
+ // authorize opens ZCode's sign-in flow on site; its callback polls it.
+ // onTeam signs in to the account's seat on a team's plan, named apart from
+ // the account's own plan (the host keeps one entry per account name).
+ async function authorize(site, log, onTeam = false, context = {}) {
+   const poll = "Bearer " + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
+-  const device = context.device ?? uuid()
++  const device = context.device ?? installedDevice() ?? uuid()
+   const expectedUid = context.expectedUid
+   if (!deviceID(device) || context.expectedRealm !== undefined && context.expectedRealm !== site) throw new Error("ZCode sign-in: invalid target binding")
+   let flow

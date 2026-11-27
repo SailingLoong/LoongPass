@@ -54,7 +54,7 @@ export const FixturePlugin = async (_, options = {}) => ({
   },
   provider: {
     id: options.provider ?? 'fixture',
-    models: async () => ({
+    models: async () => options.models ?? ({
       'fixture-model': {id: 'fixture-model', name: 'Fixture', api: {npm: '@ai-sdk/openai-compatible', id: options.apiId ?? 'fixture-model'}},
       ...(options.media ? {
         image: {id:'image',name:'Image',api:{id:'image-wire',npm:'@ai-sdk/openai-compatible',url:'https://fixture.invalid/v1'},capabilities:{output:{text:false,image:true}}},

@@ -640,6 +640,49 @@ void main() {
       expect(officialModelId('trae', {'id': 'gpt-5.4-unverified'}), isNull);
     },
   );
+  test(
+    'a gift-only ZCode account publishes only its native trial bindings',
+    () {
+      const plain = 'GLM-5.3-Flash', trial = '$plain-Trial';
+      final native = [
+        {'id': plain, 'apiId': plain},
+        {'id': trial, 'apiId': trial},
+        {'id': 'GLM-5.3', 'apiId': 'GLM-5.3'},
+      ];
+      final limited = PluginModelGrant(
+        PluginAccount(
+          key: 'limited',
+          facts: {
+            'provider': 'zcode',
+            'label': 'limited',
+            'registrationId': 'one',
+            'zcodeGiftOnly': true,
+          },
+          active: true,
+          models: native,
+        ),
+        'synthetic',
+        true,
+      );
+      final models = pluginModelCatalog(
+        [limited, grant('other', 'zcode', native)],
+        {},
+        now,
+      );
+      final bindings = models.expand((model) => model.bindings);
+      expect(
+        bindings
+            .where((b) => b.account.key == 'limited')
+            .map((b) => b.nativeId),
+        [trial],
+      );
+      expect(
+        bindings.where((b) => b.account.key == 'other').map((b) => b.nativeId),
+        containsAll([trial, plain, 'GLM-5.3']),
+      );
+    },
+  );
+
   test('ZCode ordinary freeFirst model uses a live gift expiry and keeps its paid fallback', () {
     final models = pluginModelCatalog(
       [

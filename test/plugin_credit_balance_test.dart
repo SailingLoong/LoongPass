@@ -82,6 +82,41 @@ void main() {
       );
       expect(account.creditExpiry!.amount, isNull);
     });
+    test('gift balances retain the latest amount and avoid aggregating mixed units', () {
+      final native = {
+        'windows': [
+          {...window, 'unit': 'credits', 'balance': 9000},
+        ],
+      };
+      final current = accountWith(native, {
+        'checkedAt': now.millisecondsSinceEpoch + 1,
+        'buckets': [bucket],
+      }, queriedAt: now);
+      expect(
+        (current.creditBalance?.amount, current.creditBalance?.unit),
+        (100, 'tokens'),
+      );
+      expect(
+        current.balanceObservedAt?.millisecondsSinceEpoch,
+        now.millisecondsSinceEpoch + 1,
+      );
+      final empty = accountWith(native, {
+        'checkedAt': now.millisecondsSinceEpoch + 1,
+        'buckets': [],
+      }, queriedAt: now);
+      expect(empty.creditBalance, isNull);
+      final mixed = accountWith(
+        {
+          'windows': [
+            ...native['windows']!,
+            {...window, 'unit': 'tokens', 'balance': 100},
+          ],
+        },
+        const {},
+        queriedAt: now,
+      );
+      expect(mixed.creditBalance, isNull);
+    });
     test('Coding Plan alone cannot displace a verified gift snapshot', () {
       final reward = {
         'checkedAt': now.millisecondsSinceEpoch - 1,

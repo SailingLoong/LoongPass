@@ -1,0 +1,51 @@
+# Preserve only observed gift quantities and their official unit.
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -666,27 +666,32 @@
+     if (!owner) continue
+     const exp = startNum(x.expires_at)
+     if (exp > 0 && exp <= now) continue // a bucket past its own end is over
+-    const total = startNum(x.total_units), left = startNum(x.remaining_units)
+-    let used = startNum(x.used_units)
++    const quantity = (v) => {
++      const n = startNum(v)
++      return Number.isFinite(n) && n >= 0 ? n : undefined
++    }
++    const total = quantity(x.total_units), left = quantity(x.remaining_units)
++    let used = quantity(x.used_units)
+     if (total === undefined && used === undefined && left === undefined) continue
+     const models = bucketModels(x)
+     const base = first(str(x.show_name), models.join(", "), "Credits")
+-    const w = { name: base, used: 0, _plan: str(owner.name), _spent: giftSpent(x) }
+-    if (used === undefined) used = total !== undefined && left !== undefined ? total - left : 0
+-    if (total > 0) {
+-      // the bucket's count as amount of limit, as the Coding windows' is
+-      // (#659): magpie says it as used or as left, as it says the share
++    const w = { name: base, _plan: str(owner.name), _spent: giftSpent(x) }
++    if (str(x.unit_type).trim()) w.unit = x.unit_type.trim()
++    if (used === undefined && x.used_units == null && total !== undefined && left !== undefined && left <= total) used = total - left
++    const remaining = left ?? (x.remaining_units == null && total !== undefined && used !== undefined && used <= total ? total - used : undefined)
++    if (remaining !== undefined) w.balance = remaining
++    if (total !== undefined) w.limit = total
++    if (used !== undefined) w.amount = used
++    if (total > 0 && used !== undefined) {
+       w.used = (100 * used) / total
+-      w.amount = used
+-      w.limit = total
+       w.display = `${compact(used)} / ${compact(total)}`
+     }
+-    if (w._spent) w.used = Math.max(100, w.used)
+-    if (exp > 0) {
+-      w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
+-      // expires_at is this remaining bucket's end, independently of renewal.
+-      w.runsOutAt = w.resetsAt
+-      const remaining = left ?? (total !== undefined ? Math.max(0, total - used) : undefined)
++    if (w._spent) w.used = Math.max(100, w.used ?? 0)
++    const end = startNum(owner.ends_at)
++    const deadline = exp > 0 && end > 0 ? Math.min(exp, end) : exp > 0 ? exp : end
++    if (deadline > 0) {
++      w.runsOutAt = new Date(Math.trunc(deadline) * 1000).toISOString()
++      if (exp > 0) w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
+       if (remaining !== undefined) w.runsOut = remaining
+     }
+     let span = 0

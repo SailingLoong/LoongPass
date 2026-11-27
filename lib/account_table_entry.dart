@@ -28,6 +28,7 @@ class AccountTableEntry {
     this.detailPlatform,
     this.plan,
     this.officialId,
+    this.deviceBinding,
     this.authorizationLabel,
     this.attention = AccountAttention.none,
     this.resolution,
@@ -82,7 +83,11 @@ class AccountTableEntry {
   String get latestClaim => receipt?.display ?? '暂无已确认记录';
   final DateTime? observedAt;
   final String? preferenceId, sourceLabel;
-  final String? detailPlatform, officialId, authorizationLabel, plan;
+  final String? detailPlatform,
+      officialId,
+      deviceBinding,
+      authorizationLabel,
+      plan;
   DateTime? get queriedAt => observedAt ?? credits?.observedAt;
   AccountTableEntry inApp(String appId, String appLabel) => AccountTableEntry(
     id: '$appId/$id',
@@ -91,6 +96,7 @@ class AccountTableEntry {
     detailPlatform: detailPlatform,
     plan: plan,
     officialId: officialId,
+    deviceBinding: deviceBinding,
     authorizationLabel: authorizationLabel,
     label: label,
     identity: identity,

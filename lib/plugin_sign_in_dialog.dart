@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import 'plugin_accounts.dart';
 import 'plugin_sign_in.dart';
+import 'plugin_zcode_binding.dart';
 import 'select_field_semantics.dart';
 
 class PluginSignInDialog extends StatefulWidget {
@@ -18,7 +19,9 @@ class PluginSignInDialog extends StatefulWidget {
     required this.title,
     this.initialProvider,
     this.target,
-    this.authorizationContext = const {},
+    this.localZcodeDevice,
+    this.preferLocalDevice = false,
+    this.beforeDeviceChange,
     this.registrationUrl,
   });
   final Animation<double>? animation;
@@ -27,7 +30,9 @@ class PluginSignInDialog extends StatefulWidget {
   final String title;
   final String? initialProvider;
   final PluginAccount? target;
-  final Map<String, String> authorizationContext;
+  final String? localZcodeDevice;
+  final bool preferLocalDevice;
+  final Future<void> Function()? beforeDeviceChange;
   final Uri? registrationUrl;
   @override
   State<PluginSignInDialog> createState() => _PluginSignInDialogState();
@@ -47,7 +52,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   bool _busy = false, _ended = false;
   bool _registrationOpened = false;
   late final PluginAccount? _target;
-  late final Map<String, String> _targetContext;
+  bool _useLocalDevice = false;
 
   List<Map> get _methods => [
     for (final m
@@ -73,13 +78,8 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
             widget.accounts.providers[target.provider]?['reauthorize'] == true
         ? target
         : null;
-    _targetContext = Map.unmodifiable({
-      ...widget.authorizationContext,
-      if (_target != null) ...{
-        'expectedUid': _target.uid,
-        'expectedRealm': _target.realm,
-      },
-    });
+    _useLocalDevice =
+        widget.preferLocalDevice && widget.localZcodeDevice != null;
     _signIn = PluginSignIn(widget.accounts.runtime, onSaved: _saved);
     final available = widget.providerIds.where(
       widget.accounts.providers.containsKey,
@@ -165,12 +165,25 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         )) {
       throw StateError('Authorization target changed');
     }
+    if (_useLocalDevice &&
+        _target != null &&
+        widget.localZcodeDevice != _target.zcodeDevice) {
+      await widget.beforeDeviceChange?.call();
+      if (!mounted || _ended) return;
+    }
     final auth = await _signIn.begin(
       _target?.provider ?? _provider!,
       _target == null ? _method! : null,
       _inputs,
       account: _target?.key,
-      context: _target == null ? null : _targetContext,
+      context: _target == null
+          ? null
+          : {
+              'expectedUid': _target.uid,
+              'expectedRealm': _target.realm,
+              if (_useLocalDevice && widget.localZcodeDevice != null)
+                'device': widget.localZcodeDevice!,
+            },
     );
     if (!mounted || _ended) return;
     if (!{'auto', 'code'}.contains(auth['method'])) {
@@ -368,6 +381,39 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                           Text(
                             '将通过官方授权更新 ${_target.label}（${_target.realm} · ${_target.uid}）。',
                           ),
+                        if (_step == _Step.select &&
+                            _target?.provider == 'zcode') ...[
+                          if (widget.localZcodeDevice != null &&
+                              widget.localZcodeDevice != _target!.zcodeDevice)
+                            FSelect<bool>(
+                              key: const ValueKey('zcode-login-device'),
+                              builder: selectFieldSemantics,
+                              label: const Text('绑定设备'),
+                              items: {
+                                '沿用账号绑定 · ${_target.zcodeDevice ?? '已保存设备'}':
+                                    false,
+                                '本机 ZCode · ${widget.localZcodeDevice}': true,
+                              },
+                              control: FSelectControl.lifted(
+                                value: _useLocalDevice,
+                                onChange: (v) => setState(
+                                  () => _useLocalDevice = v ?? false,
+                                ),
+                              ),
+                            )
+                          else if (zcodeBindingLabel(
+                                _target!,
+                                widget.accounts.accounts,
+                              )
+                              case final device?)
+                            Text('继续使用已绑定设备 $device'),
+                        ],
+                        if (_step == _Step.select &&
+                            _target == null &&
+                            _provider == 'zcode' &&
+                            _chosen['type'] == 'oauth' &&
+                            widget.localZcodeDevice != null)
+                          Text('本机 ZCode 设备 ID · ${widget.localZcodeDevice}'),
                         if (_step == _Step.select && _target == null) ...[
                           if (widget.providerIds
                                   .where(widget.accounts.providers.containsKey)
