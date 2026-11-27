@@ -135,6 +135,12 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   }
 
   @override
+  Future<void> setZcodeGiftOnly(PluginAccount account, bool value) async {
+    account.facts['zcodeGiftOnly'] = value;
+    notifyListeners();
+  }
+
+  @override
   Future<void> remove(String key) async {
     _rows = _rows.where((a) => a.key != key).toList();
     notifyListeners();
@@ -894,6 +900,135 @@ void main() {
     },
   );
 
+  testDesktopWidgets(
+    'ZCode retains an unanswered historical submission when today has no offer',
+    (tester) async {
+      final submitted = DateTime.utc(2026, 11, 6, 12, 38);
+      await mountAccount(
+        tester,
+        PluginAccount(
+          key: 'zcode#history',
+          active: true,
+          models: const [],
+          facts: {
+            'provider': 'zcode',
+            'uid': 'one',
+            'realm': 'bigmodel',
+            'registrationId': 'one',
+            'reward': {
+              'status': 'noOffer',
+              'claims': {},
+              'buckets': [],
+              'bindingHistory': [
+                {
+                  'claims': {},
+                  'bindingHistory': [
+                    {
+                      'claims': {
+                        'previous': {
+                          'state': 'pending',
+                          'submittedAt': submitted.millisecondsSinceEpoch,
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        ),
+      );
+      await tester.tap(find.byKey(const Key('account-zcode#history')));
+      await tester.pumpAndSettle();
+      await openDetailSection(tester, 'receipt');
+      expect(find.textContaining('官方回执未确认'), findsOneWidget);
+      expect(find.textContaining(creditTime(submitted)), findsOneWidget);
+      expect(find.textContaining('已领取'), findsNothing);
+    },
+  );
+
+  testDesktopWidgets('ZCode shows a confirmed grant before its first balance', (
+    tester,
+  ) async {
+    final observed = DateTime.utc(2099, 11, 27, 14, 26);
+    final effective = DateTime.utc(2099, 11, 27, 15);
+    final end = DateTime.utc(2099, 11, 30, 1);
+    int seconds(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
+    final rewards = await mountAccount(
+      tester,
+      PluginAccount(
+        key: 'zcode#weekend',
+        active: true,
+        models: const [],
+        facts: {
+          'provider': 'zcode',
+          'uid': 'one',
+          'realm': 'bigmodel',
+          'registrationId': 'first',
+          'reward': {
+            'status': 'noOffer',
+            'checkedAt': observed.millisecondsSinceEpoch,
+            'buckets': [],
+            'plans': [
+              {
+                'plan_id': 'weekend',
+                'user_plan_id': 'issued',
+                'name': 'Weekend Build',
+                'status': 'active',
+                'ends_at': seconds(end),
+                'entitlements': [
+                  {
+                    'entitlement_id': 'flash',
+                    'show_name': 'Flash',
+                    'unit_type': 'token',
+                    'grant_units': 300000000,
+                    'period': 'one_time',
+                    'effective_at': seconds(effective),
+                  },
+                ],
+              },
+            ],
+            'claims': {
+              'weekend': {
+                'state': 'claimed',
+                'instance': 'issued',
+                'httpStatus': 200,
+                'serviceCode': 0,
+                'answeredAt': observed.millisecondsSinceEpoch,
+                'endsAt': seconds(end),
+              },
+            },
+          },
+        },
+      ),
+    );
+    final row = tester
+        .widget<CompactAccountsTable>(find.byType(CompactAccountsTable))
+        .entries
+        .single;
+    expect(row.nextExpiry, end);
+    expect(row.receipt?.amount, 300000000);
+    expect(row.receipt?.unit, 'token');
+    expect(row.receipt?.confirmedAt, observed.toLocal());
+    expect(row.receipt?.creditExpiresAt, end.toLocal());
+    expect(row.balance, isNot(contains('300000000')));
+    expect(row.expiringAmount, isNull);
+    await tester.tap(find.byKey(const Key('account-zcode#weekend')));
+    await tester.pumpAndSettle();
+    await openDetailSection(tester, 'quota');
+    expect(find.textContaining('Weekend Build'), findsWidgets);
+    expect(find.textContaining('发放 300000000 token'), findsWidgets);
+    expect(find.textContaining(creditTime(effective)), findsWidgets);
+    expect(find.textContaining(creditTime(end)), findsWidgets);
+    final billingMode = find.byKey(const Key('zcode-plan-zcode#weekend'));
+    await tester.ensureVisible(billingMode);
+    await tester.tap(billingMode);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('仅赠送额度（含 Start Plan）').last);
+    await tester.pumpAndSettle();
+    expect(rewards.accounts.accounts.single.zcodeGiftOnly, isTrue);
+  });
+
   for (final (activityNewer, hasGift) in [
     (true, false),
     (true, true),
@@ -956,7 +1091,7 @@ void main() {
         expect(row.nextExpiry, hasGift ? newExpiry : null);
         expect(row.upcomingExpiryAmount, hasGift ? '13.25 tokens' : '—');
         expect(find.textContaining('81.75'), findsNothing);
-        if (hasGift) expect(find.text('13.25 tokens'), findsOneWidget);
+        if (hasGift) expect(find.text('13.25 tokens'), findsNWidgets(2));
         await tester.tap(find.byKey(const Key('account-zcode#one')));
         await tester.pumpAndSettle();
         final sheet = find.byKey(const Key('account-detail-page'));
@@ -1297,6 +1432,7 @@ void main() {
     'target reauthorization uses native capability without choosing a login method',
     (tester) async {
       final runtime = _Runtime()..auto = true;
+      const localDevice = '11111111-2222-4333-8444-555555555555';
       final target = PluginAccount(
         key: 'zcode#one',
         active: true,
@@ -1311,7 +1447,16 @@ void main() {
       );
       final accounts = _Accounts(
         runtime,
-        rows: [target],
+        rows: [
+          target,
+          PluginAccount(
+            key: 'zcode#other',
+            active: true,
+            models: const [],
+            facts: {...target.facts, 'uid': 'other'},
+            zcodeDevice: localDevice,
+          ),
+        ],
         providers: {
           'zcode': {
             'name': 'ZCode',
@@ -1320,9 +1465,6 @@ void main() {
           },
         },
       );
-      final frozen = <String, String>{
-        'device': '11111111-2222-4333-8444-555555555555',
-      };
       await tester.pumpWidget(
         DesktopTestApp(
           home: Scaffold(
@@ -1340,7 +1482,7 @@ void main() {
                     registrationUrl: Uri.parse(
                       'https://www.workbuddy.cn/events/invite/?inviteCode=custom',
                     ),
-                    authorizationContext: frozen,
+                    localZcodeDevice: localDevice,
                   ),
                 ),
                 child: const Text('打开'),
@@ -1353,7 +1495,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(runtime.calls, isEmpty);
       expect(find.byKey(const ValueKey('plugin-auth-method')), findsNothing);
-      frozen['device'] = '22222222-2222-4333-8444-555555555555';
+      final deviceField = find.byKey(const ValueKey('zcode-login-device'));
+      await tester.tap(deviceField);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('本机 ZCode · $localDevice · 已有 1 个账号绑定').last);
+      await tester.pumpAndSettle();
       await tester.tap(
         find.text('继续').evaluate().isEmpty
             ? find.text('开始授权')
@@ -1470,7 +1616,7 @@ void main() {
       expect(find.textContaining('100000'), findsWidgets);
       expect(find.textContaining('0.875'), findsWidgets);
       expect(find.textContaining('12345678 tokens'), findsWidgets);
-      expect(find.textContaining('Start Plan'), findsWidgets);
+      expect(find.text('已获活动额度'), findsWidgets);
       expect(find.textContaining('GLM Coding Lite'), findsWidgets);
       expect(find.text('最近一次官方额度查询未完成。'), findsNothing);
       expect(accounts.refreshes, 0);

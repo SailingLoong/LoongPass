@@ -10,9 +10,12 @@ import 'plugin_credit_balance.dart';
 import 'plugin_model_catalog.dart';
 import 'plugin_rewards.dart';
 import 'plugin_sign_in_dialog.dart';
+import 'select_field_semantics.dart';
 import 'plugin_zcode_binding.dart';
 import 'zcode_api.dart';
 import 'zcode_rewards.dart';
+
+part 'plugin_zcode_quota_view.dart';
 
 class PluginAccountsPanel extends StatefulWidget {
   const PluginAccountsPanel({
@@ -61,8 +64,8 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     } on ZcodeFailure catch (e) {
       if (mounted)
         setState(
-          () => _message = e.code == 'device_pool_empty'
-              ? '没有可用的已保存设备号，账号设备未改变。'
+          () => _message = e.code == 'device_required'
+              ? '未能读取本机 ZCode 的设备 ID。请先打开官方客户端。'
               : '操作未完成，请核对授权与网络。待核验的领取记录会保留。',
         );
     } catch (_) {
@@ -72,11 +75,21 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     }
   }
 
-  Future<void> _authorize([PluginAccount? account]) => _run(() async {
+  Future<void> _authorize([
+    PluginAccount? account,
+    bool bindLocal = false,
+  ]) => _run(() async {
     if (widget.accounts.providers.isEmpty) {
       await widget.accounts.refresh();
       if (!mounted) return;
     }
+    final zcode =
+        account?.provider == 'zcode' ||
+        account == null && widget.providerIds.contains('zcode');
+    final localDevice = zcode ? await installedZcodeDevice() : null;
+    if (bindLocal && localDevice == null)
+      throw const ZcodeFailure('device_required');
+    if (!mounted) return;
     final saved = await showFDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -86,6 +99,11 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         providerIds: account == null ? widget.providerIds : {account.provider},
         initialProvider: account?.provider,
         target: account,
+        localZcodeDevice: localDevice,
+        preferLocalDevice: bindLocal,
+        beforeDeviceChange: account == null
+            ? null
+            : () => widget.rewards.zcode.captureBinding(account.key),
         registrationUrl: account == null
             ? widget.registrationUrl?.call()
             : null,
@@ -94,6 +112,14 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             : '重新授权 ${account.label}',
       ),
     );
+    if (saved != null && account?.provider == 'zcode' && localDevice != null) {
+      try {
+        await widget.rewards.zcode.captureBinding(saved);
+      } on ZcodeFailure {
+        if (mounted) setState(() => _message = '授权已保存，设备记录待下次刷新核验。');
+        return;
+      }
+    }
     if (saved != null && mounted)
       setState(
         () => _message = account != null && saved != account.key
@@ -101,41 +127,6 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             : '账号授权已保存。',
       );
   }, accountKey: account?.key);
-
-  Future<void> _rebind(PluginAccount account) => _run(() async {
-    // Preserve the currently verified device before asking the native owner
-    // for a new grant. This is a metadata commit, with no reward HTTP request.
-    await widget.rewards.zcode.captureBinding(account.key);
-    final reservation = await ZcodeDeviceReservation.take(
-      widget.accounts,
-      account,
-    );
-    try {
-      if (!mounted) return;
-      final saved = await showFDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (context, style, animation) => PluginSignInDialog(
-          animation: animation,
-          accounts: widget.accounts,
-          providerIds: {account.provider},
-          initialProvider: account.provider,
-          target: account,
-          authorizationContext: {'device': reservation.device},
-          title: '重新绑定 ${account.label} 的设备',
-        ),
-      );
-      if (saved == null) return;
-      try {
-        await widget.rewards.zcode.captureBinding(saved);
-        if (mounted) setState(() => _message = '已通过官方授权更新设备绑定。领取记录已保留。');
-      } catch (_) {
-        if (mounted) setState(() => _message = '官方授权已保存，设备历史尚待核验，请刷新活动记录。');
-      }
-    } finally {
-      reservation.release();
-    }
-  }, accountKey: account.key);
 
   Future<void> _refresh() => _run(() async {
     await widget.accounts.refresh();
@@ -442,7 +433,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               id: 'rebind',
               label: '重新绑定设备',
               enabled: !_busy && a.active,
-              run: () => _rebind(a),
+              run: () => _authorize(a, true),
             ),
           (id: 'remove', label: '移除账号', enabled: !_busy, run: () => _remove(a)),
         ];
@@ -515,20 +506,40 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
   Widget _quotaDetails(PluginAccount a) {
     final plan = _text(a.usage?['plan']), summary = _usageBalance(a.usage);
     final until = _date(a.usage?['until']), windows = _windows(a);
-    final buckets = _buckets(a);
-    final rewardTime = _millis(_reward(a)['checkedAt']);
     final secondary = context.theme.typography.body.xs.copyWith(
       color: context.theme.colors.mutedForeground,
-    );
-    final heading = context.theme.typography.body.sm.copyWith(
-      fontWeight: FontWeight.w600,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (plan == null && summary == null && until == null && windows.isEmpty)
-          const Text('尚无可展示的官方套餐或窗口明细。')
-        else ...[
+        if (a.provider == 'zcode') ...[
+          FSelect<bool>(
+            key: ValueKey('zcode-plan-${a.key}'),
+            builder: selectFieldSemantics,
+            label: const Text('模型调用可用额度'),
+            items: const {'仅赠送额度（含 Start Plan）': true, '全部 Plan（赠送优先）': false},
+            size: FTextFieldSizeVariant.sm,
+            enabled: !_busy && a.active,
+            control: FSelectControl.lifted(
+              value: a.zcodeGiftOnly,
+              onChange: (value) {
+                if (value != null && value != a.zcodeGiftOnly) {
+                  _run(
+                    () => widget.accounts.setZcodeGiftOnly(a, value),
+                    accountKey: a.key,
+                  );
+                }
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (plan == null &&
+            summary == null &&
+            until == null &&
+            windows.isEmpty) ...[
+          if (a.provider != 'zcode') const Text('尚无可展示的官方套餐或窗口明细。'),
+        ] else ...[
           Text(
             a.queriedAt == null
                 ? '套餐与额度观测时间未知'
@@ -550,6 +561,9 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
                       (window['display'] as String).isNotEmpty)
                     Text('官方摘要：${window['display']}', style: secondary),
                   if (window['aside'] == true) const Text('参考额度'),
+                  if (a.provider == 'zcode' && !a.usesZcodeRewardExpiry)
+                    if (_date(window['runsOutAt']) case final expiry?)
+                      Text('额度到期：${creditTime(expiry)}'),
                   if (_date(window['resetsAt']) case final reset?
                       when _date(window['runsOutAt'])
                               ?.isAtSameMomentAs(reset) !=
@@ -562,26 +576,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         if (a.provider == 'zcode')
           if (_usageFailure(a) case final failure?) Text(failure),
 
-        if (a.provider == 'zcode') ...[
-          const FDivider(),
-          Text('已获活动额度（Start Plan）', style: heading),
-          Text(
-            rewardTime == null
-                ? '活动额度观测时间未知'
-                : '活动额度观测于 ${creditTime(rewardTime)}',
-            style: secondary,
-          ),
-          const SizedBox(height: 8),
-          if (buckets.isEmpty)
-            Text(rewardTime == null ? '尚无已核实的活动额度明细。' : '本次余额查询未返回已生效的活动额度明细。'),
-          for (final bucket in buckets)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                '${bucket.label}：剩余 ${_number(bucket.remaining)} ${bucket.unit}',
-              ),
-            ),
-        ],
+        if (a.provider == 'zcode') _ZcodeGiftDetails(a),
       ],
     );
   }
@@ -653,6 +648,9 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         if (a.realm.isNotEmpty) a.realm,
       ].join(' · '),
       officialId: a.uid.isEmpty ? null : a.uid,
+      deviceBinding: a.provider == 'zcode'
+          ? zcodeBindingLabel(a.zcodeDevice, widget.accounts.accounts) ?? '尚未核实'
+          : null,
       authorizationLabel: _needsAuthorization(a) ? '需要重新授权' : '已保存授权',
       balance: _balance(a),
       status: _status(a),
@@ -662,10 +660,24 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       actions: _actions(a),
       expiryDetails: expiryObservation,
       details: _quotaDetails(a),
-      plan: _text(a.usage?['plan']),
-      observedAt: a.queriedAt,
+      plan:
+          _text(a.usage?['plan']) ??
+          (a.provider == 'zcode'
+              ? _text(
+                  zcodePlans(_reward(a))
+                      .where((p) => p['status'] == 'active')
+                      .map((p) => _text(p['name']))
+                      .whereType<String>()
+                      .toSet()
+                      .join(' · '),
+                )
+              : null),
+      observedAt: a.balanceObservedAt,
       receipt: receipt,
       previousReceipts: receipts.skip(1).toList(growable: false),
+      unconfirmedClaimTimes: a.provider == 'zcode'
+          ? _zcodeUnconfirmedClaims(_reward(a))
+          : const [],
       notice: _messageAccount == a.key ? _message : null,
       expiryAt: next?.at,
       expiringAmount: _formatBalance(next?.amount),
@@ -733,12 +745,6 @@ List<Map> _windows(PluginAccount a) => [
   for (final w in a.usage?['windows'] as List? ?? const [])
     if (w is Map) w,
 ];
-List<ZcodeBucket> _buckets(PluginAccount a) => [
-  for (final b in _reward(a)['buckets'] as List? ?? const [])
-    if (b is Map && b['label'] is String && b['unit'] is String)
-      ZcodeBucket.fromJson(Map<String, dynamic>.from(b)),
-];
-
 String _windowText(Map w) {
   final unit = _unit(w);
   final name = _text(w['name']) ?? '额度窗口';
@@ -762,9 +768,24 @@ String _windowText(Map w) {
 
 String _balance(PluginAccount a) {
   final balance = a.creditBalance;
-  return balance == null
-      ? '—'
-      : '${accountPoints(balance.amount)} ${balance.unit}';
+  if (balance != null)
+    return '${accountPoints(balance.amount)} ${balance.unit}';
+  if (a.provider == 'zcode' &&
+      a.usesZcodeRewardExpiry &&
+      _usageFailure(a) == null) {
+    final plans = zcodePlans(_reward(a)).toList();
+    if (plans.isEmpty && _text(a.usage?['plan']) == null && _windows(a).isEmpty)
+      return '暂无活动额度';
+    final grants = plans
+        .where((p) => p['status'] == 'active')
+        .expand(zcodeEntitlements);
+    if (grants.isNotEmpty &&
+        grants.every(
+          (e) => zcodeTime(e['effective_at'])?.isAfter(DateTime.now()) == true,
+        ))
+      return '待生效';
+  }
+  return '—';
 }
 
 String _status(PluginAccount a) {
@@ -777,6 +798,8 @@ String _status(PluginAccount a) {
     'done' || 'observedClaimed' => '官方确认已有权益。',
     'claimable' when a.provider == 'zcode' => '官方已向这个账号与绑定设备投放活动，领取资格由官方核验。',
     'claimable' => '当前有可领取活动。',
+    'noOffer' when a.provider == 'zcode' && _hasHeldPlan(a) =>
+      '已有活动权益，本次未收到新的可领取活动。',
     'noOffer' when a.provider == 'zcode' => '官方本次未向这个账号与绑定设备返回可领取活动。',
     'device_required' => '无法核对这个账号的绑定设备，活动资格待核对。',
     'devicePending' => '这台设备已有另一个账号提交了本次活动，正在等待官方回执。',
@@ -821,6 +844,7 @@ String _statusLabel(PluginAccount a) {
     'done' || 'observedClaimed' => '官方已确认权益',
     'claimable' when a.provider == 'zcode' => '已收到活动',
     'claimable' => '有可领取活动',
+    'noOffer' when a.provider == 'zcode' && _hasHeldPlan(a) => '已有活动权益',
     'noOffer' when a.provider == 'zcode' => '本账号与设备未收到活动',
     'device_required' => '绑定设备待核对',
     'devicePending' => '同设备领取待确认',
@@ -859,36 +883,26 @@ String? _rewardState(PluginAccount account) {
 }
 
 Iterable<ClaimReceipt> _receipts(PluginAccount a) sync* {
-  var found = false;
   final reward = _reward(a);
-  for (final r in [
-    reward,
-    ...(reward['history'] as List? ?? const []).reversed,
-  ]) {
-    if (r is Map && {'claimed', 'done'}.contains(r['status'])) {
-      found = true;
-      yield ClaimReceipt(
-        amount: r['credit'] is num ? r['credit'] : null,
-        unit: _unit(r),
-        confirmedAt: _millis(r['confirmedAt']),
-        observedAt: _millis(r['observedAt']),
-        creditExpiresAt: _date(r['creditExpiresAt']),
-        day: r['day'] is String ? r['day'] : null,
-      );
+  if (a.provider != 'zcode') {
+    for (final r in [
+      reward,
+      ...(reward['history'] as List? ?? const []).reversed,
+    ]) {
+      if (r is Map && {'claimed', 'done'}.contains(r['status'])) {
+        yield ClaimReceipt(
+          amount: r['credit'] is num ? r['credit'] : null,
+          unit: _unit(r),
+          confirmedAt: _millis(r['confirmedAt']),
+          observedAt: _millis(r['observedAt']),
+          creditExpiresAt: _date(r['creditExpiresAt']),
+          day: r['day'] is String ? r['day'] : null,
+        );
+      }
     }
+    return;
   }
-  if (found) return;
-  for (final claims in [
-    reward['claims'],
-    for (final binding in reward['bindingHistory'] as List? ?? const [])
-      if (binding is Map) binding['claims'],
-  ]) {
-    if (claims is Map &&
-        claims.values.any((c) => c is Map && c['state'] == 'claimed')) {
-      yield const ClaimReceipt(unit: '单位未知');
-      return;
-    }
-  }
+  yield* _zcodeReceipts(reward);
 }
 
 String? _formatBalance(PluginCreditBalance? amount) =>

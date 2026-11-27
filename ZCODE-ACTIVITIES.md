@@ -1,5 +1,14 @@
 # ZCode 活动接入
 
+## 当前账号界面与授权
+
+在账号详情的「套餐与额度」选择「仅赠送额度（含 Start Plan）」或「全部 Plan（赠送优先）」。选择按账号保存，适用于本机模型服务、Magpie 具体模型组和 Auto 中的该账号。旧账号默认沿用全部已有 Plan。仅赠送只接受原生 Trial 模型，赠送池内部的扣减顺序由 ZCode 决定。
+
+活动查询分别展示已获权益的发放量、生效与到期时间，以及官方余额窗口的观测值。仅有发放定义时剩余额度未知。一次性发放回执按官方权益实例匹配，周期额度保留周期。账号资料列出绑定设备和共用账号数。首次浏览器授权优先复用本机 ZCode 的已有设备 ID；重新授权时可以沿用账号原绑定或选择本机客户端已存在的设备。活动是否投放和发放仍以官方结果为准。
+
+2026-11-27 对照了运行时固定的社区插件 0.1.70 与 0.1.72 的余额、活动、登录和赠送路由实现，当前适配沿用应用源锁。[社区 ZCode 插件](https://github.com/magpie-community/plugins/tree/3feae3425239c2ed01bd8b2f745bd7dec911bf51/packages/zcode)
+
+
 ## 当前活动核对（2026-11-20）
 
 ZCode 3.18.2 的活动卡片来自官方按账号和绑定设备返回的营销投放。LoongPass 只接受本次横幅或弹窗上明确的领取按钮。完整空列表表示本账号与设备本次未收到活动，响应不完整时显示待核对。领取资格与到账以官方回执和权益实例为准。营销查询使用已安装的客户端版本和 LoongPass 界面语言，独立使用插件时沿用固定插件的客户端版本。设备取自该账号已验证的授权绑定。[官方客户端协议](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/docs/marketing-touch-client.md) · [官方营销服务](https://github.com/zai-org/ZCode/blob/fec975905a2abd4c07e35c40d51fa097a2258ec9/packages/services/src/marketing-touch/marketingTouchService.ts)

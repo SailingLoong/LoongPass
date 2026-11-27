@@ -46,8 +46,7 @@ class PluginModelBinding {
       generatesImages && !(native['outputs'] as List).contains('text');
   String get exportedId =>
       'accounts/${Uri.encodeComponent(account.key)}/${account.provider}/$nativeId';
-  bool get giftOnly =>
-      account.provider == 'zcode' && nativeId.toLowerCase().endsWith('-trial');
+  bool get giftOnly => account.provider == 'zcode' && _trialId(nativeId);
   ModelQuotaStatus get status => quota.status;
   PluginCreditExpiry? get expiry => quota.expiry;
   bool get available =>
@@ -87,7 +86,7 @@ List<String> spendableModels(
           model.bindings.any((binding) {
             if (binding.account.key != account.key ||
                 !binding.available ||
-                binding.native['free'] == true)
+                (binding.native['free'] == true && !binding.giftOnly))
               return false;
             final rate = binding.native['rate'];
             if (account.provider == 'workbuddy' && rate is num && rate <= 0)
@@ -141,6 +140,9 @@ class PluginModel {
       '$id $name ${bindings.map((b) => '${b.nativeId} ${b.native['name'] ?? ''} ${b.account.label} ${b.account.provider}').join(' ')}'
           .toLowerCase();
 }
+
+bool _trialId(Object? id) =>
+    id is String && id.toLowerCase().endsWith('-trial');
 
 bool supportedNativeModel(Map<String, dynamic> model) {
   final outputs = model['outputs'];
@@ -198,6 +200,9 @@ List<PluginModel> pluginModelCatalog(
       now,
     );
     for (final native in grant.account.models.where(supportedNativeModel)) {
+      if (grant.account.zcodeGiftOnly &&
+          (!_trialId(native['id']) || !_trialId(native['apiId'])))
+        continue;
       final provider = grant.account.provider;
       final canonical = officialModelId(provider, native);
       final id = canonical ?? unverifiedModelId(native);

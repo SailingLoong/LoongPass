@@ -9,6 +9,8 @@ import 'plugin_credentials.dart';
 import 'account_document_store.dart';
 import 'account_registration.dart';
 import 'plugin_credit_balance.dart';
+import 'zcode_api.dart';
+import 'zcode_rewards.dart';
 import 'credit_expiry_history.dart';
 
 /// ZCode activity eligibility belongs to the official regional account, even
@@ -31,6 +33,7 @@ class PluginAccount {
     ZcodeGiftExpiry? nativeGift,
     this.error,
     this.source,
+    this.zcodeDevice,
   }) : _nativeGift =
            nativeGift ??
            (facts['provider'] == 'zcode'
@@ -52,8 +55,49 @@ class PluginAccount {
   String get label => facts['label'] ?? uid;
   String get realm => facts['realm'] ?? '';
   String get registrationId => facts['registrationId'];
-  PluginCreditBalance? get creditBalance =>
-      pluginCreditBalance(provider, usage);
+  final String? zcodeDevice;
+  bool get zcodeGiftOnly =>
+      provider == 'zcode' && facts['zcodeGiftOnly'] == true;
+
+  PluginCreditBalance? get creditBalance {
+    if (provider != 'zcode') return pluginCreditBalance(provider, usage);
+    final now = DateTime.now();
+    if (usesZcodeRewardExpiry) {
+      final bucket = zcodeBuckets(_reward)
+          .where((b) => zcodeTime(b.expiresAt)?.isAfter(now) != false)
+          .singleOrNull;
+      if (bucket?.remaining != null && bucket!.unit != '单位未知') {
+        return PluginCreditBalance(bucket.remaining!, bucket.unit);
+      }
+      return null;
+    }
+    final windows = (usage?['windows'] as List? ?? const [])
+        .whereType<Map>()
+        .where(
+          (w) =>
+              w['runsOutAt'] != null ||
+              w['limit'] is num ||
+              w['balance'] is num ||
+              w['amount'] is num,
+        );
+    if (windows.any((w) => w['runsOutAt'] != null)) {
+      final window = windows.singleOrNull;
+      if (window == null) return null;
+      final deadline = DateTime.tryParse(window['runsOutAt'].toString());
+      final left = zcodeUnits(window['balance'] ?? window['runsOut']);
+      final unit = window['unit'];
+      return deadline?.isAfter(now) == true && left != null && zcodeText(unit)
+          ? PluginCreditBalance(left, unit as String)
+          : null;
+    }
+    return zcodeGiftOnly ? null : pluginCreditBalance(provider, usage);
+  }
+
+  DateTime? get balanceObservedAt =>
+      provider == 'zcode' && usesZcodeRewardExpiry
+      ? ZcodeGiftExpiry.rewardObservedAt(_reward) ?? queriedAt
+      : queriedAt;
+
   Map get _reward => facts['reward'] is Map ? facts['reward'] : const {};
   bool get usesZcodeRewardExpiry => _nativeGift?.usesReward(_reward) ?? false;
   DateTime? get creditExpiryObservedAt => usesZcodeRewardExpiry
@@ -170,6 +214,11 @@ class PluginAccounts extends ChangeNotifier {
               ? _giftFor(entry.key, entry.value)
               : null,
           error: _errors[entry.key],
+          zcodeDevice:
+              entry.value['provider'] == 'zcode' &&
+                  _active(entry.key, entry.value)
+              ? _savedZcodeDevice(_native[entry.key])
+              : null,
           source:
               _active(entry.key, entry.value) &&
                   _native[entry.key]?['source'] is String
@@ -177,6 +226,33 @@ class PluginAccounts extends ChangeNotifier {
               : null,
         ),
   ]);
+
+  static String? _savedZcodeDevice(Map? auth) {
+    if (auth?['type'] != 'oauth' || auth?['refresh'] is! String) return null;
+    try {
+      final state = jsonDecode(auth!['refresh'] as String);
+      return state is Map ? zcodeDeviceId(state['device']) : null;
+    } on FormatException {
+      return null;
+    } on ZcodeFailure {
+      return null;
+    }
+  }
+
+  Future<void> setZcodeGiftOnly(PluginAccount account, bool value) =>
+      edit((data) {
+        final row = data['accounts']?[account.key];
+        if (row is! Map ||
+            row['provider'] != 'zcode' ||
+            row['removed'] == true ||
+            row['quarantine'] != null ||
+            row['registrationId'] != account.registrationId ||
+            row['uid'] != account.uid ||
+            row['realm'] != account.realm) {
+          throw StateError('Account registration changed');
+        }
+        row['zcodeGiftOnly'] = value;
+      });
 
   ZcodeGiftExpiry _giftFor(String key, Map row) {
     final gift = _gifts[key];

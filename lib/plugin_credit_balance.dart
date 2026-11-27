@@ -1,3 +1,5 @@
+import 'zcode_rewards.dart';
+
 /// A quantity from the pinned native usage contract, never parsed from display
 /// text or percentage usage. The provider retains ownership of the snapshot.
 class PluginCreditBalance {
@@ -226,6 +228,21 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
       bucket['unit'],
     );
     if (value != null && value.at.isAfter(now)) candidates.add(value);
+  }
+  if (provider == 'zcode') {
+    final observed = zcodeBuckets(reward).toList();
+    for (final plan in zcodePlans(reward)) {
+      final at = zcodeTime(plan['ends_at']);
+      if (plan['status'] != 'active' || at == null || !at.isAfter(now))
+        continue;
+      final covered = observed.any((b) {
+        if (b.instance != null) return b.instance == plan['user_plan_id'];
+        if (b.planId != null) return b.planId == plan['plan_id'];
+        // Older journals did not retain IDs. Never count an ambiguous bucket twice.
+        return true;
+      });
+      if (!covered) candidates.add(PluginCreditExpiry(at, null));
+    }
   }
   candidates.sort((a, b) => a.at.compareTo(b.at));
   return candidates;

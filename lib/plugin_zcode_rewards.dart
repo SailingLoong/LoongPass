@@ -331,14 +331,25 @@ class _RewardSession {
       throw const ZcodeFailure('device_required');
     }
     context = zcodeContext({...supplied, 'deviceMid': state['device']});
-    if (previous != null &&
-        previous.entries.any((e) => context[e.key] != e.value)) {
+    if (previous != null && previous['deviceMid'] != context['deviceMid']) {
       (reward['bindingHistory'] as List).add({
         'context': previous,
         'claims': reward['claims'],
         'changedAt': owner.now(),
       });
       reward['claims'] = <String, dynamic>{};
+    } else if (previous != null &&
+        previous.entries.any((e) => context[e.key] != e.value)) {
+      // Keep the metadata under which earlier claims were made. Locale or
+      // client upgrades do not change the identity of the authorized device.
+      for (final claim in (reward['claims'] as Map).values.whereType<Map>()) {
+        for (final attempt in [
+          claim,
+          ...(claim['attempts'] as List? ?? const []),
+        ].whereType<Map>()) {
+          attempt.putIfAbsent('context', () => previous);
+        }
+      }
     }
     reward['context'] = context;
     // Validate history before any network or publication; malformed history
@@ -409,15 +420,21 @@ class _RewardSession {
       final existing = c['state'] == 'observedClaimed';
       final confirmed = existing || c['state'] == 'claimed';
       if (!_unknown(c) && !confirmed) continue;
-      if (confirmed && c['endsAt'] != null && c['instance'] != null) continue;
+      if (confirmed &&
+          c['endsAt'] != null &&
+          c['instance'] != null &&
+          c['credit'] != null)
+        continue;
       final receipt = balance.receipt(
         entry.key,
         existing ? const [] : c['previous'],
         instance: c['instance'],
         heldOnly: existing && c['instance'] == null,
       );
-      if (receipt != null)
+      if (receipt != null) {
+        if (!confirmed) c['observedAt'] = balance.checkedAt;
         _confirmed(c, receipt, state: existing ? 'observedClaimed' : 'claimed');
+      }
     }
   }
 
@@ -830,6 +847,11 @@ void _confirmed(
     claim['instance'] = instance.trim();
   final expiry = zcodePlanExpiry(plan);
   if (expiry != null) claim['endsAt'] = expiry;
+  final grant = zcodeReceiptAmount(plan);
+  if (grant != null) {
+    claim['credit'] = grant.amount;
+    claim['unit'] = grant.unit;
+  }
 }
 
 ZcodeCaptchaConfig? _verificationConfig(Map<String, dynamic> reply) {

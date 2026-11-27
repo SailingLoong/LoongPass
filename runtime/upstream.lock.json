@@ -25,7 +25,9 @@
     "patches/trae-enterprise-billing.patch",
     "patches/workbuddy-renewal.patch",
     "patches/zcode-desktop-owner.patch",
-    "patches/zcode-empty-activity-balance.patch"
+    "patches/zcode-empty-activity-balance.patch",
+    "patches/zcode-gift-units.patch",
+    "patches/zcode-installed-device.patch"
   ],
   "sources": {
     "magpie": {
@@ -317,7 +319,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "79960b53d934f6bdb7b6c2c024dfa8467e418fcc1be224974947547649faf559",
+      "sha256": "2c1dd9801441f4c4157f6e32cdce0c538b85947e03b3888809f4f4257e482e5a",
       "upstreamSha256": "af361ed54c29416f39827c183feac009c140940c941c0cc92b9bca2445d683a8"
     },
     {
@@ -378,6 +380,8 @@
     "patches/trae-enterprise-billing.patch",
     "patches/workbuddy-renewal.patch",
     "patches/zcode-desktop-owner.patch",
-    "patches/zcode-empty-activity-balance.patch"
+    "patches/zcode-empty-activity-balance.patch",
+    "patches/zcode-gift-units.patch",
+    "patches/zcode-installed-device.patch"
   ]
 }

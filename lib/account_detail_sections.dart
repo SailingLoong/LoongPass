@@ -261,6 +261,7 @@ class _AccountProfile extends StatelessWidget {
       _Fact('账号名称', row.label),
       _Fact('平台', row.detailPlatform ?? source ?? '未知'),
       _Fact('账号 ID', row.officialId ?? '未提供'),
+      if (row.deviceBinding case final device?) _Fact('绑定设备 ID', device),
       _Fact('授权状态', row.authorizationLabel ?? '未知'),
       if (row.hasRewards) _Fact('活动状态', row.status),
       if (row.hasCredits)
@@ -372,16 +373,20 @@ class _Receipts extends StatelessWidget {
   const _Receipts(this.row);
   final AccountTableEntry row;
   @override
-  Widget build(BuildContext context) => row.receipt == null
-      ? const Text('暂无已确认记录')
-      : Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final receipt in [row.receipt!, ...row.previousReceipts])
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: Text(receipt.display),
-              ),
-          ],
-        );
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (row.receipt == null) const Text('暂无已确认记录'),
+      for (final receipt in [?row.receipt, ...row.previousReceipts])
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(receipt.display),
+        ),
+      for (final submitted in row.unconfirmedClaimTimes)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text('${creditTime(submitted)} 提交 · 官方回执未确认'),
+        ),
+    ],
+  );
 }

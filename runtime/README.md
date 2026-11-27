@@ -76,6 +76,8 @@ component; they are not duplicated as client or Dart protocol workarounds.
 | `trae-enterprise-billing.patch` | Keep TRAE CN enterprise seat traffic on the enterprise billing gateway. Remove when a seat refusal reliably stays within that entitlement. |
 | `workbuddy-renewal.patch` | Schedule renewal of browser-owned grants through the native host before an idle refresh grant is revoked. Remove when the provider and host expose the same renewal deadline. |
 | `zcode-desktop-owner.patch` | Admit a desktop paid key only when its official regional account ID matches the selected user. Older unbound grants require confirmation through official sign-in. Remove when upstream proves the same account ownership across cached profiles. |
+| `zcode-installed-device.patch` | Reuse the installed desktop device on first browser authorization. Remove when upstream reads that device on this path. |
+| `zcode-gift-units.patch` | Preserve the official gift unit, measured remaining amount and deadline. Remove when upstream keeps those fields and distinguishes a missing usage reading from zero. |
 | `zcode-account-limit.patch` | Preserve the established limit of two simultaneous accounts using the native package setting. Revisit when the official service publishes a supported account concurrency policy. |
 
 Optional host hooks affect account management only. The native inference recovery

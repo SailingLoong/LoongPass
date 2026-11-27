@@ -372,8 +372,7 @@ class PluginModelService extends ChangeNotifier {
           (body['session'] as String).length > 1024) {
         throw const FormatException('Invalid native request');
       }
-      // Validate the opaque body, but leave its protocol and model untouched.
-      base64Decode(body['body']);
+      final payload = base64Decode(body['body']);
       final headers = <String, String>{};
       for (final entry in (body['headers'] as Map).entries) {
         if (entry.key is! String || entry.value is! String)
@@ -416,6 +415,20 @@ class PluginModelService extends ChangeNotifier {
           'error': 'model_quota_unavailable',
         });
         return;
+      }
+      // The native ZCode plugin chooses the debit path from the Messages
+      // body. A cached bridge marker alone cannot enforce a spending choice.
+      if (binding.account.zcodeGiftOnly) {
+        final message = jsonDecode(utf8.decode(payload));
+        final url = Uri.parse(body['url'] as String);
+        if (message is! Map ||
+            message['model'] != binding.native['apiId'] ||
+            !url.path.endsWith('/v1/messages')) {
+          await _json(request.response, 403, {
+            'error': 'gift_only_model_required',
+          });
+          return;
+        }
       }
       final concurrency = limits['maxConcurrency'] as int? ?? 0;
       final atOnce = limits['maxAccounts'] as int? ?? 0;

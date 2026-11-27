@@ -18,7 +18,7 @@
 // `name` the account's display label.
 
 import { createDecipheriv, createHash } from "node:crypto"
-import { existsSync, readFileSync, readdirSync } from "node:fs"
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readSync, readdirSync } from "node:fs"
 import { arch, homedir, release, userInfo } from "node:os"
 import { isAbsolute, join } from "node:path"
 import PROMPT from "./prompt.mjs"
@@ -666,27 +666,32 @@ async function giftOf(s) {
     if (!owner) continue
     const exp = startNum(x.expires_at)
     if (exp > 0 && exp <= now) continue // a bucket past its own end is over
-    const total = startNum(x.total_units), left = startNum(x.remaining_units)
-    let used = startNum(x.used_units)
+    const quantity = (v) => {
+      const n = startNum(v)
+      return Number.isFinite(n) && n >= 0 ? n : undefined
+    }
+    const total = quantity(x.total_units), left = quantity(x.remaining_units)
+    let used = quantity(x.used_units)
     if (total === undefined && used === undefined && left === undefined) continue
     const models = bucketModels(x)
     const base = first(str(x.show_name), models.join(", "), "Credits")
-    const w = { name: base, used: 0, _plan: str(owner.name), _spent: giftSpent(x) }
-    if (used === undefined) used = total !== undefined && left !== undefined ? total - left : 0
-    if (total > 0) {
-      // the bucket's count as amount of limit, as the Coding windows' is
-      // (#659): magpie says it as used or as left, as it says the share
+    const w = { name: base, _plan: str(owner.name), _spent: giftSpent(x) }
+    if (str(x.unit_type).trim()) w.unit = x.unit_type.trim()
+    if (used === undefined && x.used_units == null && total !== undefined && left !== undefined && left <= total) used = total - left
+    const remaining = left ?? (x.remaining_units == null && total !== undefined && used !== undefined && used <= total ? total - used : undefined)
+    if (remaining !== undefined) w.balance = remaining
+    if (total !== undefined) w.limit = total
+    if (used !== undefined) w.amount = used
+    if (total > 0 && used !== undefined) {
       w.used = (100 * used) / total
-      w.amount = used
-      w.limit = total
       w.display = `${compact(used)} / ${compact(total)}`
     }
-    if (w._spent) w.used = Math.max(100, w.used)
-    if (exp > 0) {
-      w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
-      // expires_at is this remaining bucket's end, independently of renewal.
-      w.runsOutAt = w.resetsAt
-      const remaining = left ?? (total !== undefined ? Math.max(0, total - used) : undefined)
+    if (w._spent) w.used = Math.max(100, w.used ?? 0)
+    const end = startNum(owner.ends_at)
+    const deadline = exp > 0 && end > 0 ? Math.min(exp, end) : exp > 0 ? exp : end
+    if (deadline > 0) {
+      w.runsOutAt = new Date(Math.trunc(deadline) * 1000).toISOString()
+      if (exp > 0) w.resetsAt = new Date(Math.trunc(exp) * 1000).toISOString()
       if (remaining !== undefined) w.runsOut = remaining
     }
     let span = 0
@@ -1563,12 +1568,33 @@ function savedGrant(auth, expected = {}) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
+// A new browser sign-in on this computer can reuse its installed desktop
+// device. Only this existing, user-owned telemetry file is an identity source.
+function installedDevice() {
+  const path = join(settingDir(), "telemetry-state.json")
+  let fd
+  try {
+    if (lstatSync(path).isSymbolicLink()) return undefined
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0))
+    const stat = fstatSync(fd)
+    if (!stat.isFile() || (process.getuid && stat.uid !== process.getuid()) || stat.size <= 0 || stat.size > 16384) return undefined
+    const bytes = Buffer.alloc(stat.size + 1)
+    if (readSync(fd, bytes, 0, bytes.length, 0) !== stat.size) return undefined
+    const mid = JSON.parse(bytes.toString("utf8", 0, stat.size)).deviceMid
+    return deviceID(mid) ? mid.toLowerCase() : undefined
+  } catch {
+    return undefined
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
 // authorize opens ZCode's sign-in flow on site; its callback polls it.
 // onTeam signs in to the account's seat on a team's plan, named apart from
 // the account's own plan (the host keeps one entry per account name).
 async function authorize(site, log, onTeam = false, context = {}) {
   const poll = "Bearer " + Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex")
-  const device = context.device ?? uuid()
+  const device = context.device ?? installedDevice() ?? uuid()
   const expectedUid = context.expectedUid
   if (!deviceID(device) || context.expectedRealm !== undefined && context.expectedRealm !== site) throw new Error("ZCode sign-in: invalid target binding")
   let flow

@@ -59,6 +59,30 @@ function official({ uid = 'official-a', team = false } = {}) {
   return requests;
 }
 
+test('a new browser login uses this installed device when one is present', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'loongpass-official-device-'));
+  try {
+    const dir = join(home, '.zcode', 'v2');
+    await mkdir(dir, {recursive:true});
+    await writeFile(join(dir, 'telemetry-state.json'), JSON.stringify({deviceMid:device}));
+    const source = pathToFileURL(join(runtime, 'vendor/plugins/zcode/index.mjs')).href;
+    const child = Bun.spawn([process.execPath, '-e', `
+      const {ZCodeAuthPlugin} = await import(${JSON.stringify(source)});
+      let observed;
+      globalThis.fetch = async (_url, init) => {
+        observed = new Headers(init.headers).get('x-device-mid');
+        return Response.json({code:0,data:{flow_id:'synthetic'}});
+      };
+      const hooks = await ZCodeAuthPlugin();
+      await hooks.auth.methods[1].authorize().catch(() => {});
+      process.exit(observed === ${JSON.stringify(device)} ? 0 : 1);
+    `], {env:{...process.env,HOME:home,USERPROFILE:home},stdout:'ignore',stderr:'ignore'});
+    expect(await child.exited).toBe(0);
+  } finally {
+    await rm(home, {recursive:true,force:true});
+  }
+});
+
 for (const team of [false, true]) {
   test(`native reauthorization retains the saved ${team ? 'team' : 'personal'} device and profile`, async () => {
     const requests = official({ team });
