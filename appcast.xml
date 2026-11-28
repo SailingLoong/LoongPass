@@ -5,18 +5,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
         <title>LoongPass</title>
         <item>
             <title>1.0.3</title>
-            <pubDate>Sat, 28 Nov 2026 05:44:05 +0000</pubDate>
-            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.65</link>
-            <sparkle:version>65</sparkle:version>
-            <sparkle:shortVersionString>1.0.3-beta.65</sparkle:shortVersionString>
+            <pubDate>Sat, 28 Nov 2026 13:12:18 +0000</pubDate>
+            <link>https://github.com/SailingLoong/LoongPass/releases/tag/v1.0.3-beta.66</link>
+            <sparkle:version>66</sparkle:version>
+            <sparkle:shortVersionString>1.0.3-beta.66</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-            <description sparkle:format="markdown">LoongPass 1.0.3-beta.65
+            <description sparkle:format="markdown">LoongPass 1.0.3-beta.66
 
-- 登录成功后账号立即保存。点「再登录一个」或「换个应用登录」可以继续添加，最后一次开放这批账号的模型权限。需要辅助签到时可以一起勾选。
-- 「我的应用」支持按套餐管理已有账号。模型页按应用和套餐显示可用额度，同一份共享余额不会按账号数重复相加。
-- ZCode 可为每个账号选择仅使用赠送额度（含 Start Plan），或使用全部 Plan 并优先消耗赠送额度。遇到设备绑定冲突时，可从账号页发起设备切换。
-- 修复 macOS 在页面切换、浮层或文本框无障碍节点更新时可能引发的闪退。
-- 「设置 → 运行与数据 → 诊断日志」可打开本机最近七天的操作日志。macOS 在下次启动时关联系统崩溃栈与该进程最后的操作记录。输入内容、凭据和请求正文不会写入诊断日志。
+- 从「我的应用」点「今日调用」或「近 7 天到期未用」进入「用量与到期」。按小时或按天对照本机调用、已确认未用和接下来到期的批次。点击日期或批次可查看账号、查询时间及已知的可用模型。
+- 「哪些来源到期未用」按近七天的未用率排列，同时显示各来源确认未用的数量、单位及核实批数。选择有完整积分流水的来源可切换为实际积分消耗。
+- MiniMax 的逐批账本和 Loomy 的每日赠送积分流水可补核历史到期额度。WorkBuddy、Qoder 和 TRAE 按插件返回的批次保留将到期的剩余额度。只有到期前快照的记录会显示最后观测的余量与时间。「本机调用明细」展示上游返回的单次实扣积分，支持 TRAE 国内版新提供的对话结算。
 
 安装与升级
 
@@ -24,10 +22,10 @@ macOS 使用 LoongPass-macOS-universal.zip。Windows 提供安装版和便携 ZI
 
 macOS 使用本地签名，Windows 更新器通过 Ed25519 验证安装包。安装包 SHA-256 和构建对应的源码提交见本页的 SHA256SUMS 与 SOURCE_COMMIT。
 </description>
-            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.65/LoongPass-macOS-universal.zip" length="49365193" type="application/octet-stream" sparkle:edSignature="0Y9b2sR2vbJcGPz3KC5nr+hjbSJaIBUjsL/X1+zj/VWSiSiCBvajj+EfH2f4tiTcOJBe6ozx3iui+R7L9+72Dg=="></enclosure>
+            <enclosure url="https://loongpass.com/api/download/v1.0.3-beta.66/LoongPass-macOS-universal.zip" length="49871876" type="application/octet-stream" sparkle:edSignature="6D9mqCga2O7E7+eSNezt5a7Chr9IDJEz8TimBpD7prhae8+NrUowTDcJYcc/Ux7YY9a5birXWuEek/eCSeAPCg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: 1oxENelx3/t+Zy1hw3dH5SlWY7vCz68sN4BTszSzG+6LkUor/O75lFevJ54KEacrNLggF//EL+MUUxf4Gwg/CA==
-length: 2522
+edSignature: MI+VprObYYS2Z8EbQNJSc7KylrTVsxnfSoE0ed4nHo+10NodjK2qvPGHw4fH8cmXG8wAm0GPCcIdmIF/Ym8uCQ==
+length: 2461
 -->
