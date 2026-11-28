@@ -11,7 +11,13 @@ import '../lib/select_field_semantics.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SemanticsBinding.instance.ensureSemantics();
+  if (Platform.environment['SELECT_SMOKE_OWNER'] != 'platform') {
+    SemanticsBinding.instance.ensureSemantics();
+  }
+  stdout.writeln('DART_START native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled}');
+  WidgetsBinding.instance.addSemanticsEnabledListener(() {
+    stdout.writeln('DART_AX native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled}');
+  });
   runApp(
     MaterialApp(
       localizationsDelegates: FLocalizations.localizationsDelegates,
@@ -47,7 +53,7 @@ class _SmokeState extends State<_Smoke> {
         exit(0);
       }
       setState(() => value = ticks.isOdd ? 'workbuddy' : 'zcode');
-      stdout.writeln('Changed selector: $value');
+      stdout.writeln('Changed selector: $value native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled} lifecycle=${WidgetsBinding.instance.lifecycleState} frames=${WidgetsBinding.instance.framesEnabled}');
       if (!const bool.fromEnvironment('LEGACY_SELECTOR')) {
         if (ticks == 2 || ticks == 4) {
           unawaited(
