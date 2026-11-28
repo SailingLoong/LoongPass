@@ -125,6 +125,10 @@ def main():
                         '--dart-define=LEGACY_SELECTOR=' + str(args.legacy).lower()],
                        cwd=fixture, env=environment, check=True)
         executable = fixture / 'build/macos/Build/Products/Release/select_smoke.app/Contents/MacOS/select_smoke'
+        archive = os.environ.get("SELECT_SMOKE_ARCHIVE")
+        if archive:
+            subprocess.run(['ditto','-c','-k','--keepParent',str(executable.parents[2]),archive],check=True)
+            return
         for order, owner, focus in [('handshake','platform','front'),('handshake','platform','default'),
                                    ('early','platform','front'),('early','platform','default'),
                                    ('early','dart','front'),('early','dart','default')]:
