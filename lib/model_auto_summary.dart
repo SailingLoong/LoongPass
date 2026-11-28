@@ -3,6 +3,7 @@ import 'package:forui/forui.dart';
 
 import 'desktop_theme.dart';
 import 'magpie_model_routing.dart';
+import 'model_plan_quota.dart';
 import 'plugin_model_accounts.dart';
 import 'plugin_model_catalog.dart';
 import 'workspace_page.dart';
@@ -93,7 +94,7 @@ class ModelAutoSettings extends StatelessWidget {
           if (!running)
             const Text('本机服务已关闭')
           else if (route == null)
-            const Text('暂无可用账号')
+            const Text('暂无可用套餐')
           else ...[
             Text(
               route.binding.imageOnly
@@ -106,7 +107,7 @@ class ModelAutoSettings extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${modelSourceName(route.binding.account.provider)} · ${_accountName(route)}',
+              '${modelSourceName(route.binding.account.provider)} · ${_planNames(route)}',
             ),
             const SizedBox(height: 4),
             Text(
@@ -143,18 +144,14 @@ class ModelAutoSettings extends StatelessWidget {
     );
   }
 
-  String _accountName(AutoRoute route) {
-    final account = route.binding.account;
-    final identity = account.uid.isEmpty ? account.key : account.uid;
-    if (account.label.trim().isEmpty) return identity;
-    final ambiguous = route.model.bindings.any(
-      (b) =>
-          b.account.key != account.key &&
-          b.account.provider == account.provider &&
-          b.account.label == account.label,
+  String _planNames(AutoRoute route) {
+    final plans = modelPlans(route.model).entries.where(
+      (group) => group.value.any(
+        (b) =>
+            b.account.key == route.binding.account.key &&
+            b.nativeId == route.binding.nativeId,
+      ),
     );
-    return ambiguous && identity != account.label
-        ? '${account.label}（$identity）'
-        : account.label;
+    return plans.map((p) => p.key.name ?? '套餐待核实').toSet().join('、');
   }
 }

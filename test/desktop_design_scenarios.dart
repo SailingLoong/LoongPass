@@ -206,7 +206,7 @@ Future<void> inspectModelReturn(
 
   final back = find.widgetWithText(FButton, '全部模型');
   final search = key('model-search');
-  final hint = find.descendant(of: search, matching: find.text('搜索模型、别名或账号'));
+  final hint = find.descendant(of: search, matching: find.text('搜索模型、别名或套餐'));
   expect(hint, findsOneWidget);
   final hintText = tester.renderObject<RenderParagraph>(
     find.descendant(of: hint, matching: find.byType(RichText)),
@@ -223,6 +223,8 @@ Future<void> inspectModelReturn(
   await tapInPage(key('open-model-deepseek-flash'));
   await capture('detail');
   final sourceName = find.text('日常账号 14');
+  expect(sourceName, findsNothing);
+  await tapInPage(find.text('Qoder CN · 套餐待核实'));
   await tapInPage(sourceName);
   final account = key('account-detail-page');
   expect(find.descendant(of: account, matching: sourceName), findsOneWidget);
@@ -234,6 +236,7 @@ Future<void> inspectModelReturn(
   await frame();
   expect(key('model-account-saved-13'), findsOneWidget);
   expect(sourceName.hitTestable(), findsOneWidget);
+  await tapInPage(find.text('返回模型'), towardsTop: true);
   await capture('returned-model');
   await tapInPage(back, towardsTop: true);
   final input = find.descendant(

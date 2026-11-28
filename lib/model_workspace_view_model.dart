@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'plugin_model_catalog.dart';
+import 'plugin_accounts.dart';
 import 'plugin_model_service.dart';
 
 class ModelWorkspaceViewModel extends ChangeNotifier {
@@ -67,6 +68,10 @@ class ModelWorkspaceViewModel extends ChangeNotifier {
       _save(() => service.setAutoRoutingPriority(priority));
   Future<void> authorize(String key, bool value) =>
       _save(() => service.enable(key, value), accountKey: key);
+  Future<void> authorizeRegistrations(
+    Set<AccountRegistration> registrations,
+    bool value,
+  ) => _save(() => service.enableRegistrations(registrations, value));
   Future<void> enableSource(String id, String key, bool value) => _save(
     () => service.setModelAccountEnabled(id, key, value),
     accountKey: key,

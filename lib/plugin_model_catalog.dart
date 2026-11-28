@@ -137,7 +137,7 @@ class PluginModel {
   PluginModelBinding? get preferred =>
       published ? bindings.where((b) => b.available).firstOrNull : null;
   String get searchText =>
-      '$id $name ${bindings.map((b) => '${b.nativeId} ${b.native['name'] ?? ''} ${b.account.label} ${b.account.provider}').join(' ')}'
+      '$id $name ${bindings.map((b) => '${b.nativeId} ${b.native['name'] ?? ''} ${b.account.plans.map((p) => p.name ?? '').join(' ')} ${b.account.provider}').join(' ')}'
           .toLowerCase();
 }
 

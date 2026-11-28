@@ -13,9 +13,13 @@ import 'magpie_fixture.dart';
 
 class _Models extends ChangeNotifier implements PluginModelService {
   @override
+  bool get catalogFailed => false;
+  @override
   bool catalogReady = true;
   @override
   bool enabled = true;
+  @override
+  String? error;
   @override
   bool running = true;
   @override
@@ -79,34 +83,44 @@ String _listing(List<String> ids) {
 }
 
 void main() {
-  test('startup preserves saved Magpie groups until the catalog is known', () async {
-    final models = _Models()
-      ..catalogReady = false
-      ..routingConnected = true
-      ..managedGroups = {'previous'};
-    final calls = <List<String>>[];
-    final connection = ModelConnection(
-      models, '/bridge',
-      client: MagpieConnection(run: (args, {input}) async {
-        calls.add(args);
-        if (args.join(' ') == 'plugin list --json') return _listing(['one', 'two']);
-        return '';
-      }),
-    )..start();
-    addTearDown(models.dispose);
-    addTearDown(connection.dispose);
-    await connection.connect();
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    expect(calls, isEmpty);
-    expect(models.managedGroups, {'previous'});
-    expect(connection.accountsWithoutModels, isEmpty);
-    models.catalogReady = true;
-    models.changed();
-    expect(connection.canConnect, isTrue);
-    expect(connection.accountsWithoutModels, {'one', 'two'});
-    await connection.connect();
-    expect(calls, isNotEmpty);
-  });
+  test(
+    'startup preserves saved Magpie groups until the catalog is known',
+    () async {
+      final models = _Models()
+        ..catalogReady = false
+        ..routingConnected = true
+        ..managedGroups = {'previous'};
+      final calls = <List<String>>[];
+      final connection = ModelConnection(
+        models,
+        '/bridge',
+        client: MagpieConnection(
+          run: (args, {input}) async {
+            calls.add(args);
+            if (args.join(' ') == 'plugin list --json')
+              return _listing(['one', 'two']);
+            return '';
+          },
+        ),
+      )..start();
+      addTearDown(models.dispose);
+      addTearDown(connection.dispose);
+      await connection.connect();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(calls, isEmpty);
+      expect(models.managedGroups, {'previous'});
+      expect(connection.accountModelStatus, {'one': '正在读取模型', 'two': '正在读取模型'});
+      models.catalogReady = true;
+      models.changed();
+      expect(connection.canConnect, isTrue);
+      expect(connection.accountModelStatus, {
+        'one': '尚未发现适用模型',
+        'two': '尚未发现适用模型',
+      });
+      await connection.connect();
+      expect(calls, isNotEmpty);
+    },
+  );
 
   test(
     'Auto changes priority using only credit spendable by each model',
@@ -242,7 +256,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 200));
         expect(connection.routing.candidates, isEmpty);
         expect(models.managedGroups.contains('loongpass-auto'), isFalse);
-        expect(connection.accountsWithoutModels, {'one'});
+        expect(connection.accountModelStatus, {'one': '暂无可用路由'});
         final count = autoWrites.length;
         await tester.pump(const Duration(seconds: 1));
         expect(autoWrites.length, count);
@@ -382,11 +396,11 @@ void main() {
           connection.routing.preferred?.binding.expiry?.amount?.amount,
           100,
         );
-        expect(connection.accountsWithoutModels, isEmpty);
+        expect(connection.accountModelStatus, isEmpty);
         connection.start();
         await expired.future.timeout(const Duration(seconds: 3));
         expect(groupWrites, connected ? 1 : 0);
-        expect(connection.accountsWithoutModels, {'only'});
+        expect(connection.accountModelStatus, {'only': '适用额度已用完或到期'});
       },
     );
   }

@@ -122,6 +122,8 @@ class WorkspaceFixtureModels extends ChangeNotifier
 
   final WorkspaceFixtureAccounts accounts;
   @override
+  bool get catalogFailed => false;
+  @override
   bool get catalogReady => accounts.catalogReady;
   @override
   bool get enabled => true;

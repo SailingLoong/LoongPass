@@ -101,8 +101,19 @@ void main() {
       await service.start();
       await service.setModelPublished('deepseek-flash', true);
       await service.setModelPublished('glm-5.3', true);
-      await service.enable('fixture#a', true);
-      await service.enable('fixture#b', true);
+      final regs = {for (final a in accounts.accounts) a.registration};
+      final revision = modelStore.revision;
+      await expectLater(
+        service.enableRegistrations({
+          regs.first,
+          (key: regs.last.key, id: 'replaced'),
+        }, true),
+        throwsStateError,
+      );
+      expect(modelStore.revision, revision);
+      expect(service.grants.any((g) => g.enabled), isFalse);
+      await service.enableRegistrations(regs, true);
+      expect(modelStore.revision, revision + 1);
       await service.setEnabled(true);
       final grant = service.grants.singleWhere(
         (g) => g.account.key == 'fixture#a',

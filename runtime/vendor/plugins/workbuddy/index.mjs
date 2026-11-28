@@ -5219,7 +5219,7 @@ function makePlugin(site) {
               if (w) out.windows.push(w)
             }
           }
-          return { ...out, signIn: said }
+          return { ...out, walletScope: "account", signIn: said }
         } catch (e) {
           return { error: e?.message ?? String(e), signIn: "kept" }
         }

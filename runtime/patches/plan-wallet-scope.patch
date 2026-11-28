@@ -1,0 +1,79 @@
+# Carry observed plan names and wallet scope from native usage into LoongPass.
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index 7be9870..f68e235 100644
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -3526,6 +3526,8 @@ async function usageOf(provider, account, signal) {
+         : null,
+     windows: (Array.isArray(u.windows) ? u.windows : []).map((w) => ({
+       name: text(w?.name),
++      ...(typeof w?.plan === "string" && w.plan.trim() ? { plan: w.plan.trim() } : {}),
++      ...(["account", "shared"].includes(w?.walletScope ?? u.walletScope) ? { walletScope: w?.walletScope ?? u.walletScope } : {}),
+       used: w?.used == null ? null : Math.max(0, num(w?.used)), // past 100 when overspent; null: not said
+       resetsAt: when(w?.resetsAt),
+       resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),
+diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
+index 7fffca4..62e818b 100644
+--- a/runtime/vendor/plugins/loomy/index.mjs
++++ b/runtime/vendor/plugins/loomy/index.mjs
+@@ -720,7 +720,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
+           // no `signIn` on a clean read: that absence is how magpie takes an
+           // expired mark back off the account (Loomy has no renewal, so a
+           // "kept" here would leave a transient 401's lapse on forever)
+-          return { plan: NAME, user: a.name || a.accountId, windows }
++          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows }
+         } catch (e) {
+           if (e?.signIn === "expired") return { error: lapsedText(a, e.message), signIn: "expired" }
+           return { error: String(e?.message ?? e), signIn: "kept" }
+diff --git a/runtime/vendor/plugins/workbuddy/index.mjs b/runtime/vendor/plugins/workbuddy/index.mjs
+index cc2659f..0a39abe 100644
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -5219,7 +5219,7 @@ function makePlugin(site) {
+               if (w) out.windows.push(w)
+             }
+           }
+-          return { ...out, signIn: said }
++          return { ...out, walletScope: "account", signIn: said }
+         } catch (e) {
+           return { error: e?.message ?? String(e), signIn: "kept" }
+         }
+diff --git a/runtime/vendor/plugins/zcode/index.mjs b/runtime/vendor/plugins/zcode/index.mjs
+index 86e412d..a3fd9e8 100644
+--- a/runtime/vendor/plugins/zcode/index.mjs
++++ b/runtime/vendor/plugins/zcode/index.mjs
+@@ -517,7 +517,7 @@ async function codingUsage(s) {
+   const out = {}
+   const level = typeof d.level === "string" ? d.level : ""
+   if (level) out.plan = "GLM Coding " + level[0].toUpperCase() + level.slice(1)
+-  out.windows = limitWindows(d)
++  out.windows = limitWindows(d).map((w) => ({ ...w, walletScope: "account" }))
+   notePlan(s.key, out.windows)
+   const resets = personalResets(root, s.key)
+   let subs = null
+@@ -1178,6 +1178,7 @@ async function startUsage(s) {
+   const label = byPlan(g.windows)
+   g.windows = countedFirst(g.windows.map(({ _plan, _spent, ...w }, i) => {
+     w.name = label(w.name, _plan)
++    w.plan = _plan
+     if (!w.models?.length) return w
+     // a model two plans give (Trust Build's and the Start Plan's Flash)
+     // counts on the bucket ZCode spends now; the other stays on the card
+@@ -1281,7 +1282,7 @@ async function dualUsage(s, out) {
+           const at = name.toLowerCase().indexOf(m.toLowerCase())
+           if (at >= 0) name = name.slice(0, at) + giftID(m) + name.slice(at + m.length)
+         }
+-        return { ...scoped, name: label(name, p) }
++        return { ...scoped, plan: p, name: label(name, p) }
+       })))
+     }
+     if (g) out.windows.push(...pendingLines(g))
+@@ -1322,7 +1323,7 @@ async function teamUsage(s, key) {
+   const root = bizRoot(s.base)
+   const headers = teamHeaders(s.base, s.org, s.project)
+   const d = (await call("GET", root + "/api/monitor/usage/quota/limit?type=2", { auth: key, headers })) ?? {}
+-  const out = { windows: limitWindows(d) }
++  const out = { windows: limitWindows(d).map((w) => ({ ...w, walletScope: "shared" })) }
+   notePlan(key, out.windows)
+   if (!s.token) return out
+   const resets = teamResets(root, s.token, headers)

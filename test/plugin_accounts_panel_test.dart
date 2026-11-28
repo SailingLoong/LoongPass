@@ -11,6 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 import '../lib/account_workspace_registry.dart';
 import '../lib/workspace_accounts.dart';
 import '../lib/plugin_accounts.dart';
+import '../lib/login_batch.dart';
+import '../lib/plugin_model_service.dart';
+import 'memory_account_store.dart';
 import '../lib/credit_summary_view.dart';
 import '../lib/compact_accounts_table.dart';
 import '../lib/plugin_accounts_panel.dart';
@@ -154,6 +157,47 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _LoginAccounts extends _Accounts {
+  _LoginAccounts(super.runtime)
+    : super(
+        providers: {
+          'fixture': {
+            'name': 'Fixture',
+            'methods': [
+              {'type': 'oauth', 'label': '官方登录'},
+            ],
+          },
+        },
+      );
+  @override
+  Set<String> get enabledProviders => {'fixture'};
+  @override
+  bool get catalogReady => true;
+  int version = 0;
+  @override
+  Future<void> authorizationSaved(
+    String key, {
+    String? expectedRegistrationId,
+  }) async {
+    _rows = [
+      ..._rows.where((a) => a.key != key),
+      PluginAccount(
+        key: key,
+        active: true,
+        models: [],
+        facts: {
+          'provider': 'fixture',
+          'uid': key,
+          'label': key.split('#').last,
+          'realm': 'cn',
+          'registrationId': 'login-${++version}',
+        },
+      ),
+    ];
+    notifyListeners();
+  }
+}
+
 class _Bindings extends Fake implements PluginZcodeRewards {
   final captured = <String>[];
   @override
@@ -222,6 +266,94 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  testDesktopWidgets(
+    'successive callbacks reuse the method and apply once to the saved batch',
+    (tester) async {
+      tester.view.physicalSize = const Size(960, 760);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final runtime = _Runtime()..auto = true;
+      final accounts = _LoginAccounts(runtime);
+      await accounts.authorizationSaved('fixture#Existing');
+      final modelStore = MemoryAccountStore('login-batch');
+      final models = PluginModelService(accounts: accounts, store: modelStore);
+      await models.start();
+      final rewards = PluginRewards(accounts, timers: false);
+      final batch = LoginBatch();
+      try {
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: PluginAccountsPanel(
+                  accounts: accounts,
+                  rewards: rewards,
+                  providerIds: const {'fixture'},
+                  title: 'Fixture',
+                  models: models,
+                  loginBatch: batch,
+                ),
+              ),
+            ),
+          ),
+        );
+        Future<void> press(String title) async {
+          final button = find.text(title).first;
+          await tester.ensureVisible(button);
+          await tester.tap(button);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 350));
+        }
+
+        Future<void> confirm(String key) async {
+          expect(find.text('等待官方返回'), findsOneWidget);
+          runtime.callback!.complete({'ok': true, 'account': key});
+          await tester.pumpAndSettle();
+        }
+
+        await press('添加账号');
+        await press('开始授权');
+        await confirm('fixture#First');
+        expect(find.text('已登录 First'), findsOneWidget);
+        await press('再登录一个');
+        await confirm('fixture#First');
+        expect(batch.current(accounts.accounts), hasLength(1));
+        await press('再登录一个');
+        await confirm('fixture#Second');
+        expect(find.text('本次已登录 2 个账号'), findsOneWidget);
+        await press('再登录一个');
+        await press('取消');
+        await tester.pumpAndSettle();
+        expect(
+          runtime.calls.where((call) => call.$1 == 'authorize'),
+          hasLength(4),
+        );
+        expect(models.grants.any((g) => g.enabled), isFalse);
+        final revision = modelStore.revision;
+        await press('开放模型权限');
+        expect(modelStore.revision, revision + 1);
+        expect(
+          models.grants
+              .where((g) => g.enabled)
+              .map((g) => g.account.key)
+              .toSet(),
+          {'fixture#First', 'fixture#Second'},
+        );
+        expect(find.text('已为 2 个账号开放模型权限'), findsOneWidget);
+        await press('完成');
+        expect(find.text('再登录一个'), findsNothing);
+        expect(accounts.accounts, hasLength(3));
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await rewards.close();
+        await models.close();
+        batch.dispose();
+        accounts.dispose();
+      }
+    },
+  );
 
   testDesktopWidgets(
     'reward journal shapes reach activity through the platform registry; verification only reads',

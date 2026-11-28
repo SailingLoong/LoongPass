@@ -79,53 +79,57 @@ class _AddAccount extends StatelessWidget {
     mainAxisSize: MainAxisSize.min,
     prefix: const Icon(FLucideIcons.plus, size: 16),
     onPress: () async {
-      final platforms =
-          UiPreferencesScope.maybeOf(context)?.appOrder ?? ManagedApp.values;
-      final selected = await showFDialog<ManagedApp>(
-        context: context,
-        builder: (context, style, animation) => FDialog(
-          animation: animation,
-          constraints: const BoxConstraints(maxWidth: 440),
-          builder: (context, style) => Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('选择平台', style: style.titleTextStyle),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        for (final app in platforms)
-                          FItem(
-                            prefix: Image.asset(
-                              app.iconAsset,
-                              width: 24,
-                              height: 24,
-                            ),
-                            title: Text(app.label),
-                            subtitle: Text(app.region),
-                            onPress: () => Navigator.pop(context, app),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                FButton(
-                  variant: FButtonVariant.ghost,
-                  onPress: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      final selected = await chooseAccountApp(context);
       if (selected != null && context.mounted) onSelected(selected);
     },
     child: const Text('添加账号'),
+  );
+}
+
+Future<ManagedApp?> chooseAccountApp(BuildContext context) {
+  final platforms =
+      UiPreferencesScope.maybeOf(context)?.appOrder ?? ManagedApp.values;
+  return showFDialog<ManagedApp>(
+    context: context,
+    builder: (context, style, animation) => FDialog(
+      animation: animation,
+      constraints: const BoxConstraints(maxWidth: 440),
+      builder: (context, style) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('选择平台', style: style.titleTextStyle),
+            const SizedBox(height: 12),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (final app in platforms)
+                      FItem(
+                        prefix: Image.asset(
+                          app.iconAsset,
+                          width: 24,
+                          height: 24,
+                        ),
+                        title: Text(app.label),
+                        subtitle: Text(app.region),
+                        onPress: () => Navigator.pop(context, app),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            FButton(
+              variant: FButtonVariant.ghost,
+              onPress: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
 

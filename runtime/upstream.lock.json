@@ -28,7 +28,8 @@
     "patches/zcode-empty-activity-balance.patch",
     "patches/zcode-gift-units.patch",
     "patches/zcode-installed-device.patch",
-    "patches/zcode-device-ownership.patch"
+    "patches/zcode-device-ownership.patch",
+    "patches/plan-wallet-scope.patch"
   ],
   "sources": {
     "magpie": {
@@ -86,7 +87,7 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "23bafc8606ad6d4470c9a49862a2fd99564d2e78ffd4363a21f64ea57b68d34e",
+      "sha256": "a768bbc4b8430d55328d4312a3840dfb6e5e44bf161f4aeb2a854e6930505785",
       "upstreamSha256": "223444becd7e9ceb44e8dd617aed9d7bbd0f56e6fda5a2fa89e5978e97955a29"
     },
     {
@@ -105,7 +106,7 @@
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "eb46bf21919fbe8cde648ab58ac0bfde9a61f31ac389738f8475b03a0f517124",
+      "sha256": "abbdf043f607f73591e0bfe8dfa196f9d325dea2515d349daa158b8302f3fbc8",
       "upstreamSha256": "84d8a4e17f463096b217b3f78303a0584ac566ead078f8ea23583501317eb13b"
     },
     {
@@ -246,7 +247,7 @@
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "1d6616cbed8bb944d6f57567f932536304ff15ef1360a0e3f2a5d2b84c4c5b8d",
+      "sha256": "8f50508ad3db4ff088eda8572434b9c9199a9a672b694decefb2e9a92f887971",
       "upstreamSha256": "8d712a79a1dcd6dd368dc6bf63247d045c7bae099dc342458f7a3eaef19cffb4"
     },
     {
@@ -320,7 +321,7 @@
       "source": "plugins",
       "path": "packages/zcode/index.mjs",
       "target": "vendor/plugins/zcode/index.mjs",
-      "sha256": "b5b57db5d3a9c599897ac63477473a698b8a187b1afb70a5fa3832dbfe7d835d",
+      "sha256": "21f655c8d10dff2f37afcc495907dd3c6d94de7e8a6ea306cf7fcdb864719b77",
       "upstreamSha256": "af361ed54c29416f39827c183feac009c140940c941c0cc92b9bca2445d683a8"
     },
     {
@@ -384,6 +385,7 @@
     "patches/zcode-empty-activity-balance.patch",
     "patches/zcode-gift-units.patch",
     "patches/zcode-installed-device.patch",
-    "patches/zcode-device-ownership.patch"
+    "patches/zcode-device-ownership.patch",
+    "patches/plan-wallet-scope.patch"
   ]
 }

@@ -205,7 +205,7 @@ void main() {
       await tester.tap(earlier);
       await tester.pumpAndSettle();
       expect(find.text('11 月 24 日 · 按小时'), findsOneWidget);
-      await tester.tap(find.text('返回总览'));
+      await tester.tap(find.text('返回我的应用'));
       await tester.pumpAndSettle();
       expect(find.text('2 批已确认 · 1 批待核实'), findsOneWidget);
       await tester.tap(find.text('近 7 天到期未用'));

@@ -73,6 +73,14 @@ class _Service extends ChangeNotifier implements PluginModelService {
   }
 
   @override
+  Future<void> enableRegistrations(
+    Set<AccountRegistration> registrations,
+    bool enabled,
+  ) async {
+    changes++;
+  }
+
+  @override
   Future<void> enable(String key, bool enabled) async {
     changes++;
   }
@@ -138,6 +146,12 @@ void main() {
               ),
             ),
           );
+          expect(find.text(loomy.label), findsNothing);
+          final plan = find.byKey(ValueKey(loomy.plan));
+          await tester.ensureVisible(plan);
+          await tester.tap(plan);
+          await tester.pumpAndSettle();
+          expect(find.text('海外账号'), findsNothing);
           final open = find.bySemanticsLabel('向本机模型服务开放 ${loomy.label}');
           final participate = find.byKey(
             ValueKey('model-account-${loomy.key}'),
@@ -146,13 +160,9 @@ void main() {
             of: find.byType(PluginModelAccounts),
             matching: find.text('设置保存失败，请重试。'),
           );
-          double rowOffset() =>
-              tester.getTopLeft(find.text(loomy.label)).dy -
-              tester.getTopLeft(find.text('海外账号')).dy;
           expect(participate, findsNothing);
           await tester.ensureVisible(open);
           expect(open.hitTestable(), findsOneWidget);
-          final initialOrder = rowOffset().sign;
           store.beforeWrite = () async => throw StateError('write rejected');
           await tester.tap(open);
           await tester.pumpAndSettle();
@@ -164,7 +174,6 @@ void main() {
           await tester.pumpAndSettle();
           expect(open, findsNothing);
           expect(rowError, findsNothing);
-          expect(rowOffset().sign, initialOrder);
           expect(
             service.grants.singleWhere((g) => g.enabled).account.key,
             loomy.key,
@@ -237,6 +246,10 @@ void main() {
         ),
       ),
     );
+    final plan = find.byKey(ValueKey(saved.plan));
+    await tester.ensureVisible(plan);
+    await tester.tap(plan);
+    await tester.pumpAndSettle();
     expect(find.text('平台账号需重新授权'), findsOneWidget);
     expect(find.text('开放账号'), findsNothing);
     expect(find.byKey(ValueKey('model-account-${saved.key}')), findsNothing);
@@ -341,7 +354,8 @@ void main() {
       await tester.tap(find.text('积分到期优先').hitTestable());
       await tester.pumpAndSettle();
       expect(inPreview('deepseek-flash'), findsOneWidget);
-      expect(inPreview('甲账号'), findsOneWidget);
+      expect(inPreview('甲账号'), findsNothing);
+      expect(inPreview('套餐待核实'), findsOneWidget);
       expect(inPreview('100 credits'), findsOneWidget);
       expect(app.models.catalog.map((model) => model.id), [
         'MiniMax-M3',
@@ -495,7 +509,7 @@ void main() {
           home: Scaffold(body: PluginModelServicesPage(application: app)),
         ),
       );
-      expect(find.text('暂无账号来源'), findsOneWidget);
+      expect(find.text('尚未连接应用'), findsOneWidget);
       expect(find.text('连接设置'), findsOneWidget);
       expect(app.connection.checkedAt, isNull);
       expect(service.changes, 0);
@@ -588,6 +602,10 @@ void main() {
       await tester.ensureVisible(find.text(modelName));
       await tester.tap(find.text(modelName));
       await tester.pumpAndSettle();
+      final plan = find.byKey(ValueKey(service.grants.first.account.plan));
+      await tester.ensureVisible(plan);
+      await tester.tap(plan);
+      await tester.pumpAndSettle();
       await tester.dragUntilVisible(
         find.text(accountName).first,
         find.byType(Scrollable).first,
@@ -630,6 +648,10 @@ void main() {
       await tester.enterText(find.byKey(const Key('model-search')), '');
       await tester.pumpAndSettle();
       await tester.tap(find.text('glm-5.3-flash'));
+      await tester.pumpAndSettle();
+      final plan = find.byKey(ValueKey(service.grants.first.account.plan));
+      await tester.ensureVisible(plan);
+      await tester.tap(plan);
       await tester.pumpAndSettle();
       await tester.tap(find.text('来源与额度详情'));
       await tester.pumpAndSettle();
@@ -703,7 +725,7 @@ void main() {
         home: Scaffold(body: PluginModelServicesPage(application: app)),
       ),
     );
-    final grants = find.text('开放账号（1 / 1）');
+    final grants = find.text('应用与套餐（1）');
     expect(grants, findsNothing);
     await tester.tap(find.text('连接设置'));
     await tester.pumpAndSettle();
@@ -712,7 +734,8 @@ void main() {
     await tester.ensureVisible(grants);
     await tester.tap(grants);
     await tester.pumpAndSettle();
-    final account = find.text('Demo account');
+    final account = find.text('ZCode · 智谱 BigModel · 套餐待核实');
+    expect(find.text('Demo account'), findsNothing);
     await tester.ensureVisible(account);
     expect(account.hitTestable(), findsOneWidget);
     expect(service.changes, 0);

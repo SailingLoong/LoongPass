@@ -80,6 +80,9 @@ class ManagedApp {
     loomy,
     codex,
   ]);
+  static ManagedApp? forProvider(String provider) =>
+      values.where((app) => app.nativeProviders.contains(provider)).firstOrNull;
+
   final String name, label, region, regionCode;
   final Set<String> nativeProviders;
   final String? _iconName;

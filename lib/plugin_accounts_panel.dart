@@ -2,6 +2,10 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'account_amount.dart';
+import 'account_plan_controls.dart';
+import 'login_batch.dart';
+import 'login_batch_bar.dart';
+import 'plugin_model_service.dart';
 import 'claim_receipt.dart';
 import 'compact_accounts_table.dart';
 import 'credit_summary_view.dart';
@@ -25,17 +29,25 @@ class PluginAccountsPanel extends StatefulWidget {
     required this.rewards,
     required this.providerIds,
     required this.title,
-    this.accountsWithoutModels = const {},
+    this.accountModelStatus = const {},
     this.modelCatalog = const [],
     this.activate,
     this.registrationUrl,
+    this.loginBatch,
+    this.models,
+    this.onConnection,
+    this.onModels,
+    this.onOtherApp,
   });
   final PluginAccounts accounts;
   final PluginRewards rewards;
   final Set<String> providerIds;
-  final Set<String> accountsWithoutModels;
+  final Map<String, String> accountModelStatus;
   final List<PluginModel> modelCatalog;
   final String title;
+  final LoginBatch? loginBatch;
+  final PluginModelService? models;
+  final VoidCallback? onConnection, onModels, onOtherApp;
   final Future<String> Function(String)? activate;
   final Uri? Function()? registrationUrl;
   @override
@@ -43,8 +55,11 @@ class PluginAccountsPanel extends StatefulWidget {
 }
 
 class PluginAccountsPanelState extends State<PluginAccountsPanel> {
-  Future<void> addAccount() => _authorize(null);
+  Future<void> addAccount({bool quickStart = false}) =>
+      _authorize(null, quickStart: quickStart);
 
+  LoginMethod? _lastMethod;
+  AccountPlan? _plan;
   bool _busy = false;
   bool _confirming = false;
   String? _message;
@@ -91,6 +106,8 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
   Future<void> _authorize(
     PluginAccount? account, {
     bool switchDevice = false,
+    bool repeat = false,
+    bool quickStart = false,
   }) => _run(() async {
     if (widget.accounts.providers.isEmpty) {
       await widget.accounts.refresh();
@@ -117,6 +134,9 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         accounts: widget.accounts,
         providerIds: account == null ? widget.providerIds : {account.provider},
         initialProvider: account?.provider,
+        repeatMethod: repeat ? _lastMethod : null,
+        quickStart: quickStart,
+        onMethodSaved: (method) => _lastMethod = method,
         target: account,
         localZcodeDevice: localDevice,
         switchDevice: switchDevice,
@@ -133,6 +153,15 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             : '重新授权 ${account.label}',
       ),
     );
+    if (saved != null && account == null && widget.loginBatch != null) {
+      final confirmed = widget.accounts.accounts
+          .where((a) => a.key == saved && a.active)
+          .firstOrNull;
+      if (confirmed != null) {
+        widget.loginBatch!.remember(confirmed);
+        return;
+      }
+    }
     if (saved != null && account?.provider == 'zcode' && localDevice != null) {
       try {
         await widget.rewards.zcode.captureBinding(saved);
@@ -549,6 +578,26 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.models case final models?)
+          ListenableBuilder(
+            listenable: models,
+            builder: (context, _) {
+              final grant = models.grants
+                  .where((g) => g.account.registration == a.registration)
+                  .firstOrNull;
+              if (grant == null) return const SizedBox.shrink();
+              return FSwitch(
+                value: grant.enabled,
+                enabled:
+                    !_busy && (grant.enabled || !grant.authorizationRequired),
+                label: const Text('用于模型'),
+                onChange: (value) => _run(
+                  () => models.enableRegistrations({a.registration}, value),
+                  accountKey: a.key,
+                ),
+              );
+            },
+          ),
         if (a.provider == 'zcode') ...[
           FSelect<bool>(
             key: ValueKey('zcode-plan-${a.key}'),
@@ -620,11 +669,19 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.accounts,
+    listenable: Listenable.merge([widget.accounts, ?widget.loginBatch]),
     builder: (context, _) {
+      final saved = widget.loginBatch?.current(widget.accounts.accounts) ?? [];
+      final selected = saved.singleOrNull;
       final rows = widget.accounts.accounts
           .where((a) => widget.providerIds.contains(a.provider))
           .toList();
+      final plans = {for (final account in rows) ...account.plans};
+      final plan = plans.length == 1
+          ? plans.single
+          : plans.contains(_plan)
+          ? _plan
+          : null;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -635,23 +692,42 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
                 '通过官方授权保存多个账号。授权保存在本机应用私有目录；应用运行期间可辅助领取。'
                 '同一活动的领取回执未确认时不会重复提交。各额度窗口保留官方单位，不合计重叠额度。',
             actions: [
-              FButton(
-                variant: FButtonVariant.primary,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                prefix: const Icon(FLucideIcons.plus, size: 16),
-                child: const Text('添加账号'),
-                onPress: _busy ? null : addAccount,
-              ),
-              FButton(
-                variant: FButtonVariant.ghost,
-                size: FButtonSizeVariant.sm,
-                mainAxisSize: MainAxisSize.min,
-                child: const Text('刷新账号与额度'),
-                onPress: _busy ? null : _refresh,
-              ),
+              if (saved.isEmpty)
+                FButton(
+                  variant: FButtonVariant.primary,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  prefix: const Icon(FLucideIcons.plus, size: 16),
+                  child: const Text('添加账号'),
+                  onPress: _busy ? null : addAccount,
+                ),
+              if (saved.isEmpty)
+                FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  child: const Text('刷新账号与额度'),
+                  onPress: _busy ? null : _refresh,
+                ),
             ],
           ),
+          if (widget.loginBatch case final batch?)
+            if (widget.models case final models?)
+              LoginBatchBar(
+                batch: batch,
+                models: models,
+                rewards: widget.rewards,
+                onNext: _busy ? null : () => _authorize(null, repeat: true),
+                onConnection: widget.onConnection,
+                onModels: widget.onModels,
+                onOtherApp: widget.onOtherApp,
+                onActivate:
+                    selected != null &&
+                        widget.providerIds.contains(selected.provider) &&
+                        _canActivate(selected)
+                    ? () => _activate(selected)
+                    : null,
+              ),
           if (_busy) const FProgress(),
           if (_message != null)
             Padding(
@@ -660,7 +736,23 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
             ),
           if (widget.accounts.error != null)
             const Text('最近一次查询未完成，当前保留已保存的结果。'),
+          if (widget.models case final models?
+              when rows.isNotEmpty && saved.isEmpty)
+            AccountPlanControls(
+              rows: rows,
+              plans: plans,
+              selected: plan,
+              models: models,
+              rewards: widget.rewards,
+              onSelected: (value) => setState(() => _plan = value),
+            ),
           CompactAccountsTable(
+            visibleIds: plan == null
+                ? null
+                : {
+                    for (final a in rows)
+                      if (a.plans.contains(plan)) a.key,
+                  },
             entries: [for (final a in rows) _entry(a, rows)],
           ),
         ],
@@ -668,6 +760,10 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     },
   );
   AccountTableEntry _entry(PluginAccount a, List<PluginAccount> rows) {
+    final planNames = a.plans
+        .map((p) => p.name)
+        .whereType<String>()
+        .join(' · ');
     final batches = a.creditExpiryBatches;
     final next = nextPluginCreditExpiry(batches);
     final expiryBatches = [
@@ -682,7 +778,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       id: a.key,
       label: a.label.isEmpty ? '身份未提供' : a.label,
       identity: _identity(a),
-      noAvailableModels: widget.accountsWithoutModels.contains(a.key),
+      modelStatus: widget.accountModelStatus[a.key],
       detailPlatform: [
         widget.title,
         if (a.realm.isNotEmpty) a.realm,
@@ -707,18 +803,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       actions: _actions(a, binding),
       expiryDetails: expiryObservation,
       details: _quotaDetails(a),
-      plan:
-          _text(a.usage?['plan']) ??
-          (a.provider == 'zcode'
-              ? _text(
-                  zcodePlans(_reward(a))
-                      .where((p) => p['status'] == 'active')
-                      .map((p) => _text(p['name']))
-                      .whereType<String>()
-                      .toSet()
-                      .join(' · '),
-                )
-              : null),
+      plan: planNames.isEmpty ? null : planNames,
       observedAt: a.balanceObservedAt,
       receipt: receipt,
       previousReceipts: receipts.skip(1).toList(growable: false),

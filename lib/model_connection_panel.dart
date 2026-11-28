@@ -4,6 +4,8 @@ import 'package:material_ui/material_ui.dart' show SelectableText;
 
 import 'operation_channel.dart';
 import 'model_connection.dart';
+import 'plugin_accounts.dart';
+import 'plugin_model_catalog.dart';
 import 'model_workspace_view_model.dart';
 import 'plugin_model_accounts.dart';
 
@@ -20,7 +22,13 @@ Future<void> showModelConnectionSheet(
   builder: (context) => ListenableBuilder(
     listenable: Listenable.merge([vm, vm.service, connection]),
     builder: (context, _) {
-      final missingModels = connection.accountsWithoutModels;
+      final groups = <AccountPlan, List<PluginModelGrant>>{};
+      for (final grant in vm.service.grants) {
+        for (final plan in grant.account.plans) {
+          (groups[plan] ??= []).add(grant);
+        }
+      }
+      final statuses = connection.accountModelStatus;
       return Container(
         width: double.infinity,
         height: double.infinity,
@@ -64,32 +72,56 @@ Future<void> showModelConnectionSheet(
               FAccordion(
                 children: [
                   FAccordionItem(
-                    title: Text(
-                      '开放账号（${vm.service.grants.where((g) => g.enabled).length} / ${vm.service.grants.length}）',
-                    ),
+                    title: Text('应用与套餐（${groups.length}）'),
                     child: Column(
                       children: [
-                        if (vm.service.grants.isEmpty) const Text('暂无可开放的账号。'),
-                        for (final grant in vm.service.grants)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: FSwitch(
-                              key: ValueKey(grant.account.key),
-                              value: grant.enabled,
-                              enabled: !vm.busy && !grant.authorizationRequired,
-                              leadingLabel: true,
-                              label: Text(grant.account.label),
-                              description: Text(
-                                [
-                                  modelSourceName(grant.account.provider),
-                                  if (missingModels.contains(grant.account.key))
-                                    '无可用模型',
-                                  if (grant.authorizationRequired) '平台账号需重新授权',
-                                ].join(' · '),
-                              ),
-                              onChange: (value) =>
-                                  vm.authorize(grant.account.key, value),
-                            ),
+                        if (groups.isEmpty) const Text('暂无已登录应用。'),
+                        for (final entry in groups.entries)
+                          Builder(
+                            builder: (context) {
+                              final group = entry.value;
+                              final enabled = group
+                                  .where((g) => g.enabled)
+                                  .length;
+                              final editable = group.where(
+                                (g) => g.enabled || !g.authorizationRequired,
+                              );
+                              final all =
+                                  editable.isNotEmpty &&
+                                  editable.every((g) => g.enabled);
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                                child: FSwitch(
+                                  key: ValueKey(entry.key),
+                                  value: all,
+                                  enabled: editable.isNotEmpty && !vm.busy,
+                                  leadingLabel: true,
+                                  label: Text(
+                                    '${modelSourceName(entry.key.provider)} · ${entry.key.name ?? '套餐待核实'}',
+                                  ),
+                                  description: Text(
+                                    [
+                                      if (entry.key.realm.isNotEmpty)
+                                        entry.key.realm,
+                                      '已开放 $enabled / ${group.length}',
+                                      ...{
+                                        for (final g in group)
+                                          if (statuses[g.account.key]
+                                              case final status?)
+                                            status,
+                                      },
+                                    ].join(' · '),
+                                  ),
+                                  onChange: (v) => vm.authorizeRegistrations({
+                                    for (final g in editable)
+                                      if (g.enabled != v)
+                                        g.account.registration,
+                                  }, v),
+                                ),
+                              );
+                            },
                           ),
                       ],
                     ),
@@ -122,10 +154,9 @@ class _ModelConnectionPanelState extends State<ModelConnectionPanel> {
   bool _guideExpanded = false;
   Future<void> _guide() async {
     try {
-      await filesChannel
-          .invokeMethod<void>('openExternalHTTPS', {
-            'url': 'https://github.com/SailingLoong/LoongPass/blob/main/docs/dsh-multi-agent.md',
-          });
+      await filesChannel.invokeMethod<void>('openExternalHTTPS', {
+        'url': 'https://github.com/SailingLoong/LoongPass/blob/main/docs/dsh-multi-agent.md',
+      });
       if (mounted) setState(() => _guideUnavailable = false);
     } catch (_) {
       if (mounted) setState(() => _guideUnavailable = true);
@@ -164,11 +195,17 @@ class _ModelConnectionPanelState extends State<ModelConnectionPanel> {
                 variant: FButtonVariant.primary,
                 size: FButtonSizeVariant.sm,
                 mainAxisSize: MainAxisSize.min,
-                onPress: widget.enabled && connection.canConnect
+                onPress: !widget.enabled
+                    ? null
+                    : connection.canConnect
                     ? connection.connect
+                    : connection.canStartAndConnect
+                    ? connection.startAndConnect
                     : null,
                 prefix: const Icon(FLucideIcons.link),
-                child: const Text('连接 Magpie'),
+                child: Text(
+                  connection.models.running ? '连接 Magpie' : '开启服务并连接 Magpie',
+                ),
               ),
               FButton(
                 variant: FButtonVariant.outline,

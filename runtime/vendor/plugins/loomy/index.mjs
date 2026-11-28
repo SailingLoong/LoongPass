@@ -720,7 +720,7 @@ export async function LoomyAuthPlugin({ client } = {}) {
           // no `signIn` on a clean read: that absence is how magpie takes an
           // expired mark back off the account (Loomy has no renewal, so a
           // "kept" here would leave a transient 401's lapse on forever)
-          return { plan: NAME, user: a.name || a.accountId, windows }
+          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows }
         } catch (e) {
           if (e?.signIn === "expired") return { error: lapsedText(a, e.message), signIn: "expired" }
           return { error: String(e?.message ?? e), signIn: "kept" }

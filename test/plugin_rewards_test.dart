@@ -876,6 +876,28 @@ void main() {
     expect((h.reward['history'] as List).single['status'], 'claimed');
   });
 
+  test('a login batch checks only its current registrations and deduplicates inside that scope', () async {
+    final h = await open();
+    final first = h.key;
+    final mirror = await h.addSlot('mirror');
+    final other = await h.addSlot('other', uid: 'other');
+    final outside = await h.addSlot('outside', uid: 'outside');
+    final refs = {for (final a in h.accounts.accounts) a.key:a.registration};
+    expect(h.rewards.candidatesFor({refs[mirror]!}).single.key, mirror);
+    final result = await h.rewards.claimSelection({refs[first]!,refs[mirror]!,refs[other]!,
+      (key:outside,id:'previous-registration')});
+    expect(result!.checked, 2);
+    expect(result.failures, isEmpty);
+    expect(h.hooks, hasLength(2));
+    final receipts = h.store.data['rewards'] as Map;
+    expect(receipts.containsKey(h.identity(outside)), isFalse);
+    for (final key in [first,other]) {
+      expect(receipts[h.identity(key)]['credit'], 12.5);
+      expect(receipts[h.identity(key)]['unit'], 'credits');
+    }
+    expect(await h.rewards.claimSelection({}), isNull);
+  });
+
   test('one gesture handles both old preferences and deduplicates official identities', () async {
     final h = await open();
     final first = h.key;
