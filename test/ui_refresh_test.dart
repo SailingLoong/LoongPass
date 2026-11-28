@@ -124,11 +124,11 @@ void main() {
         ),
       );
       final cnAccount = find.ancestor(
-        of: find.text('Qoder CN'),
+        of: find.text('Qoder CN').last,
         matching: find.byType(FItem),
       );
       final globalAccount = find.ancestor(
-        of: find.text('Qoder'),
+        of: find.text('Qoder').last,
         matching: find.byType(FItem),
       );
       expect(cnAccount, findsOneWidget);
@@ -152,7 +152,7 @@ void main() {
       expect(find.text('账号已移除'), findsOneWidget);
       await tester.tap(find.byKey(const Key('account-back')));
       await tester.pumpAndSettle();
-      expect(find.text('总览'), findsOneWidget);
+      expect(find.text('我的应用'), findsOneWidget);
       await tester.tap(
         find.descendant(of: globalAccount, matching: find.text('same')),
       );

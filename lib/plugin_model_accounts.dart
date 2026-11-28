@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'managed_app.dart';
+import 'model_plan_quota.dart';
 import 'model_workspace_view_model.dart';
 import 'plugin_accounts.dart';
 import 'plugin_credit_balance.dart';
@@ -9,9 +10,7 @@ import 'plugin_model_catalog.dart';
 import 'workspace_tools.dart' show WorkspaceCard;
 
 String modelSourceName(String provider) {
-  final app = ManagedApp.values
-      .where((a) => a.nativeProviders.contains(provider))
-      .firstOrNull;
+  final app = ManagedApp.forProvider(provider);
   return app == null ? provider : '${app.label} · ${app.region}';
 }
 
@@ -46,8 +45,10 @@ class PluginModelAccounts extends StatefulWidget {
     required this.model,
     required this.vm,
     this.onOpenAccount,
+    this.plan,
   });
   final PluginModel model;
+  final AccountPlan? plan;
   final ModelWorkspaceViewModel vm;
   final ValueChanged<PluginAccount>? onOpenAccount;
   @override
@@ -58,8 +59,11 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
   final _expanded = <String>{};
   // Keep the row under the pointer when an edit changes routing priority.
   late final _accountOrder = _sourceKeys;
+  Iterable<PluginModelBinding> get _bindings => widget.plan == null
+      ? widget.model.bindings
+      : modelPlans(widget.model)[widget.plan] ?? const [];
   Set<String> get _sourceKeys => {
-    for (final binding in widget.model.bindings) binding.account.key,
+    for (final binding in _bindings) binding.account.key,
   };
 
   @override
@@ -101,9 +105,7 @@ class _PluginModelAccountsState extends State<PluginModelAccounts> {
             for (final key in _accountOrder)
               _account(
                 context,
-                widget.model.bindings
-                    .where((b) => b.account.key == key)
-                    .toList(),
+                _bindings.where((b) => b.account.key == key).toList(),
                 wide,
               ),
           ],

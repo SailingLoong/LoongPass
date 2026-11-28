@@ -1,3 +1,5 @@
+import 'package:forui/forui.dart';
+
 import 'desktop_test_app.dart';
 
 import 'package:material_ui/material_ui.dart';
@@ -27,12 +29,13 @@ void main() {
     (tester) async {
       final registry = AccountWorkspaceRegistry();
       addTearDown(registry.dispose);
+      ManagedApp? selected;
       Widget overview({Widget? status}) => DesktopTestApp(
         home: Scaffold(
           body: WorkspaceOverviewPage(
             registry: registry,
             serviceStatus: status,
-            onOpenApp: (_) {},
+            onOpenApp: (app) => selected = app,
           ),
         ),
       );
@@ -41,12 +44,11 @@ void main() {
       expect(find.text('添加账号'), findsNothing);
       expect(find.text('没有需要你操作的账号。'), findsNothing);
       await tester.pumpWidget(overview());
-      expect(find.text('从第一个账号开始'), findsOneWidget);
-      expect(find.text('添加账号'), findsOneWidget);
-      expect(
-        tester.getCenter(find.text('从第一个账号开始')).dx,
-        closeTo(tester.getCenter(find.byType(Scaffold)).dx, 1),
-      );
+      final tile = find.byKey(const Key('home-app-workbuddy'));
+      await tester.ensureVisible(tile);
+      await tester.tap(tile);
+      expect(selected, ManagedApp.workbuddy);
+      expect(find.text('选择平台'), findsNothing);
     },
   );
   testDesktopWidgets(
@@ -179,7 +181,13 @@ void main() {
     );
     expect(operations, 0);
     final name = tester.getRect(find.text('Account 1'));
-    final platform = tester.getRect(find.text('ZCode').first);
+    final attentionRow = find.ancestor(
+      of: find.text('Account 1'),
+      matching: find.byType(FItem),
+    );
+    final platform = tester.getRect(
+      find.descendant(of: attentionRow, matching: find.text('ZCode')),
+    );
     final status = tester.getRect(find.text('需要重新授权').first);
     expect(platform.top, greaterThan(name.top));
     expect(status.left, greaterThan(name.right));

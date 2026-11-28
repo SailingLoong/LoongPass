@@ -7,6 +7,7 @@ class WorkspaceOverviewPage extends StatefulWidget {
     required this.onOpenApp,
     this.rewards,
     this.onOpenRewards,
+    this.onManageApp,
     this.serviceStatus,
     this.usage,
   });
@@ -14,6 +15,7 @@ class WorkspaceOverviewPage extends StatefulWidget {
 
   /// Starts the chosen platform's add-account flow from the first-run prompt.
   final ValueChanged<ManagedApp> onOpenApp;
+  final ValueChanged<ManagedApp>? onManageApp;
   final VoidCallback? onOpenRewards;
   final PluginRewards? rewards;
   final Widget? serviceStatus;
@@ -36,9 +38,14 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
           : WorkspaceUsageSummary(usage: usage, accounts: owner);
       if (accounts.isEmpty) {
         return WorkspacePage(
-          title: '总览',
+          title: '我的应用',
           children: [
-            widget.serviceStatus ?? _FirstAccountPrompt(widget.onOpenApp),
+            if (widget.serviceStatus != null) widget.serviceStatus!,
+            _ApplicationTiles(
+              registry: registry,
+              onLogin: widget.onOpenApp,
+              onManage: widget.onManageApp,
+            ),
             if (summary != null) summary,
           ],
         );
@@ -50,15 +57,23 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
         records: accounts.where((a) => a.entry.attention == kind).toList(),
       );
       return WorkspacePage(
-        title: '总览',
-        action: widget.rewards == null
-            ? null
-            : RewardBatchAction(
+        title: '我的应用',
+        action: _AddAccount(onSelected: widget.onOpenApp),
+        children: [
+          if (widget.serviceStatus != null) widget.serviceStatus!,
+          _ApplicationTiles(
+            registry: registry,
+            onLogin: widget.onOpenApp,
+            onManage: widget.onManageApp,
+          ),
+          if (widget.rewards != null)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: RewardBatchAction(
                 rewards: widget.rewards!,
                 onStarted: widget.onOpenRewards,
               ),
-        children: [
-          if (widget.serviceStatus != null) widget.serviceStatus!,
+            ),
           if (widget.rewards != null)
             RewardBatchStatus(rewards: widget.rewards!),
           attention(AccountAttention.actionRequired),

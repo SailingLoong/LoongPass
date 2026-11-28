@@ -19,7 +19,7 @@ import 'workspace_tools.dart';
 export 'managed_app.dart';
 
 enum WorkspaceSection {
-  overview('总览', FLucideIcons.layoutDashboard),
+  overview('我的应用', FLucideIcons.layoutGrid),
   accounts('账号与积分', FLucideIcons.wallet),
   models('模型连接', FLucideIcons.route),
   activity('辅助签到', FLucideIcons.calendarCheck),

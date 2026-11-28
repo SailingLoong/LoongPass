@@ -80,6 +80,12 @@ test('gift quota exposes the remaining batch expiry for model routing', async ()
   expect(gift.windows[0].runsOutAt).toBe(new Date((now + 3600) * 1000).toISOString());
   expect(gift.windows[0]).toMatchObject({ amount: 250, limit: 1000, balance: 750, unit: 'token', runsOut: 750 });
   expect(gift.windows[0].models).toEqual(['glm-5.3-flash']);
+  const state = native.stateOf(auth);
+  const standalone = await native.startUsage(state);
+  const alongsideCoding = await native.dualUsage(state, { plan:'GLM Coding Pro', windows:[] });
+  for (const result of [standalone, alongsideCoding]) {
+    expect(result.windows.find(w => w.plan === 'Start Plan')).toMatchObject({balance:750, unit:'token'});
+  }
 });
 
 test('a gift with only a grant ceiling has no verified remaining amount', async () => {

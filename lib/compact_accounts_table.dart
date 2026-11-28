@@ -26,12 +26,14 @@ class CompactAccountsTable extends StatefulWidget {
     required this.entries,
     this.preferenceScope = 'accounts',
     this.registry,
+    this.visibleIds,
     this.hasCredits = true,
     this.hasRewards = true,
     this.emptyMessage = '选择平台并添加账号，开始管理你的账号与额度。',
   });
   final List<AccountTableEntry> entries;
   final AccountWorkspaceRegistry? registry;
+  final Set<String>? visibleIds;
   final String preferenceScope, emptyMessage;
   final bool hasCredits, hasRewards;
   @override
@@ -154,7 +156,12 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final rows = _model.rows(widget.entries, _favorite, now);
+    final entries = widget.visibleIds == null
+        ? widget.entries
+        : widget.entries
+              .where((e) => widget.visibleIds!.contains(e.id))
+              .toList();
+    final rows = _model.rows(entries, _favorite, now);
     if (_pendingReveal != null) {
       final index = rows.indexWhere((entry) => entry.id == _pendingReveal);
       _pendingReveal = null;
@@ -525,10 +532,12 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (entry.noAvailableModels)
+              if (entry.modelStatus case final modelStatus?)
                 Text(
-                  '无可用模型',
-                  style: muted.copyWith(color: context.desktopPalette.warning),
+                  modelStatus,
+                  style: modelStatus == '未开放模型权限' || modelStatus == '正在读取模型'
+                      ? muted
+                      : muted.copyWith(color: context.desktopPalette.warning),
                 ),
               if (platform != null)
                 Text(

@@ -8,7 +8,7 @@ import 'model_workspace_view_model.dart';
 import 'model_auto_summary.dart';
 import 'plugin_accounts.dart';
 import 'plugin_application.dart';
-import 'plugin_model_accounts.dart';
+import 'model_plans_view.dart';
 import 'plugin_model_list.dart';
 import 'model_connection_panel.dart';
 import 'workspace_page.dart';
@@ -27,10 +27,10 @@ class PluginModelServicesPage extends StatefulWidget {
   final ValueChanged<PluginAccount>? onOpenAccount;
   @override
   State<PluginModelServicesPage> createState() =>
-      _PluginModelServicesPageState();
+      PluginModelServicesPageState();
 }
 
-class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
+class PluginModelServicesPageState extends State<PluginModelServicesPage> {
   late var vm = ModelWorkspaceViewModel(widget.application.models);
   final _search = TextEditingController();
   final _autoSearch = TextEditingController();
@@ -50,6 +50,13 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
         ..clear()
         ..addAll([?widget.selectedModelId]);
     }
+  }
+
+  void showAvailableModels() {
+    _select(null);
+    _search.clear();
+    vm.search('');
+    vm.setShowAll(true);
   }
 
   void _select(String? id) {
@@ -159,15 +166,15 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                     onChange: (value) => vm.publish(selected.id, value),
                   ),
                 ),
-              Text('账号来源', style: context.theme.typography.display.sm),
-              PluginModelAccounts(
+              Text('应用与套餐', style: context.theme.typography.display.sm),
+              ModelPlansView(
                 key: ValueKey(selected.id),
                 model: selected,
                 vm: vm,
                 onOpenAccount: widget.onOpenAccount,
               ),
             ] else if (!auto && noSources) ...[
-              Text('暂无账号来源', style: context.theme.typography.body.lg),
+              Text('尚未连接应用', style: context.theme.typography.body.lg),
               const SizedBox(height: 8),
               const Text('在「账号与积分」中添加支持模型服务的账号。'),
             ] else ...[
@@ -209,7 +216,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                       child: OperationControl.modelSearch.mark(
                         FTextField(
                           key: const Key('model-search'),
-                          hint: '搜索模型、别名或账号',
+                          hint: '搜索模型、别名或套餐',
                           size: FTextFieldSizeVariant.sm,
                           prefixBuilder: (context, style, variants) =>
                               const Icon(FLucideIcons.search, size: 16),
@@ -257,7 +264,7 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Text(
                     query.isNotEmpty
-                        ? '没有匹配的模型。可搜索模型、别名或账号。'
+                        ? '没有匹配的模型。可搜索模型、别名或套餐。'
                         : auto
                         ? '暂无可用候选。请在「模型连接」检查已展示的模型和开放的账号。'
                         : '打开“显示全部模型”，选择要在 Magpie 和 Auto 中使用的模型。',

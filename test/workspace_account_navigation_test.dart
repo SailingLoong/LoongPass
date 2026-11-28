@@ -38,12 +38,12 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-accounts')));
       await tester.pumpAndSettle();
       expect(find.text(saved.label).hitTestable(), findsOneWidget);
-      expect(find.text('无可用模型').hitTestable(), findsNothing);
+      expect(find.text('正在读取模型').hitTestable(), findsOneWidget);
       expect(find.text('需要重新授权').hitTestable(), findsNothing);
       app.models.completeCatalog();
       await tester.pumpAndSettle();
       expect(find.text('正在刷新模型与额度…').hitTestable(), findsNothing);
-      expect(find.text('无可用模型').hitTestable(), findsOneWidget);
+      expect(find.text('尚未发现适用模型').hitTestable(), findsOneWidget);
     },
   );
 

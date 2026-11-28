@@ -244,10 +244,27 @@ void main() {
       await accounts.start();
       await host.catalogRequested.future;
       host.keys.add('fast#new');
-      final saved = accounts.authorizationSaved('fast#new');
-      await pumpEventQueue();
+      await accounts
+          .authorizationSaved('fast#new')
+          .timeout(const Duration(seconds: 2));
+      expect(
+        accounts.accounts.singleWhere((a) => a.key == 'fast#new').active,
+        isTrue,
+      );
+      expect(host.listings, 1);
+      final refreshed = Completer<void>();
+      void observe() {
+        if (!refreshed.isCompleted &&
+            accounts.accounts.any(
+              (a) => a.key == 'fast#new' && a.queriedAt != null,
+            ))
+          refreshed.complete();
+      }
+
+      accounts.addListener(observe);
       host.release();
-      await saved;
+      await refreshed.future.timeout(const Duration(seconds: 4));
+      accounts.removeListener(observe);
       expect(host.listings, 2);
       final account = accounts.accounts.singleWhere((a) => a.key == 'fast#new');
       expect(account.active, isTrue);

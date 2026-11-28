@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'login_batch.dart';
+import 'model_connection_panel.dart';
+import 'model_workspace_view_model.dart';
+
 import 'package:material_ui/material_ui.dart';
 
 import 'macos_crash_reports.dart';
@@ -120,9 +124,11 @@ class _AccountPage extends StatefulWidget {
 
 class _AccountPageState extends State<_AccountPage> {
   final _updates = AppUpdates();
+  final _loginBatch = LoginBatch();
   final _registry = AccountWorkspaceRegistry();
   final _codex = CodexAccounts();
   final _workspace = GlobalKey<AppWorkspaceState>();
+  final _modelPage = GlobalKey<PluginModelServicesPageState>();
   final _accountsPage = GlobalKey<WorkspaceAccountsPageState>();
   final _settingsTopic = ValueNotifier(SettingsSection.appearance);
   final _codexPanel = GlobalKey<CodexAccountsPanelState>();
@@ -240,7 +246,7 @@ class _AccountPageState extends State<_AccountPage> {
   }
 
   Map<ManagedApp, Widget> _pages(
-    Set<String> accountsWithoutModels,
+    Map<String, String> accountModelStatus,
     List<PluginModel> catalog,
   ) => {
     for (final app in ManagedApp.values)
@@ -253,13 +259,50 @@ class _AccountPageState extends State<_AccountPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               app == ManagedApp.codex
-                  ? CodexAccountsPanel(key: _codexPanel, owner: _codex)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_application case final application?)
+                          ListenableBuilder(
+                            listenable: _loginBatch,
+                            builder: (context, _) {
+                              final saved = _loginBatch.current(
+                                application.accounts.accounts,
+                              );
+                              final last = saved.isEmpty
+                                  ? null
+                                  : ManagedApp.forProvider(saved.last.provider);
+                              if (last == null) return const SizedBox.shrink();
+                              return FButton(
+                                variant: FButtonVariant.ghost,
+                                size: FButtonSizeVariant.sm,
+                                mainAxisSize: MainAxisSize.min,
+                                onPress: () =>
+                                    _workspace.currentState?.selectApp(last),
+                                child: Text('返回本次登录（${saved.length}）'),
+                              );
+                            },
+                          ),
+                        CodexAccountsPanel(key: _codexPanel, owner: _codex),
+                      ],
+                    )
                   : _application == null
                   ? _status
                   : PluginAccountsPanel(
                       key: _pluginPanels[app],
                       accounts: _application!.accounts,
-                      accountsWithoutModels: accountsWithoutModels,
+                      loginBatch: _loginBatch,
+                      models: _application!.models,
+                      onConnection: _openConnection,
+                      onModels: () {
+                        _workspace.currentState?.selectModel(null);
+                        _modelPage.currentState?.showAvailableModels();
+                      },
+                      onOtherApp: () async {
+                        final next = await chooseAccountApp(context);
+                        if (mounted && next != null) _addAccount(next);
+                      },
+                      accountModelStatus: accountModelStatus,
                       modelCatalog: catalog,
                       rewards: _application!.rewards,
                       providerIds: providersForApp(app),
@@ -281,6 +324,17 @@ class _AccountPageState extends State<_AccountPage> {
         ),
       ),
   };
+  Future<void> _openConnection() async {
+    final app = _application;
+    if (app == null) return;
+    final vm = ModelWorkspaceViewModel(app.models);
+    try {
+      await showModelConnectionSheet(context, vm, app.connection);
+    } finally {
+      vm.dispose();
+    }
+  }
+
   void _addAccount(ManagedApp app) {
     _workspace.currentState?.selectApp(app);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -288,7 +342,7 @@ class _AccountPageState extends State<_AccountPage> {
       if (app == ManagedApp.codex) {
         _codexPanel.currentState?.addAccount();
       } else {
-        _pluginPanels[app]?.currentState?.addAccount();
+        _pluginPanels[app]?.currentState?.addAccount(quickStart: true);
       }
     });
   }
@@ -318,9 +372,7 @@ class _AccountPageState extends State<_AccountPage> {
   void _selectModel(String? id) => setState(() => _selectedModelId = id);
 
   void _openAccount(PluginAccount account) {
-    final app = ManagedApp.values
-        .where((app) => app.nativeProviders.contains(account.provider))
-        .firstOrNull;
+    final app = ManagedApp.forProvider(account.provider);
     if (app == null) return;
     final origin = _accountsPage.currentContext;
     if (origin == null) return;
@@ -335,6 +387,7 @@ class _AccountPageState extends State<_AccountPage> {
 
   @override
   void dispose() {
+    _loginBatch.dispose();
     _updates.dispose();
     _codex.dispose();
     _application?.models.removeListener(_modelsChanged);
@@ -370,13 +423,14 @@ class _AccountPageState extends State<_AccountPage> {
             onOpen: _openUpdates,
           ),
           pages: _pages(
-            _application?.connection.accountsWithoutModels ?? const {},
+            _application?.connection.accountModelStatus ?? const {},
             catalog,
           ),
           sections: {
             WorkspaceSection.models: switch (_accountStatus) {
               final status? => WorkspacePage(title: '模型连接', children: [status]),
               null => PluginModelServicesPage(
+                key: _modelPage,
                 application: _application!,
                 selectedModelId: _selectedModelId,
                 onSelectModel: _selectModel,
@@ -395,6 +449,7 @@ class _AccountPageState extends State<_AccountPage> {
               usage: _application?.usage,
               registry: _registry,
               onOpenApp: _addAccount,
+              onManageApp: (app) => _workspace.currentState?.selectApp(app),
               rewards: _application?.rewards,
               onOpenRewards: _openActivity,
               serviceStatus: _accountStatus,

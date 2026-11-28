@@ -48,7 +48,7 @@ class AccountTableEntry {
     this.actions,
     this.statusLabel,
     this.highlightStatus = false,
-    this.noAvailableModels = false,
+    this.modelStatus,
   }) : _expiryBatches = expiryBatches;
   final String id, label, identity, balance, status;
   final Widget details;
@@ -74,7 +74,7 @@ class AccountTableEntry {
   final bool hasCredits, hasRewards;
   final String? accountSummary, statusLabel;
   final bool highlightStatus;
-  final bool noAvailableModels;
+  final String? modelStatus;
   String? get listStatus =>
       needsAttention || highlightStatus ? statusLabel ?? status : null;
   final Widget? expiryDetails, actions;
@@ -131,7 +131,7 @@ class AccountTableEntry {
     actions: actions,
     statusLabel: statusLabel,
     highlightStatus: highlightStatus,
-    noAvailableModels: noAvailableModels,
+    modelStatus: modelStatus,
   );
   DateTime? get nextExpiry =>
       expiryAt ??

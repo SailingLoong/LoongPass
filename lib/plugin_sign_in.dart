@@ -84,6 +84,7 @@ class PluginSignIn {
         cancellation: _cancellation.future,
       ),
     );
+    if (_cancellation.isCompleted) throw StateError('Sign-in cancelled');
     final account = result['account'] as String;
     await onSaved(account);
     return account;
@@ -120,6 +121,7 @@ class PluginSignIn {
         'account': 'new',
       }, cancellation: _cancellation.future),
     );
+    if (_cancellation.isCompleted) throw StateError('Sign-in cancelled');
     final account = result['account'] as String;
     await onSaved(account);
     return account;

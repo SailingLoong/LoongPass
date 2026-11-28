@@ -10,6 +10,18 @@ import { LoomyAuthPlugin, _internal } from '../runtime/vendor/plugins/loomy/inde
 const original = globalThis.fetch;
 afterEach(() => { globalThis.fetch = original; });
 
+test('Loomy marks the authenticated points wallet as individual and retains its absolute balance', async () => {
+  globalThis.fetch = async (input) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    expect(url.pathname).toBe('/api/v2/points/records');
+    return Response.json({code:'000000', data:{dailyBalance:40.25, balance:59.75}});
+  };
+  const hooks = await LoomyAuthPlugin();
+  const usage = await hooks.auth.usage(async () => ({type:'oauth',access:'fixture',uid:'user'}));
+  expect(usage.walletScope).toBe('account');
+  expect(usage.windows.find(w => !w.aside)).toMatchObject({balance:100, unit:'credits'});
+});
+
 test('Loomy advertises only remote reasoning tiers and preserves requested xhigh on the wire', async () => {
   const efforts = ['none','low','medium','high','xhigh'];
   const entry = {id:'Future',name:'Future',capabilities:{reasoning:true},reasoning_efforts:efforts,default_reasoning_effort:'low'};

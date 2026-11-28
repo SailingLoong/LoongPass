@@ -33,12 +33,17 @@ bool zcodeDeviceConflict(
 String pluginRewardIdentity(String provider, String realm, String uid) =>
     jsonEncode([provider, realm, uid]);
 
+typedef AccountRegistration = ({String key, String id});
+
+typedef AccountPlan = ({String provider, String realm, String? name});
+
 class PluginAccount {
   PluginAccount({
     required this.key,
     required this.facts,
     required this.active,
     required this.models,
+    this.catalogObserved = true,
     this.usage,
     this.queriedAt,
     ZcodeGiftExpiry? nativeGift,
@@ -54,6 +59,7 @@ class PluginAccount {
   final String key;
   final Map<String, dynamic> facts;
   final List<Map<String, dynamic>> models;
+  final bool catalogObserved;
   final Map<String, dynamic>? usage;
 
   /// Time of the last successful official usage read, never a failed attempt.
@@ -66,6 +72,43 @@ class PluginAccount {
   String get label => facts['label'] ?? uid;
   String get realm => facts['realm'] ?? '';
   String get registrationId => facts['registrationId'];
+  AccountRegistration get registration => (key: key, id: registrationId);
+  AccountPlan get plan {
+    final reported = usage?['plan'];
+    final names = provider == 'zcode'
+        ? zcodePlans(_reward)
+              .where((p) => p['status'] == 'active')
+              .map((p) => p['name'])
+              .whereType<String>()
+              .where((name) => name.trim().isNotEmpty)
+              .toSet()
+              .join(' · ')
+        : '';
+    return (
+      provider: provider,
+      realm: realm,
+      name: reported is String && reported.trim().isNotEmpty
+          ? reported.trim()
+          : names.isEmpty
+          ? null
+          : names,
+    );
+  }
+
+  AccountPlan planForWindow(Map window) {
+    final name = window['plan'];
+    return name is String && name.trim().isNotEmpty
+        ? (provider: provider, realm: realm, name: name.trim())
+        : plan;
+  }
+
+  Set<AccountPlan> get plans {
+    final windows = (usage?['windows'] as List? ?? const []).whereType<Map>();
+    final observed = {for (final w in windows) planForWindow(w)};
+    if (observed.isEmpty || plan.name != null) observed.add(plan);
+    return observed;
+  }
+
   final String? zcodeDevice;
   ZcodeDeviceBinding? get zcodeBinding =>
       active && provider == 'zcode' && uid.isNotEmpty && zcodeDevice != null
@@ -235,6 +278,7 @@ class PluginAccounts extends ChangeNotifier {
           key: entry.key,
           facts: _accountFacts(entry.value),
           active: _active(entry.key, entry.value),
+          catalogObserved: _catalogs.containsKey(entry.key),
           models: _active(entry.key, entry.value)
               ? _catalogs[entry.key] ?? const []
               : const [],
@@ -362,11 +406,7 @@ class PluginAccounts extends ChangeNotifier {
     final native = await _reconcile();
     _events = runtime.events.listen((event) {
       if (!{'auth', 'signIn', 'recovered'}.contains(event['event'])) return;
-      _eventTimer?.cancel();
-      _eventTimer = Timer(
-        const Duration(milliseconds: 500),
-        () => unawaited(refresh().catchError((_) {})),
-      );
+      _scheduleCredentialRefresh();
     });
     _renewal = Timer.periodic(
       const Duration(seconds: 30),
@@ -662,6 +702,14 @@ class PluginAccounts extends ChangeNotifier {
     await refresh();
   }
 
+  void _scheduleCredentialRefresh() {
+    _eventTimer?.cancel();
+    if (_closed) return;
+    _eventTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(_refreshAfterAccountChange().catchError((_) {}));
+    });
+  }
+
   Future<void> remove(String key) async {
     await edit((data) {
       final row = (data['accounts'] as Map)[key] as Map;
@@ -703,6 +751,10 @@ class PluginAccounts extends ChangeNotifier {
         rejected = true;
         return;
       }
+      // Quota and models observed under the previous registration cannot
+      // describe the newly saved login, even if it reused the same slot.
+      _discard(key);
+      _errors.remove(key);
       rows[key] =
           {
               ...?old,
@@ -720,8 +772,10 @@ class PluginAccounts extends ChangeNotifier {
       _discard(key);
       throw StateError('Authorization changed the saved identity');
     }
-    await _refreshAfterAccountChange();
-    if (!_active(key, _row(key))) throw StateError('Account unavailable');
+    final row = _row(key);
+    if (row == null) throw StateError('Account unavailable');
+    await _live(key, Map<String, dynamic>.from(row));
+    _scheduleCredentialRefresh();
   }
 
   /// Checks the current native credential without renewing it. Model requests

@@ -33,6 +33,7 @@ class PluginModelService extends ChangeNotifier {
   String? error;
   bool get enabled => _data['enabled'] == true;
   bool get catalogReady => accounts.catalogReady;
+  bool get catalogFailed => accounts.error == 'catalog_unavailable';
   bool get running => _server != null;
   Uri? get endpoint => _server == null
       ? null
@@ -159,18 +160,38 @@ class PluginModelService extends ChangeNotifier {
     return next;
   }
 
-  Future<void> enable(String key, bool value) => _edit((data) {
+  Future<void> enable(String key, bool value) async {
     final account = accounts.accounts.singleWhere((a) => a.key == key);
-    final rows = data['grants'] as Map;
-    final old = rows[key] as Map?;
-    rows[key] = {
-      'token': old?['registrationId'] == account.registrationId
-          ? old!['token']
-          : _token(),
-      'enabled': value,
-      'registrationId': account.registrationId,
-    };
-  });
+    await enableRegistrations({account.registration}, value);
+  }
+
+  /// Save a single consent for exactly the registrations the user saw.
+  Future<void> enableRegistrations(
+    Set<AccountRegistration> selection,
+    bool value,
+  ) {
+    final expected = Set.of(selection);
+    if (expected.isEmpty) return Future.value();
+    return _edit((data) {
+      final current = {for (final a in accounts.accounts) a.registration: a};
+      final rows = data['grants'] as Map;
+      for (final ref in expected) {
+        final account = current[ref];
+        if (account == null ||
+            value &&
+                (!account.active ||
+                    account.error == 'authorization_required')) {
+          throw StateError('Account registration changed');
+        }
+        final old = rows[ref.key] as Map?;
+        rows[ref.key] = {
+          'token': old?['registrationId'] == ref.id ? old!['token'] : _token(),
+          'enabled': value,
+          'registrationId': ref.id,
+        };
+      }
+    });
+  }
 
   Future<void> setAutoRoutingPriority(AutoRoutingPriority priority) =>
       _edit((data) => priority.saveTo(_routingForEdit(data)));

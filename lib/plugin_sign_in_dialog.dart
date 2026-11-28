@@ -26,6 +26,14 @@ String? _bindingMessage(String code) => switch (code) {
   _ => null,
 };
 
+typedef LoginRegion = ({String key, String value});
+typedef LoginMethod = ({
+  String provider,
+  String type,
+  String label,
+  LoginRegion? region,
+});
+
 class PluginSignInDialog extends StatefulWidget {
   const PluginSignInDialog({
     super.key,
@@ -34,6 +42,9 @@ class PluginSignInDialog extends StatefulWidget {
     required this.providerIds,
     required this.title,
     this.initialProvider,
+    this.repeatMethod,
+    this.quickStart = false,
+    this.onMethodSaved,
     this.target,
     this.localZcodeDevice,
     this.switchDevice = false,
@@ -45,6 +56,9 @@ class PluginSignInDialog extends StatefulWidget {
   final Set<String> providerIds;
   final String title;
   final String? initialProvider;
+  final LoginMethod? repeatMethod;
+  final bool quickStart;
+  final ValueChanged<LoginMethod>? onMethodSaved;
   final PluginAccount? target;
   final String? localZcodeDevice;
   final bool switchDevice;
@@ -63,6 +77,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   final _inputs = <String, String>{};
   String? _provider, _selected, _error, _browserError;
   int? _method;
+  LoginRegion? _savedRegion, _repeatRegion;
   Map<String, dynamic>? _prompt, _authorization;
   _Step _step = _Step.select;
   bool _busy = false, _ended = false;
@@ -113,10 +128,41 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     final available = widget.providerIds.where(
       widget.accounts.providers.containsKey,
     );
-    _provider = available.contains(widget.initialProvider)
-        ? widget.initialProvider
+    final preferred = widget.repeatMethod?.provider ?? widget.initialProvider;
+    _provider = available.contains(preferred)
+        ? preferred
         : available.firstOrNull;
     _selectMethod();
+    final repeat = widget.repeatMethod;
+    if (repeat != null &&
+        widget.target == null &&
+        repeat.provider == _provider) {
+      final matching = _methods.indexed.where(
+        (entry) =>
+            entry.$2['type'] == repeat.type &&
+            (entry.$2['label'] ?? '') == repeat.label,
+      );
+      if (matching.length == 1) {
+        _method = matching.single.$1;
+        _repeatRegion = repeat.region;
+        _step = _Step.starting;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_ended) unawaited(_run(_next));
+        });
+      }
+    }
+    if (widget.quickStart &&
+        repeat == null &&
+        widget.target == null &&
+        available.length == 1 &&
+        _methods.length == 1 &&
+        _chosen['type'] == 'oauth' &&
+        !_invitationAvailable) {
+      _step = _Step.starting;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_ended) unawaited(_run(_next));
+      });
+    }
     if (widget.switchDevice) {
       _step = _Step.starting;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,6 +213,28 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
       if (!{'select', 'text', 'password'}.contains(prompt['type']) ||
           prompt['key'] is! String)
         throw StateError('Unsupported native prompt');
+      final region = _repeatRegion;
+      if (region != null &&
+          prompt['type'] == 'select' &&
+          prompt['key'] == region.key) {
+        _repeatRegion = null;
+        final options = (prompt['options'] as List? ?? const [])
+            .whereType<Map>();
+        if (options.any((o) => o['value'] == region.value) &&
+            await _signIn.validate(
+                  _provider!,
+                  _method!,
+                  region.key,
+                  region.value,
+                ) ==
+                null) {
+          if (!mounted || _ended) return;
+          _inputs[region.key] = region.value;
+          _savedRegion = region;
+          return _next();
+        }
+        if (!mounted || _ended) return;
+      }
       setState(() {
         _prompt = prompt;
         _step = _Step.prompt;
@@ -263,6 +331,10 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         setState(() => _error = error);
         return;
       }
+      if (_prompt!['type'] == 'select' &&
+          const {'region', 'site'}.contains(_prompt!['key'])) {
+        _savedRegion = (key: _prompt!['key'] as String, value: value);
+      }
       _inputs[_prompt!['key']] = value;
       return _next();
     }
@@ -298,6 +370,14 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   void _complete(String key) {
     if (mounted && !_ended) {
       _ended = true;
+      if (widget.target == null && _provider != null && _method != null) {
+        widget.onMethodSaved?.call((
+          provider: _provider!,
+          type: _chosen['type'] as String,
+          label: _chosen['label'] as String? ?? '',
+          region: _savedRegion,
+        ));
+      }
       Navigator.of(context).pop(key);
     }
   }
@@ -342,6 +422,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
     _signIn = PluginSignIn(widget.accounts.runtime, onSaved: _saved);
     setState(() {
       _inputs.clear();
+      _savedRegion = _repeatRegion = null;
       _input.clear();
       _prompt = null;
       _authorization = null;

@@ -89,7 +89,7 @@ void main() {
       await tester.pumpAndSettle();
       Finder warning(String key) => find.descendant(
         of: find.byKey(ValueKey('row-qoderCn/$key')),
-        matching: find.text('无可用模型'),
+        matching: find.text('模型尚未启用'),
       );
       expect(warning('saved-0'), findsOneWidget);
       expect(warning('saved-13'), findsNothing);
@@ -103,24 +103,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('连接设置'));
       await tester.pumpAndSettle();
-      final grants = find.text('开放账号（2 / 2）');
+      final grants = find.text('应用与套餐（1）');
       await tester.ensureVisible(grants);
       await tester.tap(grants);
       await tester.pumpAndSettle();
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('saved-13')),
-          matching: find.textContaining('无可用模型'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('saved-0')),
-          matching: find.textContaining('无可用模型'),
-        ),
-        findsNothing,
-      );
+      expect(find.textContaining('模型尚未启用'), findsOneWidget);
+      expect(find.byKey(const ValueKey('saved-13')), findsNothing);
     },
   );
 
@@ -181,6 +169,10 @@ void main() {
         findsNothing,
       );
       await tester.tap(find.byKey(const Key('model-nav-deepseek-flash')));
+      await tester.pumpAndSettle();
+      final plan = find.text('TRAE CN · 套餐待核实');
+      await tester.ensureVisible(plan);
+      await tester.tap(plan);
       await tester.pumpAndSettle();
       final details = find.text('来源与额度详情').last;
       await tester.ensureVisible(details);
@@ -302,13 +294,18 @@ void main() {
             .selectedModelId,
         'deepseek-flash',
       );
-      expect(find.text('60 credits'), findsOneWidget);
-      expect(find.text('48 credits'), findsOneWidget);
-      expect(find.text('32.5 credits'), findsOneWidget);
+      expect(find.textContaining('60 积分'), findsOneWidget);
+      expect(find.textContaining('48 积分'), findsOneWidget);
+      expect(find.text('日常账号 14'), findsNothing);
       for (final (label, balance, region) in [
         ('日常账号 14', '60 credits', 'Qoder CN · cn'),
         ('海外账号', '48 credits', 'Qoder · global'),
       ]) {
+        final plan = find.text('${region.split(' · ').first} · 套餐待核实');
+        await tester.ensureVisible(plan);
+        await tester.tap(plan);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(label));
         await tester.tap(find.text(label).hitTestable());
         await tester.pumpAndSettle();
         final detail = find.byKey(const Key('account-detail-page'));
@@ -333,6 +330,9 @@ void main() {
         await tester.tap(back);
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('account-detail-page')), findsNothing);
+        await tester.ensureVisible(find.text('返回模型'));
+        await tester.tap(find.text('返回模型'));
+        await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('model-published-deepseek-flash')),
           findsOneWidget,

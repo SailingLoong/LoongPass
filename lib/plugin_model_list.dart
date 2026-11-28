@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'plugin_model_catalog.dart';
+import 'model_plan_quota.dart';
 
 class PluginModelList extends StatelessWidget {
   const PluginModelList({
@@ -63,7 +64,10 @@ class PluginModelList extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text('${model.availableAccounts} 个可用账号', style: muted),
+                        Text(
+                          '${modelPlans(model).values.where((group) => group.any((b) => b.available)).length} 个可用套餐',
+                          style: muted,
+                        ),
                       ],
                     ),
                   ),

@@ -3526,6 +3526,8 @@ async function usageOf(provider, account, signal) {
         : null,
     windows: (Array.isArray(u.windows) ? u.windows : []).map((w) => ({
       name: text(w?.name),
+      ...(typeof w?.plan === "string" && w.plan.trim() ? { plan: w.plan.trim() } : {}),
+      ...(["account", "shared"].includes(w?.walletScope ?? u.walletScope) ? { walletScope: w?.walletScope ?? u.walletScope } : {}),
       used: w?.used == null ? null : Math.max(0, num(w?.used)), // past 100 when overspent; null: not said
       resetsAt: when(w?.resetsAt),
       resetSecs: Math.max(0, Math.round(num(w?.resetSecs))),

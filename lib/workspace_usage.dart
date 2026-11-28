@@ -165,7 +165,7 @@ class _UsagePageState extends State<_UsagePage> {
           size: FButtonSizeVariant.sm,
           mainAxisSize: MainAxisSize.min,
           onPress: () => Navigator.of(context).pop(),
-          child: const Text('返回总览'),
+          child: const Text('返回我的应用'),
         ),
         children: [
           Wrap(

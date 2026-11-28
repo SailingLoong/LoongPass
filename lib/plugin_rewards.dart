@@ -126,11 +126,17 @@ class PluginRewards {
         now().isBefore(until);
   }
 
-  List<PluginAccount> get candidates {
+  List<PluginAccount> get candidates => _candidates(null);
+
+  List<PluginAccount> candidatesFor(Set<AccountRegistration> selection) =>
+      _candidates(selection);
+
+  List<PluginAccount> _candidates(Set<AccountRegistration>? selection) {
     final identities = <String>{};
     return [
       for (final account in accounts.accounts)
-        if (_eligible(account) &&
+        if ((selection == null || selection.contains(account.registration)) &&
+            _eligible(account) &&
             (account.provider == 'zcode' ||
                 !_waitingForWindow(
                   account.facts['reward'] as Map? ?? const {},
@@ -146,10 +152,21 @@ class PluginRewards {
     ];
   }
 
-  Future<void> claimAll() {
+  Future<RewardBatch?> claimSelection(
+    Set<AccountRegistration> selection,
+  ) async {
+    if (_batchOperation != null) throw StateError('Batch in progress');
+    final targets = candidatesFor(selection);
+    if (_closed || targets.isEmpty) return null;
+    await _startBatch(targets);
+    return batch.value;
+  }
+
+  Future<void> claimAll() => _startBatch(candidates);
+
+  Future<void> _startBatch(List<PluginAccount> targets) {
     final running = _batchOperation;
     if (running != null) return running;
-    final targets = candidates;
     if (_closed || targets.isEmpty) return Future.value();
     final operation = Future.microtask(() => _claimAll(targets))
         .whenComplete(() {
@@ -628,10 +645,14 @@ Map? _priorCampaignResult(Map reward, Map status, PluginAccount account) {
   final offered = status['outcome'] == 'claimable';
   if (scope == null || !offered && status['outcome'] != 'done') return null;
   Map? held, refused;
-  for (final entry in [reward, ...(reward['history'] as List).reversed].whereType<Map>()) {
+  for (final entry in [
+    reward,
+    ...(reward['history'] as List).reversed,
+  ].whereType<Map>()) {
     if (entry['scope'] != scope ||
         entry['uid'] != account.uid ||
-        entry['realm'] != account.realm) continue;
+        entry['realm'] != account.realm)
+      continue;
     switch (entry['status']) {
       case 'claimed':
         return entry;

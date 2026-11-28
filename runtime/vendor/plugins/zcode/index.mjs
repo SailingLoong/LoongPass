@@ -517,7 +517,7 @@ async function codingUsage(s) {
   const out = {}
   const level = typeof d.level === "string" ? d.level : ""
   if (level) out.plan = "GLM Coding " + level[0].toUpperCase() + level.slice(1)
-  out.windows = limitWindows(d)
+  out.windows = limitWindows(d).map((w) => ({ ...w, walletScope: "account" }))
   notePlan(s.key, out.windows)
   const resets = personalResets(root, s.key)
   let subs = null
@@ -1178,6 +1178,7 @@ async function startUsage(s) {
   const label = byPlan(g.windows)
   g.windows = countedFirst(g.windows.map(({ _plan, _spent, ...w }, i) => {
     w.name = label(w.name, _plan)
+    w.plan = _plan
     if (!w.models?.length) return w
     // a model two plans give (Trust Build's and the Start Plan's Flash)
     // counts on the bucket ZCode spends now; the other stays on the card
@@ -1281,7 +1282,7 @@ async function dualUsage(s, out) {
           const at = name.toLowerCase().indexOf(m.toLowerCase())
           if (at >= 0) name = name.slice(0, at) + giftID(m) + name.slice(at + m.length)
         }
-        return { ...scoped, name: label(name, p) }
+        return { ...scoped, plan: p, name: label(name, p) }
       })))
     }
     if (g) out.windows.push(...pendingLines(g))
@@ -1322,7 +1323,7 @@ async function teamUsage(s, key) {
   const root = bizRoot(s.base)
   const headers = teamHeaders(s.base, s.org, s.project)
   const d = (await call("GET", root + "/api/monitor/usage/quota/limit?type=2", { auth: key, headers })) ?? {}
-  const out = { windows: limitWindows(d) }
+  const out = { windows: limitWindows(d).map((w) => ({ ...w, walletScope: "shared" })) }
   notePlan(key, out.windows)
   if (!s.token) return out
   const resets = teamResets(root, s.token, headers)
