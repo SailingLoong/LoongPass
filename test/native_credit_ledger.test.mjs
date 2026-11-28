@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test'
 import { _internal as mini } from '../runtime/vendor/plugins/minimax/index.mjs'
+import { _internal as trae } from '../runtime/vendor/plugins/trae/index.mjs'
 import { _internal as loomy } from '../runtime/vendor/plugins/loomy/index.mjs'
 
 test('MiniMax distinguishes a reconciled expired amount, zero, incomplete accounting and a future balance', () => {
@@ -30,4 +31,22 @@ test('Loomy reconciles two closed Beijing cycles and keeps daily and permanent m
   expect(loomy.ledgerFacts(wallet,rows,false,now).creditBatches.length).toBe(1)
   expect(loomy.ledgerFacts(wallet,[...rows.slice(0,2),{...rows[2],balanceAfter:250},rows[3]],true,now).creditBatches).toEqual([])
   expect(loomy.ledgerFacts(wallet,[rows[0], ...rows],true,now)).toEqual({})
+})
+
+test('TRAE per-turn billing uses the change in precise conversation credits', async () => {
+  const previous = globalThis.fetch
+  let amount = '0.03125'
+  try {
+    globalThis.fetch = async () => Response.json({ data: { code: 0, user_usage_group_by_session: {
+      credits_by_source: { gift: amount }, extra_info: { input_token: 250, output_token: 15, cache_read_token: 21 },
+    } } })
+    const account = { token: 'synthetic-token', uid: 'fixture-turn' }
+    const site = trae.SITES['trae-cn']
+    const options = { usage: { prompt_tokens: 250, completion_tokens: 15 }, wait: 100 }
+    const first = await trae.turnBilling(account, site, 'fixture-conversation', options)
+    expect(first?.credits).toBe(0.03125)
+    amount = '0.15625'
+    const second = await trae.turnBilling(account, site, 'fixture-conversation', options)
+    expect(second?.credits).toBe(0.125)
+  } finally { globalThis.fetch = previous }
 })

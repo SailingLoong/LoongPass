@@ -30,7 +30,8 @@
     "patches/zcode-installed-device.patch",
     "patches/zcode-device-ownership.patch",
     "patches/plan-wallet-scope.patch",
-    "patches/credit-ledger.patch"
+    "patches/credit-ledger.patch",
+    "patches/trae-settled-usage.patch"
   ],
   "sources": {
     "magpie": {
@@ -285,7 +286,7 @@
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "a80b7fe9e1626a8f6c7382470c348f99134333d87e03dafb9f9c5d8942e354a1",
+      "sha256": "70c910af5e0d69a4dcbd7c6b76d7247bc2289270e3b3829e6a999f2986d33d6f",
       "upstreamSha256": "769adfbde56769c853526af2c673dcfee7f754b5e9be8f4bc77d59217ea50126"
     },
     {
@@ -388,6 +389,7 @@
     "patches/zcode-installed-device.patch",
     "patches/zcode-device-ownership.patch",
     "patches/plan-wallet-scope.patch",
-    "patches/credit-ledger.patch"
+    "patches/credit-ledger.patch",
+    "patches/trae-settled-usage.patch"
   ]
 }
