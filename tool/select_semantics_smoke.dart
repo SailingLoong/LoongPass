@@ -2,38 +2,16 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../lib/select_field_semantics.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.environment['SELECT_SMOKE_OWNER'] != 'platform') {
-    SemanticsBinding.instance.ensureSemantics();
-  }
-  stdout.writeln('DART_START native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled}');
-  WidgetsBinding.instance.addSemanticsEnabledListener(() {
-    stdout.writeln('DART_AX native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled}');
-  });
-  if (Platform.environment['SELECT_SMOKE_ORDER'] == 'handshake') {
-    final binding = SemanticsBinding.instance;
-    final enabled = Completer<void>();
-    void whenEnabled() {
-      if (binding.semanticsEnabled && !enabled.isCompleted) enabled.complete();
-    }
-    binding.addSemanticsEnabledListener(whenEnabled);
-    try {
-      await const MethodChannel('loongpass.test/accessibility').invokeMethod<bool>('enableAccessibility');
-      whenEnabled();
-      await enabled.future.timeout(const Duration(seconds: 8));
-      stdout.writeln('HANDSHAKE_READY native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled}');
-    } finally {
-      binding.removeSemanticsEnabledListener(whenEnabled);
-    }
-  }
+  // AppKit enables semantics after its native bridge exists. Let that signal
+  // create the first tree, as in the desktop app.
   runApp(
     MaterialApp(
       localizationsDelegates: FLocalizations.localizationsDelegates,
@@ -69,12 +47,8 @@ class _SmokeState extends State<_Smoke> {
         exit(0);
       }
       setState(() => value = ticks.isOdd ? 'workbuddy' : 'zcode');
-      stdout.writeln('Changed selector: $value native=${WidgetsBinding.instance.platformDispatcher.semanticsEnabled} tree=${SemanticsBinding.instance.semanticsEnabled} lifecycle=${WidgetsBinding.instance.lifecycleState} frames=${WidgetsBinding.instance.framesEnabled}');
+      stdout.writeln('Changed selector: $value');
       if (!const bool.fromEnvironment('LEGACY_SELECTOR')) {
-        if (ticks == 1) {
-          final before = await _probe.invokeMapMethod<String, dynamic>('visibleTextFields');
-          stdout.writeln('BEFORE_ROUTE $before');
-        }
         if (ticks == 2 || ticks == 4) {
           unawaited(
             Navigator.of(context).push<void>(

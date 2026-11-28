@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Exercise selector changes through the real macOS accessibility bridge."""
 import argparse
-import hashlib
-import json
-from urllib.parse import urljoin, urlparse, unquote
 import os
 from pathlib import Path
 import re
@@ -55,22 +52,8 @@ def main():
         native = native.replace(needle, needle + """
     let probe = FlutterMethodChannel(name: "loongpass.test/accessibility",
                                      binaryMessenger: flutterViewController.engine.binaryMessenger)
-    func trace(_ message: String) {
-      FileHandle.standardError.write(Data((message + String(UnicodeScalar(10)!)).utf8))
-    }
-    let environment = ProcessInfo.processInfo.environment
-    probe.setMethodCallHandler { [weak flutterViewController] call, result in
+    probe.setMethodCallHandler { [weak flutterViewController] _, result in
       guard let view = flutterViewController?.view else { result(0); return }
-      if call.method == "enableAccessibility" {
-        if environment["SELECT_SMOKE_FOCUS"] == "front" {
-          self.makeKeyAndOrderFront(nil)
-          NSApp.activate(ignoringOtherApps: true)
-        }
-        flutterViewController?.engine.setValue(true, forKey: "semanticsEnabled")
-        trace("ENABLE_FROM_DART")
-        result(true)
-        return
-      }
       // AppKit materializes Flutter's native editable fields when an AX client
       // accesses their parents. Exercise the same public traversal first.
       var roles = Set<String>()
@@ -93,54 +76,29 @@ def main():
         (node as? NSTextField).map { [$0] } ?? node.subviews.flatMap(fields)
       }
       let sizedFields = fields(view).filter { !$0.frame.isEmpty }.count
-      let engineOn = flutterViewController?.engine.value(forKey: "semanticsEnabled") as? Bool ?? false
-      result(["roles": roles.sorted(), "sizedFields": sizedFields, "engine": engineOn,
-              "key": view.window?.isKeyWindow ?? false, "active": NSApp.isActive,
-              "visible": view.window?.isVisible ?? false])
+      result(["roles": roles.sorted(), "sizedFields": sizedFields])
     }
-    func enable() {
-      trace("BEFORE_ENABLE native=\(String(describing: flutterViewController.engine.value(forKey: "semanticsEnabled"))) key=\(self.isKeyWindow) active=\(NSApp.isActive)")
-      if environment["SELECT_SMOKE_FOCUS"] == "front" {
-        self.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-      }
+    DispatchQueue.main.async {
       flutterViewController.engine.setValue(true, forKey: "semanticsEnabled")
-      trace("AFTER_ENABLE native=\(String(describing: flutterViewController.engine.value(forKey: "semanticsEnabled"))) key=\(self.isKeyWindow) active=\(NSApp.isActive)")
-    }
-    if environment["SELECT_SMOKE_ORDER"] == "late" {
-      flutterViewController.engine.setValue(false, forKey: "semanticsEnabled")
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { enable() }
-    } else if environment["SELECT_SMOKE_ORDER"] != "handshake" {
-      DispatchQueue.main.async { enable() }
     }""")
         window.write_text(native)
         subprocess.run([flutter, 'pub', 'get', '--offline'], cwd=fixture, env=environment, check=True)
-        config = fixture / '.dart_tool/package_config.json'
-        packages = json.loads(config.read_text())['packages']
-        uri = next(p['rootUri'] for p in packages if p['name'] == 'flutter')
-        framework = Path(unquote(urlparse(urljoin(config.as_uri(), uri)).path))
-        semantics = framework / 'lib/src/semantics/semantics.dart'
-        print('SDK', flutter, 'framework', framework, 'hash', hashlib.sha256(semantics.read_bytes()).hexdigest(), flush=True)
         subprocess.run([flutter, 'build', 'macos', '--release', '--no-pub',
                         '--dart-define=LEGACY_SELECTOR=' + str(args.legacy).lower()],
                        cwd=fixture, env=environment, check=True)
         executable = fixture / 'build/macos/Build/Products/Release/select_smoke.app/Contents/MacOS/select_smoke'
-        archive = os.environ.get("SELECT_SMOKE_ARCHIVE")
-        if archive:
-            subprocess.run(['ditto','-c','-k','--keepParent',str(executable.parents[2]),archive],check=True)
-            return
-        for order, owner, focus in [('handshake','platform','front'),('handshake','platform','default'),
-                                   ('early','platform','front'),('early','platform','default'),
-                                   ('early','dart','front'),('early','dart','default')]:
-            env=dict(environment, SELECT_SMOKE_ORDER=order, SELECT_SMOKE_OWNER=owner, SELECT_SMOKE_FOCUS=focus)
-            print('CASE', order, owner, focus, flush=True)
-            try:
-                result=subprocess.run([str(executable)], env=env, capture_output=True, text=True, timeout=28)
-                print(result.stdout, result.stderr, 'EXIT', result.returncode, flush=True)
-            except subprocess.TimeoutExpired as exc:
-                for data in (exc.stdout, exc.stderr):
-                    print((data or b'').decode(errors='replace'), flush=True)
-                print('EXIT TIMEOUT',flush=True)
+        result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=30)
+        print(result.stdout, end='')
+        assert 'Invalid engine handle' not in result.stderr, result.stderr
+        if args.legacy:
+            assert result.returncode != 0 and 'startEditing' in result.stderr, result.stderr
+            print('Confirmed original startEditing crash with native semantics')
+        else:
+            assert result.returncode == 0, f"exit {result.returncode}: {result.stdout}\n{result.stderr}"
+            assert 'Failed to update ui::AXTree' not in result.stderr, result.stderr
+            assert 'NATIVE_SELECTOR_SMOKE_PASS' in result.stdout, result.stderr
+            assert result.stdout.count('NATIVE_TEXT_FIELD_FRAME_AND_ROLE') == 2, result.stdout
+            print('Native selectors, search field frames and accessibility roles passed')
 
 
 if __name__ == '__main__':
