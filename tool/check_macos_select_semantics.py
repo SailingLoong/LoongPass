@@ -59,8 +59,18 @@ def main():
       FileHandle.standardError.write(Data((message + String(UnicodeScalar(10)!)).utf8))
     }
     let environment = ProcessInfo.processInfo.environment
-    probe.setMethodCallHandler { [weak flutterViewController] _, result in
+    probe.setMethodCallHandler { [weak flutterViewController] call, result in
       guard let view = flutterViewController?.view else { result(0); return }
+      if call.method == "enableAccessibility" {
+        if environment["SELECT_SMOKE_FOCUS"] == "front" {
+          self.makeKeyAndOrderFront(nil)
+          NSApp.activate(ignoringOtherApps: true)
+        }
+        flutterViewController?.engine.setValue(true, forKey: "semanticsEnabled")
+        trace("ENABLE_FROM_DART")
+        result(true)
+        return
+      }
       // AppKit materializes Flutter's native editable fields when an AX client
       // accesses their parents. Exercise the same public traversal first.
       var roles = Set<String>()
@@ -100,7 +110,7 @@ def main():
     if environment["SELECT_SMOKE_ORDER"] == "late" {
       flutterViewController.engine.setValue(false, forKey: "semanticsEnabled")
       DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { enable() }
-    } else {
+    } else if environment["SELECT_SMOKE_ORDER"] != "handshake" {
       DispatchQueue.main.async { enable() }
     }""")
         window.write_text(native)
@@ -115,13 +125,18 @@ def main():
                         '--dart-define=LEGACY_SELECTOR=' + str(args.legacy).lower()],
                        cwd=fixture, env=environment, check=True)
         executable = fixture / 'build/macos/Build/Products/Release/select_smoke.app/Contents/MacOS/select_smoke'
-        for order, owner, focus in [('early','dart','default'),('early','platform','default'),
-                                   ('late','dart','default'),('late','platform','default'),
-                                   ('early','dart','front'),('early','platform','front')]:
+        for order, owner, focus in [('handshake','platform','front'),('handshake','platform','default'),
+                                   ('early','platform','front'),('early','platform','default'),
+                                   ('early','dart','front'),('early','dart','default')]:
             env=dict(environment, SELECT_SMOKE_ORDER=order, SELECT_SMOKE_OWNER=owner, SELECT_SMOKE_FOCUS=focus)
             print('CASE', order, owner, focus, flush=True)
-            result=subprocess.run([str(executable)], env=env, capture_output=True, text=True, timeout=30)
-            print(result.stdout, result.stderr, 'EXIT', result.returncode, flush=True)
+            try:
+                result=subprocess.run([str(executable)], env=env, capture_output=True, text=True, timeout=28)
+                print(result.stdout, result.stderr, 'EXIT', result.returncode, flush=True)
+            except subprocess.TimeoutExpired as exc:
+                for data in (exc.stdout, exc.stderr):
+                    print((data or b'').decode(errors='replace'), flush=True)
+                print('EXIT TIMEOUT',flush=True)
 
 
 if __name__ == '__main__':
