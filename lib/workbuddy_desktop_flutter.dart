@@ -1,10 +1,10 @@
-import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'workbuddy_desktop_session.dart';
 import 'workbuddy_client_info.dart';
 
 class WorkBuddyDesktopFlutter {
-  static const _channel = MethodChannel('com.sailingloong.loongpass/files');
+  static const _channel = filesChannel;
 
   static Future<WorkBuddyClientInfo> clientInfo() async {
     try {

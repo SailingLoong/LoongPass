@@ -10,6 +10,11 @@ from plugin_sources import verify as verify_plugin_sources
 
 root = Path(__file__).resolve().parents[1]
 flutter = os.environ.get("FLUTTER_BIN", "flutter")
+if sys.platform == "darwin":
+    from macos_flutter import macos_flutter, resolve_framework
+    flutter = str(macos_flutter())
+    resolve_framework(root, flutter)
+    os.environ["FLUTTER_BIN"] = flutter
 dart = str(Path(flutter).with_name("dart")) if "/" in flutter else "dart"
 
 

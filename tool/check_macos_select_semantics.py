@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 from build_macos_release import build_lock
+from macos_flutter import macos_flutter
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,7 +21,7 @@ def main():
     args = parser.parse_args()
     if sys.platform != 'darwin':
         parser.error('This check requires the macOS embedder')
-    flutter = os.environ.get('FLUTTER_BIN', 'flutter')
+    flutter = str(macos_flutter())
     environment = dict(os.environ, PUB_HOSTED_URL='https://pub.dev')
     lock = (ROOT / 'pubspec.lock').read_text()
 
@@ -48,8 +49,38 @@ def main():
         needle = 'RegisterGeneratedPlugins(registry: flutterViewController)'
         assert native.count(needle) == 1, 'Unsupported Flutter fixture template'
         # Test-only: force the pinned embedder's bridge without changing OS accessibility settings.
-        native = native.replace(needle, needle + '\n    DispatchQueue.main.async {\n'
-                                '      flutterViewController.engine.setValue(true, forKey: "semanticsEnabled")\n    }')
+        native = native.replace(needle, needle + """
+    let probe = FlutterMethodChannel(name: "loongpass.test/accessibility",
+                                     binaryMessenger: flutterViewController.engine.binaryMessenger)
+    probe.setMethodCallHandler { [weak flutterViewController] _, result in
+      guard let view = flutterViewController?.view else { result(0); return }
+      // AppKit materializes Flutter's native editable fields when an AX client
+      // accesses their parents. Exercise the same public traversal first.
+      var roles = Set<String>()
+      var seen = Set<ObjectIdentifier>()
+      func visit(_ node: NSObject) {
+        guard seen.insert(ObjectIdentifier(node)).inserted else { return }
+        let role = NSSelectorFromString("accessibilityRole")
+        if node.responds(to: role), let value = node.perform(role)?.takeUnretainedValue() as? String {
+          roles.insert(value)
+        }
+        let selector = NSSelectorFromString("accessibilityChildren")
+        if node.responds(to: selector),
+           let children = node.perform(selector)?.takeUnretainedValue() as? [NSObject] {
+          for child in children { visit(child) }
+        }
+      }
+      visit(view)
+      for child in view.subviews { visit(child) }
+      func fields(_ node: NSView) -> [NSTextField] {
+        (node as? NSTextField).map { [$0] } ?? node.subviews.flatMap(fields)
+      }
+      let sizedFields = fields(view).filter { !$0.frame.isEmpty }.count
+      result(["roles": roles.sorted(), "sizedFields": sizedFields])
+    }
+    DispatchQueue.main.async {
+      flutterViewController.engine.setValue(true, forKey: "semanticsEnabled")
+    }""")
         window.write_text(native)
         subprocess.run([flutter, 'pub', 'get', '--offline'], cwd=fixture, env=environment, check=True)
         subprocess.run([flutter, 'build', 'macos', '--release', '--no-pub',
@@ -63,9 +94,11 @@ def main():
             assert result.returncode != 0 and 'startEditing' in result.stderr, result.stderr
             print('Confirmed original startEditing crash with native semantics')
         else:
-            assert result.returncode == 0, result.stderr
+            assert result.returncode == 0, f"exit {result.returncode}: {result.stdout}\n{result.stderr}"
+            assert 'Failed to update ui::AXTree' not in result.stderr, result.stderr
             assert 'NATIVE_SELECTOR_SMOKE_PASS' in result.stdout, result.stderr
-            print('Native macOS selector changes passed with accessibility enabled')
+            assert result.stdout.count('NATIVE_TEXT_FIELD_FRAME_AND_ROLE') == 2, result.stdout
+            print('Native selectors, search field frames and accessibility roles passed')
 
 
 if __name__ == '__main__':

@@ -1,8 +1,8 @@
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart' show SelectableText;
 
+import 'operation_channel.dart';
 import 'model_connection.dart';
 import 'model_workspace_view_model.dart';
 import 'plugin_model_accounts.dart';
@@ -122,7 +122,7 @@ class _ModelConnectionPanelState extends State<ModelConnectionPanel> {
   bool _guideExpanded = false;
   Future<void> _guide() async {
     try {
-      await const MethodChannel('com.sailingloong.loongpass/files')
+      await filesChannel
           .invokeMethod<void>('openExternalHTTPS', {
             'url': 'https://github.com/SailingLoong/LoongPass/blob/main/docs/dsh-multi-agent.md',
           });

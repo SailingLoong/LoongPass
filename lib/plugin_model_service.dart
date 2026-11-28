@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import 'operation_log.dart';
 import 'plugin_accounts.dart';
 import 'account_document_store.dart';
 import 'plugin_runtime.dart';
@@ -297,8 +298,11 @@ class PluginModelService extends ChangeNotifier {
   }
 
   Future<void> _handle(HttpRequest request) async {
+    final log = OperationLog.current;
+    final operation = log?.begin('gateway', 'request');
     PluginFetch? fetch;
     var headed = false;
+    var failed = false;
     try {
       if (request.headers.value('origin') != null) {
         await _json(request.response, 403, {
@@ -475,9 +479,11 @@ class PluginModelService extends ChangeNotifier {
       await request.response.addStream(reply.body);
       await request.response.close();
     } on FormatException {
+      failed = true;
       if (!headed)
         await _json(request.response, 400, {'error': 'invalid_native_request'});
     } catch (_) {
+      failed = true;
       if (!headed) {
         try {
           await _json(request.response, 502, {
@@ -490,6 +496,14 @@ class PluginModelService extends ChangeNotifier {
         } catch (_) {}
       }
     } finally {
+      if (operation != null) {
+        log!.finish(
+          'gateway',
+          'request',
+          operation,
+          ok: !failed && request.response.statusCode < 400,
+        );
+      }
       if (fetch != null) {
         _active.remove(fetch);
         await fetch.cancel();

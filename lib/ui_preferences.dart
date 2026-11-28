@@ -1,6 +1,9 @@
 import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
+
+import 'operation_log.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'managed_app.dart';
@@ -101,17 +104,17 @@ class UiPreferences extends ChangeNotifier {
         to >= _order.length)
       return;
     _order.insert(to, _order.removeAt(from));
-    _changed();
+    _changed('appOrder');
   }
 
   void resetOrder() {
     _order = [...ManagedApp.values];
-    _changed();
+    _changed('resetOrder');
   }
 
   void setAppVisible(ManagedApp app, bool visible) {
     final changed = visible ? _hiddenApps.remove(app) : _hiddenApps.add(app);
-    if (changed) _changed();
+    if (changed) _changed('appVisibility');
   }
 
   void setAppsExpanded(bool value) =>
@@ -125,33 +128,33 @@ class UiPreferences extends ChangeNotifier {
     final expanded = value ? group : null;
     if (_expandedNavigation == expanded) return;
     _expandedNavigation = expanded;
-    _changed();
+    _changed('navigation');
   }
 
   void setComfortable(bool value) {
     _comfortable = value;
-    _changed();
+    _changed('density');
   }
 
   void setTheme(ThemeMode value) {
     _themeMode = value;
-    _changed();
+    _changed('theme');
   }
 
   void toggleFavorite(String id) {
     _favorites.contains(id) ? _favorites.remove(id) : _favorites.add(id);
-    _changed();
+    _changed('favorite');
   }
 
   void setPageSize(String scope, int size) {
     if (!const [5, 10, 20].contains(size)) return;
     _pageSizes[scope] = size;
-    _changed();
+    _changed('pageSize');
   }
 
-  void retrySave() => _changed();
+  void retrySave() => _changed('retrySave');
 
-  void _changed() {
+  void _changed(String setting) {
     final revision = ++_revision;
     notifyListeners();
     if (write == null) return;
@@ -169,7 +172,7 @@ class UiPreferences extends ChangeNotifier {
     // a later drag/favorite choice. Errors are visible, never claimed as saved.
     _pending = _pending.then((_) async {
       try {
-        await write!(payload);
+        await OperationLog.trace('preference', setting, () => write!(payload));
         if (!_disposed && revision == _revision) error = null;
       } catch (_) {
         if (!_disposed) error = '界面偏好尚未保存；本次调整仍保留在当前窗口。';

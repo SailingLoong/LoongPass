@@ -3,6 +3,9 @@ export 'account_panel_header.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
+
+import 'operation_binding.dart';
+
 import 'package:forui/forui.dart';
 
 import 'account_amount.dart';
@@ -249,23 +252,25 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
                 ),
                 SizedBox(
                   width: 128 * _textScale,
-                  child: FSelect<int>(
-                    builder: selectFieldSemantics,
-                    key: const Key('account-page-size'),
-                    size: FTextFieldSizeVariant.sm,
-                    items: {
-                      for (final size in [5, 10, 20]) '$size 条 / 页': size,
-                    },
-                    control: FSelectControl.lifted(
-                      value: _model.size,
-                      onChange: (value) {
-                        if (value == null) return;
-                        setState(() {
-                          _model.size = value;
-                          _model.page = 0;
-                          _preferences?.setPageSize(_preferenceScope, value);
-                        });
+                  child: OperationControl.pageSize.mark(
+                    FSelect<int>(
+                      builder: selectFieldSemantics,
+                      key: const Key('account-page-size'),
+                      size: FTextFieldSizeVariant.sm,
+                      items: {
+                        for (final size in [5, 10, 20]) '$size 条 / 页': size,
                       },
+                      control: FSelectControl.lifted(
+                        value: _model.size,
+                        onChange: (value) {
+                          if (value == null) return;
+                          setState(() {
+                            _model.size = value;
+                            _model.page = 0;
+                            _preferences?.setPageSize(_preferenceScope, value);
+                          });
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -458,17 +463,21 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
           child: Wrap(
             spacing: 4,
             runSpacing: 2,
-            children: [filter, favorite, sort],
+            children: [
+              OperationControl.accountFilter.mark(filter),
+              OperationControl.favorites.mark(favorite),
+              OperationControl.accountSort.mark(sort),
+            ],
           ),
         );
         if (box.maxWidth < 385 * _textScale)
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [search, controls],
+            children: [OperationControl.accountSearch.mark(search), controls],
           );
         return Row(
           children: [
-            Expanded(child: search),
+            Expanded(child: OperationControl.accountSearch.mark(search)),
             const SizedBox(width: 8),
             controls,
           ],
@@ -566,14 +575,16 @@ class CompactAccountsTableState extends State<CompactAccountsTable> {
     final queried = entry.queriedAt;
     final balance = !entry.hasCredits
         ? amounts
-        : FTooltip(
-            key: ValueKey('balance-${entry.id}'),
-            tipBuilder: (context, controller) => Text(
-              queried == null
-                  ? '查询时间未知 · 查看账号详情'
-                  : '${accountDate(queried)} ${accountTime(queried)} 查询 · 查看账号详情',
+        : OperationControl.balance.mark(
+            FTooltip(
+              key: ValueKey('balance-${entry.id}'),
+              tipBuilder: (context, controller) => Text(
+                queried == null
+                    ? '查询时间未知 · 查看账号详情'
+                    : '${accountDate(queried)} ${accountTime(queried)} 查询 · 查看账号详情',
+              ),
+              child: amounts,
             ),
-            child: amounts,
           );
     final expiry = entry.nextExpiry;
     final identity = FButton(

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'account_document_store.dart';
 import 'legacy_account_sources.dart';
 import 'native_account_document_store.dart';
@@ -47,7 +47,7 @@ LegacyAccountSources nativeLegacySources() {
     },
     readWorkBuddyClaims: (saved) async {
       if (saved.isEmpty) return {};
-      const channel = MethodChannel('com.sailingloong.loongpass/files');
+      const channel = filesChannel;
       final path = await channel.invokeMethod<String>(
         'prepareWorkBuddyJournal',
       );
@@ -91,7 +91,7 @@ Map<String, dynamic>? _attempt(WorkBuddyAttempt? value) => value == null
 class _QoderDocument implements AccountDocumentStore {
   _QoderDocument(this.region);
   final String region;
-  static const _channel = MethodChannel(
+  static const _channel = OperationMethodChannel(
     'com.sailingloong.loongpass/qoder-accounts',
   );
   Future<Map<String, dynamic>> _call(

@@ -1,15 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'update_contract.dart';
 export 'app_update_view.dart' show AppUpdateCard, AppUpdateBadge;
 export 'update_contract.dart' show UpdatePhase;
 
 /// A one-way projection. Native engines own scheduling, downloads and install.
 class AppUpdates extends ChangeNotifier {
-  static const _channel = MethodChannel(UpdateContract.channel);
+  static const _channel = OperationMethodChannel(UpdateContract.channel);
   String? version, offeredVersion, error;
   UpdatePhase phase = UpdatePhase.idle;
   double? progress;

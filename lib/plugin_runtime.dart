@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'operation_log.dart';
 import 'plugin_environment.dart';
 import 'plugin_stream.dart';
 export 'plugin_stream.dart'
@@ -115,7 +116,18 @@ class PluginRuntime {
     Map<String, Object?> params, {
     Duration timeout = const Duration(seconds: 30),
     Future<void>? cancellation,
-  }) async {
+  }) => OperationLog.trace(
+    'plugin',
+    method,
+    () => _call(method, params, timeout, cancellation),
+  );
+
+  Future<Object?> _call(
+    String method,
+    Map<String, Object?> params,
+    Duration timeout,
+    Future<void>? cancellation,
+  ) async {
     if (_closing || _dead) throw const PluginRuntimeFailure('host_closed');
     if (_calls.length >= 64) throw const PluginRuntimeFailure('host_busy');
     final id = ++_nextId;
