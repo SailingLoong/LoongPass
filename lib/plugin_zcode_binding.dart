@@ -23,7 +23,24 @@ bool zcodeBindingConflicts(
   );
 }
 
-const zcodeBindingGuidance = '设备绑定冲突。请核对账号，在该账号实际使用的 ZCode 设备上重新授权。';
+typedef ZcodeBindingOptions = ({bool conflict, bool canSwitch});
+
+ZcodeBindingOptions zcodeBindingOptions(
+  PluginAccount account,
+  Iterable<PluginAccount> accounts,
+  String? localDevice,
+) {
+  final conflict = zcodeBindingConflicts(account, accounts);
+  final available =
+      account.zcodeBinding != null &&
+      localDevice != null &&
+      localDevice != account.zcodeDevice &&
+      !zcodeBindingConflicts(account, accounts, device: localDevice);
+  return (conflict: conflict, canSwitch: available);
+}
+
+const zcodeBindingGuidance = '设备绑定与其他已保存账号冲突。';
+const zcodeNoAlternative = '设备绑定冲突，暂无可切换设备';
 
 String? zcodeBindingLabel(
   String? device,

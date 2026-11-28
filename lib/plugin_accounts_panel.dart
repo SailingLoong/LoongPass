@@ -43,12 +43,24 @@ class PluginAccountsPanel extends StatefulWidget {
 }
 
 class PluginAccountsPanelState extends State<PluginAccountsPanel> {
-  Future<void> addAccount() => _authorize();
+  Future<void> addAccount() => _authorize(null);
 
   bool _busy = false;
   bool _confirming = false;
   String? _message;
   String? _messageAccount;
+
+  ZcodeBindingOptions _bindingOptions(
+    PluginAccount account,
+    List<PluginAccount> rows,
+  ) => zcodeBindingOptions(
+    account,
+    rows,
+    account.provider == 'zcode' &&
+            widget.accounts.providers['zcode']?['reauthorize'] == true
+        ? widget.accounts.localZcodeDevice
+        : null,
+  );
 
   Future<void> _run(
     Future<void> Function() action, {
@@ -66,7 +78,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       if (mounted)
         setState(
           () => _message = e.code == 'device_required'
-              ? '未能读取本机 ZCode 的设备 ID。请先打开官方客户端。'
+              ? '未找到可用于绑定的本机设备。'
               : '操作未完成，请核对授权与网络。待核验的领取记录会保留。',
         );
     } catch (_) {
@@ -76,10 +88,10 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     }
   }
 
-  Future<void> _authorize([
-    PluginAccount? account,
-    bool bindLocal = false,
-  ]) => _run(() async {
+  Future<void> _authorize(
+    PluginAccount? account, {
+    bool switchDevice = false,
+  }) => _run(() async {
     if (widget.accounts.providers.isEmpty) {
       await widget.accounts.refresh();
       if (!mounted) return;
@@ -87,10 +99,16 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     final zcode =
         account?.provider == 'zcode' ||
         account == null && widget.providerIds.contains('zcode');
-    final localDevice = zcode ? await installedZcodeDevice() : null;
-    if (bindLocal && localDevice == null)
-      throw const ZcodeFailure('device_required');
+    final localDevice = zcode
+        ? await widget.accounts.observeLocalZcodeDevice()
+        : null;
     if (!mounted) return;
+    if (switchDevice &&
+        (account == null ||
+            !_bindingOptions(account, widget.accounts.accounts).canSwitch)) {
+      setState(() => _message = '暂无可切换设备。');
+      return;
+    }
     final saved = await showFDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -101,14 +119,16 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         initialProvider: account?.provider,
         target: account,
         localZcodeDevice: localDevice,
-        preferLocalDevice: bindLocal,
+        switchDevice: switchDevice,
         beforeDeviceChange: account == null
             ? null
             : () => widget.rewards.zcode.captureBinding(account.key),
         registrationUrl: account == null
             ? widget.registrationUrl?.call()
             : null,
-        title: account == null
+        title: switchDevice
+            ? '切换 ${account!.label} 的设备'
+            : account == null
             ? '添加 ${widget.title} 账号'
             : '重新授权 ${account.label}',
       ),
@@ -325,21 +345,27 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
 
   ({String label, VoidCallback run})? _resolution(
     PluginAccount a,
-    bool conflict,
+    ZcodeBindingOptions binding,
   ) {
     if (_busy) return null;
-    if (conflict) return (label: '核对设备绑定', run: () => _authorize(a));
-    if (_needsAuthorization(a))
+    if (binding.conflict && binding.canSwitch) {
+      return (label: '切换设备', run: () => _authorize(a, switchDevice: true));
+    }
+    if (!binding.conflict && _needsAuthorization(a))
       return (label: '重新授权', run: () => _authorize(a));
     if (_pending(a) && _canVerifyResult(a))
       return (label: '核验结果', run: () => _verifyResult(a));
     return null;
   }
 
-  AccountAttention _attention(PluginAccount a, bool conflict) {
+  AccountAttention _attention(PluginAccount a, ZcodeBindingOptions binding) {
+    if (binding.conflict) {
+      return !binding.canSwitch
+          ? AccountAttention.awaitingVerification
+          : AccountAttention.actionRequired;
+    }
     final state = _rewardState(a);
     if (_needsAuthorization(a) ||
-        conflict ||
         {
           'captcha',
           'verificationRequired',
@@ -369,25 +395,31 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
         : AccountAttention.none;
   }
 
-  Widget _actions(PluginAccount a, bool conflict) {
+  Widget _actions(PluginAccount a, ZcodeBindingOptions binding) {
     final pending = _pending(a);
     final verify = pending && _canVerifyResult(a);
     final state = _rewardState(a);
-    final primary = _needsAuthorization(a) || conflict
-        ? 'authorize'
-        : verify
-        ? 'verify'
-        : pending || state == 'devicePending'
-        ? 'refresh'
-        : _usageFailure(a) != null &&
-              !(a.provider == 'zcode' && state == 'claimable')
-        ? 'refresh'
-        : _canClaim(a) &&
-              {'claimable', 'verificationRequired', 'captcha'}.contains(state)
-        ? 'claim'
-        : _canActivate(a)
-        ? 'activate'
-        : 'refresh';
+    final primary = switch (binding) {
+      (conflict: true, canSwitch: true) => 'rebind',
+      (conflict: true, canSwitch: false) => verify ? 'verify' : 'refresh',
+      _ when _needsAuthorization(a) => 'authorize',
+      _ when verify => 'verify',
+      _ when pending || state == 'devicePending' => 'refresh',
+      _
+          when _usageFailure(a) != null &&
+              !(a.provider == 'zcode' && state == 'claimable') =>
+        'refresh',
+      _
+          when _canClaim(a) &&
+              {
+                'claimable',
+                'verificationRequired',
+                'captcha',
+              }.contains(state) =>
+        'claim',
+      _ when _canActivate(a) => 'activate',
+      _ => 'refresh',
+    };
     final actions =
         <({String id, String label, bool enabled, VoidCallback run})>[
           (
@@ -408,7 +440,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               enabled: !_busy,
               run: () => _verifyResult(a),
             ),
-          if (!pending && !conflict && _canClaim(a))
+          if (!pending && !binding.conflict && _canClaim(a))
             (
               id: 'claim',
               label: {'verificationRequired', 'captcha'}.contains(state)
@@ -426,20 +458,19 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
               enabled: !_busy && a.active,
               run: () => _activate(a),
             ),
-          (
-            id: 'authorize',
-            label: '重新授权',
-            enabled: !_busy,
-            run: () => _authorize(a),
-          ),
-          if (a.provider == 'zcode' &&
-              a.uid.isNotEmpty &&
-              widget.accounts.providers[a.provider]?['reauthorize'] == true)
+          if (!binding.conflict)
+            (
+              id: 'authorize',
+              label: '重新授权',
+              enabled: !_busy,
+              run: () => _authorize(a),
+            ),
+          if (binding.canSwitch)
             (
               id: 'rebind',
-              label: '重新绑定设备',
+              label: '切换设备',
               enabled: !_busy && a.active,
-              run: () => _authorize(a, true),
+              run: () => _authorize(a, switchDevice: true),
             ),
           (id: 'remove', label: '移除账号', enabled: !_busy, run: () => _remove(a)),
         ];
@@ -646,7 +677,7 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
     final expiryObservation = _expiryObservation(a);
     final receipts = _receipts(a).toList(growable: false);
     final receipt = receipts.firstOrNull;
-    final conflict = zcodeBindingConflicts(a, rows);
+    final binding = _bindingOptions(a, rows);
     return AccountTableEntry(
       id: a.key,
       label: a.label.isEmpty ? '身份未提供' : a.label,
@@ -663,11 +694,17 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       authorizationLabel: _needsAuthorization(a) ? '需要重新授权' : '已保存授权',
       balance: _balance(a),
       giftGrants: a.provider == 'zcode' ? _zcodeGiftGrants(a) : const [],
-      status: conflict ? '$zcodeBindingGuidance\n${_status(a)}' : _status(a),
-      statusLabel: conflict ? '设备绑定冲突' : _statusLabel(a),
+      status: binding.conflict
+          ? '$zcodeBindingGuidance\n${_status(a)}'
+          : _status(a),
+      statusLabel: binding.conflict
+          ? !binding.canSwitch
+                ? zcodeNoAlternative
+                : '设备绑定冲突'
+          : _statusLabel(a),
       highlightStatus: _rewardState(a) == 'claimable',
       hasRewards: widget.rewards.supports(a) || _pending(a) || receipt != null,
-      actions: _actions(a, conflict),
+      actions: _actions(a, binding),
       expiryDetails: expiryObservation,
       details: _quotaDetails(a),
       plan:
@@ -691,8 +728,8 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       notice: _messageAccount == a.key ? _message : null,
       expiryAt: next?.at,
       expiringAmount: _formatBalance(next?.amount),
-      attention: _attention(a, conflict),
-      resolution: _resolution(a, conflict),
+      attention: _attention(a, binding),
+      resolution: _resolution(a, binding),
       expiryBatches: expiryBatches,
       expiryModels: {
         for (var i = 0; i < batches.length; i++)

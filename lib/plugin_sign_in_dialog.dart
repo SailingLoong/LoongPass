@@ -21,7 +21,7 @@ String? _bindingError(Object error) => switch (error) {
 String? _bindingMessage(String code) => switch (code) {
   'zcode_device_in_use' => zcodeBindingGuidance,
   'zcode_account_device_mismatch' => '这个账号已有其他设备绑定。请在现有账号中核对绑定后重新授权。',
-  'zcode_device_required' => '请先在这台设备上打开官方 ZCode，再重新授权。',
+  'zcode_device_required' => '当前没有可用于这次授权的 ZCode 设备。',
   'zcode_authorization_target_changed' => '授权身份已变更。请重新选择账号。',
   _ => null,
 };
@@ -36,7 +36,7 @@ class PluginSignInDialog extends StatefulWidget {
     this.initialProvider,
     this.target,
     this.localZcodeDevice,
-    this.preferLocalDevice = false,
+    this.switchDevice = false,
     this.beforeDeviceChange,
     this.registrationUrl,
   });
@@ -47,14 +47,14 @@ class PluginSignInDialog extends StatefulWidget {
   final String? initialProvider;
   final PluginAccount? target;
   final String? localZcodeDevice;
-  final bool preferLocalDevice;
+  final bool switchDevice;
   final Future<void> Function()? beforeDeviceChange;
   final Uri? registrationUrl;
   @override
   State<PluginSignInDialog> createState() => _PluginSignInDialogState();
 }
 
-enum _Step { select, prompt, key, code, waiting, failed }
+enum _Step { select, starting, prompt, key, code, waiting, failed }
 
 class _PluginSignInDialogState extends State<PluginSignInDialog> {
   static const _channel = filesChannel;
@@ -108,8 +108,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
             widget.accounts.providers[target.provider]?['reauthorize'] == true
         ? target
         : null;
-    _useLocalDevice =
-        widget.preferLocalDevice && widget.localZcodeDevice != null;
+    _useLocalDevice = widget.switchDevice && widget.localZcodeDevice != null;
     _signIn = PluginSignIn(widget.accounts.runtime, onSaved: _saved);
     final available = widget.providerIds.where(
       widget.accounts.providers.containsKey,
@@ -118,6 +117,12 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
         ? widget.initialProvider
         : available.firstOrNull;
     _selectMethod();
+    if (widget.switchDevice) {
+      _step = _Step.starting;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_ended) unawaited(_run(_begin));
+      });
+    }
   }
 
   Future<void> _saved(String key) => widget.accounts.authorizationSaved(
@@ -185,6 +190,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
   }
 
   Future<void> _begin() async {
+    if (widget.switchDevice && (_target == null || !_useLocalDevice)) {
+      throw PluginSignInFailure('zcode_device_required');
+    }
     if (_target != null &&
         !widget.accounts.accounts.any(
           (a) =>
@@ -340,8 +348,9 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
       _error = null;
       _browserError = null;
       _registrationOpened = false;
-      _step = _Step.select;
+      _step = widget.switchDevice ? _Step.starting : _Step.select;
     });
+    if (widget.switchDevice) unawaited(_run(_begin));
   }
 
   @override
@@ -416,8 +425,11 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                           ),
                         if (_step == _Step.select &&
                             _target?.provider == 'zcode') ...[
-                          if (widget.localZcodeDevice != null &&
-                              widget.localZcodeDevice != _target!.zcodeDevice)
+                          if (zcodeBindingOptions(
+                            _target!,
+                            widget.accounts.accounts,
+                            widget.localZcodeDevice,
+                          ).canSwitch)
                             FSelect<bool>(
                               key: const ValueKey('zcode-login-device'),
                               builder: selectFieldSemantics,
@@ -435,7 +447,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                               ),
                             )
                           else if (zcodeBindingLabel(
-                                _target!.zcodeDevice,
+                                _target.zcodeDevice,
                                 widget.accounts.accounts,
                               )
                               case final device?)
@@ -715,7 +727,7 @@ class _PluginSignInDialogState extends State<PluginSignInDialog> {
                     child: const Text('重新开始'),
                     onPress: _busy ? null : _restart,
                   )
-                else if (_step != _Step.waiting)
+                else if (_step != _Step.waiting && _step != _Step.starting)
                   FButton(
                     variant: FButtonVariant.primary,
                     size: FButtonSizeVariant.sm,

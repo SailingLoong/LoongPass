@@ -108,6 +108,10 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   final _Runtime runtime;
   @override
   final Map<String, Map<String, dynamic>> providers;
+  @override
+  String? localZcodeDevice;
+  @override
+  Future<String?> observeLocalZcodeDevice() async => localZcodeDevice;
   List<PluginAccount> _rows;
   int refreshes = 0;
   String? saved;
@@ -150,8 +154,15 @@ class _Accounts extends ChangeNotifier implements PluginAccounts {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class _Bindings extends Fake implements PluginZcodeRewards {
+  final captured = <String>[];
+  @override
+  Future<void> captureBinding(String key) async => captured.add(key);
+}
+
 class _Rewards implements PluginRewards {
-  _Rewards(this.accounts) : zcode = PluginZcodeRewards(accounts);
+  _Rewards(this.accounts, {PluginZcodeRewards? zcode})
+    : zcode = zcode ?? PluginZcodeRewards(accounts);
   @override
   final PluginAccounts accounts;
   @override
@@ -1504,6 +1515,144 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  const shared = '11111111-2222-4333-8444-555555555555';
+  const replacement = '22222222-2222-4333-8444-555555555555';
+  const occupied = '33333333-2222-4333-8444-555555555555';
+  for (final (scenario, localDevice) in [
+    ('same device', shared),
+    ('occupied device', occupied),
+    ('missing device', null),
+    ('available device', replacement),
+  ]) {
+    testDesktopWidgets(
+      'overview resolves a ZCode binding without an extra dialog choice ($scenario)',
+      (tester) async {
+        final runtime = _Runtime()..auto = true;
+        final accounts = _Accounts(
+          runtime,
+          providers: {
+            'zcode': {'reauthorize': true},
+          },
+          rows: [
+            for (final uid in ['first', 'second', 'third'])
+              PluginAccount(
+                key: 'zcode#$uid',
+                active: true,
+                models: const [],
+                zcodeDevice: uid == 'third' ? occupied : shared,
+                facts: {
+                  'provider': 'zcode',
+                  'realm': 'bigmodel',
+                  'uid': uid,
+                  'registrationId': uid,
+                  'label': uid,
+                },
+              ),
+          ],
+        )..localZcodeDevice = localDevice;
+        final registry = AccountWorkspaceRegistry();
+        final bindings = _Bindings();
+        addTearDown(accounts.dispose);
+        addTearDown(registry.dispose);
+        await tester.pumpWidget(
+          DesktopTestApp(
+            home: Scaffold(
+              body: IndexedStack(
+                index: 0,
+                children: [
+                  WorkspaceOverviewPage(registry: registry, onOpenApp: (_) {}),
+                  AccountPresentationScope(
+                    registry: registry,
+                    app: ManagedApp.zcode,
+                    child: SingleChildScrollView(
+                      child: PluginAccountsPanel(
+                        accounts: accounts,
+                        rewards: _Rewards(accounts, zcode: bindings),
+                        providerIds: const {'zcode'},
+                        title: 'ZCode',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (localDevice != replacement) {
+          expect(find.textContaining('暂无可切换设备'), findsNWidgets(2));
+          expect(registry.entries.every((e) => e.resolution == null), isTrue);
+          expect(runtime.calls, isEmpty);
+          return;
+        }
+        final action = find.widgetWithText(FButton, '切换设备').first;
+        await tester.tap(action);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pump();
+        final auth = runtime.calls.singleWhere((c) => c.$1 == 'authorize').$2;
+        expect(auth['account'], 'zcode#first');
+        expect(auth['context'], {
+          'expectedUid': 'first',
+          'expectedRealm': 'bigmodel',
+          'device': replacement,
+        });
+        expect(bindings.captured, ['zcode#first']);
+        expect(accounts.saved, isNull);
+        runtime.callback!.complete({'ok': true, 'account': 'zcode#first'});
+        await tester.pumpAndSettle();
+        expect(accounts.saved, 'zcode#first');
+        expect(bindings.captured, ['zcode#first', 'zcode#first']);
+      },
+    );
+  }
+
+  testDesktopWidgets(
+    'reauthorization keeps the saved device when the local device belongs to someone else',
+    (tester) async {
+      PluginAccount profile(String uid, String device) => PluginAccount(
+        key: 'zcode#$uid',
+        active: true,
+        models: const [],
+        zcodeDevice: device,
+        facts: {
+          'provider': 'zcode',
+          'realm': 'bigmodel',
+          'uid': uid,
+          'registrationId': uid,
+        },
+      );
+      final target = profile('first', shared);
+      final accounts = _Accounts(
+        _Runtime(),
+        rows: [target, profile('second', occupied)],
+        providers: {
+          'zcode': {'reauthorize': true},
+        },
+      );
+      addTearDown(accounts.dispose);
+      await tester.pumpWidget(
+        DesktopTestApp(
+          home: Scaffold(
+            body: PluginSignInDialog(
+              accounts: accounts,
+              providerIds: const {'zcode'},
+              target: target,
+              localZcodeDevice: occupied,
+              title: '重新授权',
+            ),
+          ),
+        ),
+      );
+      expect(find.byKey(const ValueKey('zcode-login-device')), findsNothing);
+      expect(find.textContaining(shared), findsOneWidget);
+      final action = tester.widget<FButton>(
+        find.widgetWithText(FButton, '开始授权'),
+      );
+      expect(action.onPress, isNotNull);
+    },
+  );
+
   testDesktopWidgets(
     'target reauthorization uses native capability without choosing a login method',
     (tester) async {
@@ -1513,6 +1662,7 @@ void main() {
         key: 'zcode#one',
         active: true,
         models: const [],
+        zcodeDevice: replacement,
         facts: {
           'provider': 'zcode',
           'uid': 'official-a',

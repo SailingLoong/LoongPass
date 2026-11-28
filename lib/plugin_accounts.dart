@@ -156,12 +156,26 @@ class PluginAccounts extends ChangeNotifier {
     required String directory,
     required this.store,
     required this.enabledProviders,
+    this.readLocalZcodeDevice,
   }) : credentials = PluginCredentials(runtime);
   final PluginRuntime runtime;
   final PluginCredentials credentials;
   final _tasks = PluginAccountTasks();
   final AccountDocumentStore store;
   final Set<String> enabledProviders;
+  final Future<String?> Function()? readLocalZcodeDevice;
+  String? _localZcodeDevice;
+  String? get localZcodeDevice => _localZcodeDevice;
+
+  Future<String?> observeLocalZcodeDevice() async {
+    final device = await readLocalZcodeDevice?.call();
+    if (!_closed && device != _localZcodeDevice) {
+      _localZcodeDevice = device;
+      notifyListeners();
+    }
+    return device;
+  }
+
   Map<String, dynamic> _data = {};
   Map<String, Map<String, dynamic>> _native = {};
   Map<String, Map<String, dynamic>> _providers = {};
@@ -401,6 +415,7 @@ class PluginAccounts extends ChangeNotifier {
       notifyListeners();
     }
     try {
+      if (enabledProviders.contains('zcode')) await observeLocalZcodeDevice();
       final native = restored ?? await _reconcile();
       if (_closed) return;
       final registrations = {
