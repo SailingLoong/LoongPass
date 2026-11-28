@@ -87,6 +87,7 @@ class PluginApplication {
         runtime: runtime,
         directory: root,
         store: facts,
+        readLocalZcodeDevice: installedZcodeDevice,
         enabledProviders: ManagedApp.values
             .expand((a) => a.nativeProviders)
             .toSet(),
