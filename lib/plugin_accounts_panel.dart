@@ -816,6 +816,10 @@ class PluginAccountsPanelState extends State<PluginAccountsPanel> {
       attention: _attention(a, binding),
       resolution: _resolution(a, binding),
       expiryBatches: expiryBatches,
+      dateOnlyExpiries: {
+        for (var i = 0; i < batches.length; i++)
+          if (batches[i].dateOnly) expiryBatches[i],
+      },
       expiryModels: {
         for (var i = 0; i < batches.length; i++)
           expiryBatches[i]: spendableModels(

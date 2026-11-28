@@ -29,7 +29,8 @@
     "patches/zcode-gift-units.patch",
     "patches/zcode-installed-device.patch",
     "patches/zcode-device-ownership.patch",
-    "patches/plan-wallet-scope.patch"
+    "patches/plan-wallet-scope.patch",
+    "patches/credit-ledger.patch"
   ],
   "sources": {
     "magpie": {
@@ -87,7 +88,7 @@
       "source": "magpie",
       "path": "internal/plugin/host.js",
       "target": "vendor/magpie/host.js",
-      "sha256": "a768bbc4b8430d55328d4312a3840dfb6e5e44bf161f4aeb2a854e6930505785",
+      "sha256": "b5172244c5e772230e0e7f179d5eacc8dcd02fa4ec8b0a87be3afbd2590a0812",
       "upstreamSha256": "223444becd7e9ceb44e8dd617aed9d7bbd0f56e6fda5a2fa89e5978e97955a29"
     },
     {
@@ -106,7 +107,7 @@
       "source": "plugins",
       "path": "packages/workbuddy/index.mjs",
       "target": "vendor/plugins/workbuddy/index.mjs",
-      "sha256": "abbdf043f607f73591e0bfe8dfa196f9d325dea2515d349daa158b8302f3fbc8",
+      "sha256": "252208235bf3d74a6fce5e67eab0fcf7b7304df2dfb951d60779250602f8ce7b",
       "upstreamSha256": "84d8a4e17f463096b217b3f78303a0584ac566ead078f8ea23583501317eb13b"
     },
     {
@@ -149,7 +150,7 @@
       "source": "plugins",
       "path": "packages/qoder/index.mjs",
       "target": "vendor/plugins/qoder/index.mjs",
-      "sha256": "1d29303924c3002f08dbec824753cd667e02936a50ad40a4ea67b97fe1a2b679",
+      "sha256": "ab060f47cb8a0bdb2f5214e131b357f594d50fbd54ff5a2290c6bb77b75f0586",
       "upstreamSha256": "d761219a6f7c14334fe1248dea97207c5423520282d5ee18131e1b237a396146"
     },
     {
@@ -192,7 +193,7 @@
       "source": "plugins",
       "path": "packages/minimax/index.mjs",
       "target": "vendor/plugins/minimax/index.mjs",
-      "sha256": "4105788f88c6ceaa4647929eebe21708ee375fe34c5aab52ad25398f921f4316",
+      "sha256": "8533640c1fc1988651e7fcc3b2a821ae7377d42174e2429f467b041c30f6ea76",
       "upstreamSha256": "f03c35942e4b0f6b6549e06e0f03a28f05f9cd8f60dbfd5a21e98ca674173a09"
     },
     {
@@ -247,7 +248,7 @@
       "source": "plugins",
       "path": "packages/loomy/index.mjs",
       "target": "vendor/plugins/loomy/index.mjs",
-      "sha256": "8f50508ad3db4ff088eda8572434b9c9199a9a672b694decefb2e9a92f887971",
+      "sha256": "79cb871c5d365d18b3f867c03f7d726266262c75990c6600549ea85afa93459f",
       "upstreamSha256": "8d712a79a1dcd6dd368dc6bf63247d045c7bae099dc342458f7a3eaef19cffb4"
     },
     {
@@ -284,7 +285,7 @@
       "source": "plugins",
       "path": "packages/trae/index.mjs",
       "target": "vendor/plugins/trae/index.mjs",
-      "sha256": "39dbbf09f827fcc3b46cad07d194268bad69f4733e6f73e3622e386fc1425081",
+      "sha256": "a80b7fe9e1626a8f6c7382470c348f99134333d87e03dafb9f9c5d8942e354a1",
       "upstreamSha256": "769adfbde56769c853526af2c673dcfee7f754b5e9be8f4bc77d59217ea50126"
     },
     {
@@ -386,6 +387,7 @@
     "patches/zcode-gift-units.patch",
     "patches/zcode-installed-device.patch",
     "patches/zcode-device-ownership.patch",
-    "patches/plan-wallet-scope.patch"
+    "patches/plan-wallet-scope.patch",
+    "patches/credit-ledger.patch"
   ]
 }

@@ -169,6 +169,7 @@ const SITES = {
           if (q.unlimited) out.balance = "unlimited"
           else if (q.limit >= 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
           const c = page ? credits(page) : null
+          if (page) out.creditBatches = datedEntitlements(page)
           if (c && !c.unlimited && c.limit > 0) {
             const w = {
               name: "Credits",
@@ -180,7 +181,7 @@ const SITES = {
               aside: true,
             }
             if (c.until) w.resetsAt = new Date(c.until).toISOString()
-            if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
+            if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: c.lapsing })
             windows.push(w)
           }
           if (windows.length) out.windows = windows
@@ -193,7 +194,7 @@ const SITES = {
       },
       read: (v, a, signIn, { credits, round }) => {
         const c = credits(v)
-        const out = { plan: v.is_credits_billing ? "Credits" : "Free", user: a.name || a.uid, signIn }
+        const out = { plan: v.is_credits_billing ? "Credits" : "Free", user: a.name || a.uid, signIn, creditBatches: datedEntitlements(v) }
         if (c.unlimited) out.balance = "unlimited"
         else if (c.limit > 0) {
           // the count rides on the window (amount of limit, in credits), as
@@ -202,7 +203,7 @@ const SITES = {
           // English balance line beside it (yetone/magpie#694)
           const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: c.used, limit: c.limit, unit: "credits" }
           if (c.until) w.resetsAt = new Date(c.until).toISOString()
-          if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
+          if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: c.lapsing })
           out.windows = [w]
         }
         return out
@@ -3886,6 +3887,20 @@ const effortOf = (levels, effort) => {
 // the soonest end of a pack that still has credits left and has not ended:
 // a spent daily pack or one already past its end changes nothing on the
 // account, so it does not name the date the credits turn over (#718, #1157).
+function datedEntitlements(v, now = Date.now()) {
+  const events = []
+  for (const p of v?.user_entitlement_pack_list ?? []) {
+    const bi = p?.entitlement_base_info ?? {}, end = whenOf(bi.end_time ?? bi.expire_time ?? p.end_time)
+    const limit = bi.quota?.credits_limit, used = p?.usage?.credits_amount
+    if (!(end > now) || limit == null || limit === "" || !Number.isFinite(Number(limit)) || Number(limit) <= 0) continue
+    const n = Number(used)
+    const id = String(p.user_entitlement_pack_id ?? bi.entitlement_id ?? [bi.start_time ?? "", limit].join("/"))
+    events.push({ id, at: new Date(end).toISOString(), unit: "credits", issued: Number(limit),
+      ...(used != null && used !== "" && Number.isFinite(n) && n >= 0 && n <= Number(limit) ? { remaining: Number(limit) - n } : {}) })
+  }
+  return events
+}
+
 function credits(v, now = Date.now()) {
   let limit = 0
   let used = 0

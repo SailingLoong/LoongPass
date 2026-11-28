@@ -778,8 +778,7 @@ function amountOf(v, clampNegative = false) {
 
 // ledgerBatches is the batches of every page, or null when the list
 // couldn't be read whole: a part of the ledger would tell a wrong share.
-async function ledgerBatches(site, access, userID) {
-  const out = []
+async function ledgerBatches(site, access, userID, out = []) {
   for (let page = 1; page <= LEDGER_PAGES; page++) {
     const env = await accountCall(site, "/minimax-cloud/api/v1/credit/details", {
       access, userID, origin: site.agent,
@@ -791,6 +790,30 @@ async function ledgerBatches(site, access, userID) {
     if (out.length >= d.total_count || !d.details.length) return out.length >= d.total_count ? out : null
   }
   return null
+}
+
+// Final remaining is admitted only when the expired batch's three amounts agree.
+function expiryLedger(batches, now = Date.now()) {
+  const events = new Map(), ambiguous = new Set()
+  for (const b of batches) {
+    if (![1, 2].includes(b?.credit_type)) continue
+    const end = Number(b.expire_at_ms), granted = Number(b.granted_at_ms)
+    if (!(end > 0 && end < 864e13 && granted > 0 && granted <= end)) continue
+    const id = String(b.credit_id ?? b.id ?? (b.credit_type + ":" + granted))
+    const key = end + "/" + id
+    if (events.has(key)) { ambiguous.add(key); continue }
+    const issued = amountOf(b.granted_amount), spent = amountOf(b.consumed_amount), left = amountOf(b.remaining_amount)
+    const row = { id, at: new Date(end).toISOString(), unit: "credits" }
+    if (issued != null) row.issued = issued
+    if (end > now) {
+      if (left != null && (issued == null || left <= issued)) row.remaining = left
+    } else if (issued != null && spent != null && left != null && left <= issued && spent <= issued &&
+      Math.abs(issued - (spent + left)) <= Number.EPSILON * Math.max(1, issued) * 2) {
+      row.unused = left
+    }
+    events.set(key, row)
+  }
+  return [...events].filter(([key]) => !ambiguous.has(key)).map(([, row]) => row)
 }
 
 // creditsWindow is the batches not yet expired as one window: what they
@@ -1223,16 +1246,18 @@ function makePlugin(site) {
                 planTitle(site, a.access, m.opGroupId),
               ])
             }
+            const observedBatches = []
             // the credits as a share of what the live batches granted
             // (#393); beside an M Plan they are its fallback, aside. A
             // ledger that can't be read leaves the balance alone.
             try {
-              const b = await ledgerBatches(site, a.access, who.realUserID)
+              const b = await ledgerBatches(site, a.access, who.realUserID, observedBatches)
               const cw = b && creditsWindow(b)
               if (cw) windows = [...windows, m.hasTokenPlan ? { ...cw, aside: true } : cw]
             } catch {}
             return {
               ...usageOf(title ? { ...m, title } : m, windows),
+              ...(observedBatches.length ? { creditBatches: expiryLedger(observedBatches) } : {}),
               ...(error ? { error } : {}),
               user: who.email || who.name || who.realUserID,
               signIn: did ? "renewed" : "kept",
@@ -1488,4 +1513,4 @@ export const MiniMaxCodeAuthPlugin = makePlugin(SITES["minimax-code"])
 export const MiniMaxCodeGlobalAuthPlugin = makePlugin(SITES["minimax-code-global"])
 
 // for tests
-export const _internal = { SITES, MODELS, createToolRequest, postTool, makeTokenRequest, parseToolEnvelope, toolHttpError, signed, md5, parseModels, planWindows, membershipOf, usageOf, credits, creditsWindow, ledgerBatches, variants, renewing, renewed, startDevice, pollDevice, checkinOf }
+export const _internal = { SITES, MODELS, createToolRequest, postTool, makeTokenRequest, parseToolEnvelope, toolHttpError, signed, md5, parseModels, planWindows, membershipOf, usageOf, credits, creditsWindow, ledgerBatches, expiryLedger, variants, renewing, renewed, startDevice, pollDevice, checkinOf }

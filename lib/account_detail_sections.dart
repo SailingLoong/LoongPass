@@ -343,7 +343,9 @@ class _ExpiryDetailsState extends State<_ExpiryDetails> {
         if (batches.isEmpty) const Text('平台未提供可核实的到期明细。'),
         for (var i = 0; i < batches.length; i++) ...[
           _Fact(
-            creditTime(batches[i].at),
+            row.dateOnlyExpiries.contains(batches[i])
+                ? '${accountDate(batches[i].at)} · 仅知日期'
+                : creditTime(batches[i].at),
             batches[i].amount ?? '额度未知',
             selected: i == first,
             key: i == first ? _target : null,

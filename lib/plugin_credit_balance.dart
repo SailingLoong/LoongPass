@@ -1,3 +1,4 @@
+import 'credit_expiry_history.dart';
 import 'zcode_rewards.dart';
 
 /// A quantity from the pinned native usage contract, never parsed from display
@@ -14,11 +15,16 @@ class PluginCreditExpiry {
     this.amount, {
     this.dateOnly = false,
     this.reportedUnit,
+    this.sourceId = '',
+    this.issued,
   });
   final DateTime at;
   final PluginCreditBalance? amount;
   final bool dateOnly;
   final String? reportedUnit;
+  final String sourceId;
+  final num? issued;
+  DateTime get end => dateOnly ? DateTime(at.year, at.month, at.day + 1) : at;
 }
 
 num? _number(Object? value) => value is num && value.isFinite ? value : null;
@@ -163,6 +169,32 @@ PluginCreditExpiry? _expiry(
   );
 }
 
+List<CreditExpiryEvidence> nativeCreditEvidence(Map? usage, DateTime observed) {
+  final raw = usage?['creditBatches'];
+  if (raw is! List) return const [];
+  final batches = <String, CreditExpiryEvidence>{};
+  for (final value in raw.whereType<Map>()) {
+    final batch = CreditExpiryEvidence.read({
+      ...value,
+      'observedAt': observed.toUtc().toIso8601String(),
+    });
+    if (batch == null) continue;
+    // An indistinguishable batch needs a provider ID before its quantity is reliable.
+    batches.update(
+      batch.key,
+      (_) => CreditExpiryEvidence(
+        batch.at,
+        batch.unit,
+        dateOnly: batch.dateOnly,
+        sourceId: batch.sourceId,
+        observedAt: observed,
+      ),
+      ifAbsent: () => batch,
+    );
+  }
+  return batches.values.toList();
+}
+
 List<PluginCreditExpiry> pluginCreditExpiryBatches(
   Map? usage,
   Map reward,
@@ -174,7 +206,7 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
   if (provider == 'zcode') {
     final gift = nativeGift ?? ZcodeGiftExpiry.fromUsage(usage, queriedAt);
     if (!gift.usesReward(reward)) {
-      return gift.batches.where((b) => b.at.isAfter(now)).toList()
+      return gift.batches.where((b) => b.end.isAfter(now)).toList()
         ..sort((a, b) => a.at.compareTo(b.at));
     }
     // Both sources describe the same balance response. Neither exposes
@@ -182,6 +214,8 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
     usage = null;
   }
   final buckets = reward['buckets'];
+  final detail = nativeCreditEvidence(usage, queriedAt ?? now);
+  final detailedKeys = {for (final b in detail) (b.at, b.unit)};
   final rawWindows = usage?['windows'] as List? ?? const [];
   final windows = <({PluginCreditExpiry expiry, bool aside, Object? unit})>[];
   for (final window in rawWindows) {
@@ -192,7 +226,9 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
       window['unit'],
       dateOnly: _dateOnly(window),
     );
-    if (value != null && value.at.isAfter(now))
+    if (value != null &&
+        value.end.isAfter(now) &&
+        !detailedKeys.contains((value.at.toLocal(), window['unit'])))
       windows.add((
         expiry: value,
         aside: window['aside'] == true,
@@ -203,6 +239,18 @@ List<PluginCreditExpiry> pluginCreditExpiryBatches(
   // same unit. Qoder's aside packages have expiry facts absent from its total;
   // those must survive, including packages denominated in tokens.
   final candidates = <PluginCreditExpiry>[
+    for (final b in detail)
+      if (b.end.isAfter(now) && b.unused == null && b.remaining != 0)
+        PluginCreditExpiry(
+          b.at,
+          b.remaining == null
+              ? null
+              : PluginCreditBalance(b.remaining!, b.unit),
+          dateOnly: b.dateOnly,
+          reportedUnit: b.unit,
+          sourceId: b.sourceId,
+          issued: b.issued,
+        ),
     for (final window in windows)
       if (!window.aside ||
           !windows.any(

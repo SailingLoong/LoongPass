@@ -3506,7 +3506,16 @@ async function usageOf(provider, account, signal) {
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
   const quantity = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null) // null: unknown, not zero
   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
+  const deadline = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : when(v)
   return {
+    ...(Array.isArray(u.creditBatches) ? { creditBatches: u.creditBatches.filter(b => b && deadline(b.at) && text(b.unit)).map(b => ({
+      id: text(b.id), at: deadline(b.at), unit: text(b.unit), issued: quantity(b.issued),
+      remaining: quantity(b.remaining), unused: quantity(b.unused),
+    })) } : {}),
+    ...(u.creditSpending && Array.isArray(u.creditSpending.hours) ? { creditSpending: {
+      unit: text(u.creditSpending.unit), from: when(u.creditSpending.from), through: when(u.creditSpending.through),
+      hours: u.creditSpending.hours.filter(h => h && when(h.at) && quantity(h.amount) !== null).map(h => ({ at: when(h.at), amount: quantity(h.amount) })),
+    } } : {}),
     plan: text(u.plan),
     until: when(u.until),
     renew: u.renew === "auto" || u.renew === "off" ? u.renew : "",
@@ -3542,7 +3551,7 @@ async function usageOf(provider, account, signal) {
       family: text(w?.family),
       pool: text(w?.pool),
       aside: !!w?.aside,
-      runsOutAt: when(w?.runsOutAt),
+      runsOutAt: deadline(w?.runsOutAt),
       runsOut: quantity(w?.runsOut),
       credits: !!w?.credits,
       balance: typeof w?.balance === "number" && isFinite(w.balance) ? Math.max(0, w.balance) : null, // null: not said

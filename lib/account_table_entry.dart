@@ -45,6 +45,7 @@ class AccountTableEntry {
     this.accountSummary,
     this.expiryDetails,
     this.expiryModels = const {},
+    this.dateOnlyExpiries = const {},
     this.actions,
     this.statusLabel,
     this.highlightStatus = false,
@@ -79,6 +80,7 @@ class AccountTableEntry {
       needsAttention || highlightStatus ? statusLabel ?? status : null;
   final Widget? expiryDetails, actions;
   final Map<AccountExpiryBatch, List<String>> expiryModels;
+  final Set<AccountExpiryBatch> dateOnlyExpiries;
   final VoidCallback? onActivate, onOpenDetails;
   final String? notice;
   final ClaimReceipt? receipt;
@@ -128,6 +130,7 @@ class AccountTableEntry {
     accountSummary: accountSummary,
     expiryDetails: expiryDetails,
     expiryModels: expiryModels,
+    dateOnlyExpiries: dateOnlyExpiries,
     actions: actions,
     statusLabel: statusLabel,
     highlightStatus: highlightStatus,

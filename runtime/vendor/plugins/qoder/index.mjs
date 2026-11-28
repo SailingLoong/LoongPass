@@ -3273,10 +3273,14 @@ function parseUsage(env) {
     const total = b.total ?? b.cap
     const remaining = b.remaining ?? (total != null && b.used != null ? Math.max(0, total - b.used) : undefined)
     if (remaining === undefined) continue // A grant alone is no remaining balance.
+    const rawEnd = b.expires_at ?? b.expiresAt
+    const dateOnly = typeof rawEnd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawEnd)
     let expires
-    try { expires = when(b.expires_at ?? b.expiresAt) } catch {}
+    try { expires = dateOnly ? rawEnd : when(rawEnd) } catch {}
     if (expires && new Date(expires).getUTCFullYear() >= 9999) expires = undefined
-    if (expires && Date.parse(expires) <= Date.now()) continue
+    const end = dateOnly ? new Date(rawEnd + "T00:00:00") : new Date(expires)
+    if (dateOnly) end.setDate(end.getDate() + 1)
+    if (expires && end.getTime() <= Date.now()) continue
     let w = add(b, "Dedicated credits")
     if (!w) {
       const unit = b.unit || "credits"
@@ -3286,7 +3290,11 @@ function parseUsage(env) {
     // Packages can overlap the plan/add-on pools. Keep their own remaining
     // amount and expiry beside those pools, never add them to Total credits.
     Object.assign(w, { balance: remaining, aside: true })
-    if (expires) Object.assign(w, { runsOutAt: expires, runsOut: remaining })
+    if (expires) {
+      const at = expires
+      Object.assign(w, { runsOutAt: at, runsOut: remaining })
+      ;(out.creditBatches ??= []).push({ id: String(b.id ?? b.packageId ?? b.package_id ?? b.name ?? "dedicated"), at, unit: w.unit || "credits", issued: total, remaining })
+    }
   }
   // A free account (personal_standard) with no add-on credits has a plan of
   // 0 and nothing else: Qoder's client shows that pool as 0/0 and counts the

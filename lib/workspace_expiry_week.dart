@@ -6,6 +6,7 @@ typedef WorkspaceExpiryBatch = ({
   WorkspaceAccount account,
   DateTime at,
   String? amount,
+  bool dateOnly,
 });
 
 /// Seven local calendar days. Amounts belong to individual owner batches.
@@ -16,7 +17,9 @@ class WorkspaceExpiryWeek {
       for (final batch in account.entry.expiryBatches) {
         final at = batch.at.toLocal();
         final day = DateTime(at.year, at.month, at.day);
-        if (!at.isAfter(now) ||
+        final dateOnly = account.entry.dateOnlyExpiries.contains(batch);
+        final end = dateOnly ? DateTime(day.year, day.month, day.day + 1) : at;
+        if (!end.isAfter(now) ||
             day.isBefore(days.first) ||
             day.isAfter(days.last))
           continue;
@@ -24,6 +27,7 @@ class WorkspaceExpiryWeek {
           account: account,
           at: at,
           amount: batch.amount,
+          dateOnly: dateOnly,
         ));
       }
     }

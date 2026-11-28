@@ -195,30 +195,46 @@ void main() {
       );
       await tester.tap(find.text('今日调用'));
       await tester.pumpAndSettle();
-      expect(find.text('每小时调用次数'), findsOneWidget);
+      final openCalls = find.text('本机调用明细');
+      expect(find.text('用量与到期'), findsOneWidget);
+      expect(find.text('本机调用 · 全部来源（次）'), findsOneWidget);
+      expect(find.text('到期 · 全部来源（批）'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        openCalls,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(openCalls);
+      await tester.pumpAndSettle();
       expect(find.text('其中 1 次最终失败'), findsOneWidget);
       expect(find.text('已记录输入 360 tokens · 输出 45 tokens'), findsOneWidget);
-      await tester.tap(find.text('近 7 天'));
-      await tester.pumpAndSettle();
-      final earlier = find.text('11 月 24 日');
-      await tester.ensureVisible(earlier);
-      await tester.tap(earlier);
-      await tester.pumpAndSettle();
-      expect(find.text('11 月 24 日 · 按小时'), findsOneWidget);
-      await tester.tap(find.text('返回我的应用'));
+      final back = find.text('返回我的应用');
+      await tester.scrollUntilVisible(
+        back,
+        -300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(back);
       await tester.pumpAndSettle();
       expect(find.text('2 批已确认 · 1 批待核实'), findsOneWidget);
       await tester.tap(find.text('近 7 天到期未用'));
       await tester.pumpAndSettle();
-      expect(find.text('1 批额度待核实，未计入已确认数量。'), findsOneWidget);
+      expect(find.text('哪些来源到期未用'), findsOneWidget);
       expect(find.textContaining('12,345,678 tokens'), findsWidgets);
-      await tester.ensureVisible(earlier);
-      await tester.tap(earlier);
+      final prev = find.bySemanticsLabel('上一时段');
+      await tester.ensureVisible(prev);
+      await tester.tap(prev.first);
       await tester.pumpAndSettle();
-      expect(find.text('15:00'), findsOneWidget);
-      expect(find.text('仅有日期，时刻未知'), findsOneWidget);
-      expect(find.text('待核实'), findsOneWidget);
-      expect(find.textContaining('12.5 credits'), findsNothing);
+      expect(find.text('11 月 24 日 全天'), findsOneWidget);
+      final hour = find.text('按小时');
+      await tester.scrollUntilVisible(
+        hour,
+        -250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(hour);
+      await tester.pumpAndSettle();
+      expect(find.text('当天仅知日期 · 1 批'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
