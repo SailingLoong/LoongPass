@@ -35,7 +35,11 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
       final owner = widget.rewards?.accounts;
       final summary = usage == null || owner == null
           ? null
-          : WorkspaceUsageSummary(usage: usage, accounts: owner);
+          : WorkspaceUsageSummary(
+              usage: usage,
+              accounts: owner,
+              registry: registry,
+            );
       if (accounts.isEmpty) {
         return WorkspacePage(
           title: '我的应用',
@@ -79,7 +83,20 @@ class _WorkspaceOverviewPageState extends State<WorkspaceOverviewPage> {
           attention(AccountAttention.actionRequired),
           if (summary != null) summary,
           const SizedBox(height: 26),
-          _ExpiryCalendar(accounts: accounts, registry: registry),
+          _ExpiryCalendar(
+            accounts: accounts,
+            registry: registry,
+            onTimeline: usage == null || owner == null
+                ? null
+                : (day) => openCreditTimeline(
+                    context,
+                    usage,
+                    owner,
+                    day: day,
+                    hourly: true,
+                    registry: registry,
+                  ),
+          ),
           if (accounts.any(
             (a) => a.entry.attention == AccountAttention.awaitingVerification,
           )) ...[

@@ -1,0 +1,389 @@
+# Carry native provider batch evidence and dated debit totals into the local usage snapshot.
+diff --git a/runtime/vendor/magpie/host.js b/runtime/vendor/magpie/host.js
+index f68e235..fe11bc6 100644
+--- a/runtime/vendor/magpie/host.js
++++ b/runtime/vendor/magpie/host.js
+@@ -3506,7 +3506,16 @@ async function usageOf(provider, account, signal) {
+   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0)
+   const quantity = (v) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null) // null: unknown, not zero
+   const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
++  const deadline = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : when(v)
+   return {
++    ...(Array.isArray(u.creditBatches) ? { creditBatches: u.creditBatches.filter(b => b && deadline(b.at) && text(b.unit)).map(b => ({
++      id: text(b.id), at: deadline(b.at), unit: text(b.unit), issued: quantity(b.issued),
++      remaining: quantity(b.remaining), unused: quantity(b.unused),
++    })) } : {}),
++    ...(u.creditSpending && Array.isArray(u.creditSpending.hours) ? { creditSpending: {
++      unit: text(u.creditSpending.unit), from: when(u.creditSpending.from), through: when(u.creditSpending.through),
++      hours: u.creditSpending.hours.filter(h => h && when(h.at) && quantity(h.amount) !== null).map(h => ({ at: when(h.at), amount: quantity(h.amount) })),
++    } } : {}),
+     plan: text(u.plan),
+     until: when(u.until),
+     renew: u.renew === "auto" || u.renew === "off" ? u.renew : "",
+@@ -3542,7 +3551,7 @@ async function usageOf(provider, account, signal) {
+       family: text(w?.family),
+       pool: text(w?.pool),
+       aside: !!w?.aside,
+-      runsOutAt: when(w?.runsOutAt),
++      runsOutAt: deadline(w?.runsOutAt),
+       runsOut: quantity(w?.runsOut),
+       credits: !!w?.credits,
+       balance: typeof w?.balance === "number" && isFinite(w.balance) ? Math.max(0, w.balance) : null, // null: not said
+diff --git a/runtime/vendor/plugins/loomy/index.mjs b/runtime/vendor/plugins/loomy/index.mjs
+index 62e818b..ac667fe 100644
+--- a/runtime/vendor/plugins/loomy/index.mjs
++++ b/runtime/vendor/plugins/loomy/index.mjs
+@@ -297,12 +297,13 @@ async function signedPost(pathname, body) {
+ // one request on the integration gateway with the session's double headers
+ // (the model and points gateways prefer different header names; the client
+ // sends both, and so does this)
+-async function tokenRequest(method, path, session, body) {
++async function tokenRequest(method, path, session, body, ledgerTimeout) {
+   if (!session?.trim()) throw new SignedOut("Loomy 账号缺少 session")
+   const init = {
+     method,
+     headers: { token: session, Authorization: `Bearer ${session}` },
+-    signal: AbortSignal.timeout(REQUEST_TIMEOUT),
++    ...(ledgerTimeout == null ? {} : { redirect: "error" }),
++    signal: AbortSignal.timeout(ledgerTimeout ?? REQUEST_TIMEOUT),
+   }
+   if (body !== undefined) {
+     init.headers["Content-Type"] = "application/json"
+@@ -479,9 +480,105 @@ function listedModel(was, m, entry, provider) {
+   }
+ }
+ 
++// The v1 all-records ledger carries the funding wallet and actual balance
++// on both sides of a debit. Keep the bounded read independent of sign-in.
++const LEDGER_DAY = 86400e3, LEDGER_HOUR = 3600e3
++function hourStart(ms) {
++  const local = new Date(ms), midnight = new Date(local.getFullYear(), local.getMonth(), local.getDate()).getTime()
++  return midnight + Math.floor((ms - midnight) / LEDGER_HOUR) * LEDGER_HOUR
++}
++const cycleAt = ms => new Date(ms + 8 * LEDGER_HOUR).toISOString().slice(0, 10)
++const wholePoints = n => Number.isSafeInteger(n) && n >= 0
++function ledgerFacts(data, rows, complete, now) {
++  if (![data.balance, data.dailyBalance, data.availableBalance].every(wholePoints) ||
++      data.balance + data.dailyBalance !== data.availableBalance) return {}
++  const today = cycleAt(now), cutoff = Date.parse(today + "T00:00:00+08:00") - 7 * LEDGER_DAY
++  const oldest = rows.at(-1)?.createdAt * 1000
++  // A truncated page may end in the middle of a second or a billing hour.
++  const from = complete ? cutoff : Math.max(cutoff, hourStart(oldest) + LEDGER_HOUR)
++  const hours = new Map(), cycles = new Map(), batches = []
++  let previous = Infinity, validSpending = true
++  const ids = new Set()
++  for (const r of rows) {
++    const ms = r.createdAt * 1000, id = r.ledgerId
++    if (id == null || ids.has(String(id)) || !Number.isFinite(ms) || ms <= 0 || ms > now || ms > previous) return {}
++    previous = ms; ids.add(String(id))
++    if (ms < cutoff) break
++    const day = cycleAt(ms), list = cycles.get(day) ?? []
++    list.push(r); cycles.set(day, list)
++    if (ms < from || r.direction !== "debit" || !r.modelName) continue
++    const points = r.pointsActual
++    if (!wholePoints(points) || !wholePoints(r.balanceBefore) || !wholePoints(r.balanceAfter) ||
++        r.balanceBefore - points !== r.balanceAfter) { validSpending = false; continue }
++    const hour = hourStart(ms)
++    hours.set(hour, (hours.get(hour) ?? 0) + points)
++  }
++  let permanent = data.balance
++  for (const [day, entries] of cycles) {
++    const start = Date.parse(day + "T00:00:00+08:00"), end = start + LEDGER_DAY
++    if (day === today && entries[0].balanceAfter !== data.availableBalance) break
++    const closingDaily = entries[0].balanceAfter - permanent
++    let balance = entries[0].balanceAfter, dailySpent = 0
++    const matched = entries.every(r => {
++      if ((r.consumeSource === "daily" ? r.dailyCycleDate !== day : r.dailyCycleDate && r.dailyCycleDate !== day) || r.direction !== "debit" || !wholePoints(r.pointsActual) ||
++          !wholePoints(r.balanceAfter) || !wholePoints(r.balanceBefore) || balance !== r.balanceAfter ||
++          r.balanceBefore - r.pointsActual !== balance) return false
++      if (r.consumeSource === "daily") dailySpent += r.pointsActual
++      else if (r.consumeSource === "permanent") permanent += r.pointsActual
++      else return false
++      balance = r.balanceBefore
++      return balance >= permanent
++    })
++    if (!matched || !wholePoints(closingDaily)) break
++    const issued = balance - permanent
++    if (day !== today && start >= from && issued - dailySpent === closingDaily)
++      batches.push({ id: "daily:" + day, at: new Date(end).toISOString(), unit: "credits", issued, unused: closingDaily })
++  }
++  return { creditBatches: batches, ...(validSpending && from <= now ? { creditSpending: {
++    from, through: now, unit: "credits", hours: [...hours].map(([at, amount]) => ({ at, amount })),
++  } } : {}) }
++}
++
++async function readPointLedger(session, cache, owner) {
++  const now = Date.now(), stop = now + 9000, pageSize = 100
++  const page = async n => {
++    const env = await tokenRequest("GET", "/api/v1/points/records?pageNo=" + n + "&pageSize=100&recordType=all", session, undefined, Math.max(1, stop - Date.now()))
++    if (codeOf(env) !== OK) throw Error("unavailable ledger")
++    const d = env?.data?.data ?? env?.data
++    if (!Array.isArray(d?.list) || d.pageNo !== n || d.pageSize !== pageSize || !Number.isSafeInteger(d.total) || d.total < 0) throw Error("incomplete ledger")
++    return d
++  }
++  const first = await page(1), old = cache.get(owner)
++  let rows = first.list.slice(), total = first.total
++  const cutoff = Date.parse(cycleAt(now) + "T00:00:00+08:00") - 7 * LEDGER_DAY
++  const enough = () => rows.length >= total || rows.at(-1)?.createdAt * 1000 < cutoff
++  // Only join snapshots at an official transaction ID and matching total shift.
++  if (old?.rows.length) {
++    const i = rows.findIndex(r => r.ledgerId === old.rows[0].ledgerId)
++    if (i >= 0 && total - old.total === i) rows = [...rows.slice(0, i), ...old.rows]
++  }
++  if (!enough()) rows.length -= rows.length % pageSize
++  for (let group = 0; group < 8 && !enough() && Date.now() < stop && rows.length >= pageSize; group++) {
++    const next = Math.floor(rows.length / pageSize) + 1
++    const count = Math.min(4, Math.ceil(total / pageSize) - next + 1)
++    const pages = await Promise.all(Array.from({ length: count }, (_, i) => page(next + i).catch(() => null)))
++    let gap = false
++    for (const d of pages) {
++      if (!d || d.total !== total || !d.list.length) { gap = true; break }
++      rows.push(...d.list)
++      if (enough()) break
++    }
++    if (gap || !count || rows.length >= 3600) break
++  }
++  if (rows.length > total || new Set(rows.map(r => String(r.ledgerId))).size !== rows.length) return {}
++  if (owner) cache.set(owner, { rows: rows.slice(0, 3600), total })
++  return ledgerFacts(first, rows, rows.length === total, now)
++}
++
+ // ── the plugin ─────────────────────────────────────────────────────────────
+ 
+ export async function LoomyAuthPlugin({ client } = {}) {
++  const ledgerCache = new Map()
+   const methods = []
+ 
+   methods.push({
+@@ -720,7 +817,14 @@ export async function LoomyAuthPlugin({ client } = {}) {
+           // no `signIn` on a clean read: that absence is how magpie takes an
+           // expired mark back off the account (Loomy has no renewal, so a
+           // "kept" here would leave a transient 401's lapse on forever)
+-          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows }
++          const ledger = await readPointLedger(a.access, ledgerCache, a.accountId || a.uid || createHash("sha256").update(a.access).digest("hex")).catch(() => ({}))
++          const creditBatches = [...(ledger.creditBatches ?? [])]
++          if (dailyWallet) {
++            const at = dailyWallet.runsOutAt
++            creditBatches.push({ id: "daily:" + cycleAt(at - 1), at: new Date(at).toISOString(), unit: "credits", remaining: dailyWallet.balance,
++              ...(dailyLimit != null && dailyLimit >= dailyWallet.balance ? { issued: dailyLimit } : {}) })
++          }
++          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows, ...ledger, creditBatches }
+         } catch (e) {
+           if (e?.signIn === "expired") return { error: lapsedText(a, e.message), signIn: "expired" }
+           return { error: String(e?.message ?? e), signIn: "kept" }
+@@ -813,6 +917,7 @@ function fellBack(models) {
+ 
+ // for tests
+ export const _internal = {
++  ledgerFacts, readPointLedger,
+   retryableRefusal,
+   businessRefusal,
+   ID,
+diff --git a/runtime/vendor/plugins/minimax/index.mjs b/runtime/vendor/plugins/minimax/index.mjs
+index 5234a2b..2739362 100644
+--- a/runtime/vendor/plugins/minimax/index.mjs
++++ b/runtime/vendor/plugins/minimax/index.mjs
+@@ -778,8 +778,7 @@ function amountOf(v, clampNegative = false) {
+ 
+ // ledgerBatches is the batches of every page, or null when the list
+ // couldn't be read whole: a part of the ledger would tell a wrong share.
+-async function ledgerBatches(site, access, userID) {
+-  const out = []
++async function ledgerBatches(site, access, userID, out = []) {
+   for (let page = 1; page <= LEDGER_PAGES; page++) {
+     const env = await accountCall(site, "/minimax-cloud/api/v1/credit/details", {
+       access, userID, origin: site.agent,
+@@ -793,6 +792,30 @@ async function ledgerBatches(site, access, userID) {
+   return null
+ }
+ 
++// Final remaining is admitted only when the expired batch's three amounts agree.
++function expiryLedger(batches, now = Date.now()) {
++  const events = new Map(), ambiguous = new Set()
++  for (const b of batches) {
++    if (![1, 2].includes(b?.credit_type)) continue
++    const end = Number(b.expire_at_ms), granted = Number(b.granted_at_ms)
++    if (!(end > 0 && end < 864e13 && granted > 0 && granted <= end)) continue
++    const id = String(b.credit_id ?? b.id ?? (b.credit_type + ":" + granted))
++    const key = end + "/" + id
++    if (events.has(key)) { ambiguous.add(key); continue }
++    const issued = amountOf(b.granted_amount), spent = amountOf(b.consumed_amount), left = amountOf(b.remaining_amount)
++    const row = { id, at: new Date(end).toISOString(), unit: "credits" }
++    if (issued != null) row.issued = issued
++    if (end > now) {
++      if (left != null && (issued == null || left <= issued)) row.remaining = left
++    } else if (issued != null && spent != null && left != null && left <= issued && spent <= issued &&
++      Math.abs(issued - (spent + left)) <= Number.EPSILON * Math.max(1, issued) * 2) {
++      row.unused = left
++    }
++    events.set(key, row)
++  }
++  return [...events].filter(([key]) => !ambiguous.has(key)).map(([, row]) => row)
++}
++
+ // creditsWindow is the batches not yet expired as one window: what they
+ // granted, what of it is used, and when the soonest of them runs out. None
+ // when no batch is live or a batch can't be read.
+@@ -1223,16 +1246,18 @@ function makePlugin(site) {
+                 planTitle(site, a.access, m.opGroupId),
+               ])
+             }
++            const observedBatches = []
+             // the credits as a share of what the live batches granted
+             // (#393); beside an M Plan they are its fallback, aside. A
+             // ledger that can't be read leaves the balance alone.
+             try {
+-              const b = await ledgerBatches(site, a.access, who.realUserID)
++              const b = await ledgerBatches(site, a.access, who.realUserID, observedBatches)
+               const cw = b && creditsWindow(b)
+               if (cw) windows = [...windows, m.hasTokenPlan ? { ...cw, aside: true } : cw]
+             } catch {}
+             return {
+               ...usageOf(title ? { ...m, title } : m, windows),
++              ...(observedBatches.length ? { creditBatches: expiryLedger(observedBatches) } : {}),
+               ...(error ? { error } : {}),
+               user: who.email || who.name || who.realUserID,
+               signIn: did ? "renewed" : "kept",
+@@ -1488,4 +1513,4 @@ export const MiniMaxCodeAuthPlugin = makePlugin(SITES["minimax-code"])
+ export const MiniMaxCodeGlobalAuthPlugin = makePlugin(SITES["minimax-code-global"])
+ 
+ // for tests
+-export const _internal = { SITES, MODELS, createToolRequest, postTool, makeTokenRequest, parseToolEnvelope, toolHttpError, signed, md5, parseModels, planWindows, membershipOf, usageOf, credits, creditsWindow, ledgerBatches, variants, renewing, renewed, startDevice, pollDevice, checkinOf }
++export const _internal = { SITES, MODELS, createToolRequest, postTool, makeTokenRequest, parseToolEnvelope, toolHttpError, signed, md5, parseModels, planWindows, membershipOf, usageOf, credits, creditsWindow, ledgerBatches, expiryLedger, variants, renewing, renewed, startDevice, pollDevice, checkinOf }
+diff --git a/runtime/vendor/plugins/qoder/index.mjs b/runtime/vendor/plugins/qoder/index.mjs
+index 224f431..af95984 100644
+--- a/runtime/vendor/plugins/qoder/index.mjs
++++ b/runtime/vendor/plugins/qoder/index.mjs
+@@ -3273,10 +3273,14 @@ function parseUsage(env) {
+     const total = b.total ?? b.cap
+     const remaining = b.remaining ?? (total != null && b.used != null ? Math.max(0, total - b.used) : undefined)
+     if (remaining === undefined) continue // A grant alone is no remaining balance.
++    const rawEnd = b.expires_at ?? b.expiresAt
++    const dateOnly = typeof rawEnd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawEnd)
+     let expires
+-    try { expires = when(b.expires_at ?? b.expiresAt) } catch {}
++    try { expires = dateOnly ? rawEnd : when(rawEnd) } catch {}
+     if (expires && new Date(expires).getUTCFullYear() >= 9999) expires = undefined
+-    if (expires && Date.parse(expires) <= Date.now()) continue
++    const end = dateOnly ? new Date(rawEnd + "T00:00:00") : new Date(expires)
++    if (dateOnly) end.setDate(end.getDate() + 1)
++    if (expires && end.getTime() <= Date.now()) continue
+     let w = add(b, "Dedicated credits")
+     if (!w) {
+       const unit = b.unit || "credits"
+@@ -3286,7 +3290,11 @@ function parseUsage(env) {
+     // Packages can overlap the plan/add-on pools. Keep their own remaining
+     // amount and expiry beside those pools, never add them to Total credits.
+     Object.assign(w, { balance: remaining, aside: true })
+-    if (expires) Object.assign(w, { runsOutAt: expires, runsOut: remaining })
++    if (expires) {
++      const at = expires
++      Object.assign(w, { runsOutAt: at, runsOut: remaining })
++      ;(out.creditBatches ??= []).push({ id: String(b.id ?? b.packageId ?? b.package_id ?? b.name ?? "dedicated"), at, unit: w.unit || "credits", issued: total, remaining })
++    }
+   }
+   // A free account (personal_standard) with no add-on credits has a plan of
+   // 0 and nothing else: Qoder's client shows that pool as 0/0 and counts the
+diff --git a/runtime/vendor/plugins/trae/index.mjs b/runtime/vendor/plugins/trae/index.mjs
+index 8c5b7b7..bc16083 100644
+--- a/runtime/vendor/plugins/trae/index.mjs
++++ b/runtime/vendor/plugins/trae/index.mjs
+@@ -169,6 +169,7 @@ const SITES = {
+           if (q.unlimited) out.balance = "unlimited"
+           else if (q.limit >= 0) windows.push(seatUsageWindow(q, seatSpentOf(spent, quota?.user_model_quota?.user_id), entResetOf(core), yuan, "CNY"))
+           const c = page ? credits(page) : null
++          if (page) out.creditBatches = datedEntitlements(page)
+           if (c && !c.unlimited && c.limit > 0) {
+             const w = {
+               name: "Credits",
+@@ -180,7 +181,7 @@ const SITES = {
+               aside: true,
+             }
+             if (c.until) w.resetsAt = new Date(c.until).toISOString()
+-            if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
++            if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: c.lapsing })
+             windows.push(w)
+           }
+           if (windows.length) out.windows = windows
+@@ -193,7 +194,7 @@ const SITES = {
+       },
+       read: (v, a, signIn, { credits, round }) => {
+         const c = credits(v)
+-        const out = { plan: v.is_credits_billing ? "Credits" : "Free", user: a.name || a.uid, signIn }
++        const out = { plan: v.is_credits_billing ? "Credits" : "Free", user: a.name || a.uid, signIn, creditBatches: datedEntitlements(v) }
+         if (c.unlimited) out.balance = "unlimited"
+         else if (c.limit > 0) {
+           // the count rides on the window (amount of limit, in credits), as
+@@ -202,7 +203,7 @@ const SITES = {
+           // English balance line beside it (yetone/magpie#694)
+           const w = { name: "Credits", used: Math.max(0, Math.min(100, (c.used / c.limit) * 100)), amount: c.used, limit: c.limit, unit: "credits" }
+           if (c.until) w.resetsAt = new Date(c.until).toISOString()
+-          if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: round(c.lapsing) })
++          if (c.until && c.lapsing > 0) Object.assign(w, { runsOutAt: new Date(c.until).toISOString(), runsOut: c.lapsing })
+           out.windows = [w]
+         }
+         return out
+@@ -3886,6 +3887,20 @@ const effortOf = (levels, effort) => {
+ // the soonest end of a pack that still has credits left and has not ended:
+ // a spent daily pack or one already past its end changes nothing on the
+ // account, so it does not name the date the credits turn over (#718, #1157).
++function datedEntitlements(v, now = Date.now()) {
++  const events = []
++  for (const p of v?.user_entitlement_pack_list ?? []) {
++    const bi = p?.entitlement_base_info ?? {}, end = whenOf(bi.end_time ?? bi.expire_time ?? p.end_time)
++    const limit = bi.quota?.credits_limit, used = p?.usage?.credits_amount
++    if (!(end > now) || limit == null || limit === "" || !Number.isFinite(Number(limit)) || Number(limit) <= 0) continue
++    const n = Number(used)
++    const id = String(p.user_entitlement_pack_id ?? bi.entitlement_id ?? [bi.start_time ?? "", limit].join("/"))
++    events.push({ id, at: new Date(end).toISOString(), unit: "credits", issued: Number(limit),
++      ...(used != null && used !== "" && Number.isFinite(n) && n >= 0 && n <= Number(limit) ? { remaining: Number(limit) - n } : {}) })
++  }
++  return events
++}
++
+ function credits(v, now = Date.now()) {
+   let limit = 0
+   let used = 0
+diff --git a/runtime/vendor/plugins/workbuddy/index.mjs b/runtime/vendor/plugins/workbuddy/index.mjs
+index 0a39abe..e7b6277 100644
+--- a/runtime/vendor/plugins/workbuddy/index.mjs
++++ b/runtime/vendor/plugins/workbuddy/index.mjs
+@@ -4217,6 +4217,30 @@ function endOf(p) {
+   return 0
+ }
+ 
++// Account packages are individually dated. A status-filtered list of current
++// and exhausted packages cannot prove what an absent package lost at expiry.
++function datedPackages(sum, packages, site, now = Date.now()) {
++  const counted = new Set([...(sum?.Packages ?? []).map(p => p?.PackageCode), ...(site.ai ? [...EXTRA_CODES, ...EXTRA_AI] : EXTRA_CODES)])
++  const events = []
++  for (const p of packages) {
++    if (!counted.has(p?.PackageCode) || p.PackageCode === DAILY_CODE || String(p.CapacityType) === SLICE) continue
++    const end = endOf(p)
++    if (!(end > 0) || (end <= now && Number(p.Status) !== 3)) continue
++    const field = p.CycleCapacityRemainPrecise ?? p.CycleCapacityRemain
++    const remaining = field == null || field === "" ? null : Number(field)
++    const issued = p.CycleCapacitySizePrecise == null || p.CycleCapacitySizePrecise === "" ? null : Number(p.CycleCapacitySizePrecise)
++    const id = String(p.ResourceId ?? p.PackageInstanceId ?? [p.PackageCode, p.DeductionStartTime ?? p.CycleStartTime ?? ""].join("/"))
++    const spent = p.CycleCapacityUsedPrecise
++    const usedUp = end <= now && Number(p.Status) === 3 && remaining === 0 && issued > 0 &&
++      spent != null && spent !== "" && Number(spent) === issued
++    if (end <= now && !usedUp) continue
++    events.push({ id, at: new Date(end).toISOString(), unit: "credits",
++      ...(Number.isFinite(issued) && issued >= 0 ? { issued } : {}),
++      ...(usedUp ? { unused: 0 } : Number.isFinite(remaining) && remaining >= 0 ? { remaining } : {}) })
++  }
++  return events
++}
++
+ // runsOutOf is the soonest moment credits left in one of the account's
+ // packages are lost, and how many (cdredfox on X): smart routing spends
+ // the account whose credits expire first. Only packages the summary
+@@ -5173,6 +5197,7 @@ function makePlugin(site) {
+           if (credits) {
+             try {
+               const packages = await packagesOf(site, a)
++              out.creditBatches = datedPackages(sum, packages, site)
+               Object.assign(credits, cycleOf(sum, packages) ?? {})
+               const ofPlan = planCodes(sum, site)
+               if (extra) {

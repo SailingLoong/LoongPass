@@ -166,14 +166,17 @@ class PluginAccount {
       : provider == 'zcode'
       ? _nativeGift?.observedAt
       : queriedAt;
-  List<PluginCreditExpiry> get creditExpiryBatches => pluginCreditExpiryBatches(
-    usage,
-    _reward,
-    DateTime.now(),
-    provider: provider,
-    queriedAt: queriedAt,
-    nativeGift: _nativeGift,
-  );
+  List<PluginCreditExpiry> get creditExpiryBatches =>
+      creditExpiriesAt(DateTime.now());
+  List<PluginCreditExpiry> creditExpiriesAt(DateTime now) =>
+      pluginCreditExpiryBatches(
+        usage,
+        _reward,
+        now,
+        provider: provider,
+        queriedAt: queriedAt,
+        nativeGift: _nativeGift,
+      );
   PluginCreditExpiry? get creditExpiry =>
       nextPluginCreditExpiry(creditExpiryBatches);
 }
@@ -257,7 +260,18 @@ class PluginAccounts extends ChangeNotifier {
       };
       for (final batch in batches) {
         if (batch.sourceId.isEmpty &&
-            identified.contains((batch.timestamp, batch.unit)))
+            (identified.contains((batch.timestamp, batch.unit)) ||
+                (batch.unit.isEmpty &&
+                    batches
+                            .where(
+                              (b) =>
+                                  b.timestamp == batch.timestamp &&
+                                  b.sourceId.isNotEmpty,
+                            )
+                            .map((b) => b.unit)
+                            .toSet()
+                            .length ==
+                        1)))
           continue;
         result.add((
           provider: row['provider'] as String,
@@ -610,22 +624,24 @@ class PluginAccounts extends ChangeNotifier {
           }
         }
         final at = observedUsage.at;
-        final evidence =
-            pluginCreditExpiryBatches(
-                  observedUsage.value,
-                  const {},
-                  at,
-                  provider: provider['id'],
-                  queriedAt: at,
-                )
-                .map(
-                  (b) => CreditExpiryEvidence(
-                    b.at,
-                    b.amount?.unit ?? b.reportedUnit ?? '',
-                    dateOnly: b.dateOnly,
-                  ),
-                )
-                .toList();
+        final evidence = <CreditExpiryEvidence>[
+          ...nativeCreditEvidence(observedUsage.value, at),
+          for (final b in pluginCreditExpiryBatches(
+            observedUsage.value,
+            const {},
+            at,
+            provider: provider['id'],
+            queriedAt: at,
+          ))
+            if (b.sourceId.isEmpty)
+              CreditExpiryEvidence(
+                b.at,
+                b.amount?.unit ?? b.reportedUnit ?? '',
+                dateOnly: b.dateOnly,
+                remaining: b.amount?.amount,
+                observedAt: at,
+              ),
+        ];
         final owner = creditHistoryOwner(expected);
         if (updateCreditHistory(
           Map<String, dynamic>.of(_data),

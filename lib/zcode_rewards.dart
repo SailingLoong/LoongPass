@@ -382,6 +382,9 @@ class ZcodeBalance {
       at,
       unit,
       unused: unused,
+      issued: total,
+      remaining: end.millisecondsSinceEpoch > serverTime * 1000 ? left : null,
+      observedAt: DateTime.fromMillisecondsSinceEpoch(serverTime * 1000),
       dateOnly: onlyDate,
       sourceId: jsonEncode([instance, b['entitlement_id'], b['period_start']]),
     );

@@ -40,6 +40,7 @@ typedef RecentCall = ({
   String model,
   bool failed,
   bool canceled,
+  num? credits,
 });
 
 class UsageDay {
@@ -98,7 +99,11 @@ class UsageDay {
       final at = DateTime.tryParse(row['t']?.toString() ?? '')?.toLocal();
       if (at == null || usageDate(at) != date || model == null) continue;
       final canceled = row['canceled'] == true, status = row['status'];
+      final credit = row['credits'];
       recent.add((
+        credits: credit is num && credit.isFinite && credit >= 0
+            ? credit
+            : null,
         at: at,
         account: row['providerAccount'] as String? ?? '',
         model: model,

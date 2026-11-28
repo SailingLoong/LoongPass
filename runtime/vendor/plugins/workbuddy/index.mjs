@@ -4217,6 +4217,30 @@ function endOf(p) {
   return 0
 }
 
+// Account packages are individually dated. A status-filtered list of current
+// and exhausted packages cannot prove what an absent package lost at expiry.
+function datedPackages(sum, packages, site, now = Date.now()) {
+  const counted = new Set([...(sum?.Packages ?? []).map(p => p?.PackageCode), ...(site.ai ? [...EXTRA_CODES, ...EXTRA_AI] : EXTRA_CODES)])
+  const events = []
+  for (const p of packages) {
+    if (!counted.has(p?.PackageCode) || p.PackageCode === DAILY_CODE || String(p.CapacityType) === SLICE) continue
+    const end = endOf(p)
+    if (!(end > 0) || (end <= now && Number(p.Status) !== 3)) continue
+    const field = p.CycleCapacityRemainPrecise ?? p.CycleCapacityRemain
+    const remaining = field == null || field === "" ? null : Number(field)
+    const issued = p.CycleCapacitySizePrecise == null || p.CycleCapacitySizePrecise === "" ? null : Number(p.CycleCapacitySizePrecise)
+    const id = String(p.ResourceId ?? p.PackageInstanceId ?? [p.PackageCode, p.DeductionStartTime ?? p.CycleStartTime ?? ""].join("/"))
+    const spent = p.CycleCapacityUsedPrecise
+    const usedUp = end <= now && Number(p.Status) === 3 && remaining === 0 && issued > 0 &&
+      spent != null && spent !== "" && Number(spent) === issued
+    if (end <= now && !usedUp) continue
+    events.push({ id, at: new Date(end).toISOString(), unit: "credits",
+      ...(Number.isFinite(issued) && issued >= 0 ? { issued } : {}),
+      ...(usedUp ? { unused: 0 } : Number.isFinite(remaining) && remaining >= 0 ? { remaining } : {}) })
+  }
+  return events
+}
+
 // runsOutOf is the soonest moment credits left in one of the account's
 // packages are lost, and how many (cdredfox on X): smart routing spends
 // the account whose credits expire first. Only packages the summary
@@ -5173,6 +5197,7 @@ function makePlugin(site) {
           if (credits) {
             try {
               const packages = await packagesOf(site, a)
+              out.creditBatches = datedPackages(sum, packages, site)
               Object.assign(credits, cycleOf(sum, packages) ?? {})
               const ofPlan = planCodes(sum, site)
               if (extra) {

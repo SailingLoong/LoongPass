@@ -297,12 +297,13 @@ async function signedPost(pathname, body) {
 // one request on the integration gateway with the session's double headers
 // (the model and points gateways prefer different header names; the client
 // sends both, and so does this)
-async function tokenRequest(method, path, session, body) {
+async function tokenRequest(method, path, session, body, ledgerTimeout) {
   if (!session?.trim()) throw new SignedOut("Loomy 账号缺少 session")
   const init = {
     method,
     headers: { token: session, Authorization: `Bearer ${session}` },
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+    ...(ledgerTimeout == null ? {} : { redirect: "error" }),
+    signal: AbortSignal.timeout(ledgerTimeout ?? REQUEST_TIMEOUT),
   }
   if (body !== undefined) {
     init.headers["Content-Type"] = "application/json"
@@ -479,9 +480,105 @@ function listedModel(was, m, entry, provider) {
   }
 }
 
+// The v1 all-records ledger carries the funding wallet and actual balance
+// on both sides of a debit. Keep the bounded read independent of sign-in.
+const LEDGER_DAY = 86400e3, LEDGER_HOUR = 3600e3
+function hourStart(ms) {
+  const local = new Date(ms), midnight = new Date(local.getFullYear(), local.getMonth(), local.getDate()).getTime()
+  return midnight + Math.floor((ms - midnight) / LEDGER_HOUR) * LEDGER_HOUR
+}
+const cycleAt = ms => new Date(ms + 8 * LEDGER_HOUR).toISOString().slice(0, 10)
+const wholePoints = n => Number.isSafeInteger(n) && n >= 0
+function ledgerFacts(data, rows, complete, now) {
+  if (![data.balance, data.dailyBalance, data.availableBalance].every(wholePoints) ||
+      data.balance + data.dailyBalance !== data.availableBalance) return {}
+  const today = cycleAt(now), cutoff = Date.parse(today + "T00:00:00+08:00") - 7 * LEDGER_DAY
+  const oldest = rows.at(-1)?.createdAt * 1000
+  // A truncated page may end in the middle of a second or a billing hour.
+  const from = complete ? cutoff : Math.max(cutoff, hourStart(oldest) + LEDGER_HOUR)
+  const hours = new Map(), cycles = new Map(), batches = []
+  let previous = Infinity, validSpending = true
+  const ids = new Set()
+  for (const r of rows) {
+    const ms = r.createdAt * 1000, id = r.ledgerId
+    if (id == null || ids.has(String(id)) || !Number.isFinite(ms) || ms <= 0 || ms > now || ms > previous) return {}
+    previous = ms; ids.add(String(id))
+    if (ms < cutoff) break
+    const day = cycleAt(ms), list = cycles.get(day) ?? []
+    list.push(r); cycles.set(day, list)
+    if (ms < from || r.direction !== "debit" || !r.modelName) continue
+    const points = r.pointsActual
+    if (!wholePoints(points) || !wholePoints(r.balanceBefore) || !wholePoints(r.balanceAfter) ||
+        r.balanceBefore - points !== r.balanceAfter) { validSpending = false; continue }
+    const hour = hourStart(ms)
+    hours.set(hour, (hours.get(hour) ?? 0) + points)
+  }
+  let permanent = data.balance
+  for (const [day, entries] of cycles) {
+    const start = Date.parse(day + "T00:00:00+08:00"), end = start + LEDGER_DAY
+    if (day === today && entries[0].balanceAfter !== data.availableBalance) break
+    const closingDaily = entries[0].balanceAfter - permanent
+    let balance = entries[0].balanceAfter, dailySpent = 0
+    const matched = entries.every(r => {
+      if ((r.consumeSource === "daily" ? r.dailyCycleDate !== day : r.dailyCycleDate && r.dailyCycleDate !== day) || r.direction !== "debit" || !wholePoints(r.pointsActual) ||
+          !wholePoints(r.balanceAfter) || !wholePoints(r.balanceBefore) || balance !== r.balanceAfter ||
+          r.balanceBefore - r.pointsActual !== balance) return false
+      if (r.consumeSource === "daily") dailySpent += r.pointsActual
+      else if (r.consumeSource === "permanent") permanent += r.pointsActual
+      else return false
+      balance = r.balanceBefore
+      return balance >= permanent
+    })
+    if (!matched || !wholePoints(closingDaily)) break
+    const issued = balance - permanent
+    if (day !== today && start >= from && issued - dailySpent === closingDaily)
+      batches.push({ id: "daily:" + day, at: new Date(end).toISOString(), unit: "credits", issued, unused: closingDaily })
+  }
+  return { creditBatches: batches, ...(validSpending && from <= now ? { creditSpending: {
+    from, through: now, unit: "credits", hours: [...hours].map(([at, amount]) => ({ at, amount })),
+  } } : {}) }
+}
+
+async function readPointLedger(session, cache, owner) {
+  const now = Date.now(), stop = now + 9000, pageSize = 100
+  const page = async n => {
+    const env = await tokenRequest("GET", "/api/v1/points/records?pageNo=" + n + "&pageSize=100&recordType=all", session, undefined, Math.max(1, stop - Date.now()))
+    if (codeOf(env) !== OK) throw Error("unavailable ledger")
+    const d = env?.data?.data ?? env?.data
+    if (!Array.isArray(d?.list) || d.pageNo !== n || d.pageSize !== pageSize || !Number.isSafeInteger(d.total) || d.total < 0) throw Error("incomplete ledger")
+    return d
+  }
+  const first = await page(1), old = cache.get(owner)
+  let rows = first.list.slice(), total = first.total
+  const cutoff = Date.parse(cycleAt(now) + "T00:00:00+08:00") - 7 * LEDGER_DAY
+  const enough = () => rows.length >= total || rows.at(-1)?.createdAt * 1000 < cutoff
+  // Only join snapshots at an official transaction ID and matching total shift.
+  if (old?.rows.length) {
+    const i = rows.findIndex(r => r.ledgerId === old.rows[0].ledgerId)
+    if (i >= 0 && total - old.total === i) rows = [...rows.slice(0, i), ...old.rows]
+  }
+  if (!enough()) rows.length -= rows.length % pageSize
+  for (let group = 0; group < 8 && !enough() && Date.now() < stop && rows.length >= pageSize; group++) {
+    const next = Math.floor(rows.length / pageSize) + 1
+    const count = Math.min(4, Math.ceil(total / pageSize) - next + 1)
+    const pages = await Promise.all(Array.from({ length: count }, (_, i) => page(next + i).catch(() => null)))
+    let gap = false
+    for (const d of pages) {
+      if (!d || d.total !== total || !d.list.length) { gap = true; break }
+      rows.push(...d.list)
+      if (enough()) break
+    }
+    if (gap || !count || rows.length >= 3600) break
+  }
+  if (rows.length > total || new Set(rows.map(r => String(r.ledgerId))).size !== rows.length) return {}
+  if (owner) cache.set(owner, { rows: rows.slice(0, 3600), total })
+  return ledgerFacts(first, rows, rows.length === total, now)
+}
+
 // ── the plugin ─────────────────────────────────────────────────────────────
 
 export async function LoomyAuthPlugin({ client } = {}) {
+  const ledgerCache = new Map()
   const methods = []
 
   methods.push({
@@ -720,7 +817,14 @@ export async function LoomyAuthPlugin({ client } = {}) {
           // no `signIn` on a clean read: that absence is how magpie takes an
           // expired mark back off the account (Loomy has no renewal, so a
           // "kept" here would leave a transient 401's lapse on forever)
-          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows }
+          const ledger = await readPointLedger(a.access, ledgerCache, a.accountId || a.uid || createHash("sha256").update(a.access).digest("hex")).catch(() => ({}))
+          const creditBatches = [...(ledger.creditBatches ?? [])]
+          if (dailyWallet) {
+            const at = dailyWallet.runsOutAt
+            creditBatches.push({ id: "daily:" + cycleAt(at - 1), at: new Date(at).toISOString(), unit: "credits", remaining: dailyWallet.balance,
+              ...(dailyLimit != null && dailyLimit >= dailyWallet.balance ? { issued: dailyLimit } : {}) })
+          }
+          return { plan: NAME, user: a.name || a.accountId, walletScope: "account", windows, ...ledger, creditBatches }
         } catch (e) {
           if (e?.signIn === "expired") return { error: lapsedText(a, e.message), signIn: "expired" }
           return { error: String(e?.message ?? e), signIn: "kept" }
@@ -813,6 +917,7 @@ function fellBack(models) {
 
 // for tests
 export const _internal = {
+  ledgerFacts, readPointLedger,
   retryableRefusal,
   businessRefusal,
   ID,

@@ -1,7 +1,12 @@
 part of 'workspace_accounts.dart';
 
 class _ExpiryCalendar extends StatefulWidget {
-  const _ExpiryCalendar({required this.accounts, required this.registry});
+  const _ExpiryCalendar({
+    required this.accounts,
+    required this.registry,
+    this.onTimeline,
+  });
+  final ValueChanged<DateTime>? onTimeline;
   final List<WorkspaceAccount> accounts;
   final AccountWorkspaceRegistry registry;
   @override
@@ -30,6 +35,14 @@ class _ExpiryCalendarState extends State<_ExpiryCalendar> {
                 ),
               ),
             ),
+            if (widget.onTimeline != null)
+              FButton(
+                variant: FButtonVariant.ghost,
+                size: FButtonSizeVariant.sm,
+                mainAxisSize: MainAxisSize.min,
+                onPress: () => widget.onTimeline!(day),
+                child: const Text('查看时间图'),
+              ),
             Text(
               '未来 7 天',
               style: context.theme.typography.body.xs.copyWith(
@@ -132,7 +145,9 @@ class _ExpiryCalendarState extends State<_ExpiryCalendar> {
             batch.account,
             widget.registry,
             batchAt: batch.at,
-            status: '${accountTime(batch.at)} 到期',
+            status: batch.dateOnly
+                ? '当天到期 · 仅知日期'
+                : '${accountTime(batch.at)} 到期',
             amount: batch.amount,
           ),
       ],

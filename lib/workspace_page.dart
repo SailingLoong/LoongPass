@@ -11,12 +11,14 @@ class WorkspacePage extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.action,
+    this.controller,
     required this.children,
   });
   final String title;
   final String? subtitle;
   final Widget? action;
   final List<Widget> children;
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -28,6 +30,7 @@ class WorkspacePage extends StatelessWidget {
       return DefaultTextStyle(
         style: context.theme.typography.body.sm,
         child: ListView(
+          controller: controller,
           padding: EdgeInsets.fromLTRB(horizontal, 26, horizontal, 40),
           children: [
             WorkspaceHeading(title: title, subtitle: subtitle, action: action),

@@ -1,8 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'account_table_entry.dart';
 import 'credit_expiry_history.dart';
+import 'credit_timeline.dart';
+import 'account_workspace_registry.dart';
+import 'select_field_semantics.dart';
 import 'desktop_theme.dart';
 import 'magpie_usage.dart';
 import 'managed_app.dart';
@@ -10,6 +15,8 @@ import 'plugin_accounts.dart';
 import 'workspace_page.dart';
 
 part 'workspace_call_history.dart';
+part 'workspace_credit_plot.dart';
+part 'workspace_credit_ranking.dart';
 
 enum _Metric { calls, expiry }
 
@@ -72,18 +79,18 @@ class WorkspaceUsageSummary extends StatelessWidget {
     super.key,
     required this.usage,
     required this.accounts,
+    this.registry,
   });
   final MagpieUsage usage;
   final PluginAccounts accounts;
-  void _open(BuildContext context, _Metric metric) =>
-      Navigator.of(context).push<void>(
-        PageRouteBuilder<void>(
-          settings: const RouteSettings(name: '/overview/usage'),
-          transitionDuration: Duration.zero,
-          reverseTransitionDuration: Duration.zero,
-          pageBuilder: (_, a, b) => _UsagePage(usage, accounts, metric),
-        ),
-      );
+  final AccountWorkspaceRegistry? registry;
+  void _open(BuildContext context, _Metric metric) => openCreditTimeline(
+    context,
+    usage,
+    accounts,
+    hourly: metric == _Metric.calls,
+    registry: registry,
+  );
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([usage, accounts]),
@@ -130,19 +137,93 @@ class WorkspaceUsageSummary extends StatelessWidget {
   );
 }
 
+String _unit(String unit) => switch (unit) {
+  'credits' => '积分',
+  '' => '单位未知',
+  _ => unit,
+};
+String _when(CreditExpiryEvidence b) =>
+    '${_dateText(b.at)} ${b.dateOnly ? '仅知日期' : accountTime(b.at)}';
+String _bucketLabel(TimelineBucket b, CreditSource? source, bool debit) {
+  final unit = source == null ? '批' : _unit(source.unit);
+  return [
+    if (b.usage != null)
+      '${_quantity(b.usage!)} ${debit ? unit : '次调用'}'
+    else if (!b.start.isAfter(b.now))
+      debit ? '该时段账单不完整' : '调用记录暂缺',
+    if (b.loss > 0) '确认未用 ${_quantity(b.loss)} $unit',
+    if (b.forecast > 0) '将到期 ${_quantity(b.forecast)} $unit',
+    if (b.unknown > 0) '${b.unknown} 批余量未知',
+    if (b.rows.isEmpty) '无已知到期批次',
+    if (b.rows.isNotEmpty && b.loss == 0 && b.forecast == 0 && b.unknown == 0)
+      '已核实用完',
+  ].join(' · ');
+}
+
+void openCreditTimeline(
+  BuildContext context,
+  MagpieUsage usage,
+  PluginAccounts accounts, {
+  DateTime? day,
+  bool hourly = false,
+  AccountWorkspaceRegistry? registry,
+}) => Navigator.of(context).push<void>(
+  PageRouteBuilder<void>(
+    settings: const RouteSettings(name: '/overview/usage'),
+    transitionDuration: Duration.zero,
+    reverseTransitionDuration: Duration.zero,
+    pageBuilder: (context, _, _) => ColoredBox(
+      color: context.theme.colors.background,
+      child: _UsagePage(usage, accounts, day, hourly, registry),
+    ),
+  ),
+);
+
 class _UsagePage extends StatefulWidget {
-  const _UsagePage(this.usage, this.accounts, this.initial);
+  const _UsagePage(
+    this.usage,
+    this.accounts,
+    this.date,
+    this.hourly,
+    this.registry,
+  );
   final MagpieUsage usage;
   final PluginAccounts accounts;
-  final _Metric initial;
+  final DateTime? date;
+  final bool hourly;
+  final AccountWorkspaceRegistry? registry;
   @override
   State<_UsagePage> createState() => _UsagePageState();
 }
 
 class _UsagePageState extends State<_UsagePage> {
-  late _Metric metric = widget.initial;
-  late DateTime? selected = metric == _Metric.calls ? widget.usage.today : null;
-  void select(DateTime? day) => setState(() => selected = day);
+  late var center = widget.date ?? widget.usage.today;
+  late var selected = widget.date ?? widget.usage.now;
+  late var hourly = widget.hourly;
+  CreditSource? source;
+  bool debit = false, details = false;
+  final scroll = ScrollController();
+  @override
+  void dispose() {
+    scroll.dispose();
+    super.dispose();
+  }
+
+  void focus(DateTime at, {bool? hours, bool show = false}) {
+    center = usageDate(at);
+    selected = at;
+    hourly = hours ?? hourly;
+    details = show;
+  }
+
+  void jumpToChart() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (scroll.hasClients)
+      scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+  });
   Widget choice(String label, bool active, VoidCallback click) => FButton(
     variant: active ? FButtonVariant.primary : FButtonVariant.outline,
     size: FButtonSizeVariant.sm,
@@ -152,14 +233,77 @@ class _UsagePageState extends State<_UsagePage> {
   );
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([widget.usage, widget.accounts]),
+    listenable: Listenable.merge([
+      widget.usage,
+      widget.accounts,
+      widget.registry,
+    ]),
     builder: (context, _) {
-      final usage = widget.usage, dates = usage.dates;
-      final date = selected == null
-          ? null
-          : (dates.contains(selected) ? selected : usage.today);
+      final usage = widget.usage,
+          data = CreditTimeline(widget.accounts, usage.now);
+      final sources = data.sources.toList()
+        ..sort(
+          (a, b) => ('${_provider(a.provider)} ${a.unit}').compareTo(
+            '${_provider(b.provider)} ${b.unit}',
+          ),
+        );
+      final active = sources.contains(source) ? source : null,
+          billed = data.bills(active) && debit;
+      final buckets = creditTimelineBuckets(
+        data,
+        usage,
+        center,
+        hourly: hourly,
+        source: active,
+        debit: billed,
+      );
+      final bucket =
+          buckets
+              .where(
+                (b) => !selected.isBefore(b.start) && selected.isBefore(b.end),
+              )
+              .firstOrNull ??
+          buckets.first;
+      final dateOnly = data.records
+          .where(
+            (r) =>
+                r.batch.dateOnly &&
+                usageDate(r.batch.at) == usageDate(selected) &&
+                (active == null || creditSource(r) == active),
+          )
+          .toList();
+      final bySource = data.future
+          .where((r) => active == null || creditSource(r) == active)
+          .toList();
+      final small = context.theme.typography.body.xs.copyWith(
+        color: context.theme.colors.mutedForeground,
+      );
+      void selectSource(CreditSource? s) {
+        setState(() {
+          source = s;
+          debit = false;
+        });
+      }
+
+      void step(int i) {
+        final at = hourly
+            ? bucket.start.add(Duration(hours: i))
+            : DateTime(
+                bucket.start.year,
+                bucket.start.month,
+                bucket.start.day + i,
+              );
+        setState(() {
+          selected = at;
+          if (at.isBefore(buckets.first.start) ||
+              !at.isBefore(buckets.last.end))
+            center = usageDate(at);
+        });
+      }
+
       return WorkspacePage(
-        title: '用量明细',
+        title: '用量与到期',
+        controller: scroll,
         action: FButton(
           variant: FButtonVariant.ghost,
           size: FButtonSizeVariant.sm,
@@ -169,156 +313,264 @@ class _UsagePageState extends State<_UsagePage> {
         ),
         children: [
           Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            spacing: 14,
+            spacing: 10,
             runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Wrap(
-                spacing: 4,
+                spacing: 3,
                 children: [
                   choice(
-                    '调用次数',
-                    metric == _Metric.calls,
-                    () => setState(() => metric = _Metric.calls),
+                    '按天',
+                    !hourly,
+                    () => setState(() => focus(selected, hours: false)),
                   ),
                   choice(
-                    '到期未用',
-                    metric == _Metric.expiry,
-                    () => setState(() => metric = _Metric.expiry),
+                    '按小时',
+                    hourly,
+                    () => setState(() => focus(selected, hours: true)),
                   ),
+                ],
+              ),
+              SizedBox(
+                width: 152,
+                child: FDateField.calendar(
+                  size: FTextFieldSizeVariant.sm,
+                  clearable: false,
+                  format: (_, value, _) =>
+                      '${value.year}/${value.month}/${value.day}',
+                  selectionControl: FDateSelectionControl.liftedSingle(
+                    value: DateTime.utc(
+                      selected.year,
+                      selected.month,
+                      selected.day,
+                    ),
+                    toggleable: false,
+                    onChange: (v) {
+                      if (v != null)
+                        setState(() => focus(DateTime(v.year, v.month, v.day)));
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 190,
+                child: FSelect<int>(
+                  builder: selectFieldSemantics,
+                  size: FTextFieldSizeVariant.sm,
+                  items: {
+                    '全部来源 · 批次': -1,
+                    for (var i = 0; i < sources.length; i++)
+                      '${_provider(sources[i].provider)} · ${_unit(sources[i].unit)}':
+                          i,
+                  },
+                  control: FSelectControl.lifted(
+                    value: active == null ? -1 : sources.indexOf(active),
+                    onChange: (i) {
+                      if (i != null) selectSource(i < 0 ? null : sources[i]);
+                    },
+                  ),
+                ),
+              ),
+              if (data.bills(active))
+                Wrap(
+                  spacing: 3,
+                  children: [
+                    choice(
+                      '本机调用',
+                      !billed,
+                      () => setState(() => debit = false),
+                    ),
+                    choice('积分消耗', billed, () => setState(() => debit = true)),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _TimelinePlot(
+            buckets,
+            selected,
+            (b) => setState(() => selected = b.start),
+            hourly: hourly,
+            source: active,
+            debit: billed,
+          ),
+          if (hourly && dateOnly.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            FAccordion(
+              children: [
+                FAccordionItem(
+                  title: Text('当天仅知日期 · ${dateOnly.length} 批'),
+                  child: Column(
+                    children: [for (final r in dateOnly) _entry(data, r)],
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            runSpacing: 6,
+            spacing: 12,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_dateText(bucket.start)} ${hourly ? accountTime(bucket.start) : '全天'}',
+                    style: context.theme.typography.body.md.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(_bucketLabel(bucket, active, billed), style: small),
                 ],
               ),
               Wrap(
                 spacing: 4,
                 children: [
-                  choice('近 7 天', date == null, () => select(null)),
-                  choice('今天', date == usage.today, () => select(usage.today)),
+                  _stepButton('上一时段', FLucideIcons.chevronLeft, () => step(-1)),
+                  choice(
+                    details ? '收起明细' : '查看明细',
+                    false,
+                    () => setState(() => details = !details),
+                  ),
+                  _stepButton('下一时段', FLucideIcons.chevronRight, () => step(1)),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            date == null
-                ? '${_dateText(dates.first)}至${_dateText(dates.last)} · 按天'
-                : '${_dateText(date)} · 按小时',
-            style: context.theme.typography.body.sm.copyWith(
-              color: context.theme.colors.mutedForeground,
-            ),
+          if (details) ...[
+            for (final r in bucket.rows) _entry(data, r),
+            if (!hourly)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FButton(
+                  variant: FButtonVariant.ghost,
+                  size: FButtonSizeVariant.sm,
+                  mainAxisSize: MainAxisSize.min,
+                  onPress: () => setState(
+                    () => focus(bucket.start, hours: true, show: true),
+                  ),
+                  child: const Text('查看这天的小时明细'),
+                ),
+              ),
+          ],
+          const SizedBox(height: 24),
+          _SourceRanking(
+            data,
+            onSource: (s) {
+              selectSource(s);
+              jumpToChart();
+            },
+            entry: (r) => _entry(data, r),
           ),
-          const SizedBox(height: 8),
-          if (metric == _Metric.calls)
-            _CallHistory(usage, date, select)
-          else
-            _ExpiryHistory(
-              _expired(widget.accounts, usage),
-              dates,
-              date,
-              select,
-            ),
+          const SizedBox(height: 14),
+          FAccordion(
+            children: [
+              FAccordionItem(
+                title: Text(
+                  bySource.isEmpty
+                      ? '接下来到期 · 暂无已知批次'
+                      : '接下来到期 · ${_when(bySource.first.batch)} · ${_provider(bySource.first.provider)}',
+                ),
+                child: Column(
+                  children: [
+                    for (final r in bySource)
+                      _entry(
+                        data,
+                        r,
+                        onPress: () {
+                          setState(() {
+                            source = creditSource(r);
+                            debit = false;
+                            focus(
+                              r.batch.at,
+                              hours: !r.batch.dateOnly,
+                              show: true,
+                            );
+                          });
+                          jumpToChart();
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              if (!hourly || usage.dates.contains(usageDate(selected)))
+                FAccordionItem(
+                  title: const Text('本机调用明细'),
+                  child: _CallHistory(
+                    usage,
+                    hourly ? usageDate(selected) : null,
+                    (d) {
+                      setState(() => focus(d, hours: true));
+                      jumpToChart();
+                    },
+                  ),
+                ),
+            ],
+          ),
         ],
       );
     },
   );
-}
-
-class _ExpiryHistory extends StatelessWidget {
-  const _ExpiryHistory(this.records, this.dates, this.date, this.select);
-  final List<AccountExpiryRecord> records;
-  final List<DateTime> dates;
-  final DateTime? date;
-  final ValueChanged<DateTime> select;
-  @override
-  Widget build(BuildContext context) {
-    final rows = records
-        .where((r) => date == null || usageDate(r.batch.at) == date)
-        .toList();
-    final pending = rows.where((r) => r.batch.unused == null).length;
-    if (rows.isEmpty) return const Text('这个时段暂无可核实的到期记录。');
-    final totals = _amounts(rows);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (totals.isNotEmpty)
-          Wrap(
-            spacing: 24,
-            runSpacing: 6,
-            children: [
-              for (final e in totals.entries)
-                Text(
-                  '${_provider(e.key.$1)}  ${_quantity(e.value)} ${e.key.$2}',
-                  style: context.theme.typography.display.sm,
-                ),
-            ],
-          ),
-        if (pending > 0)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('$pending 批额度待核实，未计入已确认数量。'),
-          ),
-        if (date == null)
-          for (final d in dates)
-            FTile(
-              title: Text(_dateText(d)),
-              subtitle: Text(
-                _quantities(rows.where((r) => usageDate(r.batch.at) == d)),
-              ),
-              suffix: const Icon(FLucideIcons.chevronRight, size: 14),
-              onPress: () => select(d),
-            )
-        else
-          for (final group in _byHour(rows).entries) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 4),
-              child: Text(
-                group.key == null ? '仅有日期，时刻未知' : accountTime(group.key!),
-                style: context.theme.typography.body.md.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            if (group.value.length > 1) Text(_quantities(group.value)),
-            for (final row in group.value)
-              FTile(
-                title: Text('${_provider(row.provider)} · ${row.account}'),
-                subtitle: Text(
-                  row.batch.unused == null
-                      ? '待核实'
-                      : '${_quantity(row.batch.unused!)} ${row.batch.unit}',
-                ),
-              ),
-          ],
-      ],
-    );
-  }
-
-  static String _quantities(Iterable<AccountExpiryRecord> rows) {
-    if (rows.isEmpty) return '暂无记录';
-    final pending = rows.where((r) => r.batch.unused == null).length;
-    return [
-      for (final e in _amounts(rows).entries)
-        '${_provider(e.key.$1)} ${_quantity(e.value)} ${e.key.$2}',
-      if (pending > 0) '$pending 批待核实',
-    ].join(' · ');
-  }
-
-  static Map<DateTime?, List<AccountExpiryRecord>> _byHour(
-    List<AccountExpiryRecord> rows,
-  ) {
-    final result = <DateTime?, List<AccountExpiryRecord>>{};
-    for (final row in rows) {
-      final at = row.batch.at.toLocal();
-      // Truncate elapsed minutes to keep repeated local hours distinct.
-      final hour = at.subtract(
-        Duration(
-          minutes: at.minute,
-          seconds: at.second,
-          milliseconds: at.millisecond,
-          microseconds: at.microsecond,
-        ),
+  Widget _stepButton(String label, IconData icon, VoidCallback onPress) =>
+      FButton.icon(
+        variant: FButtonVariant.ghost,
+        size: FButtonSizeVariant.sm,
+        onPress: onPress,
+        child: Icon(icon, semanticLabel: label),
       );
-      result.putIfAbsent(row.batch.dateOnly ? null : hour, () => []).add(row);
-    }
-    return result;
+  Widget _entry(
+    CreditTimeline data,
+    AccountExpiryRecord row, {
+    VoidCallback? onPress,
+  }) {
+    final b = row.batch, future = b.end.isAfter(data.now), unit = _unit(b.unit);
+    final amount = b.remaining == null
+        ? null
+        : '${_quantity(b.remaining!)} $unit';
+    final observed = b.observedAt;
+    final app = ManagedApp.values
+        .where((a) => a.nativeProviders.contains(row.provider))
+        .firstOrNull;
+    final key = data.accountKeys[row];
+    final account = app == null || key == null
+        ? null
+        : widget.registry
+              ?.entriesFor(app)
+              .where((r) => r.id == key)
+              .firstOrNull;
+    final models =
+        account?.expiryModels[(
+          at: b.at,
+          amount: b.remaining == null
+              ? null
+              : '${accountPoints(b.remaining!)} ${b.unit}',
+        )];
+    return FTile(
+      title: Text('${_provider(row.provider)} · ${row.account}'),
+      subtitle: Text(
+        [
+          _when(b),
+          if (future)
+            amount == null ? '平台未提供批次余量' : '将到期 $amount'
+          else if (b.unused != null)
+            '已确认未用 ${_quantity(b.unused!)} $unit'
+          else
+            '平台未提供可核对的到期结算',
+          if (!future && b.unused == null && amount != null) '到期前余量 $amount',
+          if (observed != null && (future || b.unused == null))
+            '查询于 ${_dateText(observed)} ${accountTime(observed)}',
+          if (future && models != null && models.isNotEmpty)
+            '可用模型 ${models.join('、')}',
+        ].join(' · '),
+      ),
+      suffix: onPress == null
+          ? null
+          : const Icon(FLucideIcons.chevronRight, size: 14),
+      onPress: onPress,
+    );
   }
 }
