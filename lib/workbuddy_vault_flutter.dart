@@ -1,4 +1,4 @@
-import 'package:flutter/services.dart';
+import 'operation_channel.dart';
 import 'native_account_gate.dart';
 import 'workbuddy_vault.dart';
 
@@ -9,7 +9,7 @@ class WorkBuddyVaultFlutter implements WorkBuddyVaultStore {
  WorkBuddyVaultFlutter.synthetic(this._invoke);
  static Future<Object?> _production(String method,Map<String,Object?> args)async{
   if(!workBuddyNativeAdapterValidated||!workBuddyPersistentAccessValidated)throw StateError('WorkBuddy persistent access unavailable');
-  return const MethodChannel('com.sailingloong.loongpass/files').invokeMethod<Object?>(method,args);
+  return filesChannel.invokeMethod<Object?>(method,args);
  }
  Future<List<String>> savedKeys()async{
   final value=await _invoke('listWorkBuddyVaultKeys',{});

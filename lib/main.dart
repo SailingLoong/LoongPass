@@ -1,6 +1,11 @@
 import 'dart:async';
 
 import 'package:material_ui/material_ui.dart';
+
+import 'macos_crash_reports.dart';
+import 'operation_binding.dart';
+import 'operation_log.dart';
+
 import 'package:forui/forui.dart';
 
 import 'desktop_platform.dart';
@@ -26,7 +31,9 @@ import 'invitation_settings.dart';
 const _appLocale = Locale('zh', 'CN');
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  OperationLog.startDesktop();
+  OperationBinding();
+  collectMacCrashReports();
   final preferences = UiPreferences.persistent();
   final invitations = {
     for (final app in InvitationSettings.platforms)
@@ -61,6 +68,7 @@ class _AccountToolAppState extends State<AccountToolApp> {
         for (final app in InvitationSettings.platforms)
           app: InvitationSettings(app),
       };
+  final _routes = OperationNavigation();
   late final _home = _AccountPage(
     preferences: _preferences,
     invitations: _invitations,
@@ -83,6 +91,7 @@ class _AccountToolAppState extends State<AccountToolApp> {
     builder: (context, _) => MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'LoongPass',
+      navigatorObservers: [_routes],
       theme: loongPassTheme(Brightness.light),
       darkTheme: loongPassTheme(Brightness.dark),
       themeMode: _preferences.themeMode,

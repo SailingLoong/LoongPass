@@ -8,6 +8,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+from macos_flutter import macos_flutter, resolve_framework
 from release_version import read_release_version
 from plugin_sources import verify as verify_plugin_sources
 
@@ -54,10 +55,12 @@ def main():
         environment.pop("FLUTTER_MACOS_ARM64_ONLY", None)
         environment["CARGO_BUILD_JOBS"] = "2"
         environment.setdefault("CARGO_TARGET_DIR", str(cache / "native-macos"))
-        flutter = os.environ.get("FLUTTER_BIN", "flutter")
+        flutter = str(macos_flutter())
+        environment["FLUTTER_ROOT"] = str(Path(flutter).parents[1])
+        resolve_framework(root, flutter, refresh=True, environment=environment)
         release = read_release_version(root)
         result = subprocess.run([flutter, "--suppress-analytics", "build", "macos", "--release",
-                                 "--no-pub", "--build-name=" + release.macos_name,
+                                 "--no-pub", "--dart-define=LOONGPASS_BUILD=" + release.build, "--build-name=" + release.macos_name,
                                  "--build-number=" + release.build], cwd=root, env=environment)
         if result.returncode:
             return result.returncode

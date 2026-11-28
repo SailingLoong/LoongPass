@@ -1,4 +1,8 @@
 import 'package:flutter/widgets.dart';
+
+import 'operation_binding.dart';
+import 'operation_log.dart';
+
 import 'package:forui/forui.dart';
 
 import 'package:material_ui/material_ui.dart'
@@ -63,6 +67,22 @@ class AppWorkspaceState extends State<AppWorkspace> {
       : WorkspaceSection.accounts;
   late final UiPreferences _preferences = widget.preferences ?? UiPreferences();
 
+  final _routes = OperationNavigation();
+  @override
+  void initState() {
+    super.initState();
+    _recordPage();
+  }
+
+  void _recordPage() {
+    final log = OperationLog.current;
+    if (log == null) return;
+    log.page = _section == WorkspaceSection.accounts && !_all
+        ? 'accounts.${_selected.name}'
+        : _section.name;
+    log.record('navigation.page', target: log.page);
+  }
+
   final _shell = GlobalKey<ScaffoldState>();
   final _contentNavigator = GlobalKey<NavigatorState>();
   bool? _compactOverride;
@@ -81,6 +101,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
       _all = false;
       _section = WorkspaceSection.accounts;
     });
+    _recordPage();
   }
 
   void selectSection(WorkspaceSection section) {
@@ -94,9 +115,14 @@ class AppWorkspaceState extends State<AppWorkspace> {
       if (section == WorkspaceSection.accounts) _all = true;
       _section = section;
     });
+    _recordPage();
   }
 
   void selectModel(String? id) {
+    OperationLog.current?.record(
+      'navigation.model',
+      target: id == null ? 'catalog' : 'detail',
+    );
     widget.onSelectModel?.call(id);
     selectSection(WorkspaceSection.models);
   }
@@ -326,6 +352,7 @@ class AppWorkspaceState extends State<AppWorkspace> {
                             explicitChildNodes: true,
                             child: Navigator(
                               key: _contentNavigator,
+                              observers: [_routes],
                               pages: [
                                 MaterialPage<void>(
                                   key: const ValueKey('workspace-root'),

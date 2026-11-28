@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'operation_channel.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -131,9 +133,7 @@ String? _optionalString(Object? value) =>
 /// Disposing a page or this adapter does not cancel a native authorization job.
 class CodexAccounts extends ChangeNotifier {
   CodexAccounts({
-    MethodChannel channel = const MethodChannel(
-      'com.sailingloong.loongpass/files',
-    ),
+    MethodChannel channel = filesChannel,
     TargetPlatform? platform,
   }) : _channel = channel,
        supported =

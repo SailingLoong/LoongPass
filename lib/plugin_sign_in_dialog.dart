@@ -5,6 +5,7 @@ import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart' show SelectableText;
 import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'plugin_accounts.dart';
 import 'plugin_runtime.dart' show PluginRuntimeFailure;
 import 'plugin_sign_in.dart';
@@ -56,7 +57,7 @@ class PluginSignInDialog extends StatefulWidget {
 enum _Step { select, prompt, key, code, waiting, failed }
 
 class _PluginSignInDialogState extends State<PluginSignInDialog> {
-  static const _channel = MethodChannel('com.sailingloong.loongpass/files');
+  static const _channel = filesChannel;
   late PluginSignIn _signIn;
   final _input = TextEditingController();
   final _inputs = <String, String>{};

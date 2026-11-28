@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'operation_log.dart';
+
 typedef _AccountJob = ({
   String account,
   String provider,
@@ -30,7 +32,7 @@ class PluginAccountTasks {
           : _providerLimit,
       start: () async {
         try {
-          await action();
+          await OperationLog.trace('task', 'account', action);
           done.complete();
         } catch (error, stack) {
           done.completeError(error, stack);

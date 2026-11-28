@@ -1,8 +1,9 @@
 import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'zcode_api.dart';
 
-const _files = MethodChannel('com.sailingloong.loongpass/files');
+const _files = filesChannel;
 
 /// Reuse the official client's observed device on this computer.
 Future<String?> installedZcodeDevice() async {

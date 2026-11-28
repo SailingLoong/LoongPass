@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -31,17 +32,42 @@ class _Smoke extends StatefulWidget {
 class _SmokeState extends State<_Smoke> {
   var value = 'zcode';
   var ticks = 0;
+  bool inspected = false;
+  static const _probe = MethodChannel('loongpass.test/accessibility');
 
   @override
   void initState() {
     super.initState();
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (++ticks == 6) {
+        timer.cancel();
+        if (!const bool.fromEnvironment('LEGACY_SELECTOR') && !inspected)
+          exit(2);
         stdout.writeln('NATIVE_SELECTOR_SMOKE_PASS');
         exit(0);
       }
       setState(() => value = ticks.isOdd ? 'workbuddy' : 'zcode');
       stdout.writeln('Changed selector: $value');
+      if (!const bool.fromEnvironment('LEGACY_SELECTOR')) {
+        if (ticks == 2 || ticks == 4) {
+          unawaited(
+            Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(builder: (_) => const _SearchPage()),
+            ),
+          );
+        } else if (ticks == 3 || ticks == 5) {
+          final snapshot = await _probe.invokeMapMethod<String, dynamic>(
+            'visibleTextFields',
+          );
+          stdout.writeln('NATIVE_ACCESSIBILITY $snapshot');
+          final roles = snapshot?['roles'] as List? ?? const [];
+          final fields = snapshot?['sizedFields'] as int? ?? 0;
+          if (fields == 0 || !roles.contains('AXTextField')) exit(3);
+          inspected = true;
+          stdout.writeln('NATIVE_TEXT_FIELD_FRAME_AND_ROLE $fields');
+          if (mounted) Navigator.of(context).pop();
+        }
+      }
     });
   }
 
@@ -60,6 +86,30 @@ class _SmokeState extends State<_Smoke> {
             onChange: (next) => setState(() => value = next!),
           ),
         ),
+      ),
+    ),
+  );
+}
+
+class _SearchPage extends StatefulWidget {
+  const _SearchPage();
+
+  @override
+  State<_SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<_SearchPage> {
+  final suggestions = OverlayPortalController()..show();
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: OverlayPortal(
+        controller: suggestions,
+        overlayChildBuilder: (_) => const Align(
+          alignment: Alignment.bottomCenter,
+          child: Text('Search suggestions'),
+        ),
+        child: const SizedBox(width: 240, child: TextField(autofocus: true)),
       ),
     ),
   );

@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
+import 'operation_binding.dart';
 import 'desktop_theme.dart';
 import 'model_workspace_view_model.dart';
 import 'model_auto_summary.dart';
@@ -205,17 +206,19 @@ class _PluginModelServicesPageState extends State<PluginModelServicesPage> {
                                   14
                           ? box.maxWidth
                           : 272,
-                      child: FTextField(
-                        key: const Key('model-search'),
-                        hint: '搜索模型、别名或账号',
-                        size: FTextFieldSizeVariant.sm,
-                        prefixBuilder: (context, style, variants) =>
-                            const Icon(FLucideIcons.search, size: 16),
-                        control: FTextFieldControl.managed(
-                          controller: auto ? _autoSearch : _search,
-                          onChange: (value) {
-                            if (!auto) vm.search(value.text);
-                          },
+                      child: OperationControl.modelSearch.mark(
+                        FTextField(
+                          key: const Key('model-search'),
+                          hint: '搜索模型、别名或账号',
+                          size: FTextFieldSizeVariant.sm,
+                          prefixBuilder: (context, style, variants) =>
+                              const Icon(FLucideIcons.search, size: 16),
+                          control: FTextFieldControl.managed(
+                            controller: auto ? _autoSearch : _search,
+                            onChange: (value) {
+                              if (!auto) vm.search(value.text);
+                            },
+                          ),
                         ),
                       ),
                     ),

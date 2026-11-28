@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:forui/forui.dart';
 
 import 'app_updates.dart';
+import 'operation_log.dart';
 import 'desktop_theme.dart';
 import 'invitation_settings.dart';
 import 'managed_app.dart';
@@ -41,6 +42,7 @@ class WorkspaceSettingsPage extends StatefulWidget {
 }
 
 class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
+  String? _logError;
   final _localSection = ValueNotifier(SettingsSection.appearance);
   final _drafts = <ManagedApp, TextEditingController>{};
   ValueNotifier<SettingsSection> get section => widget.section ?? _localSection;
@@ -52,6 +54,11 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
       draft.dispose();
     }
     super.dispose();
+  }
+
+  void _selectTopic(SettingsSection topic) {
+    OperationLog.current?.record('navigation.settings', target: topic.name);
+    section.value = topic;
   }
 
   Widget _content(SettingsSection topic) => switch (topic) {
@@ -88,6 +95,16 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
           description: '由你点击发起；进入页面不会触发领取。',
           control: _link('查看签到账号', widget.onOpenRewards),
         ),
+        if (OperationLog.current != null)
+          SettingsOption(
+            title: '诊断日志',
+            description: _logError ?? '仅在本机保留最近 7 天的记录。',
+            control: _link('打开日志文件夹', () async {
+              final opened = await OperationLog.current!.openFolder();
+              if (mounted)
+                setState(() => _logError = opened ? null : '无法打开日志文件夹。');
+            }),
+          ),
         SettingsOption(
           title: '账号服务',
           control: _link('查看账号', widget.onOpenAccounts),
@@ -149,7 +166,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
                               variant: FButtonVariant.ghost,
                               size: FButtonSizeVariant.sm,
                               mainAxisSize: MainAxisSize.min,
-                              onPress: () => section.value = topic,
+                              onPress: () => _selectTopic(topic),
                               child: Text(topic.label, key: ValueKey(topic)),
                             ),
                           ),
@@ -167,7 +184,7 @@ class _WorkspaceSettingsPageState extends State<WorkspaceSettingsPage> {
               control: FTabControl.lifted(
                 index: section.value.index,
                 onChange: (index) =>
-                    section.value = SettingsSection.values[index],
+                    _selectTopic(SettingsSection.values[index]),
               ),
               children: [
                 for (final topic in SettingsSection.values)

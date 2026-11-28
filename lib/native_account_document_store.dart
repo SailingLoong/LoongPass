@@ -1,14 +1,14 @@
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
 
+import 'operation_channel.dart';
 import 'account_document_store.dart';
 
 class NativeAccountDocumentStore implements AccountDocumentStore {
   @override
   final String identity;
   NativeAccountDocumentStore(this.identity);
-  static const _channel = MethodChannel('com.sailingloong.loongpass/files');
+  static const _channel = filesChannel;
 
   Future<Map<String, dynamic>> _call(
     String method,
