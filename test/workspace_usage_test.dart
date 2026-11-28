@@ -42,6 +42,7 @@ Map<String, dynamic> ledger(DateTime date, {int calls = 3}) {
             'handed_on': handedOn,
             'model': 'requested',
             'served': handedOn ? 'intermediate' : 'example-model',
+            'credits': handedOn ? 8 : 0.03125,
             'providerAccount': '示例账号',
           },
     ],
@@ -102,6 +103,7 @@ void main() {
     );
     final today = usage.day(usage.today)!;
     expect(today.totals.calls, 3);
+    expect(today.recent.single.credits, 0.03125);
     expect(today.hours[8].totals.input, 360);
     expect(today.hours[8].totals.output, 45);
     expect(today.recent.map((c) => (c.model, c.account)), [
@@ -207,6 +209,7 @@ void main() {
       await tester.tap(openCalls);
       await tester.pumpAndSettle();
       expect(find.text('其中 1 次最终失败'), findsOneWidget);
+      expect(find.textContaining('本次实扣 0.03125 积分'), findsOneWidget);
       expect(find.text('已记录输入 360 tokens · 输出 45 tokens'), findsOneWidget);
       final back = find.text('返回我的应用');
       await tester.scrollUntilVisible(

@@ -84,6 +84,7 @@ class _CallHistory extends StatelessWidget {
                 [
                   accountTime(call.at),
                   if (call.account.isNotEmpty) call.account,
+                  if (call.credits case final n?) '本次实扣 ${_quantity(n)} 积分',
                   if (call.canceled) '已取消' else if (call.failed) '最终失败',
                 ].join(' · '),
               ),
