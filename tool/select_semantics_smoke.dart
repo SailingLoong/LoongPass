@@ -2,7 +2,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:forui/forui.dart';
 import 'package:material_ui/material_ui.dart';
@@ -11,7 +10,8 @@ import '../lib/select_field_semantics.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SemanticsBinding.instance.ensureSemantics();
+  // AppKit enables semantics after its native bridge exists. Let that signal
+  // create the first tree, as in the desktop app.
   runApp(
     MaterialApp(
       localizationsDelegates: FLocalizations.localizationsDelegates,
